@@ -1,6 +1,13 @@
 //! MusicCraft desktop application: wires the command session, the engine bridge,
 //! the audio device, MIDI input and the user interface together.
 
+// Release builds on Windows are GUI-subsystem so launching the app does not open a
+// console window. (Usage errors printed to stderr are therefore not visible there.)
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
 mod autosave;
 mod midi;
 mod plugins;
@@ -776,7 +783,9 @@ fn main() -> eframe::Result {
             .with_inner_size([1360.0, 860.0])
             .with_min_inner_size([800.0, 500.0])
             .with_title("MusicCraft")
-            .with_app_id("musiccraft"),
+            // Reverse-DNS ID so Linux desktops match the window to its desktop entry
+            // (the Flatpak and the installed .desktop file use the same ID).
+            .with_app_id("io.github.bhimio1.MusicCraft"),
         ..Default::default()
     };
     eframe::run_native(

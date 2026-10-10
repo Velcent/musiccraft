@@ -1,0 +1,244 @@
+name: Release
+
+# Pushing a tag like v0.2.0 builds every package and publishes a GitHub release.
+# The tag must match the workspace version in Cargo.toml.
+#
+# The build jobs also run on pull requests that touch packaging (and on manual runs)
+# so packaging changes are tested without publishing anything.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        shell: bash
+        run: |
+          cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+          if [[ -z "$cargo_version" ]]; then
+            echo "::error::could not read the workspace version from Cargo.toml"
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag_version=${GITHUB_REF_NAME#v}
+            if [[ "$tag_version" != "$cargo_version" ]]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match version $cargo_version in Cargo.toml"
+              exit 1
+            fi
+          fi
+          echo "version=$cargo_version" >> "$GITHUB_OUTPUT"
+          if [[ "$cargo_version" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    needs: meta
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked -p musiccraft-app
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 4.0.5
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          # MSI versions must be numeric (a.b.c), so drop any -prerelease suffix.
+          $msiVersion = $env:VERSION.Split('-')[0]
+          wix build -arch x64 `
+            -d Version=$msiVersion `
+            -d Exe=target\release\musiccraft.exe `
+            -d Icon=packaging\icons\musiccraft.ico `
+            -o "dist\MusicCraft-$env:VERSION-windows-x64.msi" `
+            packaging\windows\musiccraft.wxs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          $dir = "MusicCraft-$env:VERSION-windows-x64-portable"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item target\release\musiccraft.exe $dir\
+          Copy-Item packaging\portable\README-windows.txt "$dir\README.txt"
+          Compress-Archive -Path $dir -DestinationPath "dist\$dir.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows
+          path: dist/*
+          if-no-files-found: error
+
+  macos:
+    needs: meta
+    runs-on: macos-14
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build both architectures
+        run: |
+          cargo build --release --locked -p musiccraft-app --target aarch64-apple-darwin
+          cargo build --release --locked -p musiccraft-app --target x86_64-apple-darwin
+          mkdir -p build
+          lipo -create -output build/musiccraft \
+            target/aarch64-apple-darwin/release/musiccraft \
+            target/x86_64-apple-darwin/release/musiccraft
+          lipo -info build/musiccraft
+      - name: Build app bundle and DMG
+        run: |
+          mkdir -p dist
+          bash packaging/macos/build-dmg.sh "$VERSION" build/musiccraft \
+            packaging/icons/musiccraft-1024.png \
+            "dist/MusicCraft-$VERSION-macos-universal.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos
+          path: dist/*
+          if-no-files-found: error
+
+  # Built on the oldest supported Ubuntu runner so the binary runs on older distros.
+  linux:
+    needs: meta
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked -p musiccraft-app
+      - name: Portable tarball
+        run: |
+          mkdir -p dist binary
+          dir="MusicCraft-$VERSION-linux-x86_64-portable"
+          mkdir -p "$dir"
+          install -m755 target/release/musiccraft "$dir/musiccraft"
+          strip "$dir/musiccraft"
+          cp packaging/portable/README-linux.txt "$dir/README.txt"
+          cp packaging/icons/musiccraft-512.png "$dir/musiccraft.png"
+          tar -czf "dist/$dir.tar.gz" "$dir"
+          # Stripped binary for the Flatpak job.
+          cp "$dir/musiccraft" binary/musiccraft
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-binary
+          path: binary/musiccraft
+          if-no-files-found: error
+
+  flatpak:
+    needs: [meta, linux]
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      APP_ID: io.github.bhimio1.MusicCraft
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-binary
+          path: linux-binary
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Stage sources
+        run: |
+          mkdir -p build-src dist
+          cp linux-binary/musiccraft build-src/musiccraft
+          cp packaging/flatpak/$APP_ID.yml packaging/flatpak/$APP_ID.desktop build-src/
+          cp packaging/icons/musiccraft-512.png build-src/
+          sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%F)/" \
+            packaging/flatpak/$APP_ID.metainfo.xml.in > build-src/$APP_ID.metainfo.xml
+      - name: Build
+        working-directory: build-src
+        run: |
+          flatpak-builder --user --disable-rofiles-fuse --install-deps-from=flathub \
+            --force-clean --repo=repo build-dir $APP_ID.yml
+      - name: Check the binary's libraries resolve inside the runtime
+        working-directory: build-src
+        run: |
+          flatpak-builder --run build-dir $APP_ID.yml ldd /app/bin/musiccraft | tee ldd.txt
+          if grep -q "not found" ldd.txt; then
+            echo "::error::musiccraft has unresolved shared libraries in the Flatpak runtime"
+            exit 1
+          fi
+      - name: Bundle
+        working-directory: build-src
+        run: |
+          flatpak build-bundle repo "../dist/MusicCraft-$VERSION-linux-x86_64.flatpak" $APP_ID
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-flatpak
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [meta, windows, macos, linux, flatpak]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Create release
+        run: |
+          flags=()
+          if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "MusicCraft $VERSION" \
+            --verify-tag \
+            --generate-notes \
+            --notes "These builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper will warn on first launch. Verify downloads against SHA256SUMS.txt." \
+            "${flags[@]}"

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=MusicCraft
+GenericName=Digital Audio Workstation
+Comment=Pattern-based music production with a channel rack, piano roll, playlist and mixer
+Exec=musiccraft %f
+Icon=io.github.bhimio1.MusicCraft
+Terminal=false
+Categories=AudioVideo;Audio;Midi;Mixer;Sequencer;
+Keywords=music;daw;sequencer;piano roll;beat;
+StartupWMClass=io.github.bhimio1.MusicCraft

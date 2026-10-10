@@ -20,6 +20,13 @@ can be driven from the GUI, scripts, the CLI, or an AI agent over MCP.
 
 The screenshots show [`examples/demo-song.mcs`](examples/demo-song.mcs).
 
+## Download
+
+Grab the latest build from the [Releases page](https://github.com/bhimio1/musiccraft/releases):
+Windows `.msi` or portable `.zip`, macOS `.dmg`, Linux `.flatpak` or portable
+`.tar.gz`. Builds are not code-signed yet; see `docs/releasing.md` for first-launch
+notes and how releases are made.
+
 ## Build and run
 
 ```sh
