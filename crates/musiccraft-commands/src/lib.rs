@@ -16,6 +16,7 @@ mod cmds;
 mod command;
 mod error;
 mod invocation;
+mod midi_file;
 mod registry;
 mod session;
 

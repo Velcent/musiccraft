@@ -13,6 +13,56 @@ use crate::{
 
 /// Safety cap on loop wraps handled within one block (for absurdly short loops).
 const MAX_WRAPS_PER_BLOCK: usize = 64;
+/// Metronome click length in seconds.
+const CLICK_SECONDS: f64 = 0.03;
+/// Metronome level.
+const CLICK_GAIN: f32 = 0.35;
+
+/// A synthesized metronome click: a short decaying sine, higher on the downbeat.
+#[derive(Debug, Clone, Copy, Default)]
+struct Click {
+    /// Frames to wait before the click starts (within the current block).
+    delay: Option<u32>,
+    accent: bool,
+    /// Frames already played; `None` when silent.
+    played: Option<u32>,
+}
+
+impl Click {
+    fn trigger(&mut self, delay: u32, accent: bool) {
+        self.delay = Some(delay);
+        self.accent = accent;
+    }
+
+    /// Adds the click into a block.
+    fn render(&mut self, left: &mut [f32], right: &mut [f32], sample_rate: f64) {
+        let length = (CLICK_SECONDS * sample_rate) as u32;
+        let hz = if self.accent { 1_760.0 } else { 1_320.0 };
+        for (i, (l, r)) in left.iter_mut().zip(right.iter_mut()).enumerate() {
+            if self.delay == Some(i as u32) {
+                self.delay = None;
+                self.played = Some(0);
+            }
+            let Some(n) = self.played else {
+                continue;
+            };
+            if n >= length {
+                self.played = None;
+                continue;
+            }
+            let t = f64::from(n) / sample_rate;
+            let env = (-t / (CLICK_SECONDS / 5.0)).exp() as f32;
+            let s = (t * hz * std::f64::consts::TAU).sin() as f32 * env * CLICK_GAIN;
+            *l += s;
+            *r += s;
+            self.played = Some(n + 1);
+        }
+        // A delay past this block's end carries into the next block.
+        if let Some(delay) = self.delay {
+            self.delay = Some(delay.saturating_sub(left.len() as u32));
+        }
+    }
+}
 
 /// Main-thread side of an engine: sends messages, drops returned values.
 pub struct EngineHandle {
@@ -98,6 +148,8 @@ pub struct Engine {
     sequence: Option<Box<Sequence>>,
     voices: Vec<Voice>,
     voice_counter: u64,
+    metronome: bool,
+    click: Click,
 }
 
 /// Creates an engine and the handle that controls it. Call on the main thread,
@@ -126,6 +178,8 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
             .map(|_| Voice::new(sample_rate as f32))
             .collect(),
         voice_counter: 0,
+        metronome: false,
+        click: Click::default(),
     };
     let handle = EngineHandle {
         messages: message_tx,
@@ -278,6 +332,7 @@ impl Engine {
             } => self.live_note_on(channel, key, velocity),
             EngineMessage::NoteOff { channel, key } => self.live_note_off(channel, key),
             EngineMessage::AllNotesOff => self.release_all(true),
+            EngineMessage::SetMetronome(on) => self.metronome = on,
             EngineMessage::SetGraph(graph) => {
                 for voice in &mut self.voices {
                     voice.active = false;
@@ -425,6 +480,14 @@ impl Engine {
         }
         mix_channels(channels, tracks, frames);
         mix_tracks(tracks, frames, ctx, &self.meters);
+        if let Some(master) = tracks.first_mut() {
+            let TrackNode { left, right, .. } = master;
+            self.click.render(
+                prefix(left, frames),
+                prefix(right, frames),
+                self.sample_rate,
+            );
+        }
     }
 
     /// Starts every sequence event that falls inside the next `frames` frames and
@@ -439,6 +502,17 @@ impl Engine {
             let segment_end = position + (total - done) * tpf;
             let wraps = segment_end >= length;
             let stop = if wraps { length } else { segment_end };
+            if self.metronome {
+                let ppq = f64::from(PPQ);
+                let mut beat = (position / ppq).ceil() * ppq;
+                while beat < stop {
+                    let offset = done + (beat - position) / tpf;
+                    let accent = (beat as u64) % u64::from(TICKS_PER_BAR) == 0;
+                    self.click
+                        .trigger((offset - 1e-6).ceil().max(0.0) as u32, accent);
+                    beat += ppq;
+                }
+            }
             if let (Some(seq), Some(graph)) = (self.sequence.as_deref(), self.graph.as_deref()) {
                 let events = seq.events();
                 while let Some(event) = events.get(self.cursor) {

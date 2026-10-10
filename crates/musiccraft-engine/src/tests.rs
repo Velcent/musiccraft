@@ -357,3 +357,29 @@ fn seek_moves_playhead_within_loop() {
         "wraps into the loop"
     );
 }
+
+#[test]
+fn metronome_clicks_on_every_beat_and_accents_bars() {
+    let (mut engine, _handle) = engine_pair(SR);
+    engine.apply(EngineMessage::SetGraph(Box::default()));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    engine.apply(EngineMessage::SetSequence(Box::new(Sequence::new(
+        vec![],
+        8 * 96,
+    ))));
+    engine.apply(EngineMessage::SetMetronome(true));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 5 * BEAT);
+    let onsets: Vec<usize> = (0..5)
+        .map(|beat| beat * BEAT)
+        .filter(|start| out[start + 1..start + 200].iter().any(|s| s.abs() > 0.05))
+        .collect();
+    assert_eq!(onsets, [0, BEAT, 2 * BEAT, 3 * BEAT, 4 * BEAT]);
+    assert!(
+        out[BEAT / 2..BEAT - 10].iter().all(|s| s.abs() < 1e-3),
+        "silent between clicks"
+    );
+    engine.apply(EngineMessage::SetMetronome(false));
+    let quiet = render_mono(&mut engine, 2 * BEAT);
+    assert!(quiet.iter().all(|s| s.abs() < 1e-3));
+}

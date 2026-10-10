@@ -194,6 +194,10 @@ pub struct Pattern {
     /// Notes, kept sorted by (channel, start, key).
     #[serde(default)]
     pub notes: Vec<Note>,
+    /// Swing amount 0..=1: notes on off-beat sixteenths are delayed by up to
+    /// half a step.
+    #[serde(default)]
+    pub swing: f32,
 }
 
 impl Pattern {
@@ -205,6 +209,7 @@ impl Pattern {
             name: name.into(),
             length_steps: 16,
             notes: Vec::new(),
+            swing: 0.0,
         }
     }
 

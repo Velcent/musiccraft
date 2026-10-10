@@ -236,3 +236,69 @@ fn stop_message_rewinds_engine() {
     engine.apply(EngineMessage::Stop);
     assert!(engine.position_ticks().abs() < f64::EPSILON);
 }
+
+#[test]
+fn swing_delays_offbeat_sixteenths_only() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:hat
+         step.toggle 1 0
+         step.toggle 1 1
+         step.toggle 1 2
+         step.toggle 1 3
+         pattern.set_swing 1 50",
+    );
+    let starts: Vec<u64> = build_sequence(s.project())
+        .events()
+        .iter()
+        .map(|e| e.start)
+        .collect();
+    assert_eq!(starts, [0, 24 + 6, 48, 72 + 6]);
+}
+
+#[test]
+fn exports_never_contain_the_metronome() {
+    let mut s = session();
+    run(&mut s, "transport.toggle_metronome");
+    assert!(s.project().metronome);
+    let (left, _, _) = render(
+        s.project(),
+        RenderOptions {
+            max_tail_seconds: 0.0,
+            ..RenderOptions::default()
+        },
+    );
+    assert!(left.iter().all(|x| x.abs() < 1e-6));
+}
+
+#[test]
+fn stems_split_by_mixer_track_and_line_up() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-stems-{}", std::process::id()));
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick
+         channel.add_sampler builtin:crash
+         channel.add_synth
+         step.toggle 1 0
+         step.toggle 2 0
+         note.add 3 0 4 C5
+         channel.route 1 1
+         channel.route 2 1
+         channel.set_mute 3 off
+         mixer.rename 1 Drums/Perc",
+    );
+    let line = format!("project.export_stems \"{}\"", dir.display());
+    let outcome = s.run_line(&line).unwrap();
+    assert!(outcome.message.contains("2 stems"), "{}", outcome.message);
+    let drums = musiccraft_samples::load_wav(&dir.join("01 Drums_Perc.wav")).unwrap();
+    let master = musiccraft_samples::load_wav(&dir.join("00 Master.wav")).unwrap();
+    assert_eq!(
+        drums.len(),
+        master.len(),
+        "stems are padded to the same length"
+    );
+    assert!(drums.peak() > 0.1 && master.peak() > 0.01);
+    std::fs::remove_dir_all(dir).unwrap();
+}

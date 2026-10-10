@@ -8,6 +8,7 @@
 # Transport
 Space        = transport.toggle
 L            = transport.toggle_mode
+Ctrl+M       = transport.toggle_metronome
 
 # Windows
 F5           = view.toggle playlist

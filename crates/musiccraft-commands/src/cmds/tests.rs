@@ -61,6 +61,7 @@ const SCRIPT: &[&str] = &[
     "pattern.clone 1",
     "pattern.rename 2 Chorus",
     "pattern.set_length 2 32",
+    "pattern.set_swing 2 33",
     "note.clear 3 @1",
     "mixer.add_track Drums",
     "mixer.rename 1 Kick bus",
@@ -246,6 +247,7 @@ fn errors_leave_the_project_unchanged() {
         "note.set_all 1 [[0,0,60,100]]",
         "step.toggle 1 99999",
         "pattern.set_length 1 0",
+        "pattern.set_swing 1 101",
         "pattern.select 4",
         "mixer.add_effect 1 phaser",
         "mixer.remove_effect 1 1",
@@ -314,4 +316,38 @@ fn save_and_load_round_trip() {
 fn save_without_a_path_needs_one() {
     let mut s = session();
     fails(&mut s, "project.save");
+}
+
+#[test]
+fn import_midi_converts_ticks_and_undoes() {
+    use crate::midi_file::tests::{sample_track, smf};
+    let path = std::env::temp_dir().join(format!("musiccraft-{}.mid", std::process::id()));
+    std::fs::write(&path, smf(192, &sample_track())).unwrap();
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 15 1 C2");
+    run(
+        &mut s,
+        &format!("note.import_midi 1 \"{}\"", path.display()),
+    );
+    let notes: Vec<_> = s
+        .project()
+        .current_pattern()
+        .notes
+        .iter()
+        .map(|n| (n.start, n.length, n.key))
+        .collect();
+    // 192 file ticks per quarter → 96 project ticks per beat.
+    assert_eq!(
+        notes,
+        [(0, 96, 60), (96, 48, 64), (96, 48, 67), (360, 24, 24)]
+    );
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().current_pattern().notes.len(), 1);
+    std::fs::write(&path, b"garbage").unwrap();
+    fails(
+        &mut s,
+        &format!("note.import_midi 1 \"{}\"", path.display()),
+    );
+    std::fs::remove_file(path).unwrap();
 }

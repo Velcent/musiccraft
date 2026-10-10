@@ -56,6 +56,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 menu_item(ui, state, "Save as…", "ui.save_as", actions);
                 ui.separator();
                 menu_item(ui, state, "Export WAV…", "ui.export", actions);
+                if let Some(path) = state.autosave_path.clone() {
+                    if ui.button("Recover autosave").clicked() {
+                        actions.push(Action::Run(Invocation::new("project.load", [path])));
+                        ui.close();
+                    }
+                }
                 if ui.button("Reload samples").clicked() {
                     actions.push(Action::ReloadSamples);
                     ui.close();
@@ -120,6 +126,27 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
         {
             run(actions, &format!("transport.set_mode {}", mode.label()));
         }
+    }
+    ui.add_space(6.0);
+    let metronome = egui::Button::new(RichText::new("♩").size(16.0).color(if project.metronome {
+        theme::BACKGROUND
+    } else {
+        theme::TEXT_DIM
+    }))
+    .fill(if project.metronome {
+        theme::HIGHLIGHT
+    } else {
+        theme::RAISED
+    });
+    if ui
+        .add(metronome)
+        .on_hover_text(format!(
+            "Metronome ({})",
+            shortcut(state, "transport.toggle_metronome")
+        ))
+        .clicked()
+    {
+        run(actions, "transport.toggle_metronome");
     }
     ui.add_space(10.0);
 

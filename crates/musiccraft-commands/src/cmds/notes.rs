@@ -70,6 +70,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             transpose,
         ),
         cmd(
+            "note.import_midi",
+            "note.import_midi <channel> <file.mid> [@pattern]",
+            "Add every note from a Standard MIDI File to a channel.",
+            import_midi,
+        ),
+        cmd(
             "note.quantize",
             "note.quantize <channel> <grid steps> [@pattern]",
             "Snap note starts to a grid.",
@@ -441,6 +447,40 @@ fn quantize(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
     });
     Ok(Outcome::undoable(
         format!("quantized {count} notes to {grid}t"),
+        target.set_all_inverse(&old),
+    ))
+}
+
+fn import_midi(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = Target::resolve(project, args)?;
+    let path = args.str(1)?;
+    let data =
+        std::fs::read(path).map_err(|e| CommandError::Io(format!("cannot read {path}: {e}")))?;
+    let file = crate::midi_file::parse(&data).map_err(|e| args.invalid(format!("{path}: {e}")))?;
+    let ppq = u64::from(musiccraft_project::params::PPQ);
+    let division = u64::from(file.ticks_per_quarter);
+    let convert =
+        |ticks: u64| u32::try_from((ticks * ppq + division / 2) / division).unwrap_or(u32::MAX / 2);
+    let channel = project.channels[target.channel].id;
+    let imported: Vec<Note> = file
+        .notes
+        .iter()
+        .map(|n| Note {
+            channel,
+            start: convert(n.start),
+            length: convert(n.length).max(1),
+            key: n.key.min(127),
+            velocity: n.velocity.clamp(1, 127),
+        })
+        .collect();
+    let count = imported.len();
+    let (old, _) = rewrite(project, &target, |mut notes| {
+        notes.extend(imported);
+        notes
+    });
+    Ok(Outcome::undoable(
+        format!("imported {count} notes into channel {}", target.channel + 1),
         target.set_all_inverse(&old),
     ))
 }

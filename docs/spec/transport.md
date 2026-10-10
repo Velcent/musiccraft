@@ -16,6 +16,9 @@
 - `transport.set_mode pattern|song` chooses what plays: `pattern` loops the
   selected pattern; `song` plays the playlist arrangement and loops at its end.
   `transport.toggle_mode` switches between them (default key: `L`).
+- `transport.toggle_metronome` (default key Ctrl+M) turns a click on every beat
+  on or off: a short decaying sine, higher on each bar's first beat. The setting
+  is saved with the project but the click is never part of an export.
 - `project.set_tempo <bpm>` sets the tempo. It is undoable; setting the same value
   records no history entry.
 - Transport and mode commands are not part of undo history. The transport state

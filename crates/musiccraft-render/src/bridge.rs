@@ -31,6 +31,7 @@ struct Desc {
     length: u64,
     tempo: f64,
     playing: bool,
+    metronome: bool,
 }
 
 /// What a [`Bridge::sync`] did.
@@ -126,6 +127,7 @@ fn describe(project: &Project) -> Desc {
         length: sequence.length(),
         tempo: project.tempo_bpm(),
         playing: project.transport().is_playing(),
+        metronome: project.metronome,
     }
 }
 
@@ -258,6 +260,12 @@ impl Bridge {
         }
         if previous.as_ref().is_none_or(|p| p.tempo != desc.tempo) {
             messages.push(EngineMessage::SetTempo(desc.tempo));
+        }
+        if previous
+            .as_ref()
+            .is_none_or(|p| p.metronome != desc.metronome)
+        {
+            messages.push(EngineMessage::SetMetronome(desc.metronome));
         }
         if previous.as_ref().is_none_or(|p| p.playing != desc.playing) {
             messages.push(if desc.playing {

@@ -30,6 +30,17 @@
   repeated `loops` times, followed by the tail of sounding notes and effects. The
   tail ends after half a second below -90 dBFS, or after ten seconds.
 - Rendering is deterministic: the same project always produces the same file.
+- `project.export_stems <folder> [16|24|32f]` writes one file per mixer track that
+  has unmuted channels routed to it (`NN Name.wav`, with track 00 holding
+  channels routed straight to the master). Each stem renders only its channels
+  through the full mixer; all stems are padded to the same length.
+
+## Autosave
+
+- The desktop app writes the open project to `autosave.mcproj` in the per-user
+  data folder (`$XDG_DATA_HOME/musiccraft`, `~/Library/Application
+  Support/MusicCraft`, or `%APPDATA%\MusicCraft`) at most once a minute, and only
+  after a change. File → Recover autosave loads it.
 
 ## Sources
 

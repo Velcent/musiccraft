@@ -124,6 +124,9 @@ pub struct Project {
     /// The song arrangement.
     #[serde(default)]
     pub playlist: Playlist,
+    /// Whether the metronome clicks during playback (never rendered to files).
+    #[serde(default)]
+    pub metronome: bool,
     next_id: u32,
     #[serde(skip)]
     path: Option<PathBuf>,
@@ -160,6 +163,7 @@ impl Project {
             current_pattern: 0,
             mixer,
             playlist: Playlist::default(),
+            metronome: false,
             next_id: 2,
             path: None,
         }
@@ -396,6 +400,11 @@ impl Project {
                 .notes
                 .retain(|n| channel_ids.contains(&n.channel) && n.key <= 127 && n.length > 0);
             pattern.length_steps = pattern.length_steps.clamp(1, MAX_PATTERN_STEPS);
+            pattern.swing = if pattern.swing.is_finite() {
+                pattern.swing.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             pattern.sort_notes();
         }
         let pattern_ids: Vec<PatternId> = self.patterns.iter().map(|p| p.id).collect();
@@ -418,6 +427,7 @@ impl PartialEq for Project {
             && self.current_pattern == other.current_pattern
             && self.mixer == other.mixer
             && self.playlist == other.playlist
+            && self.metronome == other.metronome
     }
 }
 

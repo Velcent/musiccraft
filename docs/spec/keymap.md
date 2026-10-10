@@ -16,6 +16,7 @@
 | --- | --- |
 | Space | Play / stop |
 | L | Toggle pattern / song mode |
+| Ctrl+M | Metronome on / off |
 | F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer |
 | Alt+F8 | Browser |
 | F4 | New pattern |
@@ -28,7 +29,7 @@
 
 ## Sources
 
-- Space, L, F4, F5, F6, F7, F9, Alt+F8, numeric-keypad plus/minus, Ctrl+S,
+- Space, L, Ctrl+M, F4, F5, F6, F7, F9, Alt+F8, numeric-keypad plus/minus, Ctrl+S,
   Ctrl+Shift+S, Ctrl+O, Ctrl+N and Ctrl+R follow the default shortcuts listed in
   the publicly published FL Studio online manual ("Keyboard shortcuts"). Shortcuts
   are a convenience for users switching tools; the bindings are data and can be

@@ -3,17 +3,10 @@
 
 use std::io::{self, Write};
 
-use musiccraft_commands::{Invocation, Registry, SESSION_COMMANDS, Session};
+use musiccraft_commands::{Invocation, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
 
-/// A registry with every built-in command plus rendering and export.
-#[must_use]
-pub fn full_registry() -> Registry {
-    let mut registry = Registry::with_builtin();
-    // Registration into a fresh registry cannot collide.
-    let _ = musiccraft_render::register(&mut registry);
-    registry
-}
+pub use musiccraft_render::full_registry;
 
 /// Creates a session with a fresh project and every command.
 #[must_use]

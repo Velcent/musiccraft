@@ -1447,6 +1447,9 @@ name = "musiccraft-mcp"
 version = "0.1.0"
 dependencies = [
  "musiccraft-commands",
+ "musiccraft-project",
+ "musiccraft-render",
+ "serde_json",
 ]
 
 [[package]]
@@ -3555,6 +3558,11 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 [[package]]
 name = "xtask"
 version = "0.1.0"
+dependencies = [
+ "musiccraft-commands",
+ "musiccraft-render",
+ "musiccraft-ui",
+]
 
 [[package]]
 name = "zerocopy"

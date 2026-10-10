@@ -26,6 +26,10 @@
   starting there, otherwise removes every note of that channel starting there.
   `step.set` forces a state. Steps and piano-roll notes are the same data.
 
+- **Swing**: `pattern.set_swing <pattern> <0-100>` delays notes that start
+  exactly on an off-beat sixteenth (steps 1, 3, 5, …) by up to half a step
+  (12 ticks at 100%). Other notes are unaffected. Undoable; saved per pattern.
+
 ## Sampler
 
 - Plays the sample from its start. The pitch follows the note key relative to the

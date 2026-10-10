@@ -12,8 +12,21 @@ mod export;
 mod sequence;
 
 pub use bridge::{Bridge, SyncReport};
-pub use export::{ExportCommand, RenderOptions, export_wav, register, render};
+pub use export::{
+    ExportCommand, ExportStemsCommand, RenderOptions, export_stems, export_wav, register, render,
+};
 pub use sequence::build_sequence;
+
+use musiccraft_commands::Registry;
+
+/// A registry with every built-in command plus this crate's export command.
+#[must_use]
+pub fn full_registry() -> Registry {
+    let mut registry = Registry::with_builtin();
+    // Registering into a fresh registry cannot collide.
+    let _ = register(&mut registry);
+    registry
+}
 
 #[cfg(test)]
 mod tests;

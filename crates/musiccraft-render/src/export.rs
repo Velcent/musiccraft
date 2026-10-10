@@ -45,6 +45,8 @@ pub fn render(project: &Project, options: RenderOptions) -> (Vec<f32>, Vec<f32>,
     let mut bridge = Bridge::new(sample_rate);
     let mut stopped = project.clone();
     stopped.set_transport(Transport::Stopped);
+    // The click is a monitoring aid; it is never part of an export.
+    stopped.metronome = false;
     let report = bridge.sync(&stopped, &mut handle);
 
     // Repeat the loop `loops` times, then leave room for the tail without
@@ -181,11 +183,128 @@ impl Command for ExportCommand {
     }
 }
 
+/// Groups of channels exported as stems: one per mixer track that receives
+/// channels, in track order. Returns (track, file stem, channel indices).
+fn stem_groups(project: &Project) -> Vec<(usize, String, Vec<usize>)> {
+    let mut groups = Vec::new();
+    for (track_index, track) in project.mixer.iter().enumerate() {
+        let channels: Vec<usize> = project
+            .channels
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.mixer_track == track_index && !c.mute)
+            .map(|(i, _)| i)
+            .collect();
+        if channels.is_empty() {
+            continue;
+        }
+        let name: String = track
+            .name
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == ' ' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        groups.push((
+            track_index,
+            format!("{track_index:02} {}", name.trim()),
+            channels,
+        ));
+    }
+    groups
+}
+
+/// Renders one WAV per mixer track that has channels routed to it, all padded
+/// to the same length. Returns the written file names.
+///
+/// # Errors
+///
+/// Returns a message if the folder or a file cannot be written.
+pub fn export_stems(
+    project: &Project,
+    dir: &Path,
+    format: WavFormat,
+    options: RenderOptions,
+) -> Result<Vec<String>, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    let mut stems = Vec::new();
+    for (_, stem, channels) in stem_groups(project) {
+        let mut solo = project.clone();
+        for (i, channel) in solo.channels.iter_mut().enumerate() {
+            channel.mute = !channels.contains(&i);
+        }
+        let (left, right, _) = render(&solo, options);
+        stems.push((stem, left, right));
+    }
+    let longest = stems.iter().map(|(_, l, _)| l.len()).max().unwrap_or(0);
+    let mut written = Vec::new();
+    for (stem, mut left, mut right) in stems {
+        left.resize(longest, 0.0);
+        right.resize(longest, 0.0);
+        let file = format!("{stem}.wav");
+        write_wav(&dir.join(&file), &left, &right, options.sample_rate, format)
+            .map_err(|e| e.to_string())?;
+        written.push(file);
+    }
+    Ok(written)
+}
+
+/// `project.export_stems <folder> [16|24|32f]`.
+pub struct ExportStemsCommand;
+
+impl Command for ExportStemsCommand {
+    fn name(&self) -> &'static str {
+        "project.export_stems"
+    }
+
+    fn summary(&self) -> &'static str {
+        "Render one WAV per mixer track that has channels routed to it."
+    }
+
+    fn usage(&self) -> &'static str {
+        "project.export_stems <folder> [16|24|32f]"
+    }
+
+    fn execute(&self, project: &mut Project, args: &[String]) -> Result<Outcome, CommandError> {
+        let (dir, format) = match args {
+            [dir] => (dir, WavFormat::Int16),
+            [dir, bits] => (
+                dir,
+                WavFormat::parse(bits).ok_or_else(|| CommandError::InvalidArgument {
+                    command: self.name().to_owned(),
+                    reason: format!("`{bits}` is not 16, 24 or 32f"),
+                })?,
+            ),
+            _ => {
+                return Err(CommandError::Usage {
+                    command: self.name().to_owned(),
+                    usage: self.usage().to_owned(),
+                });
+            }
+        };
+        let files = export_stems(project, Path::new(dir), format, RenderOptions::default())
+            .map_err(CommandError::Io)?;
+        if files.is_empty() {
+            return Ok(Outcome::done("no unmuted channels to export"));
+        }
+        Ok(Outcome::done(format!(
+            "exported {} stems to {dir}: {}",
+            files.len(),
+            files.join(", ")
+        )))
+    }
+}
+
 /// Adds the render crate's commands to a registry.
 ///
 /// # Errors
 ///
 /// Returns [`CommandError::Duplicate`] if they are already registered.
 pub fn register(registry: &mut Registry) -> Result<(), CommandError> {
-    registry.register(Box::new(ExportCommand))
+    registry.register(Box::new(ExportCommand))?;
+    registry.register(Box::new(ExportStemsCommand))
 }

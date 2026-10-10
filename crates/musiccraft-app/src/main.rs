@@ -1,6 +1,7 @@
 //! MusicCraft desktop application: wires the command session, the engine bridge,
 //! the audio device, MIDI input and the user interface together.
 
+mod autosave;
 mod midi;
 mod screenshot;
 
@@ -46,6 +47,7 @@ struct App {
     pending_offs: Vec<(Instant, u16, u8)>,
     title: String,
     screenshot: Option<screenshot::Request>,
+    autosave: autosave::Autosave,
 }
 
 /// A new project with a few drum channels, ready to program.
@@ -159,7 +161,11 @@ impl App {
             Err(err) => (None, format!("no audio: {err}"), None, String::new()),
         };
 
+        let revision = session.revision();
         let mut ui = UiState::new(keymap);
+        ui.autosave_path = autosave::path()
+            .filter(|p| p.is_file())
+            .map(|p| p.display().to_string());
         if let Some(windows) = &options.open {
             let w = &mut ui.windows;
             w.channel_rack = windows.iter().any(|n| n == "channel_rack");
@@ -185,6 +191,7 @@ impl App {
             pending_offs: Vec::new(),
             title: String::new(),
             screenshot: screenshot::Request::from_env(),
+            autosave: autosave::Autosave::new(revision),
         }
     }
 
@@ -325,6 +332,19 @@ impl eframe::App for App {
         self.sync();
         self.release_due_previews();
         self.update_title(&ctx);
+        match self
+            .autosave
+            .tick(self.session.project(), self.session.revision())
+        {
+            Some(Ok(message)) => {
+                if !self.ui.status.error {
+                    self.ui.set_status(message, false);
+                }
+                self.ui.autosave_path = autosave::path().map(|p| p.display().to_string());
+            }
+            Some(Err(err)) => self.ui.set_status(format!("autosave failed: {err}"), true),
+            None => {}
+        }
         let busy = engine.playing || !self.pending_offs.is_empty() || engine.voices > 0;
         let meters_moving = self.ui.meters.iter().any(|(l, r)| *l > 1e-4 || *r > 1e-4);
         if busy || meters_moving {

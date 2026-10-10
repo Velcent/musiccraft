@@ -16,6 +16,13 @@
   a trailing `@<pattern>` names another. Their inverses always name the pattern,
   so undo is correct after switching patterns.
 
+## MIDI file import
+
+- `note.import_midi <channel> <file.mid> [@pattern]` adds every note of a
+  Standard MIDI File (format 0 or 1; all tracks and MIDI channels) to one channel
+  in the pattern. File ticks are scaled to 96 per beat. Notes left sounding at a
+  track's end stop there. SMPTE-timed files are rejected. One undo step.
+
 ## Pattern length
 
 - A pattern has a minimum length in steps (default 16). When notes start past it,

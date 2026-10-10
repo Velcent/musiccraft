@@ -57,6 +57,8 @@ pub enum EngineMessage {
     },
     /// Release every sounding voice.
     AllNotesOff,
+    /// Turn the beat click on or off.
+    SetMetronome(bool),
     /// Replace the channel/mixer graph. Voices are silenced.
     SetGraph(Box<Graph>),
     /// Replace the note sequence.

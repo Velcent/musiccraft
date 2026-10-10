@@ -132,6 +132,8 @@ pub struct UiState {
     pub status: StatusLine,
     /// Smoothed meter levels per mixer track.
     pub meters: Vec<(f32, f32)>,
+    /// Location of the last autosave, offered by File → Recover autosave.
+    pub autosave_path: Option<String>,
     gesture: u64,
     roll: piano_roll::RollState,
     playlist: playlist::PlaylistState,
@@ -155,6 +157,7 @@ impl UiState {
             keymap,
             status: StatusLine::default(),
             meters: Vec::new(),
+            autosave_path: None,
             gesture: 0,
             roll: piano_roll::RollState::default(),
             playlist: playlist::PlaylistState::default(),

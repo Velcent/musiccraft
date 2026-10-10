@@ -26,6 +26,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_mode,
         ),
         cmd(
+            "transport.toggle_metronome",
+            "transport.toggle_metronome",
+            "Turn the metronome click on or off.",
+            toggle_metronome,
+        ),
+        cmd(
             "transport.toggle_mode",
             "transport.toggle_mode",
             "Switch between pattern and song playback.",
@@ -82,4 +88,14 @@ fn toggle_mode(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
         PlayMode::Song => PlayMode::Pattern,
     };
     Ok(Outcome::done(format!("{} mode", project.play_mode.label())))
+}
+
+fn toggle_metronome(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    project.metronome = !project.metronome;
+    Ok(Outcome::done(if project.metronome {
+        "metronome on"
+    } else {
+        "metronome off"
+    }))
 }
