@@ -1,0 +1,34 @@
+# MusicCraft default keymap.
+#
+# One binding per line:  <chord> = <invocation>
+# A chord is optional modifiers (Ctrl, Shift, Alt) and a key name, joined by `+`.
+# Ctrl means Cmd on macOS. Key names follow egui (Space, F5, A, Plus, Minus, ...).
+# Invocations are registry commands, or `view.*` / `ui.*` actions handled by the UI.
+
+# Transport
+Space        = transport.toggle
+L            = transport.toggle_mode
+
+# Windows
+F5           = view.toggle playlist
+F6           = view.toggle channel_rack
+F7           = view.toggle piano_roll
+F9           = view.toggle mixer
+Alt+F8       = view.toggle browser
+
+# Patterns
+F4           = pattern.add
+Plus         = pattern.next
+Minus        = pattern.prev
+
+# History
+Ctrl+Z       = edit.undo
+Ctrl+Shift+Z = edit.redo
+Ctrl+Y       = edit.redo
+
+# Files
+Ctrl+N       = ui.new
+Ctrl+O       = ui.open
+Ctrl+S       = ui.save
+Ctrl+Shift+S = ui.save_as
+Ctrl+R       = ui.export

@@ -6,10 +6,20 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[[bin]]
+name = "musiccraft"
+path = "src/main.rs"
+
 [dependencies]
+musiccraft-audio.workspace = true
+musiccraft-cli.workspace = true
 musiccraft-commands.workspace = true
 musiccraft-engine.workspace = true
+musiccraft-project.workspace = true
+musiccraft-render.workspace = true
 musiccraft-ui.workspace = true
+eframe.workspace = true
+midir.workspace = true
 
 [lints]
 workspace = true

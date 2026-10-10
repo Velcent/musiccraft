@@ -1,6 +1,6 @@
 [package]
 name = "musiccraft-ui"
-description = "MusicCraft user interface (planned)"
+description = "MusicCraft user interface views and keymap"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 musiccraft-commands.workspace = true
+musiccraft-project.workspace = true
+egui.workspace = true
 
 [lints]
 workspace = true
