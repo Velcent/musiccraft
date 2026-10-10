@@ -26,6 +26,10 @@
   consecutive runs of the same command with the same gesture key become a single
   undo step whose inverse restores the value from before the gesture.
 - `project.new` and `project.load` clear history.
+- Plugin state commands (`channel.set_plugin_state`, `mixer.set_plugin_state`)
+  are not undoable: they mirror state the running plugin already holds. A
+  plugin parameter with no stored value is restored with
+  `… set_plugin_param … unset`.
 - A failed command leaves the project and history unchanged.
 
 ## Scripts

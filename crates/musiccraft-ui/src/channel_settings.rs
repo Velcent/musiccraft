@@ -183,7 +183,9 @@ fn contents(
                 state.gesture(),
             ));
         }
-        param_knob(ui, state, number, channel, inst::PITCH, "Pitch", actions);
+        if channel.instrument.plugin().is_none() {
+            param_knob(ui, state, number, channel, inst::PITCH, "Pitch", actions);
+        }
         let mut mute = channel.mute;
         if ui.checkbox(&mut mute, "Mute").changed() {
             actions.push(Action::Run(Invocation::new(
@@ -198,7 +200,12 @@ fn contents(
             sampler(ui, state, frame, index, channel, sample, actions)
         }
         Instrument::Synth => synth(ui, state, number, channel, actions),
-        Instrument::Plugin { .. } => {}
+        Instrument::Plugin { plugin } => {
+            // Plugins shape their own sound; the built-in sections do not apply.
+            let target = crate::plugins::Target::Channel(number);
+            crate::plugins::panel(ui, state, frame.plugins, plugin, target, actions);
+            return;
+        }
     }
     ui.add_space(6.0);
     section(ui, "ENVELOPE", |ui| {

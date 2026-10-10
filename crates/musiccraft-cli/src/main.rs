@@ -46,7 +46,7 @@ fn parse_seconds(arg: Option<&String>, default: f64) -> Result<f64, String> {
 fn play(session: &Session, seconds: f64, out: &mut impl Write) -> Result<(), String> {
     let device = OutputDevice::default_device().map_err(|e| e.to_string())?;
     let (engine, mut handle) = engine_pair(device.sample_rate());
-    let mut bridge = Bridge::new(device.sample_rate());
+    let mut bridge = Bridge::with_plugins(device.sample_rate(), musiccraft_cli::plugin_host());
     let mut project = session.project().clone();
     project.set_transport(Transport::Playing);
     let report = bridge.sync(&project, &mut handle);

@@ -11,6 +11,7 @@ name = "musiccraft-mcp"
 path = "src/main.rs"
 
 [dependencies]
+musiccraft-cli.workspace = true
 musiccraft-commands.workspace = true
 musiccraft-project.workspace = true
 musiccraft-render.workspace = true

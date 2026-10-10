@@ -9,7 +9,10 @@ use musiccraft_project::Project;
 use musiccraft_project::params::{TICKS_PER_BAR, TICKS_PER_STEP};
 
 use crate::piano_roll::row_of_key;
-use crate::{Action, EngineStatus, Frame, History, UiState, show};
+use crate::{
+    Action, EngineStatus, Frame, History, LivePluginView, PluginEntry, PluginParamView, Plugins,
+    UiState, show,
+};
 
 struct Harness {
     ctx: egui::Context,
@@ -18,6 +21,10 @@ struct Harness {
     time: f64,
     /// Modifier keys held during the next frames.
     modifiers: Modifiers,
+    /// Plugin information handed to the views.
+    plugins: Plugins,
+    /// Actions other than commands from the last frames.
+    other: Vec<Action>,
 }
 
 impl Harness {
@@ -36,6 +43,8 @@ impl Harness {
             session,
             time: 0.0,
             modifiers: Modifiers::NONE,
+            plugins: Plugins::default(),
+            other: Vec::new(),
         }
     }
 
@@ -58,6 +67,7 @@ impl Harness {
                 ctx,
                 state,
                 session,
+                plugins,
                 ..
             } = self;
             let frame = Frame {
@@ -67,6 +77,7 @@ impl Harness {
                 waveform: None,
                 clip_waveforms: &[],
                 clip_durations: &[],
+                plugins,
             };
             let mut output = ctx.run_ui(input, |ui| actions = show(ui, state, &frame));
             // No renderer here: acknowledge texture uploads.
@@ -83,7 +94,7 @@ impl Harness {
                     commands.push(invocation.to_string());
                     self.session.run_coalesced(&invocation, key).unwrap();
                 }
-                _ => {}
+                other => self.other.push(other),
             }
         }
         commands
@@ -290,6 +301,7 @@ fn typing_keyboard_performs_notes_instead_of_shortcuts() {
         waveform: None,
         clip_waveforms: &[],
         clip_durations: &[],
+        plugins: &Plugins::default(),
     };
     let mut actions = Vec::new();
     let mut out = h
@@ -548,6 +560,7 @@ fn automate_request_creates_and_places_a_clip() {
         waveform: None,
         clip_waveforms: &[],
         clip_durations: &[],
+        plugins: &Plugins::default(),
     };
     let out = crate::resolve_ui_actions(
         &mut h.state,
@@ -614,6 +627,7 @@ fn ruler_sets_loop_and_jumps_to_markers() {
             waveform: None,
             clip_waveforms: &[],
             clip_durations: &[],
+            plugins: &Plugins::default(),
         };
         let mut out = h
             .ctx
@@ -624,4 +638,88 @@ fn ruler_sets_loop_and_jumps_to_markers() {
         actions.contains(&Action::Seek(f64::from(3 * TICKS_PER_BAR))),
         "{actions:?}"
     );
+}
+
+#[test]
+fn plugin_channels_show_parameters_and_open_their_window() {
+    let mut h = Harness::new(&["channel.add_plugin com.example.keys Keys"]);
+    let instance = h.session.project().channels[0]
+        .instrument
+        .plugin()
+        .unwrap()
+        .instance;
+    h.plugins = Plugins {
+        available: true,
+        catalog: vec![PluginEntry {
+            id: "com.example.keys".into(),
+            name: "Keys".into(),
+            vendor: "Example".into(),
+            instrument: true,
+        }],
+        live: vec![LivePluginView {
+            instance,
+            params: vec![PluginParamView {
+                id: 7,
+                name: "Cutoff".into(),
+                module: String::new(),
+                min: 0.0,
+                max: 10.0,
+                default: 5.0,
+                stepped: false,
+                read_only: false,
+                value: 0.0,
+                text: "0.0".into(),
+            }],
+            has_editor: true,
+            editor_open: false,
+        }],
+        running: vec![instance],
+    };
+    h.state.windows.channel_settings = true;
+    h.settle();
+    let (button, sliders) = h.state.plugin_layout.clone();
+    let slider = sliders
+        .iter()
+        .find(|(id, _)| *id == 7)
+        .map(|(_, r)| *r)
+        .expect("slider drawn");
+    let depth = h.session.undo_depth();
+    let commands = h.drag(slider.left_center() + vec2(2.0, 0.0), slider.right_center());
+    assert!(
+        commands
+            .iter()
+            .all(|c| c.starts_with("channel.set_plugin_param 1 7 ")),
+        "{commands:?}"
+    );
+    let value = h.session.project().channels[0]
+        .instrument
+        .plugin()
+        .unwrap()
+        .params[&7];
+    assert!(value > 9.0, "dragged to the top, got {value}");
+    assert_eq!(
+        h.session.undo_depth(),
+        depth + 1,
+        "one drag is one undo step"
+    );
+
+    h.other.clear();
+    h.click(
+        button.expect("window button").center(),
+        PointerButton::Primary,
+    );
+    assert!(h.other.contains(&Action::PluginEditor {
+        instance,
+        open: true
+    }));
+}
+
+#[test]
+fn missing_plugins_explain_themselves_instead_of_showing_knobs() {
+    let mut h = Harness::new(&["channel.add_plugin com.nowhere.synth"]);
+    h.plugins.available = true;
+    h.state.windows.channel_settings = true;
+    h.settle();
+    assert!(h.state.plugin_layout.1.is_empty());
+    assert!(h.state.plugin_layout.0.is_none());
 }

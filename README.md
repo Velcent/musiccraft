@@ -50,6 +50,10 @@ channel_rack,piano_roll,playlist,mixer,browser`.
 - **Recording**: REC + playing records a MIDI or typing keyboard into the
   pattern; with File → Record audio input, song-mode takes become audio clips.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
+- **Plugins** (CLAP, in progress): plugin channels and mixer slots, stored
+  parameters and state, a generic parameter panel and the plugin's own window.
+  The loader itself is not built in yet, so plugins currently stay silent —
+  see `docs/spec/plugins.md`.
 
 Built-in sounds (`builtin:kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`,
 `rim`, `crash`) are synthesized at start-up; WAV files can be loaded as samples.

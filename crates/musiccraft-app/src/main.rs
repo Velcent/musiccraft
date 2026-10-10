@@ -3,6 +3,7 @@
 
 mod autosave;
 mod midi;
+mod plugins;
 mod recorder;
 mod screenshot;
 mod take;
@@ -62,6 +63,7 @@ struct App {
     input: Option<musiccraft_audio::AudioInput>,
     take: Option<take::Take>,
     takes: u32,
+    plugins: plugins::PluginGlue,
 }
 
 /// Display data for a sample that audio clips play.
@@ -203,7 +205,7 @@ impl App {
                             Some(Audio {
                                 _output: output,
                                 handle,
-                                bridge: Bridge::new(rate),
+                                bridge: Bridge::with_plugins(rate, musiccraft_cli::plugin_host()),
                             }),
                             label,
                             midi,
@@ -258,6 +260,7 @@ impl App {
             input: None,
             take: None,
             takes: 0,
+            plugins: plugins::PluginGlue::new(musiccraft_cli::plugin_host()),
         }
     }
 
@@ -292,7 +295,11 @@ impl App {
 
     fn apply(&mut self, ctx: &egui::Context, action: Action) {
         let result = match action {
-            Action::Run(invocation) => self.session.run(&invocation),
+            Action::Run(invocation) => {
+                let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
+                self.plugins.before(&invocation, bridge, &mut self.session);
+                self.session.run(&invocation)
+            }
             Action::Coalesced(invocation, key) => self.session.run_coalesced(&invocation, key),
             Action::Preview { channel, key, on } => {
                 let channel = u16::try_from(channel).unwrap_or(0);
@@ -397,6 +404,23 @@ impl App {
                     self.synced_revision = None;
                 }
                 self.ui.set_status("samples reloaded", false);
+                return;
+            }
+            Action::PluginEditor { instance, open } => {
+                let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
+                if let Err(err) =
+                    self.plugins
+                        .set_editor(bridge, self.session.project(), instance, open)
+                {
+                    self.ui.set_status(format!("plugin window: {err}"), true);
+                }
+                return;
+            }
+            Action::RescanPlugins => {
+                let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
+                let message = self.plugins.rescan(bridge);
+                self.synced_revision = None;
+                self.ui.set_status(message, false);
                 return;
             }
             Action::Quit => {
@@ -678,6 +702,10 @@ impl eframe::App for App {
             .iter()
             .map(|c| (c.channel, (c.seconds * ticks_per_second).ceil() as u32))
             .collect();
+        let plugins = {
+            let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
+            self.plugins.view(bridge, self.session.project(), &self.ui)
+        };
         let actions = {
             let frame = Frame {
                 project: self.session.project(),
@@ -686,12 +714,17 @@ impl eframe::App for App {
                 waveform: self.overview.as_ref().map(|(_, points)| points.as_slice()),
                 clip_waveforms: &clip_waveforms,
                 clip_durations: &clip_durations,
+                plugins: &plugins,
             };
             musiccraft_ui::show(ui, &mut self.ui, &frame)
         };
         for action in actions {
             self.apply(&ctx, action);
         }
+        let editor_open = {
+            let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
+            self.plugins.poll(bridge, &mut self.session)
+        };
         self.drain_midi();
         self.record_audio();
         self.selected_channel
@@ -715,7 +748,8 @@ impl eframe::App for App {
         let busy = engine.playing
             || !self.pending_offs.is_empty()
             || engine.voices > 0
-            || self.take.is_some();
+            || self.take.is_some()
+            || editor_open;
         let meters_moving = self.ui.meters.iter().any(|(l, r)| *l > 1e-4 || *r > 1e-4);
         if busy || meters_moving {
             ctx.request_repaint_after(Duration::from_millis(16));

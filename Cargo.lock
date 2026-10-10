@@ -1449,6 +1449,7 @@ dependencies = [
 name = "musiccraft-mcp"
 version = "0.1.0"
 dependencies = [
+ "musiccraft-cli",
  "musiccraft-commands",
  "musiccraft-project",
  "musiccraft-render",

@@ -3,10 +3,23 @@
 
 use std::io::{self, Write};
 
-use musiccraft_commands::{Invocation, SESSION_COMMANDS, Session};
+use musiccraft_commands::{Invocation, Registry, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
+use musiccraft_render::PluginHost;
 
-pub use musiccraft_render::full_registry;
+/// The plugin host of this build, shared by every session in the process.
+/// `None` while no plugin loader is built in (see `docs/spec/plugins.md`):
+/// plugin channels and effects then stay silent and say so.
+#[must_use]
+pub fn plugin_host() -> Option<PluginHost> {
+    None
+}
+
+/// A registry with every command; exports run plugins from [`plugin_host`].
+#[must_use]
+pub fn full_registry() -> Registry {
+    musiccraft_render::full_registry_with(plugin_host())
+}
 
 /// Creates a session with a fresh project and every command.
 #[must_use]

@@ -57,7 +57,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                         });
                     });
                 ui.separator();
-                effects(ui, state, project, actions);
+                effects(ui, state, project, frame.plugins, actions);
             });
         });
 }
@@ -302,7 +302,13 @@ fn route_arrow(
     }
 }
 
-fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
+fn effects(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    plugins: &crate::Plugins,
+    actions: &mut Vec<Action>,
+) {
     let index = state.selected_track;
     let Some(track) = project.mixer.get(index) else {
         return;
@@ -325,7 +331,7 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             .id_salt("effect-chain")
             .show(ui, |ui| {
                 for slot in 0..MAX_EFFECT_SLOTS {
-                    slot_row(ui, state, track, &number, slot, actions);
+                    slot_row(ui, state, track, &number, slot, plugins, actions);
                 }
                 if let Some(effect) = track.effects.get(state.mixer_slot) {
                     ui.add_space(4.0);
@@ -335,6 +341,12 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                         .inner_margin(6.0)
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());
+                            if let Some(plugin) = &effect.plugin {
+                                let target =
+                                    crate::plugins::Target::Effect(index, state.mixer_slot + 1);
+                                crate::plugins::panel(ui, state, plugins, plugin, target, actions);
+                                return;
+                            }
                             ui.label(
                                 RichText::new(effect.kind.name().to_uppercase())
                                     .small()
@@ -406,6 +418,7 @@ fn slot_row(
     track: &MixerTrack,
     number: &str,
     slot: usize,
+    plugins: &crate::Plugins,
     actions: &mut Vec<Action>,
 ) {
     let slot_no = (slot + 1).to_string();
@@ -437,7 +450,7 @@ fn slot_row(
                                 [number.to_owned(), slot_no.clone()],
                             );
                         }
-                        let name = RichText::new(effect.kind.name()).color(if effect.enabled {
+                        let name = RichText::new(effect.label()).color(if effect.enabled {
                             theme::TEXT
                         } else {
                             theme::TEXT_DIM
@@ -497,6 +510,24 @@ fn slot_row(
                                         ui.close();
                                     }
                                 }
+                                ui.separator();
+                                ui.menu_button("Plugin effect", |ui| {
+                                    let chosen = crate::plugins::add_menu(
+                                        ui,
+                                        plugins,
+                                        false,
+                                        actions,
+                                        |p| {
+                                            Invocation::new(
+                                                "mixer.add_plugin",
+                                                [number.to_owned(), p.id.clone(), p.name.clone()],
+                                            )
+                                        },
+                                    );
+                                    if chosen {
+                                        state.mixer_slot = slot;
+                                    }
+                                });
                             },
                         );
                     }

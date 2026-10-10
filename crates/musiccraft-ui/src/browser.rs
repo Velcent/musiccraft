@@ -163,6 +163,60 @@ fn folder(
         });
 }
 
+/// Installed plugins: click an instrument to add a channel, an effect to add
+/// it to the selected mixer track.
+fn plugin_section(
+    ui: &mut egui::Ui,
+    state: &UiState,
+    frame: &Frame<'_>,
+    search: &str,
+    actions: &mut Vec<Action>,
+) {
+    let plugins = frame.plugins;
+    if !plugins.available {
+        return;
+    }
+    egui::CollapsingHeader::new(
+        RichText::new(format!("Plugins ({})", plugins.catalog.len())).strong(),
+    )
+    .default_open(false)
+    .show(ui, |ui| {
+        for entry in plugins.catalog.iter().filter(|p| matches(search, &p.name)) {
+            let (icon, hint, invocation) = if entry.instrument {
+                (
+                    "♪",
+                    "Click to add a channel",
+                    Invocation::new("channel.add_plugin", [entry.id.clone(), entry.name.clone()]),
+                )
+            } else {
+                (
+                    "fx",
+                    "Click to add to the selected mixer track",
+                    Invocation::new(
+                        "mixer.add_plugin",
+                        [
+                            state.selected_track.to_string(),
+                            entry.id.clone(),
+                            entry.name.clone(),
+                        ],
+                    ),
+                )
+            };
+            let button = egui::Button::new(format!("{icon}  {}", entry.name)).frame(false);
+            if ui
+                .add(button)
+                .on_hover_text(format!("{} · {}\n{hint}", entry.vendor, entry.id))
+                .clicked()
+            {
+                actions.push(Action::Run(invocation));
+            }
+        }
+        if ui.small_button("Rescan").clicked() {
+            actions.push(Action::RescanPlugins);
+        }
+    });
+}
+
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     egui::Panel::left("browser")
         .resizable(true)
@@ -215,6 +269,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                                 item(ui, "Synth", Dragged(None), actions);
                             }
                         });
+                    plugin_section(ui, state, frame, &search, actions);
                     let mut used: Vec<&str> = frame
                         .project
                         .channels

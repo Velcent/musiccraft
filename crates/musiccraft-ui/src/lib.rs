@@ -14,6 +14,7 @@ mod icons;
 mod mixer;
 mod piano_roll;
 mod playlist;
+mod plugins;
 mod theme;
 mod toolbar;
 mod widgets;
@@ -23,6 +24,7 @@ use musiccraft_project::Project;
 
 pub use geometry::Snap;
 pub use keymap::{Chord, DEFAULT_KEYMAP, Keymap};
+pub use plugins::{LivePluginView, PluginEntry, PluginParamView, Plugins};
 pub use theme::apply as apply_theme;
 
 /// Something the user asked for, produced by one frame of UI.
@@ -75,6 +77,15 @@ pub enum Action {
     },
     /// Drop decoded samples and reload them from disk.
     ReloadSamples,
+    /// Open or close a running plugin's own window.
+    PluginEditor {
+        /// Plugin instance number.
+        instance: u32,
+        /// Whether the window should be open.
+        open: bool,
+    },
+    /// Scan the plugin folders again.
+    RescanPlugins,
     /// Close the application.
     Quit,
 }
@@ -183,6 +194,11 @@ pub struct UiState {
     pub record: bool,
     /// While recording in song mode, also capture the audio input.
     pub record_audio: bool,
+    /// Text that filters the plugin parameter list.
+    pub plugin_filter: String,
+    /// Where the plugin panel drew its controls last frame: the window
+    /// button and (parameter id, slider) pairs.
+    pub(crate) plugin_layout: (Option<egui::Rect>, Vec<(u32, egui::Rect)>),
     gesture: u64,
     browser: browser::BrowserState,
     roll: piano_roll::RollState,
@@ -216,6 +232,8 @@ impl UiState {
             typing_keyboard: false,
             record: false,
             record_audio: false,
+            plugin_filter: String::new(),
+            plugin_layout: (None, Vec::new()),
             gesture: 0,
             browser: browser::BrowserState::with_default_folders(),
             roll: piano_roll::RollState::default(),
@@ -268,6 +286,8 @@ pub struct Frame<'a> {
     pub clip_waveforms: &'a [(musiccraft_project::ChannelId, Vec<(f32, f32)>)],
     /// Durations in ticks of samples played by audio clips.
     pub clip_durations: &'a [(musiccraft_project::ChannelId, u32)],
+    /// Installed and running plugins.
+    pub plugins: &'a Plugins,
 }
 
 /// Draws the whole interface and returns what the user asked for.
@@ -504,6 +524,7 @@ mod tests {
             waveform: None,
             clip_waveforms: &[],
             clip_durations: &[],
+            plugins: &Plugins::default(),
         };
         let mut state = UiState::default();
         assert!(!state.windows.mixer);

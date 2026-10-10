@@ -51,7 +51,7 @@ pub fn show(
                     }
                 });
             ui.separator();
-            add_menu(ui, actions);
+            add_menu(ui, frame.plugins, actions);
         });
     state.windows.channel_rack = open;
     // Sounds dragged from the browser and released over the rack become channels.
@@ -424,7 +424,7 @@ fn mini_roll(
     }
 }
 
-fn add_menu(ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
         ui.menu_button("+ Add channel", |ui| {
             for name in BUILTIN_SAMPLES {
@@ -442,6 +442,11 @@ fn add_menu(ui: &mut egui::Ui, actions: &mut Vec<Action>) {
                 actions.push(Action::Run(Invocation::bare("channel.add_synth")));
                 ui.close();
             }
+            ui.menu_button("Plugin instrument", |ui| {
+                crate::plugins::add_menu(ui, plugins, true, actions, |p| {
+                    Invocation::new("channel.add_plugin", [p.id.clone(), p.name.clone()])
+                });
+            });
         });
     });
 }

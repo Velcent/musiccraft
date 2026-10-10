@@ -7,10 +7,11 @@
 //! and render the project to report levels, so an agent can drive and verify
 //! MusicCraft without a GUI.
 
+use musiccraft_cli::{full_registry, plugin_host};
 use musiccraft_commands::{Invocation, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
 use musiccraft_project::params::TICKS_PER_BAR;
-use musiccraft_render::{RenderOptions, full_registry, render};
+use musiccraft_render::{RenderOptions, render_with};
 use serde_json::{Value, json};
 
 /// Protocol revisions this server understands, newest first.
@@ -425,7 +426,7 @@ impl Server {
             loops,
             ..RenderOptions::default()
         };
-        let (left, right, warnings) = render(project, options);
+        let (left, right, warnings) = render_with(project, options, plugin_host().as_ref());
         let sr = options.sample_rate as f32;
         let bar_seconds = 240.0 / project.tempo_bpm() as f32;
         let bar_frames = (bar_seconds * sr).max(1.0) as usize;

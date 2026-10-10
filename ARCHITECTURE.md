@@ -31,7 +31,7 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects, sample buffers. Allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voices, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
-| `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`. |
+| `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`; the safe plugin boundary (`PluginFactory`, `PluginInstance`) and plugin instance management. |
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
@@ -67,10 +67,23 @@ xtask ──► commands, render, ui (keymap) ───────────�
 - The engine never reads `Project`. Data the engine needs (sample buffers, note
   sequences, effect state) is prepared on the main thread.
 
+### Plugins
+
+- Plugins are reached only through traits: the engine's `External` (audio
+  thread: notes, parameter changes, `process`, `stop`) and render's
+  `PluginFactory` / `PluginInstance` (main thread: create, parameters, state,
+  window). The bridge keeps one live instance per project plugin instance
+  number and installs its processor in one of the engine's fixed external
+  slots (`SetExternal`), which survive graph rebuilds. Replaced processors come
+  back as garbage, already stopped, and are destroyed on the main thread.
+- `musiccraft_cli::plugin_host()` is the single place a loader plugs in; it
+  returns `None` until the CLAP loader crate exists (see deferred decisions).
+  Without it, plugin channels are silent and plugin effects pass audio through.
+
 ### Message rule (refines the CLAUDE.md audio-thread rule)
 
-Control messages are plain `Copy` data. Three messages, `SetGraph`,
-`SetSequence` and `PlayPreview`, carry a `Box` allocated on the main thread. Moving a box is a
+Control messages are plain `Copy` data. Four messages, `SetGraph`,
+`SetSequence`, `PlayPreview` and `SetExternal`, carry a `Box` allocated on the main thread. Moving a box is a
 fixed-size pointer move, not an allocation. The value it replaces is pushed onto
 a return queue and dropped on the main thread. The engine checks that the return
 queue has room *before* taking such a message; if it does not, the message waits
@@ -108,8 +121,11 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 ## Deferred decisions
 
 - Custom `wgpu` renderer if egui cannot reach the target look.
-- Plugin hosting (CLAP first). Loading plugins requires `unsafe` FFI, which is
-  forbidden workspace-wide; this needs an explicit decision before it starts.
+- The CLAP loader. Everything around it is built (spec `docs/spec/plugins.md`),
+  but loading a plugin runs foreign code through `unsafe` FFI, which is
+  forbidden workspace-wide. The plan is one crate, `musiccraft-clap`, exempt
+  from the lint, using `clap-sys` (CLAP bindings) and `libloading` (opening the
+  shared library); it needs the user's explicit go-ahead first.
 - Decoding compressed samples (FLAC, Ogg, MP3), likely via `symphonia`; lossy
   export formats.
 - Time signatures other than 4/4, tempo automation, audio clips and recording.

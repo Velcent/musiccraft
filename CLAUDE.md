@@ -75,7 +75,8 @@ cargo test --workspace
 - [x] M5 Playlist with patterns and clips
 - [x] M6 Project save/load, WAV export
 - [x] M7 MCP server
-- [ ] M7 Plugin hosting (CLAP first) — blocked: loading plugins needs `unsafe` FFI,
+- [ ] M7 Plugin hosting (CLAP first) — everything but the loader is built and
+      tested (`docs/spec/plugins.md`); the loader is blocked: it needs `unsafe` FFI,
       which is forbidden; needs an explicit decision from the user first
 - [x] M8 Parity checklist (`cargo xtask parity`) and UI polish
 
