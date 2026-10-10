@@ -1,0 +1,101 @@
+# The demo song used for the README screenshots: drums, bass and a lead with
+# chords, arranged with markers and a master fade-out.
+# Run:    musiccraft-cli play examples/demo-song.mcs 25
+# Open:   append `project.save demo.mcproj`, then `musiccraft demo.mcproj`.
+
+project.rename "Demo Song"
+project.set_tempo 124
+
+# Channel rack: four drums and a synth bass.
+channel.add_sampler builtin:kick
+channel.add_sampler builtin:clap
+channel.add_sampler builtin:hat
+channel.add_sampler builtin:open_hat
+channel.add_synth Bass
+channel.set_volume 3 0.5
+channel.set_param 5 cutoff 900
+channel.set_param 5 env_amount 2
+channel.set_param 5 release 0.05
+
+# Pattern 1: drums.
+pattern.rename 1 Drums
+step.toggle 1 0
+step.toggle 1 4
+step.toggle 1 8
+step.toggle 1 12
+step.toggle 2 4
+step.toggle 2 12
+step.toggle 3 2
+step.toggle 3 6
+step.toggle 3 10
+step.toggle 4 14
+
+# Pattern 2: bass (times in steps, keys as note names).
+pattern.add Bass
+note.add 5 0 2 A3
+note.add 5 3 1 A3
+note.add 5 6 2 C4
+note.add 5 10 2 G3
+note.add 5 13 3 E3
+
+# Mixer: drums to insert 1 with compression, bass to insert 2 with a filter,
+# reverb on the master.
+channel.route 1 1
+channel.route 2 1
+channel.route 3 1
+channel.route 4 1
+channel.route 5 2
+mixer.rename 1 Drums
+mixer.rename 2 Bass
+mixer.add_effect 1 compressor
+mixer.add_effect 2 filter
+mixer.set_effect_param 2 1 cutoff 1500
+mixer.add_effect 0 reverb
+mixer.set_effect_param 0 1 mix 0.12
+
+# Playlist: drums for 8 bars, bass enters at bar 2.
+playlist.add_clip 1 1 0 8
+playlist.add_clip 2 2 2 6
+
+# Lead synth with a melody over chords, routed to insert 3.
+channel.add_synth Lead
+channel.set_param 6 wave1 2
+channel.set_param 6 cutoff 3500
+channel.set_param 6 release 0.3
+pattern.add Lead
+note.add 6 0 3 E5 100
+note.add 6 3 1 D5 80
+note.add 6 4 4 C5 110
+note.add 6 8 2 A4 90
+note.add 6 10 2 C5 85
+note.add 6 12 4 D5 120
+note.add 6 16 3 E5 100
+note.add 6 19 1 G5 70
+note.add 6 20 6 A5 127
+note.add 6 26 2 G5 90
+note.add 6 28 4 E5 100
+note.add_chord 6 0 8 A3 min7 70
+note.add_chord 6 8 8 F3 maj7 70
+note.add_chord 6 16 8 C4 major 70
+note.add_chord 6 24 8 G3 major 70
+pattern.set_length 3 32
+
+# Arrangement: lead from the drop, everything repeats, then a fade-out.
+playlist.add_clip 3 3 4 4
+playlist.add_clip 1 1 8 4
+playlist.add_clip 2 2 8 4
+playlist.add_clip 3 3 8 4
+automation.create mixer:0:volume "Master fade"
+automation.add_point 1 0 0.75
+automation.add_point 1 160 0.75
+automation.add_point 1 192 0
+playlist.add_automation_clip 1 5 0 12
+playlist.add_marker 0 Intro
+playlist.add_marker 4 Drop
+playlist.add_marker 8 Outro
+channel.route 6 3
+mixer.rename 3 Lead
+mixer.add_effect 3 delay
+mixer.add_effect 3 chorus
+transport.set_mode song
+pattern.select 1

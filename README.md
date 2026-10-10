@@ -5,6 +5,21 @@ channel rack, piano roll, playlist and mixer, with familiar default shortcuts.
 Runs on Linux, macOS and Windows. Everything the app can do is a command, so it
 can be driven from the GUI, scripts, the CLI, or an AI agent over MCP.
 
+![Playlist arrangement with markers and automation, and the docked mixer](docs/screenshots/playlist-mixer.png)
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/channel-rack.png" alt="Channel rack step sequencer"></td>
+    <td><img src="docs/screenshots/piano-roll.png" alt="Piano roll with a melody over chords and the velocity lane"></td>
+  </tr>
+  <tr>
+    <td align="center">Channel rack</td>
+    <td align="center">Piano roll</td>
+  </tr>
+</table>
+
+The screenshots show [`examples/demo-song.mcs`](examples/demo-song.mcs).
+
 ## Build and run
 
 ```sh
