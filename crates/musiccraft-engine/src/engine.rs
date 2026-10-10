@@ -4,12 +4,15 @@ use musiccraft_dsp::{ProcessContext, pan_gains};
 use musiccraft_params::{PPQ, TICKS_PER_BAR};
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::graph::{ChannelNode, TrackNode};
+use crate::graph::{ChannelNode, Instrument, TrackNode};
 use crate::voice::{Voice, VoiceStart};
 use crate::{
-    EngineMessage, GARBAGE_CAPACITY, Garbage, Graph, LIVE_CAPACITY, LiveEvent, MAX_BLOCK,
-    MAX_VOICES, MESSAGE_CAPACITY, Meters, NoteEvent, Sequence,
+    EngineMessage, External, ExternalTransport, GARBAGE_CAPACITY, Garbage, Graph, LIVE_CAPACITY,
+    LiveEvent, MAX_BLOCK, MAX_EXTERNALS, MAX_VOICES, MESSAGE_CAPACITY, Meters, NoteEvent, Sequence,
 };
+
+/// The engine's external processor slots.
+type Externals = [Option<Box<dyn External>>];
 
 /// Safety cap on loop wraps handled within one block (for absurdly short loops).
 const MAX_WRAPS_PER_BLOCK: usize = 64;
@@ -151,6 +154,7 @@ pub struct Engine {
     metronome: bool,
     click: Click,
     preview: Option<Box<crate::Preview>>,
+    externals: Vec<Option<Box<dyn External>>>,
 }
 
 /// Creates an engine and the handle that controls it. Call on the main thread,
@@ -182,6 +186,7 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
         metronome: false,
         click: Click::default(),
         preview: None,
+        externals: (0..MAX_EXTERNALS).map(|_| None).collect(),
     };
     let handle = EngineHandle {
         messages: message_tx,
@@ -274,6 +279,15 @@ impl Engine {
                 voice.release(force);
             }
         }
+        for external in self.externals.iter_mut().flatten() {
+            external.all_notes_off();
+        }
+    }
+
+    /// Whether external slot `slot` holds a processor.
+    #[must_use]
+    pub fn has_external(&self, slot: usize) -> bool {
+        self.externals.get(slot).is_some_and(Option::is_some)
     }
 
     fn discard(&mut self, garbage: Garbage) {
@@ -365,9 +379,29 @@ impl Engine {
                     preview.position = f64::INFINITY;
                 }
             }
+            EngineMessage::SetExternal { slot, external } => {
+                if let Some(entry) = self.externals.get_mut(usize::from(slot)) {
+                    let old = std::mem::replace(entry, external);
+                    if let Some(mut old) = old {
+                        old.stop();
+                        self.discard(Garbage::External(old));
+                    }
+                } else if let Some(external) = external {
+                    // Out of range: hand it straight back.
+                    self.discard(Garbage::External(external));
+                }
+            }
+            EngineMessage::ExternalParam { slot, id, value } => {
+                if let Some(Some(external)) = self.externals.get_mut(usize::from(slot)) {
+                    external.set_param(id, value);
+                }
+            }
             EngineMessage::SetGraph(graph) => {
                 for voice in &mut self.voices {
                     voice.active = false;
+                }
+                for external in self.externals.iter_mut().flatten() {
+                    external.all_notes_off();
                 }
                 if let Some(old) = self.graph.replace(graph) {
                     self.discard(Garbage::Graph(old));
@@ -423,17 +457,30 @@ impl Engine {
                 &mut self.voices,
                 &mut self.voice_counter,
                 &graph.channels,
+                &mut self.externals,
                 start,
             );
         }
     }
 
     fn live_note_off(&mut self, channel: u16, key: u8) {
+        if let Some(external) = self.channel_external(channel) {
+            external.note_off(0, key);
+        }
         for voice in &mut self.voices {
             if voice.active && voice.live && voice.channel == channel && voice.key == key {
                 voice.release(true);
             }
         }
+    }
+
+    /// The external processor playing `channel`, if it is a plugin channel.
+    fn channel_external(&mut self, channel: u16) -> Option<&mut Box<dyn External>> {
+        let node = self.graph.as_deref()?.channels.get(usize::from(channel))?;
+        let Instrument::External(slot) = node.instrument else {
+            return None;
+        };
+        self.externals.get_mut(usize::from(slot))?.as_mut()
     }
 
     /// Fills an interleaved output buffer with `channels` channels. The first two
@@ -484,6 +531,12 @@ impl Engine {
 
     fn render_block(&mut self, frames: usize) {
         let frames = frames.min(MAX_BLOCK);
+        let transport = ExternalTransport {
+            playing: self.playing,
+            tempo_bpm: self.tempo_bpm,
+            position_beats: self.position_beats(),
+            sample_rate: self.sample_rate,
+        };
         if self.playing {
             self.schedule(frames);
             self.frames_played += frames as u64;
@@ -524,8 +577,24 @@ impl Engine {
                 None => voice.active = false,
             }
         }
+        for node in channels.iter_mut() {
+            if let Instrument::External(slot) = node.instrument {
+                if let Some(Some(external)) = self.externals.get_mut(usize::from(slot)) {
+                    let (l, r) = (
+                        prefix(&mut node.left, frames),
+                        prefix(&mut node.right, frames),
+                    );
+                    external.process(l, r, &transport);
+                }
+            }
+        }
         mix_channels(channels, tracks, frames);
-        mix_tracks(tracks, frames, ctx, &self.meters);
+        let fx = FxContext {
+            frames,
+            ctx,
+            transport,
+        };
+        mix_tracks(tracks, fx, &mut self.externals, &self.meters);
         if let Some(master) = tracks.first_mut() {
             let TrackNode { left, right, .. } = master;
             let (l, r) = (prefix(left, frames), prefix(right, frames));
@@ -574,6 +643,7 @@ impl Engine {
                             &mut self.voices,
                             &mut self.voice_counter,
                             &graph.channels,
+                            &mut self.externals,
                             start,
                         );
                     }
@@ -667,8 +737,26 @@ fn trigger(
     voices: &mut [Voice],
     counter: &mut u64,
     channels: &[ChannelNode],
+    externals: &mut Externals,
     mut start: VoiceStart,
 ) {
+    if let Some(ChannelNode {
+        instrument: Instrument::External(slot),
+        ..
+    }) = channels.get(usize::from(start.channel))
+    {
+        // Plugins voice their own notes.
+        if let Some(Some(external)) = externals.get_mut(usize::from(*slot)) {
+            external.note_on(
+                start.delay,
+                start.key,
+                start.velocity,
+                start.pan,
+                start.gate,
+            );
+        }
+        return;
+    }
     // A held note on the same channel is where a glide starts from.
     start.glide_from = voices
         .iter()
@@ -710,17 +798,26 @@ fn mix_channels(channels: &[ChannelNode], tracks: &mut [TrackNode], frames: usiz
     }
 }
 
+/// What effect processing needs to know about the current block.
+#[derive(Clone, Copy)]
+struct FxContext {
+    frames: usize,
+    ctx: ProcessContext,
+    transport: ExternalTransport,
+}
+
 /// Processes inserts in index order, then the master. Sends only go to
 /// higher-numbered inserts, so every track has received all of its input by the
 /// time it is processed.
-fn mix_tracks(tracks: &mut [TrackNode], frames: usize, ctx: ProcessContext, meters: &Meters) {
+fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals, meters: &Meters) {
+    let frames = fx.frames;
     for i in 1..tracks.len() {
         let (before, rest) = tracks.split_at_mut(i);
         let Some((track, after)) = rest.split_first_mut() else {
             continue;
         };
         // Inserts below this one are finished and can key its compressors.
-        process_track(track, frames, ctx, before, 0);
+        process_track(track, fx, externals, before, 0);
         meters.record_peak(i, peak(&track.left, frames), peak(&track.right, frames));
         if track.params.to_master {
             if let Some(master) = before.first_mut() {
@@ -738,7 +835,7 @@ fn mix_tracks(tracks: &mut [TrackNode], frames: usize, ctx: ProcessContext, mete
         }
     }
     if let Some((master, inserts)) = tracks.split_first_mut() {
-        process_track(master, frames, ctx, inserts, 1);
+        process_track(master, fx, externals, inserts, 1);
         meters.record_peak(0, peak(&master.left, frames), peak(&master.right, frames));
     }
 }
@@ -750,11 +847,16 @@ const SIDECHAIN_PARAM: usize = 5;
 /// may feed compressor sidechains; `keys[i]` is mixer track `i + key_offset`.
 fn process_track(
     track: &mut TrackNode,
-    frames: usize,
-    ctx: ProcessContext,
+    fx: FxContext,
+    externals: &mut Externals,
     keys: &[TrackNode],
     key_offset: usize,
 ) {
+    let FxContext {
+        frames,
+        ctx,
+        transport,
+    } = fx;
     let TrackNode {
         params,
         effects,
@@ -763,6 +865,12 @@ fn process_track(
     } = track;
     let (l, r) = (prefix(left, frames), prefix(right, frames));
     for slot in effects.iter_mut().filter(|s| s.params.enabled) {
+        if let Some(index) = slot.external {
+            if let Some(Some(external)) = externals.get_mut(usize::from(index)) {
+                external.process(l, r, &transport);
+            }
+            continue;
+        }
         let source = slot
             .params
             .values

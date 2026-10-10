@@ -1,23 +1,48 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
 use musiccraft_dsp::{Effect, SampleBuffer};
 use musiccraft_engine::{
-    ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_SENDS,
-    SendParams, Sequence, TrackParams,
+    ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_BLOCK,
+    MAX_EXTERNALS, MAX_SENDS, SendParams, Sequence, TrackParams,
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
-use musiccraft_project::{Channel, MixerTrack, Project};
+use musiccraft_project::{Channel, MixerTrack, Project, base64};
 use musiccraft_samples::SampleCache;
 
 use crate::build_sequence;
+use crate::plugins::{PluginEvent, PluginHost, PluginInstance, PluginRequest};
+
+/// Where a channel's sound comes from, as far as the graph is concerned.
+#[derive(Debug, Clone, PartialEq)]
+enum Source {
+    /// A resolved sample reference.
+    Sample(String),
+    Synth,
+    /// A plugin in this engine slot (`None`: not running).
+    Plugin(Option<u16>),
+}
 
 /// The parts of a project that require a new [`Graph`] when they change.
 #[derive(Debug, Clone, PartialEq)]
 struct Structure {
-    /// `None` for a synth, otherwise the resolved sample reference.
-    channels: Vec<Option<String>>,
-    tracks: Vec<Vec<EffectKind>>,
+    channels: Vec<Source>,
+    /// Effect kinds per track, with the engine slot of plugin effects.
+    tracks: Vec<Vec<(EffectKind, Option<u16>)>>,
+}
+
+/// A plugin instance the bridge keeps alive.
+#[derive(Debug)]
+struct Live {
+    plugin_id: String,
+    slot: u16,
+    instance: Box<dyn PluginInstance>,
+    /// Parameter values the engine was last sent.
+    sent: BTreeMap<u32, f64>,
+    /// Values right after the state was restored, used when a stored value is
+    /// removed (undo of the first change).
+    baseline: BTreeMap<u32, f64>,
 }
 
 /// Everything the engine was last told.
@@ -131,7 +156,7 @@ fn solo_audible(mixer: &[MixerTrack]) -> Option<Vec<bool>> {
     Some(audible.iter().zip(&feeds).map(|(a, f)| *a || *f).collect())
 }
 
-fn describe(project: &Project) -> Desc {
+fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
     let base = project.path().and_then(Path::parent);
     let audible = solo_audible(&project.mixer);
     let sequence = build_sequence(project);
@@ -142,15 +167,29 @@ fn describe(project: &Project) -> Desc {
                 .iter()
                 .map(|c| match &c.instrument {
                     musiccraft_project::Instrument::Sampler { sample } => {
-                        Some(sample_key(sample, base))
+                        Source::Sample(sample_key(sample, base))
                     }
-                    musiccraft_project::Instrument::Synth => None,
+                    musiccraft_project::Instrument::Synth => Source::Synth,
+                    musiccraft_project::Instrument::Plugin { plugin } => {
+                        Source::Plugin(slots.get(&plugin.instance).copied())
+                    }
                 })
                 .collect(),
             tracks: project
                 .mixer
                 .iter()
-                .map(|t| t.effects.iter().map(|e| e.kind).collect())
+                .map(|t| {
+                    t.effects
+                        .iter()
+                        .map(|e| {
+                            let slot = e
+                                .plugin
+                                .as_ref()
+                                .and_then(|p| slots.get(&p.instance).copied());
+                            (e.kind, slot)
+                        })
+                        .collect()
+                })
                 .collect(),
         },
         channels: project.channels.iter().map(channel_params).collect(),
@@ -185,6 +224,12 @@ pub struct Bridge {
     sample_rate: u32,
     samples: SampleCache,
     last: Option<Desc>,
+    host: Option<PluginHost>,
+    /// Running plugins by instance number.
+    live: BTreeMap<u32, Live>,
+    /// Instances that failed to start, by instance number, with their plugin
+    /// id; not retried until [`Bridge::retry_plugins`].
+    failed: BTreeMap<u32, String>,
 }
 
 impl Bridge {
@@ -195,7 +240,201 @@ impl Bridge {
             sample_rate,
             samples: SampleCache::new(),
             last: None,
+            host: None,
+            live: BTreeMap::new(),
+            failed: BTreeMap::new(),
         }
+    }
+
+    /// A bridge that can run plugins from `host`.
+    #[must_use]
+    pub fn with_plugins(sample_rate: u32, host: Option<PluginHost>) -> Self {
+        Self {
+            host,
+            ..Self::new(sample_rate)
+        }
+    }
+
+    /// The plugin host, if plugins are available.
+    #[must_use]
+    pub fn plugin_host(&self) -> Option<&PluginHost> {
+        self.host.as_ref()
+    }
+
+    /// Tries plugins that failed to start again on the next sync (after a
+    /// rescan, for example).
+    pub fn retry_plugins(&mut self) {
+        self.failed.clear();
+    }
+
+    /// The live plugin with instance number `instance`.
+    pub fn plugin(&mut self, instance: u32) -> Option<&mut dyn PluginInstance> {
+        Some(self.live.get_mut(&instance)?.instance.as_mut())
+    }
+
+    /// Whether the plugin with instance number `instance` is running.
+    #[must_use]
+    pub fn plugin_running(&self, instance: u32) -> bool {
+        self.live.contains_key(&instance)
+    }
+
+    /// Runs plugin housekeeping and returns what each plugin reported, by
+    /// instance number. Parameter changes a plugin made itself count as already
+    /// sent, so recording them in the project does not echo them back.
+    pub fn poll_plugins(&mut self) -> Vec<(u32, PluginEvent)> {
+        let mut events = Vec::new();
+        for (instance, live) in &mut self.live {
+            for event in live.instance.poll() {
+                if let PluginEvent::Param { id, value } = event {
+                    live.sent.insert(id, value);
+                }
+                events.push((*instance, event));
+            }
+        }
+        events
+    }
+
+    /// Starts and stops plugin instances so they match the project, then sends
+    /// parameter changes.
+    fn sync_plugins(
+        &mut self,
+        project: &Project,
+        handle: &mut EngineHandle,
+        report: &mut SyncReport,
+    ) {
+        let wanted: BTreeMap<u32, &musiccraft_project::PluginRef> = project
+            .plugins()
+            .into_iter()
+            .map(|(_, p)| (p.instance, p))
+            .collect();
+        let stale: Vec<u32> = self
+            .live
+            .iter()
+            .filter(|(k, l)| wanted.get(k).is_none_or(|p| p.id != l.plugin_id))
+            .map(|(k, _)| *k)
+            .collect();
+        for instance in stale {
+            let Some(slot) = self.live.get(&instance).map(|l| l.slot) else {
+                continue;
+            };
+            let message = EngineMessage::SetExternal {
+                slot,
+                external: None,
+            };
+            if handle.send(message).is_ok() {
+                report.messages += 1;
+                // The engine hands the processor back as garbage; the instance
+                // is destroyed once both halves are gone.
+                self.live.remove(&instance);
+            } else {
+                report.dropped += 1;
+            }
+        }
+        self.failed
+            .retain(|k, id| wanted.get(k).is_some_and(|p| &p.id == id));
+        for (instance, plugin) in &wanted {
+            if self.live.contains_key(instance) || self.failed.contains_key(instance) {
+                continue;
+            }
+            match self.start_plugin(plugin, handle) {
+                Ok(Some(live)) => {
+                    report.messages += 1;
+                    self.live.insert(*instance, live);
+                }
+                Ok(None) => report.dropped += 1,
+                Err(err) => {
+                    report
+                        .warnings
+                        .push(format!("plugin `{}` ({}): {err}", plugin.name, plugin.id));
+                    self.failed.insert(*instance, plugin.id.clone());
+                }
+            }
+        }
+        for (instance, plugin) in &wanted {
+            let Some(live) = self.live.get_mut(instance) else {
+                continue;
+            };
+            let mut changes: Vec<(u32, f64)> = plugin
+                .params
+                .iter()
+                .filter(|(id, v)| live.sent.get(id) != Some(v))
+                .map(|(id, v)| (*id, *v))
+                .collect();
+            // A value removed from the project returns to the baseline.
+            changes.extend(
+                live.sent
+                    .keys()
+                    .filter(|id| !plugin.params.contains_key(id))
+                    .filter_map(|id| Some((*id, *live.baseline.get(id)?))),
+            );
+            for (id, value) in changes {
+                let message = EngineMessage::ExternalParam {
+                    slot: live.slot,
+                    id,
+                    value,
+                };
+                if handle.send(message).is_ok() {
+                    report.messages += 1;
+                    if plugin.params.contains_key(&id) {
+                        live.sent.insert(id, value);
+                    } else {
+                        live.sent.remove(&id);
+                    }
+                } else {
+                    report.dropped += 1;
+                }
+            }
+        }
+    }
+
+    /// Creates a plugin and installs its processor in a free engine slot.
+    /// `Ok(None)` means the message queue was full; the next sync retries.
+    fn start_plugin(
+        &self,
+        plugin: &musiccraft_project::PluginRef,
+        handle: &mut EngineHandle,
+    ) -> Result<Option<Live>, String> {
+        let host = self
+            .host
+            .as_ref()
+            .ok_or("plugin hosting is not available here")?;
+        let used: Vec<u16> = self.live.values().map(|l| l.slot).collect();
+        let slot = (0..MAX_EXTERNALS)
+            .filter_map(|s| u16::try_from(s).ok())
+            .find(|s| !used.contains(s))
+            .ok_or_else(|| format!("at most {MAX_EXTERNALS} plugins can run at once"))?;
+        let state = if plugin.state.is_empty() {
+            None
+        } else {
+            Some(base64::decode(&plugin.state).ok_or("its saved state is not valid base64")?)
+        };
+        let request = PluginRequest {
+            id: &plugin.id,
+            sample_rate: self.sample_rate,
+            max_frames: u32::try_from(MAX_BLOCK).unwrap_or(u32::MAX),
+            state: state.as_deref(),
+        };
+        let created = host.instantiate(&request)?;
+        let baseline = created
+            .instance
+            .params()
+            .iter()
+            .filter_map(|p| Some((p.id, created.instance.param_value(p.id)?)))
+            .collect();
+        let message = EngineMessage::SetExternal {
+            slot,
+            external: Some(created.processor),
+        };
+        if handle.send(message).is_err() {
+            return Ok(None);
+        }
+        Ok(Some(Live {
+            plugin_id: plugin.id.clone(),
+            slot,
+            instance: created.instance,
+            sent: BTreeMap::new(),
+            baseline,
+        }))
     }
 
     /// Forgets what the engine was told, so the next sync sends everything.
@@ -222,10 +461,12 @@ impl Bridge {
 
     fn build_graph(&mut self, project: &Project, desc: &Desc, warnings: &mut Vec<String>) -> Graph {
         let mut graph = Graph::new();
-        for (key, params) in desc.structure.channels.iter().zip(&desc.channels) {
-            let instrument = match key {
-                Some(key) => Instrument::Sampler(self.load(key, warnings)),
-                None => Instrument::Synth,
+        for (source, params) in desc.structure.channels.iter().zip(&desc.channels) {
+            let instrument = match source {
+                Source::Sample(key) => Instrument::Sampler(self.load(key, warnings)),
+                Source::Synth => Instrument::Synth,
+                // An out-of-range slot plays nothing.
+                Source::Plugin(slot) => Instrument::External(slot.unwrap_or(u16::MAX)),
             };
             graph.add_channel(instrument, *params);
         }
@@ -249,6 +490,12 @@ impl Bridge {
             } else {
                 graph.add_track(*params, effects);
             }
+            let slots = desc.structure.tracks.get(i).into_iter().flatten();
+            for (s, (_, external)) in slots.enumerate() {
+                if let Some(external) = external {
+                    graph.attach_external(i, s, *external);
+                }
+            }
         }
         graph
     }
@@ -256,8 +503,10 @@ impl Bridge {
     /// Brings the engine up to date with `project`.
     pub fn sync(&mut self, project: &Project, handle: &mut EngineHandle) -> SyncReport {
         handle.collect_garbage();
-        let desc = describe(project);
         let mut report = SyncReport::default();
+        self.sync_plugins(project, handle, &mut report);
+        let slots: BTreeMap<u32, u16> = self.live.iter().map(|(k, l)| (*k, l.slot)).collect();
+        let desc = describe(project, &slots);
         let mut messages = Vec::new();
         let previous = self.last.take();
 

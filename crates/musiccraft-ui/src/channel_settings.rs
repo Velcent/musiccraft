@@ -198,6 +198,7 @@ fn contents(
             sampler(ui, state, frame, index, channel, sample, actions)
         }
         Instrument::Synth => synth(ui, state, number, channel, actions),
+        Instrument::Plugin { .. } => {}
     }
     ui.add_space(6.0);
     section(ui, "ENVELOPE", |ui| {

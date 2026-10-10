@@ -6,7 +6,7 @@ use musiccraft_params::PPQ;
 use musiccraft_project::{Project, Transport};
 use musiccraft_samples::{WavFormat, write_wav};
 
-use crate::{Bridge, build_full_sequence};
+use crate::{Bridge, PluginHost, build_full_sequence};
 
 /// Settings for an offline render.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,9 +40,20 @@ const SILENCE: f32 = 3.2e-5;
 /// that failed to load).
 #[must_use]
 pub fn render(project: &Project, options: RenderOptions) -> (Vec<f32>, Vec<f32>, Vec<String>) {
+    render_with(project, options, None)
+}
+
+/// [`render`] with plugins from `host`; plugins get fresh instances restored
+/// from the project.
+#[must_use]
+pub fn render_with(
+    project: &Project,
+    options: RenderOptions,
+    host: Option<&PluginHost>,
+) -> (Vec<f32>, Vec<f32>, Vec<String>) {
     let sample_rate = options.sample_rate.max(8_000);
     let (mut engine, mut handle) = engine_pair(sample_rate);
-    let mut bridge = Bridge::new(sample_rate);
+    let mut bridge = Bridge::with_plugins(sample_rate, host.cloned());
     let mut stopped = project.clone();
     stopped.set_transport(Transport::Stopped);
     // The click is a monitoring aid; it is never part of an export.
@@ -121,14 +132,19 @@ pub fn export_wav(
     path: &Path,
     format: WavFormat,
     options: RenderOptions,
+    host: Option<&PluginHost>,
 ) -> Result<(f64, Vec<String>), String> {
-    let (left, right, warnings) = render(project, options);
+    let (left, right, warnings) = render_with(project, options, host);
     write_wav(path, &left, &right, options.sample_rate, format).map_err(|e| e.to_string())?;
     Ok((left.len() as f64 / f64::from(options.sample_rate), warnings))
 }
 
 /// `project.export_wav <path> [16|24|32f] [loops] [sample rate]`.
-pub struct ExportCommand;
+#[derive(Default)]
+pub struct ExportCommand {
+    /// Plugins to render with.
+    pub host: Option<PluginHost>,
+}
 
 impl Command for ExportCommand {
     fn name(&self) -> &'static str {
@@ -186,8 +202,14 @@ impl Command for ExportCommand {
             loops,
             ..RenderOptions::default()
         };
-        let (seconds, warnings) =
-            export_wav(project, Path::new(path), format, options).map_err(CommandError::Io)?;
+        let (seconds, warnings) = export_wav(
+            project,
+            Path::new(path),
+            format,
+            options,
+            self.host.as_ref(),
+        )
+        .map_err(CommandError::Io)?;
         let mut message = format!("exported {seconds:.2} s to {path}");
         for warning in warnings {
             message.push_str(&format!(" (warning: {warning})"));
@@ -242,6 +264,7 @@ pub fn export_stems(
     dir: &Path,
     format: WavFormat,
     options: RenderOptions,
+    host: Option<&PluginHost>,
 ) -> Result<Vec<String>, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let mut stems = Vec::new();
@@ -250,7 +273,7 @@ pub fn export_stems(
         for (i, channel) in solo.channels.iter_mut().enumerate() {
             channel.mute = !channels.contains(&i);
         }
-        let (left, right, _) = render(&solo, options);
+        let (left, right, _) = render_with(&solo, options, host);
         stems.push((stem, left, right));
     }
     let longest = stems.iter().map(|(_, l, _)| l.len()).max().unwrap_or(0);
@@ -267,7 +290,11 @@ pub fn export_stems(
 }
 
 /// `project.export_stems <folder> [16|24|32f]`.
-pub struct ExportStemsCommand;
+#[derive(Default)]
+pub struct ExportStemsCommand {
+    /// Plugins to render with.
+    pub host: Option<PluginHost>,
+}
 
 impl Command for ExportStemsCommand {
     fn name(&self) -> &'static str {
@@ -299,8 +326,14 @@ impl Command for ExportStemsCommand {
                 });
             }
         };
-        let files = export_stems(project, Path::new(dir), format, RenderOptions::default())
-            .map_err(CommandError::Io)?;
+        let files = export_stems(
+            project,
+            Path::new(dir),
+            format,
+            RenderOptions::default(),
+            self.host.as_ref(),
+        )
+        .map_err(CommandError::Io)?;
         if files.is_empty() {
             return Ok(Outcome::done("no unmuted channels to export"));
         }
@@ -313,7 +346,11 @@ impl Command for ExportStemsCommand {
 }
 
 /// `project.export_flac <path> [16|24] [loops] [sample rate]`.
-pub struct ExportFlacCommand;
+#[derive(Default)]
+pub struct ExportFlacCommand {
+    /// Plugins to render with.
+    pub host: Option<PluginHost>,
+}
 
 impl Command for ExportFlacCommand {
     fn name(&self) -> &'static str {
@@ -371,7 +408,7 @@ impl Command for ExportFlacCommand {
             loops,
             ..RenderOptions::default()
         };
-        let (left, right, warnings) = render(project, options);
+        let (left, right, warnings) = render_with(project, options, self.host.as_ref());
         musiccraft_samples::write_flac(Path::new(path), &left, &right, sample_rate, bits)
             .map_err(|e| CommandError::Io(e.to_string()))?;
         let mut message = format!(
@@ -385,13 +422,27 @@ impl Command for ExportFlacCommand {
     }
 }
 
-/// Adds the render crate's commands to a registry.
+/// Adds the render crate's commands to a registry, without plugins.
 ///
 /// # Errors
 ///
 /// Returns [`CommandError::Duplicate`] if they are already registered.
 pub fn register(registry: &mut Registry) -> Result<(), CommandError> {
-    registry.register(Box::new(ExportCommand))?;
-    registry.register(Box::new(ExportStemsCommand))?;
-    registry.register(Box::new(ExportFlacCommand))
+    register_with(registry, None)
+}
+
+/// Adds the render crate's commands to a registry; exports run plugins from
+/// `host` and `plugin.list` lists its catalog.
+///
+/// # Errors
+///
+/// Returns [`CommandError::Duplicate`] if they are already registered.
+pub fn register_with(
+    registry: &mut Registry,
+    host: Option<PluginHost>,
+) -> Result<(), CommandError> {
+    registry.register(Box::new(ExportCommand { host: host.clone() }))?;
+    registry.register(Box::new(ExportStemsCommand { host: host.clone() }))?;
+    registry.register(Box::new(ExportFlacCommand { host: host.clone() }))?;
+    registry.register(Box::new(crate::plugins::PluginListCommand { host }))
 }

@@ -10,6 +10,7 @@
 //! through a return queue so that it is dropped on the main thread.
 
 mod engine;
+mod external;
 mod graph;
 mod message;
 mod meters;
@@ -17,6 +18,7 @@ mod sequence;
 mod voice;
 
 pub use engine::{Engine, EngineHandle, LiveSender, engine_pair};
+pub use external::{External, ExternalTransport, MAX_EXTERNALS};
 pub use graph::{
     ChannelNode, ChannelParams, EffectParams, Graph, Instrument, MAX_SENDS, Preview, SendParams,
     TrackParams,

@@ -1,4 +1,4 @@
-use crate::{ChannelParams, EffectParams, Graph, Preview, Sequence, TrackParams};
+use crate::{ChannelParams, EffectParams, External, Graph, Preview, Sequence, TrackParams};
 
 /// A message from the main thread to the engine.
 ///
@@ -67,6 +67,23 @@ pub enum EngineMessage {
     PlayPreview(Box<Preview>),
     /// Silence the browser preview.
     StopPreview,
+    /// Install (or with `None`, remove) the external processor in a slot. A
+    /// replaced processor is stopped and handed back as garbage.
+    SetExternal {
+        /// Slot index, below [`crate::MAX_EXTERNALS`].
+        slot: u16,
+        /// The new processor.
+        external: Option<Box<dyn External>>,
+    },
+    /// Set a parameter of the external processor in a slot.
+    ExternalParam {
+        /// Slot index.
+        slot: u16,
+        /// Parameter id in the processor's numbering.
+        id: u32,
+        /// Value in the processor's own units.
+        value: f64,
+    },
 }
 
 impl EngineMessage {
@@ -75,7 +92,10 @@ impl EngineMessage {
     pub fn returns_garbage(&self) -> bool {
         matches!(
             self,
-            Self::SetGraph(_) | Self::SetSequence(_) | Self::PlayPreview(_)
+            Self::SetGraph(_)
+                | Self::SetSequence(_)
+                | Self::PlayPreview(_)
+                | Self::SetExternal { .. }
         )
     }
 }
@@ -89,6 +109,8 @@ pub enum Garbage {
     Sequence(Box<Sequence>),
     /// A previous preview.
     Preview(Box<Preview>),
+    /// A replaced external processor, already stopped.
+    External(Box<dyn External>),
 }
 
 /// A note event from a live source such as a MIDI keyboard. Sent through its own

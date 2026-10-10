@@ -157,7 +157,11 @@ fn shift_sidechains(project: &mut Project, from: usize, delta: isize) {
     }
 }
 
-fn track_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, CommandError> {
+pub(super) fn track_arg(
+    project: &Project,
+    args: &Args<'_>,
+    i: usize,
+) -> Result<usize, CommandError> {
     Ok(project.mixer_index(args.parse(i, "mixer track")?)?)
 }
 
@@ -169,7 +173,7 @@ fn insert_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, Com
     Ok(track)
 }
 
-fn slot_arg(
+pub(super) fn slot_arg(
     project: &Project,
     args: &Args<'_>,
     track: usize,
@@ -462,7 +466,7 @@ fn remove_effect(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comm
     super::automation::remap_slots(project, index, |s| Some(if s > slot { s - 1 } else { s }));
     let json = serde_json::to_string(&effect).map_err(|e| args.invalid(e.to_string()))?;
     Ok(Outcome::undoable(
-        format!("removed {} from mixer track {index}", effect.kind),
+        format!("removed {} from mixer track {index}", effect.label()),
         Invocation::new(
             "mixer.insert_effect",
             [index.to_string(), (slot + 1).to_string(), json],
@@ -480,12 +484,22 @@ fn insert_effect(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comm
     }
     let effect: EffectSlot =
         serde_json::from_str(args.str(2)?).map_err(|e| args.invalid(e.to_string()))?;
+    if let Some(plugin) = &effect.plugin {
+        if project.plugin_slot(plugin.instance).is_some() {
+            return Err(args.invalid(format!(
+                "plugin instance {} already exists",
+                plugin.instance
+            )));
+        }
+        project.reserve_id(plugin.instance);
+    }
     super::automation::remap_slots(project, index, |s| {
         Some(if s >= slot - 1 { s + 1 } else { s })
     });
+    let label = effect.label();
     project.mixer[index].effects.insert(slot - 1, effect);
     Ok(Outcome::undoable(
-        format!("inserted {} on mixer track {index}", effect.kind),
+        format!("inserted {label} on mixer track {index}"),
         Invocation::new("mixer.remove_effect", [index.to_string(), slot.to_string()]),
     ))
 }

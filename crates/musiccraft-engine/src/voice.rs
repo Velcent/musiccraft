@@ -189,6 +189,8 @@ impl Voice {
                     }
                 }
             }
+            // External instruments never get voices; see `engine::trigger`.
+            Instrument::External(_) => self.active = false,
             Instrument::Synth => {
                 let wave1 = Waveform::from_param(param(params, inst::WAVE1));
                 let wave2 = Waveform::from_param(param(params, inst::WAVE2));

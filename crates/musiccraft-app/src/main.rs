@@ -505,7 +505,8 @@ impl App {
                     musiccraft_project::Instrument::Sampler { sample } => {
                         Some((id, sample.clone()))
                     }
-                    musiccraft_project::Instrument::Synth => None,
+                    musiccraft_project::Instrument::Synth
+                    | musiccraft_project::Instrument::Plugin { .. } => None,
                 }
             })
             .collect();

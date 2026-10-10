@@ -553,3 +553,194 @@ fn note_pan_moves_a_note_left_or_right() {
         &out[..2]
     );
 }
+
+/// Counters a [`Probe`] shares with the test.
+#[derive(Debug, Default)]
+struct ProbeLog {
+    note_ons: std::sync::atomic::AtomicU32,
+    note_offs: std::sync::atomic::AtomicU32,
+    all_off: std::sync::atomic::AtomicU32,
+    stopped: std::sync::atomic::AtomicBool,
+}
+
+/// A fake plugin: as an instrument it writes a 1.0 impulse on the frame each
+/// note starts; as an effect it multiplies by its `gain` parameter (id 7).
+#[derive(Debug)]
+struct Probe {
+    log: Arc<ProbeLog>,
+    pending: Option<u32>,
+    gain: f32,
+}
+
+impl Probe {
+    fn new() -> (Self, Arc<ProbeLog>) {
+        let log = Arc::new(ProbeLog::default());
+        let probe = Self {
+            log: Arc::clone(&log),
+            pending: None,
+            gain: 1.0,
+        };
+        (probe, log)
+    }
+}
+
+impl External for Probe {
+    fn note_on(&mut self, delay: u32, _key: u8, _velocity: f32, _pan: f32, _gate: Option<u64>) {
+        self.log
+            .note_ons
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.pending = Some(delay);
+    }
+
+    fn note_off(&mut self, _delay: u32, _key: u8) {
+        self.log
+            .note_offs
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn all_notes_off(&mut self) {
+        self.log
+            .all_off
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn set_param(&mut self, id: u32, value: f64) {
+        if id == 7 {
+            self.gain = value as f32;
+        }
+    }
+
+    fn process(&mut self, left: &mut [f32], right: &mut [f32], _transport: &ExternalTransport) {
+        if let Some(delay) = self.pending.take() {
+            if let (Some(l), Some(r)) =
+                (left.get_mut(delay as usize), right.get_mut(delay as usize))
+            {
+                *l += 1.0;
+                *r += 1.0;
+            }
+        }
+        for s in left.iter_mut().chain(right.iter_mut()) {
+            *s *= self.gain;
+        }
+    }
+
+    fn stop(&mut self) {
+        self.log
+            .stopped
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+fn probe_engine() -> (Engine, EngineHandle, Arc<ProbeLog>) {
+    let (mut engine, handle) = engine_pair(SR);
+    let (probe, log) = Probe::new();
+    engine.apply(EngineMessage::SetExternal {
+        slot: 3,
+        external: Some(Box::new(probe)),
+    });
+    let mut graph = Graph::new();
+    graph.add_channel(Instrument::External(3), impulse_params());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    (engine, handle, log)
+}
+
+#[test]
+fn plugin_instruments_get_sequence_notes_on_the_exact_frame() {
+    use std::sync::atomic::Ordering;
+    let (mut engine, _handle, log) = probe_engine();
+    engine.apply(EngineMessage::SetSequence(Box::new(Sequence::new(
+        vec![note(1, 0)],
+        u64::from(PPQ) * 4,
+    ))));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, BEAT + 1_000);
+    assert_eq!(nonzero_frames(&out), [BEAT]);
+    assert_eq!(log.note_ons.load(Ordering::Relaxed), 1);
+    assert_eq!(engine.active_voices(), 0, "plugins voice their own notes");
+    engine.apply(EngineMessage::Stop);
+    assert!(log.all_off.load(Ordering::Relaxed) >= 1);
+}
+
+#[test]
+fn live_notes_reach_plugin_instruments() {
+    use std::sync::atomic::Ordering;
+    let (mut engine, _handle, log) = probe_engine();
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 64,
+        velocity: 1.0,
+    });
+    engine.apply(EngineMessage::NoteOff {
+        channel: 0,
+        key: 64,
+    });
+    assert_eq!(log.note_ons.load(Ordering::Relaxed), 1);
+    assert_eq!(log.note_offs.load(Ordering::Relaxed), 1);
+    let out = render_mono(&mut engine, 100);
+    assert_eq!(nonzero_frames(&out), [0]);
+}
+
+#[test]
+fn plugin_effects_process_their_track_and_take_parameters() {
+    let (mut engine, _handle) = impulse_engine();
+    let (probe, _log) = Probe::new();
+    engine.apply(EngineMessage::SetExternal {
+        slot: 0,
+        external: Some(Box::new(probe)),
+    });
+    let mut graph = Graph::new();
+    let impulse = Arc::new(SampleBuffer::mono(vec![1.0], f64::from(SR)));
+    graph.add_channel(Instrument::Sampler(impulse), impulse_params());
+    graph.set_master(
+        TrackParams::default(),
+        vec![(
+            Effect::new(EffectKind::Plugin, SR as f32),
+            EffectParams {
+                enabled: true,
+                values: [0.0; musiccraft_params::MAX_EFFECT_PARAMS],
+            },
+        )],
+    );
+    assert!(graph.attach_external(0, 0, 0));
+    assert!(!graph.attach_external(0, 5, 0));
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::ExternalParam {
+        slot: 0,
+        id: 7,
+        value: 0.5,
+    });
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 60,
+        velocity: 1.0,
+    });
+    let out = render_mono(&mut engine, 10);
+    assert!((out[0] - 0.5).abs() < 1e-6, "got {}", out[0]);
+}
+
+#[test]
+fn replaced_plugins_are_stopped_and_returned_while_graph_swaps_keep_them() {
+    use std::sync::atomic::Ordering;
+    let (mut engine, mut handle, log) = probe_engine();
+    let mut graph = Graph::new();
+    graph.add_channel(Instrument::External(3), impulse_params());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    assert!(engine.has_external(3));
+    assert!(!log.stopped.load(Ordering::Relaxed));
+    handle.collect_garbage();
+    engine.apply(EngineMessage::SetExternal {
+        slot: 3,
+        external: None,
+    });
+    assert!(log.stopped.load(Ordering::Relaxed));
+    assert!(!engine.has_external(3));
+    assert_eq!(handle.collect_garbage(), 1);
+    // Notes for an empty slot are ignored.
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 60,
+        velocity: 1.0,
+    });
+    assert!(render_mono(&mut engine, 64).iter().all(|s| *s == 0.0));
+}

@@ -6,6 +6,7 @@ mod mixer;
 mod notes;
 mod pattern;
 mod playlist;
+mod plugin;
 mod project;
 mod transport;
 
@@ -25,5 +26,6 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(mixer::commands());
     commands.extend(playlist::commands());
     commands.extend(automation::commands());
+    commands.extend(plugin::commands());
     commands
 }

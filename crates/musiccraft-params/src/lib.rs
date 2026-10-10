@@ -265,6 +265,9 @@ pub enum EffectKind {
     Chorus,
     /// Peak limiter.
     Limiter,
+    /// A hosted plugin; its parameters belong to the plugin, so its table is
+    /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
+    Plugin,
 }
 
 /// Every effect kind, in menu order.
@@ -352,6 +355,7 @@ impl EffectKind {
             Self::Distortion => "distortion",
             Self::Chorus => "chorus",
             Self::Limiter => "limiter",
+            Self::Plugin => "plugin",
         }
     }
 
@@ -373,6 +377,7 @@ impl EffectKind {
             Self::Distortion => DISTORTION_PARAMS,
             Self::Chorus => CHORUS_PARAMS,
             Self::Limiter => LIMITER_PARAMS,
+            Self::Plugin => &[],
         }
     }
 
@@ -428,6 +433,7 @@ mod tests {
             assert_eq!(EffectKind::parse(kind.name()), Some(kind));
         }
         assert_eq!(EffectKind::parse("phaser"), None);
+        assert_eq!(EffectKind::parse("plugin"), None);
     }
 
     #[test]

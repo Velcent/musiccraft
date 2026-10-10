@@ -99,6 +99,9 @@ pub enum Instrument {
     Sampler(Arc<SampleBuffer>),
     /// Two-oscillator subtractive synthesizer.
     Synth,
+    /// The external processor (plugin) in this engine slot; silent when the
+    /// slot is empty.
+    External(u16),
 }
 
 /// A channel: instrument, settings and a scratch buffer.
@@ -114,6 +117,8 @@ pub struct ChannelNode {
 pub(crate) struct EffectSlot {
     pub(crate) effect: Effect,
     pub(crate) params: EffectParams,
+    /// When set, the external processor in this engine slot does the work.
+    pub(crate) external: Option<u16>,
 }
 
 /// A mixer track: settings, effect chain and a scratch buffer.
@@ -173,7 +178,11 @@ impl Graph {
             params,
             effects: effects
                 .into_iter()
-                .map(|(effect, params)| EffectSlot { effect, params })
+                .map(|(effect, params)| EffectSlot {
+                    effect,
+                    params,
+                    external: None,
+                })
                 .collect(),
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
@@ -187,8 +196,28 @@ impl Graph {
             master.params = params;
             master.effects = effects
                 .into_iter()
-                .map(|(effect, params)| EffectSlot { effect, params })
+                .map(|(effect, params)| EffectSlot {
+                    effect,
+                    params,
+                    external: None,
+                })
                 .collect();
+        }
+    }
+
+    /// Makes effect `slot` of `track` run the external processor in engine
+    /// slot `external`. Returns `false` if there is no such effect slot.
+    pub fn attach_external(&mut self, track: usize, slot: usize, external: u16) -> bool {
+        match self
+            .tracks
+            .get_mut(track)
+            .and_then(|t| t.effects.get_mut(slot))
+        {
+            Some(effect) => {
+                effect.external = Some(external);
+                true
+            }
+            None => false,
         }
     }
 

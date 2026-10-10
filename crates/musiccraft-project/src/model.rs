@@ -98,6 +98,77 @@ impl From<BTreeMap<String, f32>> for InstrumentParams {
     }
 }
 
+/// A hosted (CLAP) plugin and everything the project keeps about it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginRef {
+    /// CLAP plugin id, for example `com.example.synth`.
+    pub id: String,
+    /// Plugin name when it was added (shown if the plugin is not installed).
+    pub name: String,
+    /// Instance number, unique within the project. The host keeps one live
+    /// plugin instance per number, so moving a slot keeps its instance.
+    pub instance: u32,
+    /// Parameter values by CLAP parameter id, in the plugin's plain units.
+    /// Applied after `state`, so they win over it.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        with = "param_map"
+    )]
+    pub params: BTreeMap<u32, f64>,
+    /// The plugin's saved state, base64-encoded; empty if never saved.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub state: String,
+}
+
+/// Stores plugin parameter maps with string keys. Integer keys do not survive
+/// serde's buffering inside internally tagged enums such as [`Instrument`].
+mod param_map {
+    use std::collections::BTreeMap;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(map: &BTreeMap<u32, f64>, s: S) -> Result<S::Ok, S::Error> {
+        let text: BTreeMap<String, f64> = map.iter().map(|(k, v)| (k.to_string(), *v)).collect();
+        text.serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<u32, f64>, D::Error> {
+        let text = BTreeMap::<String, f64>::deserialize(d)?;
+        text.into_iter()
+            .filter(|(_, v)| v.is_finite())
+            .map(|(k, v)| {
+                k.parse()
+                    .map(|k| (k, v))
+                    .map_err(|_| serde::de::Error::custom(format!("`{k}` is not a parameter id")))
+            })
+            .collect()
+    }
+}
+
+impl PluginRef {
+    /// A reference with no stored parameters or state.
+    #[must_use]
+    pub fn new(id: impl Into<String>, name: impl Into<String>, instance: u32) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            instance,
+            params: BTreeMap::new(),
+            state: String::new(),
+        }
+    }
+}
+
+/// Where a plugin sits in a project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PluginSlot {
+    /// The instrument of the channel at this index (0-based).
+    Channel(usize),
+    /// An effect: mixer track index (0 = master) and slot index (0-based).
+    Effect(usize, usize),
+}
+
 /// The sound source of a channel.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -109,15 +180,30 @@ pub enum Instrument {
     },
     /// Two-oscillator subtractive synthesizer.
     Synth,
+    /// A hosted plugin instrument.
+    Plugin {
+        /// The plugin.
+        plugin: PluginRef,
+    },
 }
 
 impl Instrument {
-    /// Short label: `sampler` or `synth`.
+    /// Short label: `sampler`, `synth` or `plugin`.
     #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             Self::Sampler { .. } => "sampler",
             Self::Synth => "synth",
+            Self::Plugin { .. } => "plugin",
+        }
+    }
+
+    /// The plugin, for a plugin instrument.
+    #[must_use]
+    pub fn plugin(&self) -> Option<&PluginRef> {
+        match self {
+            Self::Plugin { plugin } => Some(plugin),
+            _ => None,
         }
     }
 }
@@ -152,7 +238,7 @@ impl Channel {
     pub fn new(id: ChannelId, name: impl Into<String>, instrument: Instrument) -> Self {
         let params = match instrument {
             Instrument::Sampler { .. } => InstrumentParams::sampler(),
-            Instrument::Synth => InstrumentParams::default(),
+            Instrument::Synth | Instrument::Plugin { .. } => InstrumentParams::default(),
         };
         Self {
             id,
@@ -264,15 +350,17 @@ impl Pattern {
 }
 
 /// One effect slot on a mixer track.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(into = "EffectRepr", from = "EffectRepr")]
 pub struct EffectSlot {
-    /// Which effect.
+    /// Which effect; [`EffectKind::Plugin`] when `plugin` is set.
     pub kind: EffectKind,
     /// Whether the effect processes audio (false = bypassed).
     pub enabled: bool,
     /// Parameter values in the order of `kind.params()`.
     pub values: [f32; MAX_EFFECT_PARAMS],
+    /// The hosted plugin of a plugin slot.
+    pub plugin: Option<Box<PluginRef>>,
 }
 
 impl EffectSlot {
@@ -283,6 +371,25 @@ impl EffectSlot {
             kind,
             enabled: true,
             values: kind.defaults(),
+            plugin: None,
+        }
+    }
+
+    /// A new enabled plugin effect.
+    #[must_use]
+    pub fn plugin(plugin: PluginRef) -> Self {
+        Self {
+            plugin: Some(Box::new(plugin)),
+            ..Self::new(EffectKind::Plugin)
+        }
+    }
+
+    /// Display name: the plugin's name or the effect kind.
+    #[must_use]
+    pub fn label(&self) -> String {
+        match &self.plugin {
+            Some(plugin) => plugin.name.clone(),
+            None => self.kind.to_string(),
         }
     }
 }
@@ -291,7 +398,10 @@ impl EffectSlot {
 struct EffectRepr {
     kind: EffectKind,
     enabled: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     params: BTreeMap<String, f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    plugin: Option<PluginRef>,
 }
 
 impl From<EffectSlot> for EffectRepr {
@@ -300,16 +410,21 @@ impl From<EffectSlot> for EffectRepr {
             kind: slot.kind,
             enabled: slot.enabled,
             params: params_to_map(slot.kind.params(), &slot.values),
+            plugin: slot.plugin.map(|p| *p),
         }
     }
 }
 
 impl From<EffectRepr> for EffectSlot {
     fn from(repr: EffectRepr) -> Self {
+        // A plugin slot without its plugin cannot play; keep it as a bypassed
+        // passthrough rather than failing the whole file.
+        let enabled = repr.enabled && (repr.kind != EffectKind::Plugin || repr.plugin.is_some());
         Self {
             kind: repr.kind,
-            enabled: repr.enabled,
+            enabled,
             values: params_from_map(repr.kind.params(), &repr.params),
+            plugin: repr.plugin.map(Box::new),
         }
     }
 }

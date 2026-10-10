@@ -241,6 +241,15 @@ fn insert(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
     if channel.mixer_track >= project.mixer.len() {
         channel.mixer_track = 0;
     }
+    if let Some(plugin) = channel.instrument.plugin() {
+        if project.plugin_slot(plugin.instance).is_some() {
+            return Err(args.invalid(format!(
+                "plugin instance {} already exists",
+                plugin.instance
+            )));
+        }
+        project.reserve_id(plugin.instance);
+    }
     project.reserve_id(channel.id.0);
     for (pattern_id, note) in snapshot.notes {
         if let Some(i) = project.pattern_position(pattern_id) {
@@ -262,6 +271,10 @@ fn clone(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
     let index = channel_arg(project, args, 0)?;
     let mut copy = project.channels[index].clone();
     copy.id = ChannelId(project.alloc_id());
+    if let Instrument::Plugin { plugin } = &mut copy.instrument {
+        // The copy runs its own instance, starting from the stored state.
+        plugin.instance = project.alloc_id();
+    }
     copy.name = format!("{} copy", copy.name);
     let position = index + 2;
     project.channels.insert(index + 1, copy);

@@ -90,6 +90,9 @@ pub enum Effect {
     Chorus(Chorus),
     /// See [`Limiter`].
     Limiter(Limiter),
+    /// Leaves audio untouched; a plugin slot, processed by the engine's
+    /// external processor instead.
+    Passthrough,
 }
 
 impl Effect {
@@ -106,6 +109,7 @@ impl Effect {
             EffectKind::Distortion => Self::Distortion,
             EffectKind::Chorus => Self::Chorus(Chorus::new(sample_rate)),
             EffectKind::Limiter => Self::Limiter(Limiter::default()),
+            EffectKind::Plugin => Self::Passthrough,
         }
     }
 
@@ -121,6 +125,7 @@ impl Effect {
             Self::Distortion => EffectKind::Distortion,
             Self::Chorus(_) => EffectKind::Chorus,
             Self::Limiter(_) => EffectKind::Limiter,
+            Self::Passthrough => EffectKind::Plugin,
         }
     }
 
@@ -154,6 +159,7 @@ impl Effect {
             Self::Distortion => Distortion::process(left, right, params),
             Self::Chorus(fx) => fx.process(left, right, params, ctx),
             Self::Limiter(fx) => fx.process(left, right, params, ctx),
+            Self::Passthrough => {}
         }
     }
 
@@ -165,7 +171,7 @@ impl Effect {
             Self::Delay(fx) => fx.reset(),
             Self::Reverb(fx) => fx.reset(),
             Self::Compressor(fx) => fx.reset(),
-            Self::Distortion => {}
+            Self::Distortion | Self::Passthrough => {}
             Self::Chorus(fx) => fx.reset(),
             Self::Limiter(fx) => *fx = Limiter::default(),
         }

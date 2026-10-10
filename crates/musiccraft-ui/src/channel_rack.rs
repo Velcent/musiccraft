@@ -217,6 +217,7 @@ fn row(
         let response = ui.add(name).on_hover_text(match &channel.instrument {
             Instrument::Sampler { sample } => format!("Sampler: {sample}"),
             Instrument::Synth => "Synth".to_owned(),
+            Instrument::Plugin { plugin } => format!("Plugin: {} ({})", plugin.name, plugin.id),
         });
         if response.clicked() {
             // Clicking the selected channel again closes its settings.

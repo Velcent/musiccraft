@@ -129,18 +129,85 @@ const SCRIPT: &[&str] = &[
 
 #[test]
 fn every_command_undoes_and_redoes_exactly() {
+    assert_round_trip(SCRIPT);
+}
+
+/// Every undoable plugin command, plus the generic ones that must carry
+/// plugin data through undo.
+const PLUGIN_SCRIPT: &[&str] = &[
+    "channel.add_plugin com.example.keys Keys",
+    "channel.add_plugin org.test.bass",
+    "channel.set_plugin_param 1 7 0.25",
+    "channel.set_plugin_param 1 7 0.5",
+    "channel.set_plugin_param 1 9 -3",
+    "channel.set_plugin_param 1 9 unset",
+    "channel.clone 1",
+    "mixer.add_plugin 0 com.example.verb Big Verb",
+    "mixer.add_effect 0 delay",
+    "mixer.set_plugin_param 0 1 3 0.75",
+    "mixer.move_effect 0 1 2",
+    "mixer.remove_effect 0 2",
+    "note.add 2 0 1 C4",
+    "channel.remove 1",
+];
+
+#[test]
+fn plugin_commands_undo_and_redo_exactly() {
+    assert_round_trip(PLUGIN_SCRIPT);
+}
+
+#[test]
+fn plugin_commands_record_references_params_and_state() {
+    let mut s = session();
+    run(&mut s, "channel.add_plugin com.example.keys");
+    run(&mut s, "channel.set_plugin_param 1 7 0.25");
+    run(&mut s, "channel.clone 1");
+    let p = s.project();
+    let a = p.channels[0].instrument.plugin().unwrap();
+    let b = p.channels[1].instrument.plugin().unwrap();
+    assert_eq!(a.name, "keys");
+    assert_eq!(a.params.get(&7), Some(&0.25));
+    assert_ne!(a.instance, b.instance, "a clone runs its own instance");
+    assert_eq!(b.params, a.params);
+
+    // State is stored canonically and is not an undo step.
+    let depth = s.undo_depth();
+    run(&mut s, "channel.set_plugin_state 1 aGVsbG8");
+    assert_eq!(
+        s.project().channels[0].instrument.plugin().unwrap().state,
+        "aGVsbG8="
+    );
+    assert_eq!(s.undo_depth(), depth);
+    fails(&mut s, "channel.set_plugin_state 1 !!!");
+
+    run(&mut s, "channel.add_synth");
+    fails(&mut s, "channel.set_plugin_param 3 1 0.5");
+    fails(&mut s, "channel.set_plugin_param 1 x 0.5");
+    fails(&mut s, "channel.set_plugin_param 1 1 nan");
+    fails(&mut s, "channel.add_plugin \"two words\"");
+    run(&mut s, "mixer.add_effect 0 reverb");
+    fails(&mut s, "mixer.set_plugin_param 0 1 1 0.5");
+    fails(&mut s, "mixer.add_effect 0 plugin");
+
+    // The project file keeps plugin references.
+    let json = s.project().to_json().unwrap();
+    let back = Project::from_json(&json).unwrap();
+    assert_eq!(&back, s.project());
+}
+
+fn assert_round_trip(script: &[&str]) {
     let mut s = session();
     let mut snapshots = vec![s.project().clone()];
-    for line in SCRIPT {
+    for line in script {
         run(&mut s, line);
         snapshots.push(s.project().clone());
     }
-    assert_eq!(s.undo_depth(), SCRIPT.len(), "every line is one undo step");
-    for (i, line) in SCRIPT.iter().enumerate().rev() {
+    assert_eq!(s.undo_depth(), script.len(), "every line is one undo step");
+    for (i, line) in script.iter().enumerate().rev() {
         run(&mut s, "edit.undo");
         assert_eq!(s.project(), &snapshots[i], "undo of `{line}` was not exact");
     }
-    for (i, line) in SCRIPT.iter().enumerate() {
+    for (i, line) in script.iter().enumerate() {
         run(&mut s, "edit.redo");
         assert_eq!(
             s.project(),
@@ -149,7 +216,7 @@ fn every_command_undoes_and_redoes_exactly() {
         );
     }
     // Inverses recorded on the first pass must still apply after a redo.
-    for (i, line) in SCRIPT.iter().enumerate().rev() {
+    for (i, line) in script.iter().enumerate().rev() {
         run(&mut s, "edit.undo");
         assert_eq!(
             s.project(),

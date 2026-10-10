@@ -322,6 +322,9 @@ impl Server {
             let source = match &c.instrument {
                 musiccraft_project::Instrument::Sampler { sample } => format!("sampler {sample}"),
                 musiccraft_project::Instrument::Synth => "synth".to_owned(),
+                musiccraft_project::Instrument::Plugin { plugin } => {
+                    format!("plugin {} [{}]", plugin.name, plugin.id)
+                }
             };
             out.push(format!(
                 "  {} {} ({source}) vol {:.2} pan {:+.2}{} → mixer {}",

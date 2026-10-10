@@ -5,10 +5,12 @@
 //! track 0 is the master and inserts are numbered from 1. Positions in time are
 //! 0-based tick offsets (see `musiccraft_params::PPQ`).
 
+pub mod base64;
 mod error;
 mod model;
 pub mod music;
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -19,7 +21,8 @@ pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
     InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MixerSend,
-    MixerTrack, Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, STEP_KEY,
+    MixerTrack, Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, PluginRef,
+    PluginSlot, STEP_KEY,
 };
 pub use musiccraft_params as params;
 
@@ -455,6 +458,7 @@ impl Project {
             }
             automation.sort_points();
         }
+        self.repair_plugin_instances();
         let automation_ids: Vec<AutomationId> = self.automations.iter().map(|a| a.id).collect();
         let max_id = self.automations.iter().map(|a| a.id.0).max().unwrap_or(0);
         self.reserve_id(max_id);
@@ -469,6 +473,83 @@ impl Project {
 
         self.playlist.sort_clips();
         Ok(())
+    }
+}
+
+impl Project {
+    /// Every hosted plugin with where it sits, channels first.
+    #[must_use]
+    pub fn plugins(&self) -> Vec<(PluginSlot, &PluginRef)> {
+        let channels = self
+            .channels
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| Some((PluginSlot::Channel(i), c.instrument.plugin()?)));
+        let effects =
+            self.mixer.iter().enumerate().flat_map(|(t, track)| {
+                track.effects.iter().enumerate().filter_map(move |(s, e)| {
+                    Some((PluginSlot::Effect(t, s), e.plugin.as_deref()?))
+                })
+            });
+        channels.chain(effects).collect()
+    }
+
+    /// The plugin at `slot`, if there is one.
+    #[must_use]
+    pub fn plugin(&self, slot: PluginSlot) -> Option<&PluginRef> {
+        match slot {
+            PluginSlot::Channel(c) => self.channels.get(c)?.instrument.plugin(),
+            PluginSlot::Effect(t, s) => self.mixer.get(t)?.effects.get(s)?.plugin.as_deref(),
+        }
+    }
+
+    /// The plugin at `slot`, mutably.
+    pub fn plugin_mut(&mut self, slot: PluginSlot) -> Option<&mut PluginRef> {
+        match slot {
+            PluginSlot::Channel(c) => match &mut self.channels.get_mut(c)?.instrument {
+                Instrument::Plugin { plugin } => Some(plugin),
+                _ => None,
+            },
+            PluginSlot::Effect(t, s) => self
+                .mixer
+                .get_mut(t)?
+                .effects
+                .get_mut(s)?
+                .plugin
+                .as_deref_mut(),
+        }
+    }
+
+    /// Where the plugin with instance number `instance` sits.
+    #[must_use]
+    pub fn plugin_slot(&self, instance: u32) -> Option<PluginSlot> {
+        self.plugins()
+            .into_iter()
+            .find(|(_, p)| p.instance == instance)
+            .map(|(slot, _)| slot)
+    }
+
+    /// Gives every plugin a distinct instance number and reserves them.
+    fn repair_plugin_instances(&mut self) {
+        let slots: Vec<PluginSlot> = self.plugins().into_iter().map(|(s, _)| s).collect();
+        let max = self
+            .plugins()
+            .iter()
+            .map(|(_, p)| p.instance)
+            .max()
+            .unwrap_or(0);
+        self.reserve_id(max);
+        let mut seen = BTreeSet::new();
+        for slot in slots {
+            let fresh = self.next_id;
+            if let Some(plugin) = self.plugin_mut(slot) {
+                if !seen.insert(plugin.instance) {
+                    plugin.instance = fresh;
+                    seen.insert(fresh);
+                    self.next_id += 1;
+                }
+            }
+        }
     }
 }
 

@@ -9,25 +9,40 @@
 
 mod bridge;
 mod export;
+pub mod plugins;
 mod sequence;
 
 pub use bridge::{Bridge, SyncReport};
 pub use export::{
     ExportCommand, ExportFlacCommand, ExportStemsCommand, RenderOptions, export_stems, export_wav,
-    register, render,
+    register, register_with, render, render_with,
+};
+pub use plugins::{
+    LivePlugin, PluginEvent, PluginFactory, PluginHost, PluginInfo, PluginInstance, PluginKind,
+    PluginParam, PluginRequest,
 };
 pub use sequence::{build_full_sequence, build_sequence};
 
 use musiccraft_commands::Registry;
 
-/// A registry with every built-in command plus this crate's export command.
+/// A registry with every built-in command plus this crate's commands, without
+/// plugin hosting.
 #[must_use]
 pub fn full_registry() -> Registry {
+    full_registry_with(None)
+}
+
+/// A registry with every built-in command plus this crate's commands, running
+/// plugins from `host`.
+#[must_use]
+pub fn full_registry_with(host: Option<PluginHost>) -> Registry {
     let mut registry = Registry::with_builtin();
     // Registering into a fresh registry cannot collide.
-    let _ = register(&mut registry);
+    let _ = register_with(&mut registry, host);
     registry
 }
 
+#[cfg(test)]
+mod plugin_tests;
 #[cfg(test)]
 mod tests;
