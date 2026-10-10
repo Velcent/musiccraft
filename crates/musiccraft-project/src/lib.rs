@@ -1,8 +1,26 @@
 //! Project data model: the single source of truth for what a MusicCraft project
 //! contains. Nothing here knows about audio devices or user interfaces.
+//!
+//! Users and commands number channels, patterns and playlist tracks from 1. Mixer
+//! track 0 is the master and inserts are numbered from 1. Positions in time are
+//! 0-based tick offsets (see `musiccraft_params::PPQ`).
 
-use std::error::Error;
+mod error;
+mod model;
+pub mod music;
+
 use std::fmt;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+pub use error::ProjectError;
+pub use model::{
+    Channel, ChannelId, Clip, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY,
+    EffectSlot, Instrument, InstrumentParams, MAX_PATTERN_STEPS, MAX_VOLUME, MIN_VOLUME,
+    MixerTrack, Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, STEP_KEY,
+};
+pub use musiccraft_params as params;
 
 /// Lowest tempo a project accepts, in beats per minute.
 pub const MIN_TEMPO_BPM: f64 = 20.0;
@@ -10,6 +28,12 @@ pub const MIN_TEMPO_BPM: f64 = 20.0;
 pub const MAX_TEMPO_BPM: f64 = 999.0;
 /// Tempo of a newly created project, in beats per minute.
 pub const DEFAULT_TEMPO_BPM: f64 = 130.0;
+/// Identifier written at the top of every project file.
+pub const FORMAT_NAME: &str = "musiccraft-project";
+/// Current project file version.
+pub const FORMAT_VERSION: u32 = 1;
+/// Conventional project file extension.
+pub const FILE_EXTENSION: &str = "mcproj";
 
 /// Whether the project is currently playing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -38,42 +62,103 @@ impl fmt::Display for Transport {
     }
 }
 
-/// Errors produced when a change is rejected by the project model.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ProjectError {
-    /// The requested tempo is not finite or is outside the supported range.
-    TempoOutOfRange(f64),
+/// Checks a linear volume.
+///
+/// # Errors
+///
+/// Returns [`ProjectError::OutOfRange`] outside `MIN_VOLUME..=MAX_VOLUME`.
+pub fn check_volume(value: f32) -> Result<f32, ProjectError> {
+    check_range("volume", value, MIN_VOLUME, MAX_VOLUME)
 }
 
-impl fmt::Display for ProjectError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TempoOutOfRange(bpm) => write!(
-                f,
-                "tempo {bpm} is outside the supported range {MIN_TEMPO_BPM}-{MAX_TEMPO_BPM} BPM"
-            ),
-        }
+/// Checks a balance pan value.
+///
+/// # Errors
+///
+/// Returns [`ProjectError::OutOfRange`] outside `-1..=1`.
+pub fn check_pan(value: f32) -> Result<f32, ProjectError> {
+    check_range("pan", value, -1.0, 1.0)
+}
+
+/// Checks a finite value against an inclusive range.
+///
+/// # Errors
+///
+/// Returns [`ProjectError::OutOfRange`] if the value is not finite or out of range.
+pub fn check_range(what: &str, value: f32, min: f32, max: f32) -> Result<f32, ProjectError> {
+    if value.is_finite() && value >= min && value <= max {
+        Ok(value)
+    } else {
+        Err(ProjectError::out_of_range(
+            what,
+            f64::from(value),
+            f64::from(min),
+            f64::from(max),
+        ))
     }
 }
 
-impl Error for ProjectError {}
-
 /// A MusicCraft project.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     name: String,
     tempo_bpm: f64,
+    #[serde(skip)]
     transport: Transport,
+    /// Whether the transport loops the current pattern or plays the song.
+    #[serde(default)]
+    pub play_mode: PlayMode,
+    /// Channel rack rows, in display order.
+    #[serde(default)]
+    pub channels: Vec<Channel>,
+    /// Patterns, in display order. Never empty.
+    pub patterns: Vec<Pattern>,
+    /// Index into `patterns` of the selected pattern.
+    #[serde(default)]
+    pub current_pattern: usize,
+    /// Mixer tracks; index 0 is the master.
+    pub mixer: Vec<MixerTrack>,
+    /// The song arrangement.
+    #[serde(default)]
+    pub playlist: Playlist,
+    next_id: u32,
+    #[serde(skip)]
+    path: Option<PathBuf>,
+}
+
+#[derive(Serialize)]
+struct FileOut<'a> {
+    format: &'static str,
+    version: u32,
+    project: &'a Project,
+}
+
+#[derive(Deserialize)]
+struct FileIn {
+    format: String,
+    version: u32,
+    project: Project,
 }
 
 impl Project {
-    /// Creates an empty project with default settings.
+    /// Creates an empty project: one empty pattern, master plus
+    /// [`DEFAULT_INSERTS`] insert tracks, no channels.
     #[must_use]
     pub fn new(name: impl Into<String>) -> Self {
+        let mut mixer = vec![MixerTrack::new("Master")];
+        mixer.extend((1..=DEFAULT_INSERTS).map(|i| MixerTrack::new(format!("Insert {i}"))));
         Self {
             name: name.into(),
             tempo_bpm: DEFAULT_TEMPO_BPM,
             transport: Transport::Stopped,
+            play_mode: PlayMode::Pattern,
+            channels: Vec::new(),
+            patterns: vec![Pattern::new(PatternId(1), "Pattern 1")],
+            current_pattern: 0,
+            mixer,
+            playlist: Playlist::default(),
+            next_id: 2,
+            path: None,
         }
     }
 
@@ -81,6 +166,11 @@ impl Project {
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Renames the project and returns the previous name.
+    pub fn set_name(&mut self, name: impl Into<String>) -> String {
+        std::mem::replace(&mut self.name, name.into())
     }
 
     /// Current tempo in beats per minute.
@@ -112,6 +202,193 @@ impl Project {
     pub fn set_transport(&mut self, transport: Transport) -> Transport {
         std::mem::replace(&mut self.transport, transport)
     }
+
+    /// File the project was last saved to or loaded from.
+    #[must_use]
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
+    /// Records the project's file location.
+    pub fn set_path(&mut self, path: Option<PathBuf>) {
+        self.path = path;
+    }
+
+    /// Returns a fresh identifier for a channel or pattern.
+    pub fn alloc_id(&mut self) -> u32 {
+        let id = self.next_id;
+        self.next_id += 1;
+        id
+    }
+
+    /// Ensures future identifiers are greater than `id` (used when restoring).
+    pub fn reserve_id(&mut self, id: u32) {
+        self.next_id = self.next_id.max(id.saturating_add(1));
+    }
+
+    /// Index of a 1-based channel number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::NotFound`] if there is no such channel.
+    pub fn channel_index(&self, number: usize) -> Result<usize, ProjectError> {
+        number
+            .checked_sub(1)
+            .filter(|i| *i < self.channels.len())
+            .ok_or(ProjectError::NotFound {
+                what: "channel",
+                number,
+            })
+    }
+
+    /// Index of a 1-based pattern number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::NotFound`] if there is no such pattern.
+    pub fn pattern_index(&self, number: usize) -> Result<usize, ProjectError> {
+        number
+            .checked_sub(1)
+            .filter(|i| *i < self.patterns.len())
+            .ok_or(ProjectError::NotFound {
+                what: "pattern",
+                number,
+            })
+    }
+
+    /// Checks a mixer track number (0 = master).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::NotFound`] if there is no such track.
+    pub fn mixer_index(&self, number: usize) -> Result<usize, ProjectError> {
+        if number < self.mixer.len() {
+            Ok(number)
+        } else {
+            Err(ProjectError::NotFound {
+                what: "mixer track",
+                number,
+            })
+        }
+    }
+
+    /// Display index of the channel with `id`.
+    #[must_use]
+    pub fn channel_position(&self, id: ChannelId) -> Option<usize> {
+        self.channels.iter().position(|c| c.id == id)
+    }
+
+    /// Display index of the pattern with `id`.
+    #[must_use]
+    pub fn pattern_position(&self, id: PatternId) -> Option<usize> {
+        self.patterns.iter().position(|p| p.id == id)
+    }
+
+    /// The selected pattern.
+    #[must_use]
+    pub fn current_pattern(&self) -> &Pattern {
+        let last = self.patterns.len().saturating_sub(1);
+        &self.patterns[self.current_pattern.min(last)]
+    }
+
+    /// The selected pattern, mutably.
+    pub fn current_pattern_mut(&mut self) -> &mut Pattern {
+        let last = self.patterns.len().saturating_sub(1);
+        let index = self.current_pattern.min(last);
+        &mut self.patterns[index]
+    }
+
+    /// Song length in ticks: the end of the last clip, rounded up to a bar.
+    #[must_use]
+    pub fn song_length_ticks(&self) -> u32 {
+        music::round_up_to_bar(self.playlist.length_ticks())
+    }
+
+    /// Serializes the project to the versioned JSON file format.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::Format`] if serialization fails.
+    pub fn to_json(&self) -> Result<String, ProjectError> {
+        serde_json::to_string_pretty(&FileOut {
+            format: FORMAT_NAME,
+            version: FORMAT_VERSION,
+            project: self,
+        })
+        .map_err(|e| ProjectError::Format(e.to_string()))
+    }
+
+    /// Reads a project from the JSON file format, validating and repairing
+    /// references.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::Format`] for malformed or unsupported files and
+    /// [`ProjectError::TempoOutOfRange`] for an invalid tempo.
+    pub fn from_json(text: &str) -> Result<Self, ProjectError> {
+        let file: FileIn =
+            serde_json::from_str(text).map_err(|e| ProjectError::Format(e.to_string()))?;
+        if file.format != FORMAT_NAME {
+            return Err(ProjectError::Format(format!(
+                "not a MusicCraft project (format `{}`)",
+                file.format
+            )));
+        }
+        if file.version > FORMAT_VERSION {
+            return Err(ProjectError::Format(format!(
+                "file version {} is newer than supported version {FORMAT_VERSION}",
+                file.version
+            )));
+        }
+        let mut project = file.project;
+        project.validate()?;
+        Ok(project)
+    }
+
+    /// Repairs dangling references after loading and checks invariants.
+    fn validate(&mut self) -> Result<(), ProjectError> {
+        let tempo = self.tempo_bpm;
+        self.tempo_bpm = DEFAULT_TEMPO_BPM;
+        self.set_tempo_bpm(tempo)?;
+        if self.mixer.is_empty() {
+            self.mixer.push(MixerTrack::new("Master"));
+        }
+        if self.patterns.is_empty() {
+            let id = self.alloc_id();
+            self.patterns.push(Pattern::new(PatternId(id), "Pattern 1"));
+        }
+        let max_id = self
+            .channels
+            .iter()
+            .map(|c| c.id.0)
+            .chain(self.patterns.iter().map(|p| p.id.0))
+            .max()
+            .unwrap_or(0);
+        self.reserve_id(max_id);
+        self.current_pattern = self.current_pattern.min(self.patterns.len() - 1);
+        let tracks = self.mixer.len();
+        for channel in &mut self.channels {
+            if channel.mixer_track >= tracks {
+                channel.mixer_track = 0;
+            }
+            channel.volume = channel.volume.clamp(MIN_VOLUME, MAX_VOLUME);
+            channel.pan = channel.pan.clamp(-1.0, 1.0);
+        }
+        let channel_ids: Vec<ChannelId> = self.channels.iter().map(|c| c.id).collect();
+        for pattern in &mut self.patterns {
+            pattern
+                .notes
+                .retain(|n| channel_ids.contains(&n.channel) && n.key <= 127 && n.length > 0);
+            pattern.length_steps = pattern.length_steps.clamp(1, MAX_PATTERN_STEPS);
+            pattern.sort_notes();
+        }
+        let pattern_ids: Vec<PatternId> = self.patterns.iter().map(|p| p.id).collect();
+        self.playlist.clips.retain(|c| {
+            pattern_ids.contains(&c.pattern) && c.length > 0 && c.track < PLAYLIST_TRACKS
+        });
+        self.playlist.sort_clips();
+        Ok(())
+    }
 }
 
 impl Default for Project {
@@ -121,54 +398,4 @@ impl Default for Project {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn new_project_has_defaults() {
-        let project = Project::default();
-        assert_eq!(project.name(), "Untitled");
-        assert!((project.tempo_bpm() - DEFAULT_TEMPO_BPM).abs() < f64::EPSILON);
-        assert_eq!(project.transport(), Transport::Stopped);
-    }
-
-    #[test]
-    fn set_tempo_returns_previous_value() {
-        let mut project = Project::default();
-        let previous = project.set_tempo_bpm(140.0).unwrap();
-        assert!((previous - DEFAULT_TEMPO_BPM).abs() < f64::EPSILON);
-        assert!((project.tempo_bpm() - 140.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn tempo_range_edges_are_inclusive() {
-        let mut project = Project::default();
-        assert!(project.set_tempo_bpm(MIN_TEMPO_BPM).is_ok());
-        assert!(project.set_tempo_bpm(MAX_TEMPO_BPM).is_ok());
-    }
-
-    #[test]
-    fn invalid_tempo_is_rejected_and_project_unchanged() {
-        let mut project = Project::default();
-        for bad in [0.0, 19.9, 999.1, f64::NAN, f64::INFINITY, -120.0] {
-            assert!(matches!(
-                project.set_tempo_bpm(bad),
-                Err(ProjectError::TempoOutOfRange(_))
-            ));
-        }
-        assert!((project.tempo_bpm() - DEFAULT_TEMPO_BPM).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn set_transport_returns_previous_state() {
-        let mut project = Project::default();
-        assert_eq!(
-            project.set_transport(Transport::Playing),
-            Transport::Stopped
-        );
-        assert_eq!(
-            project.set_transport(Transport::Stopped),
-            Transport::Playing
-        );
-    }
-}
+mod tests;

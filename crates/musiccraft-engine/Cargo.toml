@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 musiccraft-dsp.workspace = true
+musiccraft-params.workspace = true
+rtrb.workspace = true
 
 [lints]
 workspace = true
