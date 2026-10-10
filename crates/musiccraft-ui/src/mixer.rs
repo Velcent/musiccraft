@@ -8,7 +8,7 @@ use musiccraft_project::{MAX_VOLUME, MixerTrack, Project};
 use crate::dialogs::Dialog;
 use crate::{Action, Frame, UiState, theme, widgets};
 
-const STRIP_WIDTH: f32 = 64.0;
+const STRIP_WIDTH: f32 = 62.0;
 
 fn run(actions: &mut Vec<Action>, name: &str, args: impl IntoIterator<Item = String>) {
     actions.push(Action::Run(Invocation::new(name, args)));
@@ -19,8 +19,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
     let project = frame.project;
     egui::Panel::bottom("mixer")
         .resizable(true)
-        .default_size(300.0)
-        .min_size(220.0)
+        .default_size(320.0)
+        .min_size(250.0)
         .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(6.0))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -32,15 +32,27 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 {
                     run(actions, "mixer.add_track", []);
                 }
+                ui.label(
+                    RichText::new(
+                        "Click a strip to select it · arrows under the strips set where it sends",
+                    )
+                    .small()
+                    .color(theme::TEXT_DIM),
+                );
             });
+            let height = ui.available_height();
             ui.horizontal_top(|ui| {
                 egui::ScrollArea::horizontal()
                     .id_salt("mixer-strips")
-                    .max_width((ui.available_width() - 300.0).max(200.0))
+                    .max_width((ui.available_width() - EFFECTS_WIDTH - 12.0).max(200.0))
                     .show(ui, |ui| {
                         ui.horizontal_top(|ui| {
+                            ui.spacing_mut().item_spacing.x = 3.0;
                             for (index, track) in project.mixer.iter().enumerate() {
-                                strip(ui, state, index, track, actions);
+                                strip(ui, state, project, index, track, height, actions);
+                                if index == 0 {
+                                    ui.add_space(6.0);
+                                }
                             }
                         });
                     });
@@ -50,41 +62,89 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
         });
 }
 
+const EFFECTS_WIDTH: f32 = 320.0;
+
+fn led(
+    ui: &mut egui::Ui,
+    on: bool,
+    color: egui::Color32,
+    text: &str,
+    hint: &str,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(22.0, 16.0), egui::Sense::click());
+    let fill = if on { color } else { theme::RAISED };
+    ui.painter().rect_filled(rect, 3.0, fill);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        egui::FontId::proportional(10.0),
+        if on {
+            theme::BACKGROUND
+        } else {
+            theme::TEXT_DIM
+        },
+    );
+    response.on_hover_text(hint)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn strip(
     ui: &mut egui::Ui,
     state: &mut UiState,
+    project: &Project,
     index: usize,
     track: &MixerTrack,
+    height: f32,
     actions: &mut Vec<Action>,
 ) {
     let number = index.to_string();
     let selected = state.selected_track == index;
+    let color = if index == 0 {
+        theme::HIGHLIGHT
+    } else {
+        theme::palette(index + 3)
+    };
     let frame = egui::Frame::new()
-        .fill(theme::PANEL_DARK)
+        .fill(if selected {
+            theme::RAISED
+        } else {
+            theme::PANEL_DARK
+        })
         .stroke(egui::Stroke::new(
             1.0,
-            if selected {
-                theme::ACCENT
-            } else {
-                theme::PANEL_DARK
-            },
+            if selected { color } else { theme::PANEL_DARK },
         ))
         .corner_radius(4.0)
-        .inner_margin(4.0);
-    frame.show(ui, |ui| {
+        .inner_margin(egui::Margin::symmetric(3, 4));
+    let response = frame.show(ui, |ui| {
         ui.set_width(STRIP_WIDTH);
+        ui.set_height((height - 10.0).max(200.0));
         ui.vertical_centered(|ui| {
+            ui.spacing_mut().item_spacing.y = 3.0;
             let label = if index == 0 {
-                "Master".to_owned()
+                "M".to_owned()
             } else {
-                format!("{index}")
+                index.to_string()
             };
-            let title = ui.selectable_label(selected, RichText::new(label).strong());
-            if title.clicked() {
+            ui.label(RichText::new(label).strong().size(13.0).color(color));
+            let name = ui
+                .add(
+                    egui::Label::new(RichText::new(&track.name).small())
+                        .truncate()
+                        .sense(egui::Sense::click()),
+                )
+                .on_hover_text(format!(
+                    "{} — click to select, right-click for options",
+                    track.name
+                ));
+            if name.clicked() {
                 state.selected_track = index;
             }
-            ui.label(RichText::new(&track.name).small().color(theme::TEXT_DIM));
-            title.context_menu(|ui| {
+            if name.double_clicked() {
+                state.open_dialog(Dialog::rename_track(index, &track.name));
+            }
+            name.context_menu(|ui| {
                 if ui.button("Rename…").clicked() {
                     state.open_dialog(Dialog::rename_track(index, &track.name));
                     ui.close();
@@ -98,29 +158,6 @@ fn strip(
                     ui.close();
                 }
             });
-            ui.horizontal(|ui| {
-                let levels = state.meters.get(index).copied().unwrap_or_default();
-                widgets::meter(ui, levels, vec2(12.0, 120.0));
-                let mut volume = track.volume;
-                let fader = ui.add(
-                    egui::Slider::new(&mut volume, 0.0..=MAX_VOLUME)
-                        .vertical()
-                        .show_value(false),
-                );
-                if fader.drag_started() {
-                    state.begin_gesture();
-                }
-                if fader.changed() {
-                    actions.push(Action::Coalesced(
-                        Invocation::new(
-                            "mixer.set_volume",
-                            [number.clone(), format!("{volume:.3}")],
-                        ),
-                        state.gesture(),
-                    ));
-                }
-                fader.on_hover_text(format!("{:.1} dB", 20.0 * track.volume.max(1e-6).log10()));
-            });
             let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
             if pan.started {
                 state.begin_gesture();
@@ -131,34 +168,136 @@ fn strip(
                     state.gesture(),
                 ));
             }
+            pan.response
+                .on_hover_text(format!("Pan {:+.0}", track.pan * 100.0));
+            let fader_height = (ui.available_height() - 72.0).max(80.0);
             ui.horizontal(|ui| {
-                let mute = egui::Button::new(RichText::new("M").small()).fill(if track.mute {
-                    theme::DANGER
-                } else {
-                    theme::RAISED
-                });
-                if ui.add(mute).on_hover_text("Mute").clicked() {
-                    run(actions, "mixer.toggle_mute", [number.clone()]);
+                ui.spacing_mut().item_spacing.x = 2.0;
+                ui.add_space(2.0);
+                let levels = state.meters.get(index).copied().unwrap_or_default();
+                widgets::meter(ui, levels, vec2(14.0, fader_height));
+                let fader = widgets::fader(
+                    ui,
+                    track.volume,
+                    MAX_VOLUME,
+                    vec2(STRIP_WIDTH - 22.0, fader_height),
+                );
+                if fader.started {
+                    state.begin_gesture();
                 }
-                if index > 0 {
-                    let solo = egui::Button::new(RichText::new("S").small()).fill(if track.solo {
-                        theme::HIGHLIGHT
-                    } else {
-                        theme::RAISED
-                    });
-                    if ui.add(solo).on_hover_text("Solo").clicked() {
-                        run(actions, "mixer.toggle_solo", [number.clone()]);
-                    }
+                if let Some(gain) = fader.changed {
+                    actions.push(Action::Coalesced(
+                        Invocation::new("mixer.set_volume", [number.clone(), format!("{gain:.4}")]),
+                        state.gesture(),
+                    ));
                 }
             });
-            let fx = track.effects.len();
-            ui.label(RichText::new(format!("{fx} fx")).small().color(if fx > 0 {
-                theme::ACCENT
+            let db = 20.0 * track.volume.max(1e-6).log10();
+            let readout = if track.volume <= 1e-6 {
+                "-inf".to_owned()
             } else {
-                theme::TEXT_DIM
-            }));
+                format!("{db:+.1} dB")
+            };
+            ui.label(
+                RichText::new(readout)
+                    .monospace()
+                    .size(10.0)
+                    .color(theme::TEXT_DIM),
+            );
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 3.0;
+                ui.add_space((STRIP_WIDTH - 48.0) / 2.0);
+                if led(ui, !track.mute, theme::ACCENT, "ON", "Enable / mute").clicked() {
+                    run(actions, "mixer.toggle_mute", [number.clone()]);
+                }
+                if index > 0 && led(ui, track.solo, theme::HIGHLIGHT, "S", "Solo").clicked() {
+                    run(actions, "mixer.toggle_solo", [number.clone()]);
+                }
+            });
+            let fx = track.effects.iter().filter(|e| e.enabled).count();
+            ui.label(
+                RichText::new(if fx > 0 {
+                    format!("{fx} fx")
+                } else {
+                    " ".to_owned()
+                })
+                .small()
+                .color(theme::ACCENT),
+            );
+            route_arrow(ui, state, project, index, actions);
         });
     });
+    if response.response.interact(egui::Sense::click()).clicked() {
+        state.selected_track = index;
+    }
+}
+
+/// The arrow under a strip shows whether the selected insert sends here;
+/// clicking it toggles that route.
+fn route_arrow(
+    ui: &mut egui::Ui,
+    state: &UiState,
+    project: &Project,
+    target: usize,
+    actions: &mut Vec<Action>,
+) {
+    let source = state.selected_track;
+    let (rect, response) = ui.allocate_exact_size(vec2(STRIP_WIDTH, 14.0), egui::Sense::click());
+    let Some(from) = project.mixer.get(source) else {
+        return;
+    };
+    let possible = source > 0 && (target == 0 || target > source);
+    if !possible {
+        return;
+    }
+    let routed = if target == 0 {
+        from.to_master
+    } else {
+        from.sends.iter().any(|s| s.target == target)
+    };
+    let c = rect.center();
+    let color = if routed {
+        theme::HIGHLIGHT
+    } else if response.hovered() {
+        theme::TEXT_DIM
+    } else {
+        theme::RAISED_HOVER
+    };
+    ui.painter().add(egui::Shape::convex_polygon(
+        vec![
+            c + vec2(-7.0, -5.0),
+            c + vec2(7.0, -5.0),
+            c + vec2(0.0, 5.0),
+        ],
+        color,
+        egui::Stroke::NONE,
+    ));
+    let hint = if routed {
+        "Routed here — click to remove"
+    } else {
+        "Click to route the selected insert here"
+    };
+    if response.on_hover_text(hint).clicked() {
+        let invocation = if target == 0 {
+            Invocation::new(
+                "mixer.route_to_master",
+                [
+                    source.to_string(),
+                    if routed { "off" } else { "on" }.to_owned(),
+                ],
+            )
+        } else {
+            Invocation::new(
+                "mixer.set_send",
+                [
+                    source.to_string(),
+                    target.to_string(),
+                    if routed { "0" } else { "1" }.to_owned(),
+                ],
+            )
+        };
+        actions.push(Action::Run(invocation));
+    }
 }
 
 fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
@@ -168,7 +307,7 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
     };
     let number = index.to_string();
     ui.vertical(|ui| {
-        ui.set_width(290.0);
+        ui.set_width(EFFECTS_WIDTH);
         let title = if index == 0 {
             "Master".to_owned()
         } else {
@@ -179,127 +318,175 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
         } else {
             format!("{title} — {}", track.name)
         };
-        ui.label(RichText::new(heading).strong());
+        ui.label(RichText::new(heading).strong().size(14.0));
         egui::ScrollArea::vertical()
             .id_salt("effect-chain")
-            .max_height(260.0)
             .show(ui, |ui| {
-                for (slot, effect) in track.effects.iter().enumerate() {
-                    let slot_no = (slot + 1).to_string();
+                for slot in 0..MAX_EFFECT_SLOTS {
+                    slot_row(ui, state, track, &number, slot, actions);
+                }
+                if let Some(effect) = track.effects.get(state.mixer_slot) {
+                    ui.add_space(4.0);
                     egui::Frame::new()
                         .fill(theme::PANEL_DARK)
-                        .corner_radius(4.0)
+                        .corner_radius(6.0)
                         .inner_margin(6.0)
                         .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let mut enabled = effect.enabled;
-                                if ui
-                                    .checkbox(&mut enabled, "")
-                                    .on_hover_text("Enable / bypass")
-                                    .changed()
-                                {
-                                    run(
-                                        actions,
-                                        "mixer.toggle_effect",
-                                        [number.clone(), slot_no.clone()],
+                            ui.set_width(ui.available_width());
+                            ui.label(
+                                RichText::new(effect.kind.name().to_uppercase())
+                                    .small()
+                                    .strong()
+                                    .color(theme::ACCENT),
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                for (p, spec) in effect.kind.params().iter().enumerate() {
+                                    let value = effect.values[p];
+                                    let out = widgets::labeled_knob(
+                                        ui,
+                                        spec.name,
+                                        crate::channel_settings::to_unit(spec, value),
+                                        crate::channel_settings::to_unit(spec, spec.default),
+                                        spec.min < 0.0 && spec.max > 0.0,
+                                        &crate::channel_settings::format_value(spec, value),
                                     );
-                                }
-                                ui.label(
-                                    RichText::new(effect.kind.name())
-                                        .strong()
-                                        .color(theme::ACCENT),
-                                );
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui.small_button("×").on_hover_text("Remove").clicked() {
-                                            run(
-                                                actions,
-                                                "mixer.remove_effect",
-                                                [number.clone(), slot_no.clone()],
-                                            );
-                                        }
-                                        if slot + 1 < track.effects.len()
-                                            && ui.small_button("▼").clicked()
-                                        {
-                                            run(
-                                                actions,
-                                                "mixer.move_effect",
-                                                [
-                                                    number.clone(),
-                                                    slot_no.clone(),
-                                                    (slot + 2).to_string(),
-                                                ],
-                                            );
-                                        }
-                                        if slot > 0 && ui.small_button("▲").clicked() {
-                                            run(
-                                                actions,
-                                                "mixer.move_effect",
-                                                [number.clone(), slot_no.clone(), slot.to_string()],
-                                            );
-                                        }
-                                    },
-                                );
-                            });
-                            for (p, spec) in effect.kind.params().iter().enumerate() {
-                                let mut value = effect.values[p];
-                                ui.horizontal(|ui| {
-                                    ui.add_sized(
-                                        vec2(72.0, 16.0),
-                                        egui::Label::new(RichText::new(spec.name).small()),
-                                    );
-                                    let mut slider =
-                                        egui::Slider::new(&mut value, spec.min..=spec.max)
-                                            .suffix(format!(" {}", spec.unit));
-                                    if spec.integer {
-                                        slider = slider.integer();
-                                    }
-                                    if spec.max / spec.min.max(1e-3) > 100.0 && spec.min > 0.0 {
-                                        slider = slider.logarithmic(true);
-                                    }
-                                    let response = ui.add(slider);
-                                    if response.drag_started() {
+                                    if out.started {
                                         state.begin_gesture();
                                     }
-                                    if response.changed() {
-                                        actions.push(Action::Coalesced(
-                                            Invocation::new(
-                                                "mixer.set_effect_param",
-                                                [
-                                                    number.clone(),
-                                                    slot_no.clone(),
-                                                    spec.name.to_owned(),
-                                                    format!("{value}"),
-                                                ],
-                                            ),
-                                            state.gesture(),
-                                        ));
+                                    if let Some(t) = out.changed {
+                                        let new = crate::channel_settings::from_unit(spec, t);
+                                        if new != value {
+                                            actions.push(Action::Coalesced(
+                                                Invocation::new(
+                                                    "mixer.set_effect_param",
+                                                    [
+                                                        number.clone(),
+                                                        (state.mixer_slot + 1).to_string(),
+                                                        spec.name.to_owned(),
+                                                        format!("{new}"),
+                                                    ],
+                                                ),
+                                                state.gesture(),
+                                            ));
+                                        }
                                     }
-                                });
-                            }
+                                }
+                            });
                         });
-                    ui.add_space(4.0);
+                }
+                if index > 0 {
+                    routing(ui, state, project, index, track, actions);
                 }
             });
-        if index > 0 {
-            routing(ui, state, project, index, track, actions);
-        }
-        ui.add_enabled_ui(track.effects.len() < MAX_EFFECT_SLOTS, |ui| {
-            ui.menu_button("+ Add effect", |ui| {
-                for kind in EFFECT_KINDS {
-                    if ui.button(kind.name()).clicked() {
-                        run(
-                            actions,
-                            "mixer.add_effect",
-                            [number.clone(), kind.name().to_owned()],
+    });
+}
+
+fn slot_row(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    track: &MixerTrack,
+    number: &str,
+    slot: usize,
+    actions: &mut Vec<Action>,
+) {
+    let slot_no = (slot + 1).to_string();
+    let selected = state.mixer_slot == slot;
+    let effect = track.effects.get(slot);
+    egui::Frame::new()
+        .fill(if selected && effect.is_some() {
+            theme::RAISED
+        } else {
+            theme::PANEL_DARK
+        })
+        .corner_radius(3.0)
+        .inner_margin(egui::Margin::symmetric(4, 1))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(&slot_no)
+                        .small()
+                        .monospace()
+                        .color(theme::TEXT_DIM),
+                );
+                match effect {
+                    Some(effect) => {
+                        if led(ui, effect.enabled, theme::ACCENT, "", "Enable / bypass").clicked() {
+                            run(
+                                actions,
+                                "mixer.toggle_effect",
+                                [number.to_owned(), slot_no.clone()],
+                            );
+                        }
+                        let name = RichText::new(effect.kind.name()).color(if effect.enabled {
+                            theme::TEXT
+                        } else {
+                            theme::TEXT_DIM
+                        });
+                        if ui
+                            .add(egui::Label::new(name).sense(egui::Sense::click()))
+                            .clicked()
+                        {
+                            state.mixer_slot = slot;
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("×").on_hover_text("Remove").clicked() {
+                                run(
+                                    actions,
+                                    "mixer.remove_effect",
+                                    [number.to_owned(), slot_no.clone()],
+                                );
+                            }
+                            if slot + 1 < track.effects.len()
+                                && ui
+                                    .small_button(RichText::new("▼").monospace())
+                                    .on_hover_text("Move down")
+                                    .clicked()
+                            {
+                                run(
+                                    actions,
+                                    "mixer.move_effect",
+                                    [number.to_owned(), slot_no.clone(), (slot + 2).to_string()],
+                                );
+                            }
+                            if slot > 0
+                                && ui
+                                    .small_button(RichText::new("▲").monospace())
+                                    .on_hover_text("Move up")
+                                    .clicked()
+                            {
+                                run(
+                                    actions,
+                                    "mixer.move_effect",
+                                    [number.to_owned(), slot_no.clone(), slot.to_string()],
+                                );
+                            }
+                        });
+                    }
+                    None if slot == track.effects.len() => {
+                        ui.menu_button(
+                            RichText::new("+ add effect").color(theme::TEXT_DIM),
+                            |ui| {
+                                for kind in EFFECT_KINDS {
+                                    if ui.button(kind.name()).clicked() {
+                                        run(
+                                            actions,
+                                            "mixer.add_effect",
+                                            [number.to_owned(), kind.name().to_owned()],
+                                        );
+                                        state.mixer_slot = slot;
+                                        ui.close();
+                                    }
+                                }
+                            },
                         );
-                        ui.close();
+                    }
+                    None => {
+                        ui.label(RichText::new("empty").small().color(theme::GRID_BAR));
                     }
                 }
             });
         });
-    });
 }
 
 fn routing(
@@ -348,7 +535,11 @@ fn routing(
                 .map_or("?", |t| t.name.as_str());
             ui.add_sized(
                 vec2(72.0, 16.0),
-                egui::Label::new(RichText::new(format!("to {} {name}", send.target)).small()),
+                egui::Label::new(
+                    RichText::new(format!("→ {} {name}", send.target))
+                        .monospace()
+                        .small(),
+                ),
             );
             let mut level = send.level;
             let response =

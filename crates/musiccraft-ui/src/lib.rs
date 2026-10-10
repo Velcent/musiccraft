@@ -149,6 +149,8 @@ pub struct UiState {
     pub selected_channel: usize,
     /// Selected mixer track (0 = master).
     pub selected_track: usize,
+    /// Effect slot shown in the mixer's effect editor (0-based).
+    pub mixer_slot: usize,
     /// Keyboard shortcuts.
     pub keymap: Keymap,
     /// Last command result.
@@ -184,6 +186,7 @@ impl UiState {
             windows: Windows::default(),
             selected_channel: 0,
             selected_track: 0,
+            mixer_slot: 0,
             keymap,
             status: StatusLine::default(),
             meters: Vec::new(),

@@ -157,6 +157,108 @@ pub fn labeled_knob(
     }
 }
 
+/// Fader travel position (0..1) for a linear gain: silence at the bottom,
+/// -24 dB at a quarter, 0 dB at three quarters, the maximum at the top.
+#[must_use]
+pub fn gain_to_fader(gain: f32, max: f32) -> f32 {
+    let max_db = 20.0 * max.max(1e-6).log10();
+    let low = 10.0_f32.powf(-24.0 / 20.0);
+    if gain <= 0.0 {
+        0.0
+    } else if gain < low {
+        0.25 * gain / low
+    } else {
+        let db = 20.0 * gain.log10();
+        if db <= 0.0 {
+            0.75 + db / 48.0
+        } else {
+            (0.75 + 0.25 * db / max_db).min(1.0)
+        }
+    }
+}
+
+/// Inverse of [`gain_to_fader`].
+#[must_use]
+pub fn fader_to_gain(position: f32, max: f32) -> f32 {
+    let p = position.clamp(0.0, 1.0);
+    let max_db = 20.0 * max.max(1e-6).log10();
+    let low = 10.0_f32.powf(-24.0 / 20.0);
+    if p < 0.25 {
+        p / 0.25 * low
+    } else if p <= 0.75 {
+        10.0_f32.powf((p - 0.75) * 48.0 / 20.0)
+    } else {
+        10.0_f32.powf((p - 0.75) / 0.25 * max_db / 20.0)
+    }
+}
+
+/// A vertical mixer fader. Drag the cap; double-click returns to unity.
+pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    let travel = rect.shrink2(vec2(0.0, 10.0));
+    let mut changed = None;
+    let position = gain_to_fader(gain, max);
+    if response.dragged() {
+        let fine = ui.input(|i| i.modifiers.shift);
+        let delta = -response.drag_delta().y / travel.height() * if fine { 0.25 } else { 1.0 };
+        if delta != 0.0 {
+            changed = Some(fader_to_gain(position + delta, max));
+        }
+    }
+    if response.hovered() {
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        if scroll != 0.0 {
+            changed = Some(fader_to_gain(position + scroll / 800.0, max));
+        }
+    }
+    if response.double_clicked() {
+        changed = Some(1.0);
+    }
+    let shown = changed.map_or(position, |g| gain_to_fader(g, max));
+    let painter = ui.painter_at(rect.expand(2.0));
+    let x = rect.center().x;
+    painter.rect_filled(
+        egui::Rect::from_center_size(egui::pos2(x, travel.center().y), vec2(4.0, travel.height())),
+        2.0,
+        theme::METER_BG,
+    );
+    let unity = travel.bottom() - travel.height() * 0.75;
+    painter.line_segment(
+        [egui::pos2(x - 9.0, unity), egui::pos2(x + 9.0, unity)],
+        Stroke::new(1.0, theme::TEXT_DIM),
+    );
+    let y = travel.bottom() - travel.height() * shown;
+    let cap = egui::Rect::from_center_size(egui::pos2(x, y), vec2(rect.width().min(26.0), 16.0));
+    let fill = if response.dragged() || response.hovered() {
+        theme::RAISED_HOVER
+    } else {
+        theme::RAISED
+    };
+    painter.rect_filled(cap, 3.0, fill);
+    painter.rect_stroke(
+        cap,
+        3.0,
+        Stroke::new(1.0, theme::TEXT_DIM),
+        egui::StrokeKind::Inside,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(cap.left() + 3.0, y),
+            egui::pos2(cap.right() - 3.0, y),
+        ],
+        Stroke::new(2.0, theme::ACCENT),
+    );
+    let started = response.drag_started()
+        || (response.hovered()
+            && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
+            && !response.dragged());
+    KnobOutput {
+        changed,
+        started,
+        response,
+    }
+}
+
 /// A round on/off indicator button.
 pub fn dot(ui: &mut Ui, on: bool, color: Color32) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::click());
@@ -210,6 +312,18 @@ pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fader_curve_round_trips_and_puts_unity_at_three_quarters() {
+        let max = 1.25;
+        assert!((gain_to_fader(1.0, max) - 0.75).abs() < 1e-6);
+        assert!(gain_to_fader(0.0, max).abs() < f32::EPSILON);
+        assert!((gain_to_fader(max, max) - 1.0).abs() < 1e-4);
+        for gain in [0.001, 0.05, 0.3, 0.8, 1.0, 1.2] {
+            let back = fader_to_gain(gain_to_fader(gain, max), max);
+            assert!((back - gain).abs() / gain < 1e-3, "{gain} -> {back}");
+        }
+    }
 
     #[test]
     fn meter_scale() {
