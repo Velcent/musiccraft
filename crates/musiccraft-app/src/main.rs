@@ -506,7 +506,7 @@ impl App {
         let current: Vec<(musiccraft_project::ChannelId, String)> = self
             .clip_audio
             .iter()
-            .map(|(id, s, _, _)| (*id, s.clone()))
+            .map(|c| (c.channel, c.sample.clone()))
             .collect();
         if current == wanted {
             return;
@@ -519,16 +519,16 @@ impl App {
             if let Some(existing) = self
                 .clip_audio
                 .iter()
-                .find(|(i, s, _, _)| *i == id && *s == sample)
+                .find(|c| c.channel == id && c.sample == sample)
             {
                 fresh.push(existing.clone());
             } else if let Ok(buffer) = audio.bridge.sample(&sample, self.session.project()) {
-                fresh.push((
-                    id,
+                fresh.push(ClipAudio {
+                    channel: id,
+                    peaks: overview(&buffer, 600),
+                    seconds: buffer.duration_seconds(),
                     sample,
-                    overview(&buffer, 600),
-                    buffer.duration_seconds(),
-                ));
+                });
             }
         }
         self.clip_audio = fresh;
@@ -601,7 +601,7 @@ impl eframe::App for App {
         let clip_waveforms: Vec<(musiccraft_project::ChannelId, Vec<(f32, f32)>)> = self
             .clip_audio
             .iter()
-            .map(|(id, _, peaks, _)| (*id, peaks.clone()))
+            .map(|c| (c.channel, c.peaks.clone()))
             .collect();
         let clip_durations: Vec<(musiccraft_project::ChannelId, u32)> = self
             .clip_audio
