@@ -32,6 +32,18 @@ impl Default for ChannelParams {
     }
 }
 
+/// Most sends one mixer track can have.
+pub const MAX_SENDS: usize = 8;
+
+/// A post-fader send from one insert to a higher-numbered insert.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SendParams {
+    /// Receiving track; must be greater than the sending track's index.
+    pub target: u16,
+    /// Linear send level.
+    pub level: f32,
+}
+
 /// Per-track mixer settings.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TrackParams {
@@ -41,6 +53,12 @@ pub struct TrackParams {
     pub pan: f32,
     /// Whether the track is silenced (solo is resolved into mute by the sender).
     pub mute: bool,
+    /// Whether an insert feeds the master (ignored for the master itself).
+    pub to_master: bool,
+    /// Sends; only the first `send_count` are used.
+    pub sends: [SendParams; MAX_SENDS],
+    /// Number of active sends.
+    pub send_count: u8,
 }
 
 impl Default for TrackParams {
@@ -49,7 +67,19 @@ impl Default for TrackParams {
             volume: 1.0,
             pan: 0.0,
             mute: false,
+            to_master: true,
+            sends: [SendParams::default(); MAX_SENDS],
+            send_count: 0,
         }
+    }
+}
+
+impl TrackParams {
+    /// The active sends.
+    #[must_use]
+    pub fn active_sends(&self) -> &[SendParams] {
+        let count = usize::from(self.send_count).min(MAX_SENDS);
+        self.sends.get(..count).unwrap_or_default()
     }
 }
 

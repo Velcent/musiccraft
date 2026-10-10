@@ -302,3 +302,29 @@ fn stems_split_by_mixer_track_and_line_up() {
     assert!(drums.peak() > 0.1 && master.peak() > 0.01);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn soloing_a_source_keeps_its_bus_audible() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         note.add 1 0 16 A5
+         channel.route 1 1
+         mixer.route_to_master 1 off
+         mixer.set_send 1 3 1
+         mixer.set_solo 1 on",
+    );
+    let options = RenderOptions {
+        max_tail_seconds: 0.0,
+        ..RenderOptions::default()
+    };
+    let (out, _, _) = render(s.project(), options);
+    assert!(
+        rms(&out) > 0.01,
+        "insert 1 reaches the master only through bus 3"
+    );
+    run(&mut s, "mixer.set_solo 1 off\nmixer.set_solo 2 on");
+    let (out, _, _) = render(s.project(), options);
+    assert!(rms(&out) < 1e-6);
+}

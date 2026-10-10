@@ -17,7 +17,9 @@ mod sequence;
 mod voice;
 
 pub use engine::{Engine, EngineHandle, LiveSender, engine_pair};
-pub use graph::{ChannelNode, ChannelParams, EffectParams, Graph, Instrument, TrackParams};
+pub use graph::{
+    ChannelNode, ChannelParams, EffectParams, Graph, Instrument, MAX_SENDS, SendParams, TrackParams,
+};
 pub use message::{EngineMessage, Garbage, LiveEvent};
 pub use meters::Meters;
 pub use sequence::{NoteEvent, Sequence};

@@ -596,18 +596,36 @@ fn mix_channels(channels: &[ChannelNode], tracks: &mut [TrackNode], frames: usiz
     }
 }
 
+/// Processes inserts in index order, then the master. Sends only go to
+/// higher-numbered inserts, so every track has received all of its input by the
+/// time it is processed.
 fn mix_tracks(tracks: &mut [TrackNode], frames: usize, ctx: ProcessContext, meters: &Meters) {
-    let Some((master, inserts)) = tracks.split_first_mut() else {
-        return;
-    };
-    for (i, track) in inserts.iter_mut().enumerate() {
+    for i in 1..tracks.len() {
+        let (before, rest) = tracks.split_at_mut(i);
+        let Some((track, after)) = rest.split_first_mut() else {
+            continue;
+        };
         process_track(track, frames, ctx);
-        meters.record_peak(i + 1, peak(&track.left, frames), peak(&track.right, frames));
-        add_scaled(&mut master.left, &track.left, 1.0, frames);
-        add_scaled(&mut master.right, &track.right, 1.0, frames);
+        meters.record_peak(i, peak(&track.left, frames), peak(&track.right, frames));
+        if track.params.to_master {
+            if let Some(master) = before.first_mut() {
+                add_scaled(&mut master.left, &track.left, 1.0, frames);
+                add_scaled(&mut master.right, &track.right, 1.0, frames);
+            }
+        }
+        for send in track.params.active_sends() {
+            let target = usize::from(send.target);
+            let Some(dest) = target.checked_sub(i + 1).and_then(|j| after.get_mut(j)) else {
+                continue;
+            };
+            add_scaled(&mut dest.left, &track.left, send.level, frames);
+            add_scaled(&mut dest.right, &track.right, send.level, frames);
+        }
     }
-    process_track(master, frames, ctx);
-    meters.record_peak(0, peak(&master.left, frames), peak(&master.right, frames));
+    if let Some(master) = tracks.first_mut() {
+        process_track(master, frames, ctx);
+        meters.record_peak(0, peak(&master.left, frames), peak(&master.right, frames));
+    }
 }
 
 fn process_track(track: &mut TrackNode, frames: usize, ctx: ProcessContext) {

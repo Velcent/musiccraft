@@ -244,7 +244,7 @@ fn channel_routes_through_insert_track_to_master() {
         TrackParams {
             volume: 0.5,
             pan: 1.0,
-            mute: false,
+            ..TrackParams::default()
         },
         Vec::new(),
     );
@@ -382,4 +382,84 @@ fn metronome_clicks_on_every_beat_and_accents_bars() {
     engine.apply(EngineMessage::SetMetronome(false));
     let quiet = render_mono(&mut engine, 2 * BEAT);
     assert!(quiet.iter().all(|s| s.abs() < 1e-3));
+}
+
+#[test]
+fn sends_feed_higher_inserts_and_master_routing_can_be_cut() {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    let impulse = Arc::new(SampleBuffer::mono(vec![1.0], f64::from(SR)));
+    let params = ChannelParams {
+        track: 1,
+        ..impulse_params()
+    };
+    graph.add_channel(Instrument::Sampler(impulse), params);
+    // Insert 1 sends half its signal to insert 2 and does not feed the master.
+    let mut source = TrackParams {
+        to_master: false,
+        send_count: 1,
+        ..TrackParams::default()
+    };
+    source.sends[0] = SendParams {
+        target: 2,
+        level: 0.5,
+    };
+    graph.add_track(source, Vec::new());
+    graph.add_track(TrackParams::default(), Vec::new());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    engine.apply(EngineMessage::SetSequence(Box::new(Sequence::new(
+        vec![note(0, 0)],
+        384,
+    ))));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 16);
+    assert!(
+        (out[0] - 0.5).abs() < 1e-6,
+        "only the send reaches the master: {}",
+        out[0]
+    );
+    // Re-enable the master route: direct 1.0 plus send 0.5.
+    let both = TrackParams {
+        to_master: true,
+        ..source
+    };
+    engine.apply(EngineMessage::Track {
+        track: 1,
+        params: both,
+    });
+    engine.apply(EngineMessage::Stop);
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 16);
+    assert!((out[0] - 1.5).abs() < 1e-6, "got {}", out[0]);
+}
+
+#[test]
+fn sends_to_lower_tracks_are_ignored() {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    let impulse = Arc::new(SampleBuffer::mono(vec![1.0], f64::from(SR)));
+    let params = ChannelParams {
+        track: 2,
+        ..impulse_params()
+    };
+    graph.add_channel(Instrument::Sampler(impulse), params);
+    graph.add_track(TrackParams::default(), Vec::new());
+    let mut backwards = TrackParams {
+        send_count: 1,
+        ..TrackParams::default()
+    };
+    backwards.sends[0] = SendParams {
+        target: 1,
+        level: 1.0,
+    };
+    graph.add_track(backwards, Vec::new());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetSequence(Box::new(Sequence::new(
+        vec![note(0, 0)],
+        384,
+    ))));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 16);
+    assert!((out[0] - 1.0).abs() < 1e-6);
 }

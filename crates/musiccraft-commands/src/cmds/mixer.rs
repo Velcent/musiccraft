@@ -2,7 +2,8 @@ use musiccraft_project::params::{
     EFFECT_KINDS, EffectKind, MAX_EFFECT_SLOTS, MAX_MIXER_TRACKS, index_of,
 };
 use musiccraft_project::{
-    ChannelId, EffectSlot, MixerTrack, Project, ProjectError, check_pan, check_volume,
+    ChannelId, EffectSlot, MAX_SENDS, MixerSend, MixerTrack, Project, ProjectError, check_pan,
+    check_volume,
 };
 use serde::{Deserialize, Serialize};
 
@@ -73,6 +74,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             toggle_solo,
         ),
         cmd(
+            "mixer.set_send",
+            "mixer.set_send <track> <target track> <level 0-1.25>",
+            "Send an insert to a higher-numbered insert (level 0 removes the send).",
+            set_send,
+        ),
+        cmd(
+            "mixer.route_to_master",
+            "mixer.route_to_master <track> <on|off>",
+            "Choose whether an insert feeds the master directly.",
+            route_to_master,
+        ),
+        cmd(
             "mixer.add_effect",
             "mixer.add_effect <track> <kind>",
             "Append an effect (filter, eq, delay, reverb, compressor, distortion).",
@@ -124,7 +137,7 @@ fn track_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, Comm
 fn insert_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, CommandError> {
     let track = track_arg(project, args, i)?;
     if track == 0 {
-        return Err(args.invalid("the master track cannot be removed"));
+        return Err(args.invalid("this applies to inserts, not the master"));
     }
     Ok(track)
 }
@@ -167,12 +180,30 @@ fn add_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
 struct TrackSnapshot {
     track: MixerTrack,
     routed: Vec<ChannelId>,
+    /// Sends from other (lower) tracks into this one: (source track, level).
+    #[serde(default)]
+    incoming: Vec<(usize, f32)>,
 }
 
 fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, 1)?;
     let index = insert_arg(project, args, 0)?;
     let track = project.mixer.remove(index);
+    let mut incoming = Vec::new();
+    for (source, other) in project.mixer.iter_mut().enumerate() {
+        other.sends.retain(|send| {
+            let keep = send.target != index;
+            if !keep {
+                incoming.push((source, send.level));
+            }
+            keep
+        });
+        for send in &mut other.sends {
+            if send.target > index {
+                send.target -= 1;
+            }
+        }
+    }
     let mut routed = Vec::new();
     for channel in &mut project.channels {
         if channel.mixer_track == index {
@@ -183,8 +214,12 @@ fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
         }
     }
     let name = track.name.clone();
-    let json = serde_json::to_string(&TrackSnapshot { track, routed })
-        .map_err(|e| args.invalid(e.to_string()))?;
+    let json = serde_json::to_string(&TrackSnapshot {
+        track,
+        routed,
+        incoming,
+    })
+    .map_err(|e| args.invalid(e.to_string()))?;
     Ok(Outcome::undoable(
         format!("removed mixer track {index} ({name})"),
         Invocation::new("mixer.insert_track", [index.to_string(), json]),
@@ -208,6 +243,22 @@ fn insert_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
         }
         if snapshot.routed.contains(&channel.id) {
             channel.mixer_track = index;
+        }
+    }
+    for other in &mut project.mixer {
+        for send in &mut other.sends {
+            if send.target >= index {
+                send.target += 1;
+            }
+        }
+    }
+    for (source, level) in &snapshot.incoming {
+        if let Some(other) = project.mixer.get_mut(*source) {
+            other.sends.push(MixerSend {
+                target: index,
+                level: *level,
+            });
+            other.sends.sort_by_key(|send| send.target);
         }
     }
     let name = snapshot.track.name.clone();
@@ -504,5 +555,58 @@ fn toggle_effect(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comm
             }
         ),
         Invocation::new(args.name(), [index.to_string(), (slot + 1).to_string()]),
+    ))
+}
+
+fn set_send(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = insert_arg(project, args, 0)?;
+    let target = track_arg(project, args, 1)?;
+    if target <= index {
+        return Err(args.invalid("sends go to a higher-numbered insert"));
+    }
+    let level = check_volume(args.f32(2, "level")?)?;
+    let sends = &mut project.mixer[index].sends;
+    let previous = sends
+        .iter()
+        .find(|s| s.target == target)
+        .map_or(0.0, |s| s.level);
+    sends.retain(|s| s.target != target);
+    if level > 0.0 {
+        if sends.len() >= MAX_SENDS {
+            return Err(args.invalid(format!("a track has at most {MAX_SENDS} sends")));
+        }
+        sends.push(MixerSend { target, level });
+        sends.sort_by_key(|s| s.target);
+    }
+    let message = if level > 0.0 {
+        format!("mixer track {index} sends {} to {target}", num(level))
+    } else {
+        format!("mixer track {index} no longer sends to {target}")
+    };
+    if (previous - level).abs() < f32::EPSILON {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(
+            args.name(),
+            [index.to_string(), target.to_string(), num(previous)],
+        ),
+    ))
+}
+
+fn route_to_master(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = insert_arg(project, args, 0)?;
+    let value = args.flag(1)?;
+    Ok(set_track_field(
+        project,
+        args,
+        index,
+        value,
+        |t| &mut t.to_master,
+        flag_text,
+        "to master",
     ))
 }

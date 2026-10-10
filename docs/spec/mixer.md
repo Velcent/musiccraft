@@ -6,13 +6,21 @@
   eight inserts. At most 128 tracks.
 - Each track has a name, volume (linear 0–1.25, default 1.0), pan (-1–1), mute,
   solo and up to eight insert effects processed in order.
-- Channels feed exactly one track. Every insert feeds the master.
-- Solo: when any insert is soloed, every non-soloed insert is silenced. The master
-  is never silenced by solo.
+- Channels feed exactly one track. Each insert feeds the master unless
+  `mixer.route_to_master <track> off`, and may also have up to eight post-fader
+  **sends** to higher-numbered inserts (`mixer.set_send <track> <target>
+  <level>`; level 0 removes it). Sends only go "up", so routing can never form a
+  feedback loop and tracks are processed in number order. This builds buses (for
+  example drums 1–3 into insert 10) and shared effect returns.
+- Removing a track removes sends into it and renumbers sends past it; undo
+  restores them.
+- Solo: when any insert is soloed, every insert that is not soloed, not feeding
+  a soloed insert, and not fed by one is silenced. The master is never silenced
+  by solo.
 - Commands: `mixer.add_track`, `mixer.remove_track` (channels routed to it move to
   the master; undo restores them), `mixer.rename`, `mixer.set_volume`,
   `mixer.set_pan`, `mixer.set_mute`, `mixer.toggle_mute`, `mixer.set_solo`,
-  `mixer.toggle_solo`, `mixer.add_effect`, `mixer.remove_effect`,
+  `mixer.toggle_solo`, `mixer.set_send`, `mixer.route_to_master`, `mixer.add_effect`, `mixer.remove_effect`,
   `mixer.move_effect`, `mixer.set_effect_param`, `mixer.set_effect_enabled`,
   `mixer.toggle_effect`. Effect slots are numbered from 1. All are undoable.
 - Changing parameters never interrupts audio. Adding, removing or reordering

@@ -311,6 +311,22 @@ impl From<EffectRepr> for EffectSlot {
     }
 }
 
+/// A post-fader send to a higher-numbered insert.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct MixerSend {
+    /// Receiving mixer track (greater than the sending track).
+    pub target: usize,
+    /// Linear level, 0 to [`MAX_VOLUME`].
+    pub level: f32,
+}
+
+/// Most sends a mixer track can have.
+pub const MAX_SENDS: usize = 8;
+
+fn yes() -> bool {
+    true
+}
+
 /// A mixer track. Track 0 is the master; the others are inserts.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MixerTrack {
@@ -329,6 +345,12 @@ pub struct MixerTrack {
     /// Insert effects, processed in order.
     #[serde(default)]
     pub effects: Vec<EffectSlot>,
+    /// Whether this insert feeds the master (always true for the master).
+    #[serde(default = "yes")]
+    pub to_master: bool,
+    /// Sends to higher-numbered inserts, sorted by target.
+    #[serde(default)]
+    pub sends: Vec<MixerSend>,
 }
 
 impl MixerTrack {
@@ -342,6 +364,8 @@ impl MixerTrack {
             mute: false,
             solo: false,
             effects: Vec::new(),
+            to_master: true,
+            sends: Vec::new(),
         }
     }
 }

@@ -2,7 +2,7 @@
 //! they produce.
 
 use egui::{Event, Modifiers, PointerButton, Pos2, Rect, pos2, vec2};
-use musiccraft_commands::{Invocation, Registry, Session};
+use musiccraft_commands::{Registry, Session};
 use musiccraft_project::Project;
 use musiccraft_project::params::{TICKS_PER_BAR, TICKS_PER_STEP};
 
@@ -65,12 +65,17 @@ impl Harness {
         }
         let mut commands = Vec::new();
         for action in actions {
-            let invocation: Invocation = match action {
-                Action::Run(inv) | Action::Coalesced(inv, _) => inv,
-                _ => continue,
-            };
-            commands.push(invocation.to_string());
-            self.session.run(&invocation).unwrap();
+            match action {
+                Action::Run(invocation) => {
+                    commands.push(invocation.to_string());
+                    self.session.run(&invocation).unwrap();
+                }
+                Action::Coalesced(invocation, key) => {
+                    commands.push(invocation.to_string());
+                    self.session.run_coalesced(&invocation, key).unwrap();
+                }
+                _ => {}
+            }
         }
         commands
     }
@@ -298,4 +303,32 @@ fn typing_keyboard_performs_notes_instead_of_shortcuts() {
             },
         ]
     );
+}
+
+#[test]
+fn velocity_lane_drag_is_one_undo_step() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C5 100"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let (grid, clip) = h.state.roll.last_view.unwrap();
+    let x = grid.x(10.0);
+    let from = pos2(x, clip.bottom() - 30.0);
+    let to = pos2(x, clip.bottom() - 60.0);
+    let commands = h.drag(from, to);
+    assert!(!commands.is_empty());
+    assert!(
+        commands
+            .iter()
+            .all(|c| c.starts_with("note.set_velocity 1 0t 60 ")),
+        "{commands:?}"
+    );
+    let velocity = h.session.project().current_pattern().notes[0].velocity;
+    assert!(velocity > 100, "dragged up to {velocity}");
+    assert_eq!(
+        h.session.undo_depth(),
+        3,
+        "two setup commands plus one gesture"
+    );
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.session.project().current_pattern().notes[0].velocity, 100);
 }

@@ -59,6 +59,9 @@
 - Left-click on empty grid adds a note with the last used length; dragging a note
   moves it; dragging its right edge resizes it; right-click deletes.
 - Each finished gesture is one undoable command.
+- A velocity lane is pinned to the bottom of the view: one stem per note of the
+  selected channel. Dragging vertically sets the velocity of the note under the
+  pointer (the latest-starting one when notes overlap); one drag is one undo step.
 - Clicking a key on the keyboard previews the note on the selected channel.
 
 ## Sources

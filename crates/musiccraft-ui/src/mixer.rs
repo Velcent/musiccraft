@@ -281,6 +281,9 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                     ui.add_space(4.0);
                 }
             });
+        if index > 0 {
+            routing(ui, state, project, index, track, actions);
+        }
         ui.add_enabled_ui(track.effects.len() < MAX_EFFECT_SLOTS, |ui| {
             ui.menu_button("+ Add effect", |ui| {
                 for kind in EFFECT_KINDS {
@@ -296,4 +299,82 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             });
         });
     });
+}
+
+fn routing(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    index: usize,
+    track: &MixerTrack,
+    actions: &mut Vec<Action>,
+) {
+    let number = index.to_string();
+    ui.separator();
+    ui.horizontal(|ui| {
+        let mut to_master = track.to_master;
+        if ui.checkbox(&mut to_master, "To master").changed() {
+            run(
+                actions,
+                "mixer.route_to_master",
+                [
+                    number.clone(),
+                    if to_master { "on" } else { "off" }.to_owned(),
+                ],
+            );
+        }
+        ui.menu_button("+ Send", |ui| {
+            for (target, other) in project.mixer.iter().enumerate().skip(index + 1) {
+                if track.sends.iter().any(|s| s.target == target) {
+                    continue;
+                }
+                if ui.button(format!("{target} {}", other.name)).clicked() {
+                    run(
+                        actions,
+                        "mixer.set_send",
+                        [number.clone(), target.to_string(), "1".to_owned()],
+                    );
+                    ui.close();
+                }
+            }
+        });
+    });
+    for send in &track.sends {
+        ui.horizontal(|ui| {
+            let name = project
+                .mixer
+                .get(send.target)
+                .map_or("?", |t| t.name.as_str());
+            ui.add_sized(
+                vec2(72.0, 16.0),
+                egui::Label::new(RichText::new(format!("→ {} {name}", send.target)).small()),
+            );
+            let mut level = send.level;
+            let response =
+                ui.add(egui::Slider::new(&mut level, 0.0..=MAX_VOLUME).show_value(false));
+            if response.drag_started() {
+                state.begin_gesture();
+            }
+            if response.changed() && level > 0.0 {
+                actions.push(Action::Coalesced(
+                    Invocation::new(
+                        "mixer.set_send",
+                        [
+                            number.clone(),
+                            send.target.to_string(),
+                            format!("{level:.3}"),
+                        ],
+                    ),
+                    state.gesture(),
+                ));
+            }
+            if ui.small_button("×").on_hover_text("Remove send").clicked() {
+                run(
+                    actions,
+                    "mixer.set_send",
+                    [number.clone(), send.target.to_string(), "0".to_owned()],
+                );
+            }
+        });
+    }
 }

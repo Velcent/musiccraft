@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use musiccraft_dsp::{Effect, SampleBuffer};
 use musiccraft_engine::{
-    ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, NoteEvent,
-    Sequence, TrackParams,
+    ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_SENDS,
+    NoteEvent, SendParams, Sequence, TrackParams,
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
 use musiccraft_project::{Channel, MixerTrack, Project};
@@ -71,19 +71,70 @@ fn channel_params(channel: &Channel) -> ChannelParams {
     }
 }
 
-fn track_params(track: &MixerTrack, index: usize, any_solo: bool) -> TrackParams {
+fn track_params(track: &MixerTrack, index: usize, audible: Option<&[bool]>) -> TrackParams {
     // Solo applies to inserts; the master is never silenced by another solo.
-    let soloed_out = any_solo && index > 0 && !track.solo;
-    TrackParams {
+    let soloed_out = index > 0 && audible.is_some_and(|a| !a.get(index).copied().unwrap_or(false));
+    let mut params = TrackParams {
         volume: track.volume,
         pan: track.pan,
         mute: track.mute || soloed_out,
+        to_master: track.to_master || index == 0,
+        ..TrackParams::default()
+    };
+    let sends = track
+        .sends
+        .iter()
+        .filter(|s| s.target > index)
+        .take(MAX_SENDS);
+    for (slot, send) in params.sends.iter_mut().zip(sends) {
+        *slot = SendParams {
+            target: u16::try_from(send.target).unwrap_or(u16::MAX),
+            level: send.level,
+        };
+        params.send_count += 1;
     }
+    params
+}
+
+/// When any insert is soloed: which tracks stay audible. A soloed track keeps
+/// everything that feeds it and everything it feeds through sends.
+fn solo_audible(mixer: &[MixerTrack]) -> Option<Vec<bool>> {
+    if !mixer.iter().skip(1).any(|t| t.solo) {
+        return None;
+    }
+    let edges: Vec<(usize, usize)> = mixer
+        .iter()
+        .enumerate()
+        .flat_map(|(i, t)| t.sends.iter().map(move |s| (i, s.target)))
+        .collect();
+    let mut audible: Vec<bool> = mixer.iter().map(|t| t.solo).collect();
+    // Downstream: sends point to higher indices, so one forward pass suffices.
+    for i in 0..mixer.len() {
+        if audible[i] {
+            for (from, to) in &edges {
+                if *from == i && *to < audible.len() {
+                    audible[*to] = true;
+                }
+            }
+        }
+    }
+    // Upstream from the originally soloed tracks: one backward pass.
+    let mut feeds: Vec<bool> = mixer.iter().map(|t| t.solo).collect();
+    for i in (0..mixer.len()).rev() {
+        if feeds[i] {
+            for (from, to) in &edges {
+                if *to == i {
+                    feeds[*from] = true;
+                }
+            }
+        }
+    }
+    Some(audible.iter().zip(&feeds).map(|(a, f)| *a || *f).collect())
 }
 
 fn describe(project: &Project) -> Desc {
     let base = project.path().and_then(Path::parent);
-    let any_solo = project.mixer.iter().skip(1).any(|t| t.solo);
+    let audible = solo_audible(&project.mixer);
     let sequence = build_sequence(project);
     Desc {
         structure: Structure {
@@ -108,7 +159,7 @@ fn describe(project: &Project) -> Desc {
             .mixer
             .iter()
             .enumerate()
-            .map(|(i, t)| track_params(t, i, any_solo))
+            .map(|(i, t)| track_params(t, i, audible.as_deref()))
             .collect(),
         effects: project
             .mixer

@@ -13,6 +13,8 @@ use crate::{Action, Frame, UiState, theme};
 
 const KEYS_WIDTH: f32 = 52.0;
 const RULER_HEIGHT: f32 = 18.0;
+/// Height of the velocity lane pinned to the bottom of the view.
+const LANE_HEIGHT: f32 = 64.0;
 const KEYS: u32 = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +52,8 @@ pub struct RollState {
     chord: Option<&'static str>,
     /// Highlighted scale: (root pitch class, scale index).
     scale: Option<(u8, usize)>,
+    /// Note whose velocity is being dragged in the lane.
+    lane_drag: Option<Note>,
 }
 
 impl Default for RollState {
@@ -66,6 +70,7 @@ impl Default for RollState {
             last_view: None,
             chord: None,
             scale: None,
+            lane_drag: None,
         }
     }
 }
@@ -263,7 +268,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
     let key_h = state.roll.key_height;
     let size = vec2(
         KEYS_WIDTH + visible_ticks as f32 * px_per_tick,
-        RULER_HEIGHT + KEYS as f32 * key_h,
+        RULER_HEIGHT + KEYS as f32 * key_h + LANE_HEIGHT,
     );
 
     let mut scroll = egui::ScrollArea::both()
@@ -359,6 +364,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             actions,
         );
         draw_ruler(&painter, &grid, clip, length);
+        velocity_lane(ui, state, &grid, clip, &notes, channel_index, actions);
         keyboard(ui, state, &grid, clip, channel_index, actions);
     });
 }
@@ -523,7 +529,11 @@ fn edit(
     channel: usize,
     actions: &mut Vec<Action>,
 ) {
-    let editable = |p: Pos2| p.x > clip.left() + KEYS_WIDTH && p.y > clip.top() + RULER_HEIGHT;
+    let editable = |p: Pos2| {
+        p.x > clip.left() + KEYS_WIDTH
+            && p.y > clip.top() + RULER_HEIGHT
+            && p.y < clip.bottom() - LANE_HEIGHT
+    };
     let snap = state.roll.snap;
     let at =
         |p: Pos2| -> (f32, Option<u8>) { (grid.tick_at(p.x), grid.row_at(p.y).map(key_of_row)) };
@@ -672,6 +682,100 @@ fn edit(
     }
 }
 
+/// Velocity of a pointer height inside the lane.
+fn lane_velocity(lane: Rect, y: f32) -> u8 {
+    let t = ((lane.bottom() - 4.0 - y) / (lane.height() - 8.0)).clamp(0.0, 1.0);
+    (1.0 + t * 126.0).round() as u8
+}
+
+/// The note whose stem is under `x` (the latest-starting note covering it).
+fn note_at_x<'a>(grid: &Grid, notes: &[&'a Note], x: f32) -> Option<&'a Note> {
+    let tick = grid.tick_at(x);
+    notes
+        .iter()
+        .filter(|n| (n.start as f32) <= tick && tick < (n.start + n.length) as f32)
+        .max_by_key(|n| (n.start, n.key))
+        .copied()
+}
+
+fn velocity_lane(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    grid: &Grid,
+    clip: Rect,
+    notes: &[&Note],
+    channel: usize,
+    actions: &mut Vec<Action>,
+) {
+    let lane = Rect::from_min_max(
+        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - LANE_HEIGHT),
+        clip.right_bottom(),
+    );
+    let response = ui.interact(lane, ui.id().with("velocity-lane"), Sense::click_and_drag());
+    let strip = Rect::from_min_max(pos2(clip.left(), lane.top()), lane.right_bottom());
+    let painter = ui.painter_at(strip);
+    painter.rect_filled(strip, 0.0, theme::PANEL_DARK);
+    painter.line_segment(
+        [strip.left_top(), strip.right_top()],
+        Stroke::new(1.0, theme::GRID_BAR),
+    );
+    painter.text(
+        pos2(clip.left() + 6.0, lane.center().y),
+        Align2::LEFT_CENTER,
+        "Velocity",
+        FontId::proportional(10.0),
+        theme::TEXT_DIM,
+    );
+    if response.drag_started() || response.clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            state.roll.lane_drag = note_at_x(grid, notes, pos.x).copied();
+            state.begin_gesture();
+        }
+    }
+    let mut shown: Option<(Note, u8)> = None;
+    if let (Some(note), Some(pos)) = (state.roll.lane_drag, response.interact_pointer_pos()) {
+        if response.dragged() || response.clicked() {
+            let velocity = lane_velocity(lane, pos.y);
+            shown = Some((note, velocity));
+            if velocity != note.velocity {
+                actions.push(Action::Coalesced(
+                    Invocation::new(
+                        "note.set_velocity",
+                        [
+                            (channel + 1).to_string(),
+                            format!("{}t", note.start),
+                            note.key.to_string(),
+                            velocity.to_string(),
+                        ],
+                    ),
+                    state.gesture(),
+                ));
+            }
+        }
+    }
+    if response.drag_stopped() || (!response.dragged() && !response.clicked()) {
+        state.roll.lane_drag = None;
+    }
+    let color = theme::palette(channel);
+    for note in notes {
+        let velocity = match shown {
+            Some((n, v)) if n.start == note.start && n.key == note.key => v,
+            _ => note.velocity,
+        };
+        let x = grid.x(note.start as f32) + 2.0;
+        if x < lane.left() || x > lane.right() {
+            continue;
+        }
+        let top =
+            lane.bottom() - 4.0 - f32::from(velocity.max(1) - 1) / 126.0 * (lane.height() - 8.0);
+        painter.line_segment(
+            [pos2(x, lane.bottom()), pos2(x, top)],
+            Stroke::new(2.0, color),
+        );
+        painter.circle_filled(pos2(x, top), 3.0, color);
+    }
+}
+
 fn keyboard(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -682,7 +786,7 @@ fn keyboard(
 ) {
     let keys_rect = Rect::from_min_max(
         pos2(clip.left(), clip.top() + RULER_HEIGHT),
-        pos2(clip.left() + KEYS_WIDTH, clip.bottom()),
+        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - LANE_HEIGHT),
     );
     let response = ui.interact(
         keys_rect,
@@ -795,6 +899,15 @@ mod tests {
             finish(&drag(DragKind::Resize, 24, 60, 24), 0, 100).is_none(),
             "no-op resize"
         );
+    }
+
+    #[test]
+    fn lane_maps_height_to_velocity() {
+        let lane = Rect::from_min_max(pos2(0.0, 100.0), pos2(500.0, 164.0));
+        assert_eq!(lane_velocity(lane, 160.0), 1);
+        assert_eq!(lane_velocity(lane, 104.0), 127);
+        assert_eq!(lane_velocity(lane, 50.0), 127);
+        assert_eq!(lane_velocity(lane, 132.0), 64);
     }
 
     #[test]

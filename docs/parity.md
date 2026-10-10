@@ -31,7 +31,8 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Rename / clone / reorder / delete | `cmd:channel.rename` `cmd:channel.clone` `cmd:channel.move` `cmd:channel.remove` |
 | Channel rack | Instrument parameters | `cmd:channel.set_param` |
 | Channel rack | Swing | `cmd:pattern.set_swing` |
-| Channel rack | Per-step graph editor (velocity, pan, pitch) | `todo` |
+| Piano roll | Velocity editor lane | `cmd:note.set_velocity` `done` |
+| Channel rack | Per-note pan and pitch graph editor | `todo` |
 | Piano roll | Draw, move, resize, delete notes | `cmd:note.add` `cmd:note.move` `cmd:note.resize` `cmd:note.remove` `spec:piano-roll.md` |
 | Piano roll | Velocity | `cmd:note.set_velocity` |
 | Piano roll | Quantize | `cmd:note.quantize` |
@@ -55,7 +56,7 @@ of contents; see `docs/clean-room.md`.
 | Mixer | Effect slots: add, remove, reorder, bypass | `cmd:mixer.add_effect` `cmd:mixer.remove_effect` `cmd:mixer.move_effect` `cmd:mixer.toggle_effect` |
 | Mixer | Effect parameters | `cmd:mixer.set_effect_param` |
 | Mixer | Peak meters | `done` |
-| Mixer | Sends between inserts | `todo` |
+| Mixer | Sends between inserts and buses | `cmd:mixer.set_send` `cmd:mixer.route_to_master` |
 | Mixer | Sidechain | `todo` |
 | Effects | Filter, EQ, delay, reverb, compressor, distortion | `fx:filter` `fx:eq` `fx:delay` `fx:reverb` `fx:compressor` `fx:distortion` |
 | Effects | Chorus | `fx:chorus` |

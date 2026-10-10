@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 pub use error::ProjectError;
 pub use model::{
     Channel, ChannelId, Clip, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY,
-    EffectSlot, Instrument, InstrumentParams, MAX_PATTERN_STEPS, MAX_VOLUME, MIN_VOLUME,
-    MixerTrack, Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, STEP_KEY,
+    EffectSlot, Instrument, InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME,
+    MixerSend, MixerTrack, Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, STEP_KEY,
 };
 pub use musiccraft_params as params;
 
@@ -393,6 +393,17 @@ impl Project {
             }
             channel.volume = channel.volume.clamp(MIN_VOLUME, MAX_VOLUME);
             channel.pan = channel.pan.clamp(-1.0, 1.0);
+        }
+        for (i, track) in self.mixer.iter_mut().enumerate() {
+            track
+                .sends
+                .retain(|send| send.target > i && send.target < tracks && send.level.is_finite());
+            track.sends.sort_by_key(|send| send.target);
+            track.sends.dedup_by_key(|send| send.target);
+            track.sends.truncate(MAX_SENDS);
+            if i == 0 {
+                track.to_master = true;
+            }
         }
         let channel_ids: Vec<ChannelId> = self.channels.iter().map(|c| c.id).collect();
         for pattern in &mut self.patterns {

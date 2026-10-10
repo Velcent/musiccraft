@@ -80,6 +80,11 @@ const SCRIPT: &[&str] = &[
     "mixer.toggle_effect 2 2",
     "mixer.move_effect 2 2 1",
     "mixer.remove_effect 2 1",
+    "mixer.set_send 1 2 0.5",
+    "mixer.set_send 1 4 0.25",
+    "mixer.set_send 3 4 1",
+    "mixer.set_send 1 4 0.3",
+    "mixer.route_to_master 1 off",
     "playlist.add_clip 1 1 0",
     "playlist.add_clip 2 1 1",
     "playlist.add_clip 3 2 0 4",
@@ -253,6 +258,10 @@ fn errors_leave_the_project_unchanged() {
         "pattern.set_swing 1 101",
         "pattern.select 4",
         "mixer.add_effect 1 phaser",
+        "mixer.set_send 2 1 0.5",
+        "mixer.set_send 0 1 0.5",
+        "mixer.set_send 1 2 3",
+        "mixer.route_to_master 0 off",
         "mixer.remove_effect 1 1",
         "mixer.set_effect_param 0 1 size 1",
         "playlist.add_clip 5 1 0",
@@ -370,4 +379,22 @@ fn chords_add_stacked_notes() {
     assert_eq!(keys, [60, 64, 67, 71]);
     run(&mut s, "edit.undo");
     assert!(s.project().current_pattern().notes.is_empty());
+}
+
+#[test]
+fn removing_a_track_fixes_sends_pointing_at_and_past_it() {
+    let mut s = session();
+    run(&mut s, "mixer.set_send 1 3 0.5");
+    run(&mut s, "mixer.set_send 1 5 0.7");
+    run(&mut s, "mixer.remove_track 3");
+    let sends = &s.project().mixer[1].sends;
+    assert_eq!(sends.len(), 1);
+    assert_eq!((sends[0].target, sends[0].level), (4, 0.7));
+    run(&mut s, "edit.undo");
+    let targets: Vec<usize> = s.project().mixer[1]
+        .sends
+        .iter()
+        .map(|x| x.target)
+        .collect();
+    assert_eq!(targets, [3, 5]);
 }
