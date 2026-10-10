@@ -1,0 +1,13 @@
+[package]
+name = "musiccraft-commands"
+description = "MusicCraft command registry and undo/redo session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+musiccraft-project.workspace = true
+
+[lints]
+workspace = true
