@@ -6,10 +6,12 @@
 
 mod builtin;
 mod cache;
+mod flac;
 mod wav;
 
 pub use builtin::builtin;
 pub use cache::SampleCache;
+pub use flac::{FLAC_DEPTHS, encode_flac, write_flac};
 pub use wav::{WavFormat, load_wav, write_wav};
 
 use std::error::Error;

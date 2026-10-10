@@ -312,6 +312,79 @@ impl Command for ExportStemsCommand {
     }
 }
 
+/// `project.export_flac <path> [16|24] [loops] [sample rate]`.
+pub struct ExportFlacCommand;
+
+impl Command for ExportFlacCommand {
+    fn name(&self) -> &'static str {
+        "project.export_flac"
+    }
+
+    fn summary(&self) -> &'static str {
+        "Render the pattern or song (by play mode) to a lossless FLAC file."
+    }
+
+    fn usage(&self) -> &'static str {
+        "project.export_flac <path> [16|24] [loops] [sample rate]"
+    }
+
+    fn execute(&self, project: &mut Project, args: &[String]) -> Result<Outcome, CommandError> {
+        let invalid = |reason: String| CommandError::InvalidArgument {
+            command: self.name().to_owned(),
+            reason,
+        };
+        let [path, rest @ ..] = args else {
+            return Err(CommandError::Usage {
+                command: self.name().to_owned(),
+                usage: self.usage().to_owned(),
+            });
+        };
+        if rest.len() > 3 {
+            return Err(CommandError::Usage {
+                command: self.name().to_owned(),
+                usage: self.usage().to_owned(),
+            });
+        }
+        let bits = match rest.first().map(String::as_str) {
+            None | Some("16") => 16,
+            Some("24") => 24,
+            Some(other) => return Err(invalid(format!("`{other}` is not 16 or 24"))),
+        };
+        let loops = match rest.get(1) {
+            Some(raw) => raw
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=64).contains(n))
+                .ok_or_else(|| invalid(format!("`{raw}` is not a loop count 1-64")))?,
+            None => 1,
+        };
+        let sample_rate = match rest.get(2) {
+            Some(raw) => raw
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (8_000..=192_000).contains(n))
+                .ok_or_else(|| invalid(format!("`{raw}` is not a sample rate 8000-192000")))?,
+            None => 44_100,
+        };
+        let options = RenderOptions {
+            sample_rate,
+            loops,
+            ..RenderOptions::default()
+        };
+        let (left, right, warnings) = render(project, options);
+        musiccraft_samples::write_flac(Path::new(path), &left, &right, sample_rate, bits)
+            .map_err(|e| CommandError::Io(e.to_string()))?;
+        let mut message = format!(
+            "exported {:.2} s to {path}",
+            left.len() as f64 / f64::from(sample_rate)
+        );
+        for warning in warnings {
+            message.push_str(&format!(" (warning: {warning})"));
+        }
+        Ok(Outcome::done(message))
+    }
+}
+
 /// Adds the render crate's commands to a registry.
 ///
 /// # Errors
@@ -319,5 +392,6 @@ impl Command for ExportStemsCommand {
 /// Returns [`CommandError::Duplicate`] if they are already registered.
 pub fn register(registry: &mut Registry) -> Result<(), CommandError> {
     registry.register(Box::new(ExportCommand))?;
-    registry.register(Box::new(ExportStemsCommand))
+    registry.register(Box::new(ExportStemsCommand))?;
+    registry.register(Box::new(ExportFlacCommand))
 }

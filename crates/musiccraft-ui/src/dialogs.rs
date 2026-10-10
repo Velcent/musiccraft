@@ -128,7 +128,11 @@ impl Dialog {
         match self.purpose {
             Purpose::Open => Invocation::new("project.load", [text]),
             Purpose::SaveAs => Invocation::new("project.save", [text]),
-            Purpose::Export => Invocation::new("project.export_wav", [text, self.bits.to_owned()]),
+            Purpose::Export => match self.bits {
+                "flac16" => Invocation::new("project.export_flac", [text, "16".to_owned()]),
+                "flac24" => Invocation::new("project.export_flac", [text, "24".to_owned()]),
+                bits => Invocation::new("project.export_wav", [text, bits.to_owned()]),
+            },
             Purpose::AddSample => Invocation::new("channel.add_sampler", [text]),
             Purpose::SetSample(channel) => {
                 Invocation::new("channel.set_sample", [(channel + 1).to_string(), text])
@@ -188,10 +192,25 @@ pub fn show(
             if dialog.purpose == Purpose::Export {
                 ui.horizontal(|ui| {
                     ui.label("Format:");
-                    for (bits, label) in
-                        [("16", "16-bit"), ("24", "24-bit"), ("32f", "32-bit float")]
-                    {
-                        ui.selectable_value(&mut dialog.bits, bits, label);
+                    for (bits, label) in [
+                        ("16", "WAV 16"),
+                        ("24", "WAV 24"),
+                        ("32f", "WAV 32f"),
+                        ("flac16", "FLAC 16"),
+                        ("flac24", "FLAC 24"),
+                    ] {
+                        if ui.selectable_value(&mut dialog.bits, bits, label).changed() {
+                            // Keep the file extension in step with the format.
+                            let ext = if bits.starts_with("flac") {
+                                "flac"
+                            } else {
+                                "wav"
+                            };
+                            let path = std::path::Path::new(dialog.text.trim());
+                            if path.extension().is_some() {
+                                dialog.text = path.with_extension(ext).display().to_string();
+                            }
+                        }
                     }
                 });
                 ui.label(

@@ -78,7 +78,8 @@ of contents; see `docs/clean-room.md`.
 | Project | Undo / redo | `key:Ctrl+Z=edit.undo` `key:Ctrl+Y=edit.redo` `spec:commands.md` |
 | Project | Export WAV | `cmd:project.export_wav` `key:Ctrl+R=ui.export` |
 | Project | Export stems | `cmd:project.export_stems` |
-| Project | Export compressed audio (MP3, Ogg, FLAC) | `todo` |
+| Project | Export FLAC (lossless) | `cmd:project.export_flac` |
+| Project | Export lossy audio (MP3, Ogg) | `todo` |
 | Project | Autosave and crash recovery | `done` |
 | Input | MIDI keyboard plays the selected channel | `done` |
 | Input | Record live notes into patterns | `key:Ctrl+E=ui.toggle_record` `done` |

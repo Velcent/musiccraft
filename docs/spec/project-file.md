@@ -32,6 +32,11 @@
 - What is rendered follows the play mode: the selected pattern or the song,
   repeated `loops` times, followed by the tail of sounding notes and effects. The
   tail ends after half a second below -90 dBFS, or after ten seconds.
+- `project.export_flac <path> [16|24] [loops] [sample rate]` writes lossless
+  FLAC with our own encoder (fixed predictors, partitioned Rice coding, per the
+  published FLAC specification); tests check it bit-exact against the reference
+  decoder when it is installed. The export dialog offers WAV and FLAC and keeps
+  the file extension in step.
 - Rendering is deterministic: the same project always produces the same file.
 - `project.export_stems <folder> [16|24|32f]` writes one file per mixer track that
   has unmuted channels routed to it (`NN Name.wav`, with track 00 holding

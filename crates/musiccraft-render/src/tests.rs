@@ -426,3 +426,37 @@ fn sidechained_compressor_ducks_on_each_kick() {
         "pad ducks under the kick: before {before}, under {under}"
     );
 }
+
+#[test]
+fn flac_export_is_valid_and_smaller_than_wav() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-flacx-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick\nstep.toggle 1 0\nstep.toggle 1 8",
+    );
+    s.run_line(&format!(
+        "project.export_flac \"{}\"",
+        dir.join("a.flac").display()
+    ))
+    .unwrap();
+    s.run_line(&format!(
+        "project.export_wav \"{}\"",
+        dir.join("a.wav").display()
+    ))
+    .unwrap();
+    let flac = std::fs::metadata(dir.join("a.flac")).unwrap().len();
+    let wav = std::fs::metadata(dir.join("a.wav")).unwrap().len();
+    assert!(flac < wav / 2, "flac {flac} bytes, wav {wav} bytes");
+    if std::path::Path::new("/usr/bin/flac").exists() {
+        let ok = std::process::Command::new("/usr/bin/flac")
+            .args(["-s", "-t"])
+            .arg(dir.join("a.flac"))
+            .status()
+            .unwrap();
+        assert!(ok.success(), "reference decoder verifies the file");
+    }
+    assert!(s.run_line("project.export_flac x.flac 32").is_err());
+    std::fs::remove_dir_all(dir).unwrap();
+}
