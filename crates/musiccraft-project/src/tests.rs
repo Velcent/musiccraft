@@ -135,7 +135,7 @@ fn rich_project() -> Project {
         .effects
         .push(EffectSlot::new(EffectKind::Reverb));
     project.playlist.clips.push(Clip {
-        pattern: PatternId(1),
+        source: ClipSource::Pattern(PatternId(1)),
         track: 0,
         start: 0,
         length: TICKS_PER_BAR,
@@ -224,7 +224,7 @@ fn song_length_rounds_up_to_bars() {
     let mut project = Project::default();
     assert_eq!(project.song_length_ticks(), TICKS_PER_BAR);
     project.playlist.clips.push(Clip {
-        pattern: PatternId(1),
+        source: ClipSource::Pattern(PatternId(1)),
         track: 3,
         start: TICKS_PER_BAR,
         length: 10,
@@ -240,4 +240,55 @@ fn range_checks() {
     assert!(check_volume(1.3).is_err());
     assert!(check_pan(-1.0).is_ok());
     assert!(check_pan(f32::NAN).is_err());
+}
+
+#[test]
+fn clips_keep_the_old_file_shape() {
+    let clip = Clip {
+        source: ClipSource::Pattern(PatternId(3)),
+        track: 1,
+        start: 0,
+        length: 384,
+    };
+    let json = serde_json::to_string(&clip).unwrap();
+    assert_eq!(json, r#"{"pattern":3,"track":1,"start":0,"length":384}"#);
+    let audio: Clip =
+        serde_json::from_str(r#"{"audio":7,"track":0,"start":96,"length":10}"#).unwrap();
+    assert_eq!(audio.audio(), Some(ChannelId(7)));
+}
+
+#[test]
+fn automation_interpolates_and_holds_ends() {
+    let automation = Automation {
+        id: AutomationId(1),
+        name: "Cutoff".into(),
+        target: AutomationTarget::MixerVolume { track: 1 },
+        points: vec![
+            AutomationPoint {
+                tick: 96,
+                value: 0.0,
+            },
+            AutomationPoint {
+                tick: 192,
+                value: 1.0,
+            },
+        ],
+    };
+    assert_eq!(automation.value_at(0.0), Some(0.0));
+    assert_eq!(automation.value_at(144.0), Some(0.5));
+    assert_eq!(automation.value_at(500.0), Some(1.0));
+    assert_eq!(automation.length_ticks(), TICKS_PER_BAR);
+}
+
+#[test]
+fn loading_drops_clips_of_missing_sources() {
+    let mut project = rich_project();
+    project.playlist.clips.push(Clip {
+        source: ClipSource::Automation(AutomationId(999)),
+        track: 2,
+        start: 0,
+        length: 10,
+    });
+    let loaded = Project::from_json(&project.to_json().unwrap()).unwrap();
+    assert_eq!(loaded.playlist.clips.len(), 1);
 }

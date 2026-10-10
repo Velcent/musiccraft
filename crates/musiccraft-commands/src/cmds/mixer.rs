@@ -188,7 +188,11 @@ struct TrackSnapshot {
 fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, 1)?;
     let index = insert_arg(project, args, 0)?;
+    if super::automation::targets_track(project, index, None) {
+        return Err(args.invalid("an automation drives this track; delete the automation first"));
+    }
     let track = project.mixer.remove(index);
+    super::automation::shift_tracks(project, index + 1, -1);
     let mut incoming = Vec::new();
     for (source, other) in project.mixer.iter_mut().enumerate() {
         other.sends.retain(|send| {
@@ -262,6 +266,7 @@ fn insert_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
         }
     }
     let name = snapshot.track.name.clone();
+    super::automation::shift_tracks(project, index, 1);
     project.mixer.insert(index, snapshot.track);
     Ok(Outcome::undoable(
         format!("inserted mixer track {index} ({name})"),
@@ -415,7 +420,11 @@ fn remove_effect(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comm
     args.expect(2, 2)?;
     let index = track_arg(project, args, 0)?;
     let slot = slot_arg(project, args, index, 1)?;
+    if super::automation::targets_track(project, index, Some(slot)) {
+        return Err(args.invalid("an automation drives this effect; delete the automation first"));
+    }
     let effect = project.mixer[index].effects.remove(slot);
+    super::automation::remap_slots(project, index, |s| Some(if s > slot { s - 1 } else { s }));
     let json = serde_json::to_string(&effect).map_err(|e| args.invalid(e.to_string()))?;
     Ok(Outcome::undoable(
         format!("removed {} from mixer track {index}", effect.kind),
@@ -436,6 +445,9 @@ fn insert_effect(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comm
     }
     let effect: EffectSlot =
         serde_json::from_str(args.str(2)?).map_err(|e| args.invalid(e.to_string()))?;
+    super::automation::remap_slots(project, index, |s| {
+        Some(if s >= slot - 1 { s + 1 } else { s })
+    });
     project.mixer[index].effects.insert(slot - 1, effect);
     Ok(Outcome::undoable(
         format!("inserted {} on mixer track {index}", effect.kind),
@@ -451,6 +463,17 @@ fn move_effect(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
     let effects = &mut project.mixer[index].effects;
     let effect = effects.remove(from);
     effects.insert(to, effect);
+    super::automation::remap_slots(project, index, |s| {
+        Some(if s == from {
+            to
+        } else if from < to && s > from && s <= to {
+            s - 1
+        } else if to < from && s >= to && s < from {
+            s + 1
+        } else {
+            s
+        })
+    });
     Ok(Outcome::undoable(
         format!("moved effect to slot {}", to + 1),
         Invocation::new(

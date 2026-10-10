@@ -4,7 +4,7 @@ use std::sync::Arc;
 use musiccraft_dsp::{Effect, SampleBuffer};
 use musiccraft_engine::{
     ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_SENDS,
-    NoteEvent, SendParams, Sequence, TrackParams,
+    SendParams, Sequence, TrackParams,
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
 use musiccraft_project::{Channel, MixerTrack, Project};
@@ -27,8 +27,7 @@ struct Desc {
     channels: Vec<ChannelParams>,
     tracks: Vec<TrackParams>,
     effects: Vec<Vec<EffectParams>>,
-    events: Vec<NoteEvent>,
-    length: u64,
+    sequence: Sequence,
     tempo: f64,
     playing: bool,
     metronome: bool,
@@ -174,8 +173,7 @@ fn describe(project: &Project) -> Desc {
                     .collect()
             })
             .collect(),
-        events: sequence.events().to_vec(),
-        length: sequence.length(),
+        sequence,
         tempo: project.tempo_bpm(),
         playing: project.transport().is_playing(),
         metronome: project.metronome,
@@ -271,8 +269,11 @@ impl Bridge {
             messages.push(EngineMessage::SetGraph(Box::new(graph)));
             report.rebuilt_graph = true;
         } else if let Some(prev) = &previous {
+            // Automation writes parameters during playback; when it stops,
+            // restore the project's values.
+            let stopped = prev.playing && !desc.playing && !desc.sequence.automation().is_empty();
             for (i, (now, before)) in desc.channels.iter().zip(&prev.channels).enumerate() {
-                if now != before {
+                if now != before || stopped {
                     messages.push(EngineMessage::Channel {
                         channel: u16::try_from(i).unwrap_or(u16::MAX),
                         params: *now,
@@ -280,7 +281,7 @@ impl Bridge {
                 }
             }
             for (i, (now, before)) in desc.tracks.iter().zip(&prev.tracks).enumerate() {
-                if now != before {
+                if now != before || stopped {
                     messages.push(EngineMessage::Track {
                         track: u16::try_from(i).unwrap_or(u16::MAX),
                         params: *now,
@@ -289,7 +290,7 @@ impl Bridge {
             }
             for (t, (now, before)) in desc.effects.iter().zip(&prev.effects).enumerate() {
                 for (s, (now, before)) in now.iter().zip(before).enumerate() {
-                    if now != before {
+                    if now != before || stopped {
                         messages.push(EngineMessage::Effect {
                             track: u16::try_from(t).unwrap_or(u16::MAX),
                             slot: u8::try_from(s).unwrap_or(u8::MAX),
@@ -301,12 +302,9 @@ impl Bridge {
         }
         let sequence_changed = previous
             .as_ref()
-            .is_none_or(|p| p.events != desc.events || p.length != desc.length);
+            .is_none_or(|p| p.sequence != desc.sequence);
         if sequence_changed {
-            messages.push(EngineMessage::SetSequence(Box::new(Sequence::new(
-                desc.events.clone(),
-                desc.length,
-            ))));
+            messages.push(EngineMessage::SetSequence(Box::new(desc.sequence.clone())));
             report.new_sequence = true;
         }
         if previous.as_ref().is_none_or(|p| p.tempo != desc.tempo) {

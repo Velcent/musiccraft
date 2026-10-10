@@ -9,39 +9,16 @@ use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME
 use crate::dialogs::Dialog;
 use crate::{Action, Frame, UiState, theme, widgets};
 
-/// Maps a parameter value to the 0..1 knob position. Frequencies use a log
-/// scale and times a cubic one, so useful values get most of the travel.
 pub(crate) fn to_unit(spec: &ParamSpec, value: f32) -> f32 {
-    let value = value.clamp(spec.min, spec.max);
-    match spec.unit {
-        "Hz" if spec.min > 0.0 => (value / spec.min).ln() / (spec.max / spec.min).ln(),
-        "s" | "ms" => ((value - spec.min) / (spec.max - spec.min)).cbrt(),
-        _ => (value - spec.min) / (spec.max - spec.min),
-    }
+    spec.to_unit(value)
 }
 
-/// Inverse of [`to_unit`].
 pub(crate) fn from_unit(spec: &ParamSpec, t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    let value = match spec.unit {
-        "Hz" if spec.min > 0.0 => spec.min * (spec.max / spec.min).powf(t),
-        "s" | "ms" => spec.min + t.powi(3) * (spec.max - spec.min),
-        _ => spec.min + t * (spec.max - spec.min),
-    };
-    spec.sanitize(value)
+    spec.from_unit(t)
 }
 
-/// Formats a parameter value with its unit.
 pub(crate) fn format_value(spec: &ParamSpec, value: f32) -> String {
-    match spec.unit {
-        "Hz" if value >= 1_000.0 => format!("{:.2} kHz", value / 1_000.0),
-        "Hz" => format!("{value:.0} Hz"),
-        "s" if value < 1.0 => format!("{:.0} ms", value * 1_000.0),
-        "s" => format!("{value:.2} s"),
-        "" if spec.integer => format!("{value:.0}"),
-        "" => format!("{:.0}%", value * 100.0),
-        unit => format!("{value:.1} {unit}"),
-    }
+    spec.format(value)
 }
 
 fn spec(index: usize) -> ParamSpec {
@@ -67,6 +44,11 @@ fn param_knob(
         to_unit(&spec, spec.default),
         spec.min < 0.0 && spec.max > 0.0,
         &format_value(&spec, value),
+    );
+    crate::automation::menu(
+        &out.response,
+        &format!("channel:{number}:{}", spec.name),
+        actions,
     );
     if out.started {
         state.begin_gesture();
@@ -163,6 +145,11 @@ fn contents(
             false,
             &format!("{:.0}%", channel.volume * 100.0),
         );
+        crate::automation::menu(
+            &volume.response,
+            &format!("channel:{number}:volume"),
+            actions,
+        );
         if volume.started {
             state.begin_gesture();
         }
@@ -183,6 +170,7 @@ fn contents(
             true,
             &format!("{:+.0}", channel.pan * 100.0),
         );
+        crate::automation::menu(&pan.response, &format!("channel:{number}:pan"), actions);
         if pan.started {
             state.begin_gesture();
         }

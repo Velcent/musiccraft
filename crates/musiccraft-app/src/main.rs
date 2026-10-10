@@ -29,7 +29,7 @@ usage: musiccraft [project.mcproj] [--keymap <file>] [--empty] [--open <windows>
   --empty            start with an empty project instead of the drum starter kit
   --open <windows>   comma-separated windows to show at start:
                      channel_rack, piano_roll, playlist, mixer, browser,
-                     channel_settings";
+                     channel_settings, automation";
 
 /// Audio running on a device.
 struct Audio {
@@ -55,6 +55,17 @@ struct App {
     midi_notes: Option<Receiver<midi::Played>>,
     /// Waveform overview of the selected channel's sample, keyed by sample.
     overview: Option<(String, Vec<(f32, f32)>)>,
+    /// Overviews and durations (seconds) of samples played by audio clips.
+    clip_audio: Vec<ClipAudio>,
+}
+
+/// Display data for a sample that audio clips play.
+#[derive(Clone)]
+struct ClipAudio {
+    channel: musiccraft_project::ChannelId,
+    sample: String,
+    peaks: Vec<(f32, f32)>,
+    seconds: f64,
 }
 
 /// Min/max pairs summarizing a sample for display.
@@ -213,6 +224,9 @@ impl App {
             w.mixer = windows.iter().any(|n| n == "mixer");
             w.browser = windows.iter().any(|n| n == "browser");
             w.channel_settings = windows.iter().any(|n| n == "channel_settings");
+            if windows.iter().any(|n| n == "automation") {
+                ui.automation_editor = session.project().automations.first().map(|a| a.id);
+            }
         }
         if let Some(text) = status {
             ui.set_status(text, true);
@@ -235,6 +249,7 @@ impl App {
             recorder: recorder::Recorder::default(),
             midi_notes: Some(played_rx),
             overview: None,
+            clip_audio: Vec::new(),
         }
     }
 
@@ -327,6 +342,42 @@ impl App {
                     None => {}
                 }
                 return;
+            }
+            Action::DropAudio {
+                sample,
+                track,
+                start,
+            } => {
+                let loaded = self
+                    .audio
+                    .as_mut()
+                    .map(|audio| audio.bridge.sample(&sample, self.session.project()));
+                let seconds = match loaded {
+                    Some(Ok(buffer)) => buffer.duration_seconds(),
+                    Some(Err(err)) => {
+                        self.ui
+                            .set_status(format!("cannot load {sample}: {err}"), true);
+                        return;
+                    }
+                    None => 4.0 * 60.0 / self.session.project().tempo_bpm(),
+                };
+                let project = self.session.project();
+                let ticks_per_second =
+                    project.tempo_bpm() / 60.0 * f64::from(musiccraft_project::params::PPQ);
+                let length = (seconds * ticks_per_second).ceil().max(1.0) as u32;
+                let number = project.channels.len() + 1;
+                let batch = Invocation::new(
+                    musiccraft_commands::BATCH,
+                    [
+                        Invocation::new("channel.add_sampler", [sample.clone()]).to_string(),
+                        format!("channel.set_param {number} one_shot 0"),
+                        format!(
+                            "playlist.add_audio_clip {number} {} {start}t {length}t",
+                            track + 1
+                        ),
+                    ],
+                );
+                self.session.run(&batch)
             }
             Action::Seek(ticks) => {
                 self.send(EngineMessage::Seek(ticks));
@@ -432,6 +483,57 @@ impl App {
         self.overview = Some((sample, points));
     }
 
+    /// Keeps waveform data for every channel that audio clips play.
+    fn update_clip_audio(&mut self) {
+        let project = self.session.project();
+        let mut wanted: Vec<(musiccraft_project::ChannelId, String)> = project
+            .playlist
+            .clips
+            .iter()
+            .filter_map(|c| c.audio())
+            .filter_map(|id| {
+                let channel = project.channels.get(project.channel_position(id)?)?;
+                match &channel.instrument {
+                    musiccraft_project::Instrument::Sampler { sample } => {
+                        Some((id, sample.clone()))
+                    }
+                    musiccraft_project::Instrument::Synth => None,
+                }
+            })
+            .collect();
+        wanted.sort();
+        wanted.dedup();
+        let current: Vec<(musiccraft_project::ChannelId, String)> = self
+            .clip_audio
+            .iter()
+            .map(|(id, s, _, _)| (*id, s.clone()))
+            .collect();
+        if current == wanted {
+            return;
+        }
+        let Some(audio) = &mut self.audio else {
+            return;
+        };
+        let mut fresh = Vec::new();
+        for (id, sample) in wanted {
+            if let Some(existing) = self
+                .clip_audio
+                .iter()
+                .find(|(i, s, _, _)| *i == id && *s == sample)
+            {
+                fresh.push(existing.clone());
+            } else if let Ok(buffer) = audio.bridge.sample(&sample, self.session.project()) {
+                fresh.push((
+                    id,
+                    sample,
+                    overview(&buffer, 600),
+                    buffer.duration_seconds(),
+                ));
+            }
+        }
+        self.clip_audio = fresh;
+    }
+
     fn drain_midi(&mut self) {
         let notes: Vec<midi::Played> = self
             .midi_notes
@@ -493,12 +595,27 @@ impl eframe::App for App {
             can_redo: self.session.redo_depth() > 0,
         };
         self.update_overview();
+        self.update_clip_audio();
+        let ticks_per_second =
+            self.session.project().tempo_bpm() / 60.0 * f64::from(musiccraft_project::params::PPQ);
+        let clip_waveforms: Vec<(musiccraft_project::ChannelId, Vec<(f32, f32)>)> = self
+            .clip_audio
+            .iter()
+            .map(|(id, _, peaks, _)| (*id, peaks.clone()))
+            .collect();
+        let clip_durations: Vec<(musiccraft_project::ChannelId, u32)> = self
+            .clip_audio
+            .iter()
+            .map(|c| (c.channel, (c.seconds * ticks_per_second).ceil() as u32))
+            .collect();
         let actions = {
             let frame = Frame {
                 project: self.session.project(),
                 engine: &engine,
                 history: &history,
                 waveform: self.overview.as_ref().map(|(_, points)| points.as_slice()),
+                clip_waveforms: &clip_waveforms,
+                clip_durations: &clip_durations,
             };
             musiccraft_ui::show(ui, &mut self.ui, &frame)
         };

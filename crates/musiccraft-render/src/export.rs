@@ -64,7 +64,20 @@ pub fn render(project: &Project, options: RenderOptions) -> (Vec<f32>, Vec<f32>,
     let ticks_per_second = project.tempo_bpm() / 60.0 * f64::from(PPQ);
     let tail_ticks = (options.max_tail_seconds.max(0.0) * ticks_per_second).ceil() as u64 + 1;
     let total_ticks = loop_ticks * loops;
-    let sequence = Sequence::new(events, total_ticks + tail_ticks);
+    let mut lanes = Vec::new();
+    for i in 0..loops {
+        lanes.extend(base.automation().iter().map(|lane| {
+            musiccraft_engine::AutomationLane {
+                target: lane.target,
+                points: lane
+                    .points
+                    .iter()
+                    .map(|(t, v)| (t + i * loop_ticks, *v))
+                    .collect(),
+            }
+        }));
+    }
+    let sequence = Sequence::new(events, total_ticks + tail_ticks).with_automation(lanes);
     let _ = handle.send(EngineMessage::SetSequence(Box::new(sequence)));
     let _ = handle.send(EngineMessage::Play);
 

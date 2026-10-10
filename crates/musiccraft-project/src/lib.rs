@@ -16,9 +16,10 @@ use serde::{Deserialize, Serialize};
 
 pub use error::ProjectError;
 pub use model::{
-    Channel, ChannelId, Clip, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY,
-    EffectSlot, Instrument, InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME,
-    MixerSend, MixerTrack, Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, STEP_KEY,
+    Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
+    ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
+    InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, MixerSend, MixerTrack,
+    Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, STEP_KEY,
 };
 pub use musiccraft_params as params;
 
@@ -124,6 +125,9 @@ pub struct Project {
     /// The song arrangement.
     #[serde(default)]
     pub playlist: Playlist,
+    /// Automation curves, placed on the playlist by automation clips.
+    #[serde(default)]
+    pub automations: Vec<Automation>,
     /// Whether the metronome clicks during playback (never rendered to files).
     #[serde(default)]
     pub metronome: bool,
@@ -163,6 +167,7 @@ impl Project {
             current_pattern: 0,
             mixer,
             playlist: Playlist::default(),
+            automations: Vec::new(),
             metronome: false,
             next_id: 2,
             path: None,
@@ -298,6 +303,27 @@ impl Project {
         self.channels.iter().position(|c| c.id == id)
     }
 
+    /// Display index of the automation with `id`.
+    #[must_use]
+    pub fn automation_position(&self, id: AutomationId) -> Option<usize> {
+        self.automations.iter().position(|a| a.id == id)
+    }
+
+    /// Index of a 1-based automation number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::NotFound`] if there is no such automation.
+    pub fn automation_index(&self, number: usize) -> Result<usize, ProjectError> {
+        number
+            .checked_sub(1)
+            .filter(|i| *i < self.automations.len())
+            .ok_or(ProjectError::NotFound {
+                what: "automation",
+                number,
+            })
+    }
+
     /// Display index of the pattern with `id`.
     #[must_use]
     pub fn pattern_position(&self, id: PatternId) -> Option<usize> {
@@ -419,9 +445,28 @@ impl Project {
             pattern.sort_notes();
         }
         let pattern_ids: Vec<PatternId> = self.patterns.iter().map(|p| p.id).collect();
-        self.playlist.clips.retain(|c| {
-            pattern_ids.contains(&c.pattern) && c.length > 0 && c.track < PLAYLIST_TRACKS
-        });
+        for automation in &mut self.automations {
+            for point in &mut automation.points {
+                point.value = if point.value.is_finite() {
+                    point.value.clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+            }
+            automation.sort_points();
+        }
+        let automation_ids: Vec<AutomationId> = self.automations.iter().map(|a| a.id).collect();
+        let max_id = self.automations.iter().map(|a| a.id.0).max().unwrap_or(0);
+        self.reserve_id(max_id);
+        let sources_exist = |c: &Clip| match c.source {
+            ClipSource::Pattern(id) => pattern_ids.contains(&id),
+            ClipSource::Automation(id) => automation_ids.contains(&id),
+            ClipSource::Audio(id) => channel_ids.contains(&id),
+        };
+        self.playlist
+            .clips
+            .retain(|c| sources_exist(c) && c.length > 0 && c.track < PLAYLIST_TRACKS);
+
         self.playlist.sort_clips();
         Ok(())
     }
@@ -439,6 +484,7 @@ impl PartialEq for Project {
             && self.mixer == other.mixer
             && self.playlist == other.playlist
             && self.metronome == other.metronome
+            && self.automations == other.automations
     }
 }
 

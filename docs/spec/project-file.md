@@ -14,6 +14,9 @@
 - Loading validates the file: other formats and newer versions are rejected; an
   invalid tempo is rejected; dangling references (notes for removed channels,
   clips for removed patterns, routes to missing tracks) are dropped or reset.
+- Clips store their source as `"pattern": <id>`, `"automation": <id>` or
+  `"audio": <channel id>`; files from before automation existed load unchanged.
+  Clips whose source no longer exists are dropped on load.
 - Sample paths are stored as given. Relative paths resolve against the project
   file's directory first, then the working directory.
 - `project.save [path]` writes atomically (temporary file, then rename) and

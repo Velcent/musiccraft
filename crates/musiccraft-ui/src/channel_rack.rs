@@ -138,6 +138,7 @@ fn row(
             run(actions, "channel.toggle_mute", [number.clone()]);
         }
         let pan = widgets::knob(ui, channel.pan, -1.0, 1.0, 0.0, true);
+        crate::automation::menu(&pan.response, &format!("channel:{number}:pan"), actions);
         if pan.started {
             state.begin_gesture();
         }
@@ -156,6 +157,11 @@ fn row(
             MAX_VOLUME,
             DEFAULT_CHANNEL_VOLUME,
             false,
+        );
+        crate::automation::menu(
+            &volume.response,
+            &format!("channel:{number}:volume"),
+            actions,
         );
         if volume.started {
             state.begin_gesture();

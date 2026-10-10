@@ -488,3 +488,24 @@ fn preview_plays_on_master_and_is_returned_as_garbage() {
     assert!(out.iter().all(|s| s.abs() < 1e-6));
     assert_eq!(handle.collect_garbage(), 1, "the replaced first preview");
 }
+
+#[test]
+fn automation_moves_a_track_volume_during_playback() {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    let dc = Arc::new(SampleBuffer::mono(vec![1.0; 4 * BEAT], f64::from(SR)));
+    graph.add_channel(Instrument::Sampler(dc), impulse_params());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    let lane = AutomationLane {
+        target: AutomationTarget::TrackVolume(0),
+        points: vec![(0, 1.0), (u64::from(PPQ) * 2, 0.0)],
+    };
+    let sequence = Sequence::new(vec![note(0, 0)], 4 * u64::from(PPQ)).with_automation(vec![lane]);
+    engine.apply(EngineMessage::SetSequence(Box::new(sequence)));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 3 * BEAT);
+    // Halfway through the ramp (one beat in) the master is at about half.
+    assert!((out[BEAT] - 0.5).abs() < 0.02, "got {}", out[BEAT]);
+    assert!(out[2 * BEAT + 500].abs() < 0.01, "ramp reached zero");
+}

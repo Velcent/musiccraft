@@ -118,7 +118,7 @@ fn remove(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         .playlist
         .clips
         .drain(..)
-        .partition(|c| c.pattern == pattern.id);
+        .partition(|c| c.pattern() == Some(pattern.id));
     project.playlist.clips = kept;
     let previous = project.current_pattern;
     if previous > index || previous >= project.patterns.len() {

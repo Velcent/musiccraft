@@ -159,6 +159,7 @@ fn strip(
                 }
             });
             let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
+            crate::automation::menu(&pan.response, &format!("mixer:{index}:pan"), actions);
             if pan.started {
                 state.begin_gesture();
             }
@@ -182,6 +183,7 @@ fn strip(
                     MAX_VOLUME,
                     vec2(STRIP_WIDTH - 22.0, fader_height),
                 );
+                crate::automation::menu(&fader.response, &format!("mixer:{index}:volume"), actions);
                 if fader.started {
                     state.begin_gesture();
                 }
@@ -349,6 +351,15 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                                         crate::channel_settings::to_unit(spec, spec.default),
                                         spec.min < 0.0 && spec.max > 0.0,
                                         &crate::channel_settings::format_value(spec, value),
+                                    );
+                                    crate::automation::menu(
+                                        &out.response,
+                                        &format!(
+                                            "mixer:{index}:{}:{}",
+                                            state.mixer_slot + 1,
+                                            spec.name
+                                        ),
+                                        actions,
                                     );
                                     if out.started {
                                         state.begin_gesture();

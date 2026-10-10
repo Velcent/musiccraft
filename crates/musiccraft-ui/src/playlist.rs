@@ -7,7 +7,7 @@ use egui::{
 };
 use musiccraft_commands::Invocation;
 use musiccraft_project::params::{PPQ, TICKS_PER_BAR};
-use musiccraft_project::{Clip, PLAYLIST_TRACKS, PlayMode, Project};
+use musiccraft_project::{AutomationId, Clip, ClipSource, PLAYLIST_TRACKS, PlayMode, Project};
 
 use crate::dialogs::Dialog;
 use crate::geometry::{Grid, Hit, Snap, hit_test};
@@ -45,6 +45,9 @@ pub struct PlaylistState {
     pub(crate) selection: BTreeSet<(u32, u32)>,
     /// Rubber-band selection in progress.
     marquee: Option<(Pos2, Pos2)>,
+    /// When set, clicking the playlist places this automation instead of the
+    /// selected pattern.
+    pub(crate) paint_automation: Option<AutomationId>,
 }
 
 impl Default for PlaylistState {
@@ -57,6 +60,7 @@ impl Default for PlaylistState {
             last_view: None,
             selection: BTreeSet::new(),
             marquee: None,
+            paint_automation: None,
         }
     }
 }
@@ -139,12 +143,16 @@ fn pattern_list(
                     let selected = i == project.current_pattern;
                     let text =
                         RichText::new(format!("■ {}", pattern.name)).color(theme::palette(i));
-                    let response = ui.selectable_label(selected, text);
-                    if response.clicked() && !selected {
-                        actions.push(Action::Run(Invocation::new(
-                            "pattern.select",
-                            [(i + 1).to_string()],
-                        )));
+                    let painting = state.playlist.paint_automation.is_none();
+                    let response = ui.selectable_label(selected && painting, text);
+                    if response.clicked() {
+                        state.playlist.paint_automation = None;
+                        if !selected {
+                            actions.push(Action::Run(Invocation::new(
+                                "pattern.select",
+                                [(i + 1).to_string()],
+                            )));
+                        }
                     }
                     response.context_menu(|ui| {
                         if ui.button("Rename…").clicked() {
@@ -174,7 +182,50 @@ fn pattern_list(
                 }
             });
         if ui.button("+ New pattern").clicked() {
+            state.playlist.paint_automation = None;
             actions.push(Action::Run(Invocation::bare("pattern.add")));
+        }
+        if !project.automations.is_empty() {
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new("AUTOMATION")
+                    .small()
+                    .strong()
+                    .color(theme::TEXT_DIM),
+            );
+            for (i, automation) in project.automations.iter().enumerate() {
+                let selected = state.playlist.paint_automation == Some(automation.id);
+                let text = RichText::new(format!("~ {}", automation.name)).color(theme::AUTOMATION);
+                let response = ui
+                    .selectable_label(selected, text)
+                    .on_hover_text("Click to paint it on the playlist · double-click to edit");
+                if response.clicked() {
+                    state.playlist.paint_automation = Some(automation.id);
+                }
+                if response.double_clicked() {
+                    state.automation_editor = Some(automation.id);
+                }
+                response.context_menu(|ui| {
+                    if ui.button("Edit…").clicked() {
+                        state.automation_editor = Some(automation.id);
+                        ui.close();
+                    }
+                    if ui.button("Rename…").clicked() {
+                        state.open_dialog(Dialog::rename_automation(i, &automation.name));
+                        ui.close();
+                    }
+                    if ui
+                        .button(RichText::new("Delete").color(theme::DANGER))
+                        .clicked()
+                    {
+                        actions.push(Action::Run(Invocation::new(
+                            "automation.remove",
+                            [(i + 1).to_string()],
+                        )));
+                        ui.close();
+                    }
+                });
+            }
         }
     });
 }
@@ -213,7 +264,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     draw_clip(
                         &painter,
                         &grid,
-                        project,
+                        frame,
                         clip_item,
                         clip_item.track,
                         clip_item.start,
@@ -240,7 +291,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             for c in &moving {
                 let (track, start) = shifted(c, dt, dtrack);
                 let length = u32::try_from((i64::from(c.length) + dl).max(1)).unwrap_or(1);
-                draw_clip(&painter, &grid, project, c, track, start, length, true);
+                draw_clip(&painter, &grid, frame, c, track, start, length, true);
             }
             if let Some((origin, current)) = state.playlist.marquee {
                 let area = Rect::from_two_pos(origin, current);
@@ -333,15 +384,36 @@ fn draw_grid(painter: &egui::Painter, grid: &Grid, clip: Rect, rect: Rect) {
 fn draw_clip(
     painter: &egui::Painter,
     grid: &Grid,
-    project: &Project,
+    frame: &Frame<'_>,
     clip: &Clip,
     track: u32,
     start: u32,
     length: u32,
     ghost: bool,
 ) {
-    let index = project.pattern_position(clip.pattern).unwrap_or(0);
-    let color = theme::palette(index);
+    let project = frame.project;
+    let (color, name) = match clip.source {
+        ClipSource::Pattern(id) => {
+            let index = project.pattern_position(id).unwrap_or(0);
+            (
+                theme::palette(index),
+                project.patterns.get(index).map_or("", |p| p.name.as_str()),
+            )
+        }
+        ClipSource::Automation(id) => (
+            theme::AUTOMATION,
+            project
+                .automation_position(id)
+                .map_or("", |i| project.automations[i].name.as_str()),
+        ),
+        ClipSource::Audio(id) => {
+            let index = project.channel_position(id).unwrap_or(0);
+            (
+                theme::palette(index),
+                project.channels.get(index).map_or("", |c| c.name.as_str()),
+            )
+        }
+    };
     let rect = grid.span(track, start, length).shrink2(vec2(0.5, 1.5));
     let muted = project.playlist.muted_tracks.contains(&track);
     let alpha = if ghost {
@@ -351,28 +423,112 @@ fn draw_clip(
     } else {
         200
     };
-    painter.rect_filled(
-        rect,
-        4.0,
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha),
-    );
+    let fill = match clip.source {
+        ClipSource::Automation(_) => Color32::from_rgba_unmultiplied(0x2a, 0x2f, 0x3a, alpha),
+        _ => Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha),
+    };
+    painter.rect_filled(rect, 4.0, fill);
     painter.rect_stroke(
         rect,
         4.0,
-        Stroke::new(1.0, Color32::from_black_alpha(140)),
+        Stroke::new(
+            1.0,
+            if matches!(clip.source, ClipSource::Automation(_)) {
+                color
+            } else {
+                Color32::from_black_alpha(140)
+            },
+        ),
         egui::StrokeKind::Inside,
     );
-    let Some(pattern) = project.patterns.get(index) else {
-        return;
-    };
-    // Miniature of the pattern's notes, repeated across the clip.
+    let body = rect.shrink2(vec2(2.0, 4.0));
+    match clip.source {
+        ClipSource::Pattern(id) => {
+            if let Some(pattern) = project
+                .pattern_position(id)
+                .and_then(|i| project.patterns.get(i))
+            {
+                pattern_preview(painter, grid, pattern, body, start, length);
+            }
+        }
+        ClipSource::Automation(id) => {
+            if let Some(automation) = project
+                .automation_position(id)
+                .map(|i| &project.automations[i])
+            {
+                let steps = (rect.width() / 3.0).clamp(2.0, 400.0) as usize;
+                let points: Vec<Pos2> = (0..=steps)
+                    .map(|i| {
+                        let t = i as f32 / steps as f32;
+                        let tick = t * length as f32;
+                        let value = automation.value_at(f64::from(tick)).unwrap_or(0.0);
+                        pos2(
+                            grid.x(start as f32 + tick),
+                            body.bottom() - value * body.height(),
+                        )
+                    })
+                    .collect();
+                painter.add(egui::Shape::line(points, Stroke::new(1.5, color)));
+            }
+        }
+        ClipSource::Audio(id) => {
+            if let Some((_, peaks)) = frame.clip_waveforms.iter().find(|(c, _)| *c == id) {
+                let n = peaks.len().max(1);
+                let half = body.height() / 2.0;
+                let peak = peaks
+                    .iter()
+                    .fold(1e-6_f32, |p, (lo, hi)| p.max(lo.abs()).max(hi.abs()));
+                // The waveform is drawn at the sample's real duration.
+                let duration = frame
+                    .clip_durations
+                    .iter()
+                    .find(|(c, _)| *c == id)
+                    .map_or(length, |(_, d)| *d);
+                for (i, (lo, hi)) in peaks.iter().enumerate() {
+                    let tick = i as f32 / n as f32 * duration as f32;
+                    if tick >= length as f32 {
+                        break;
+                    }
+                    let x = grid.x(start as f32 + tick);
+                    painter.line_segment(
+                        [
+                            pos2(x, body.center().y - hi / peak * half),
+                            pos2(x, body.center().y - lo / peak * half),
+                        ],
+                        Stroke::new(1.0, Color32::from_black_alpha(150)),
+                    );
+                }
+            }
+        }
+    }
+    painter.text(
+        rect.left_top() + vec2(4.0, 2.0),
+        Align2::LEFT_TOP,
+        name,
+        FontId::proportional(10.5),
+        if matches!(clip.source, ClipSource::Automation(_)) {
+            theme::TEXT
+        } else {
+            theme::BACKGROUND
+        },
+    );
+}
+
+/// Miniature of a pattern's notes, repeated across the clip.
+fn pattern_preview(
+    painter: &egui::Painter,
+    grid: &Grid,
+    pattern: &musiccraft_project::Pattern,
+    body: Rect,
+    start: u32,
+    length: u32,
+) {
     let period = pattern.length_ticks().max(1);
     let (lo, hi) = pattern
         .notes
         .iter()
         .fold((127u8, 0u8), |(lo, hi), n| (lo.min(n.key), hi.max(n.key)));
     let span = f32::from(hi.saturating_sub(lo).max(1));
-    let body = rect.shrink2(vec2(2.0, 4.0));
     let mut offset = 0;
     while offset < length {
         for note in &pattern.notes {
@@ -398,13 +554,27 @@ fn draw_clip(
         }
         offset += period;
     }
-    painter.text(
-        rect.left_top() + vec2(4.0, 2.0),
-        Align2::LEFT_TOP,
-        &pattern.name,
-        FontId::proportional(10.5),
-        theme::BACKGROUND,
-    );
+}
+
+/// The command that places a clip like `clip` at another position.
+fn add_clip_invocation(project: &Project, clip: &Clip, track: u32, start: u32) -> Invocation {
+    let (name, number) = match clip.source {
+        ClipSource::Pattern(id) => ("playlist.add_clip", project.pattern_position(id)),
+        ClipSource::Automation(id) => (
+            "playlist.add_automation_clip",
+            project.automation_position(id),
+        ),
+        ClipSource::Audio(id) => ("playlist.add_audio_clip", project.channel_position(id)),
+    };
+    Invocation::new(
+        name,
+        [
+            number.map_or(1, |i| i + 1).to_string(),
+            (track + 1).to_string(),
+            format!("{start}t"),
+            format!("{}t", clip.length),
+        ],
+    )
 }
 
 fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, project: &Project) {
@@ -740,17 +910,72 @@ fn edit(
                 }
                 (Hit::Empty, Some(row)) => {
                     let start = snap.floor(grid.tick_at(pos.x));
-                    actions.push(Action::Run(Invocation::new(
-                        "playlist.add_clip",
-                        [
-                            (project.current_pattern + 1).to_string(),
-                            (row + 1).to_string(),
-                            format!("{start}t"),
-                        ],
-                    )));
+                    let painted = state
+                        .playlist
+                        .paint_automation
+                        .and_then(|id| project.automation_position(id));
+                    let invocation = match painted {
+                        Some(i) => Invocation::new(
+                            "playlist.add_automation_clip",
+                            [
+                                (i + 1).to_string(),
+                                (row + 1).to_string(),
+                                format!("{start}t"),
+                            ],
+                        ),
+                        None => Invocation::new(
+                            "playlist.add_clip",
+                            [
+                                (project.current_pattern + 1).to_string(),
+                                (row + 1).to_string(),
+                                format!("{start}t"),
+                            ],
+                        ),
+                    };
+                    actions.push(Action::Run(invocation));
                     state.playlist.selection.clear();
                 }
                 _ => {}
+            }
+        }
+    }
+    if response.double_clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            if let Hit::Body(i) | Hit::Edge(i) = hit_test(boxes.iter().copied(), pos) {
+                match clips.get(i).map(|c| c.source) {
+                    Some(ClipSource::Automation(id)) => state.automation_editor = Some(id),
+                    Some(ClipSource::Pattern(id)) => {
+                        if let Some(index) = project.pattern_position(id) {
+                            actions.push(Action::Run(Invocation::new(
+                                "pattern.select",
+                                [(index + 1).to_string()],
+                            )));
+                            state.windows.piano_roll = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    // Sounds dropped from the browser become audio clips where they land.
+    if response.contains_pointer() && ui.input(|i| i.pointer.any_released()) {
+        if let Some(pos) = ui.ctx().pointer_hover_pos().filter(|p| editable(*p)) {
+            if let (Some(row), true) = (
+                grid.row_at(pos.y),
+                egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ui.ctx()),
+            ) {
+                if let Some(dragged) =
+                    egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ui.ctx())
+                {
+                    if let Some(sample) = dragged.0.clone() {
+                        actions.push(Action::DropAudio {
+                            sample,
+                            track: row,
+                            start: snap.floor(grid.tick_at(pos.x)),
+                        });
+                    }
+                }
             }
         }
     }
@@ -821,18 +1046,7 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         let span = end - first;
         let adds = selected
             .iter()
-            .map(|c| {
-                let pattern = project.pattern_position(c.pattern).map_or(1, |i| i + 1);
-                Invocation::new(
-                    "playlist.add_clip",
-                    [
-                        pattern.to_string(),
-                        (c.track + 1).to_string(),
-                        format!("{}t", c.start + span),
-                        format!("{}t", c.length),
-                    ],
-                )
-            })
+            .map(|c| add_clip_invocation(project, c, c.track, c.start + span))
             .collect();
         actions.extend(batch(adds).map(Action::Run));
         state.playlist.selection = selected.iter().map(|c| (c.track, c.start + span)).collect();
@@ -848,7 +1062,7 @@ mod tests {
         ClipDrag {
             kind,
             original: Clip {
-                pattern: PatternId(1),
+                source: musiccraft_project::ClipSource::Pattern(PatternId(1)),
                 track: 0,
                 start: 384,
                 length: 384,

@@ -370,17 +370,161 @@ impl MixerTrack {
     }
 }
 
-/// A pattern placed on the playlist. Times are in ticks.
+/// Stable identity of an automation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AutomationId(pub u32);
+
+/// What a playlist clip plays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipSource {
+    /// A pattern, repeated for the clip's length.
+    Pattern(PatternId),
+    /// An automation curve.
+    Automation(AutomationId),
+    /// A sampler channel's sample, played once from the clip's start.
+    Audio(ChannelId),
+}
+
+/// Something placed on the playlist. Times are in ticks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Clip {
-    /// Pattern played by the clip.
-    pub pattern: PatternId,
+    /// What the clip plays.
+    #[serde(flatten)]
+    pub source: ClipSource,
     /// Track row, 0-based.
     pub track: u32,
     /// Start in ticks from the song start.
     pub start: u32,
-    /// Duration in ticks; the pattern repeats if the clip is longer.
+    /// Duration in ticks; a pattern repeats if the clip is longer.
     pub length: u32,
+}
+
+impl Clip {
+    /// The pattern a pattern clip plays.
+    #[must_use]
+    pub fn pattern(&self) -> Option<PatternId> {
+        match self.source {
+            ClipSource::Pattern(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    /// The automation an automation clip plays.
+    #[must_use]
+    pub fn automation(&self) -> Option<AutomationId> {
+        match self.source {
+            ClipSource::Automation(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    /// The channel an audio clip plays.
+    #[must_use]
+    pub fn audio(&self) -> Option<ChannelId> {
+        match self.source {
+            ClipSource::Audio(id) => Some(id),
+            _ => None,
+        }
+    }
+}
+
+/// A parameter an automation drives.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AutomationTarget {
+    /// A channel's volume.
+    ChannelVolume {
+        /// The channel.
+        channel: ChannelId,
+    },
+    /// A channel's pan.
+    ChannelPan {
+        /// The channel.
+        channel: ChannelId,
+    },
+    /// An instrument parameter of a channel.
+    ChannelParam {
+        /// The channel.
+        channel: ChannelId,
+        /// Parameter name from the instrument table.
+        param: String,
+    },
+    /// A mixer track's volume.
+    MixerVolume {
+        /// Track index (0 = master).
+        track: usize,
+    },
+    /// A mixer track's pan.
+    MixerPan {
+        /// Track index (0 = master).
+        track: usize,
+    },
+    /// A parameter of an effect slot.
+    EffectParam {
+        /// Track index (0 = master).
+        track: usize,
+        /// Slot index (0-based).
+        slot: usize,
+        /// Parameter name from the effect's table.
+        param: String,
+    },
+}
+
+/// One point of an automation curve.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AutomationPoint {
+    /// Ticks from the start of the clip.
+    pub tick: u32,
+    /// Control position 0..=1, mapped through the target's curve.
+    pub value: f32,
+}
+
+/// A curve that moves one parameter over time when its clips play.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Automation {
+    /// Stable identity.
+    pub id: AutomationId,
+    /// Display name.
+    pub name: String,
+    /// The parameter driven.
+    pub target: AutomationTarget,
+    /// Points sorted by tick; values are linearly interpolated between them.
+    pub points: Vec<AutomationPoint>,
+}
+
+impl Automation {
+    /// Length covered by the points, rounded up to whole bars (at least one).
+    #[must_use]
+    pub fn length_ticks(&self) -> u32 {
+        let last = self.points.iter().map(|p| p.tick).max().unwrap_or(0);
+        crate::music::round_up_to_bar(last.max(1))
+    }
+
+    /// Value at `tick`, interpolating between points and holding the ends.
+    #[must_use]
+    pub fn value_at(&self, tick: f64) -> Option<f32> {
+        let first = self.points.first()?;
+        if tick <= f64::from(first.tick) {
+            return Some(first.value);
+        }
+        for pair in self.points.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            if tick <= f64::from(b.tick) {
+                let span = f64::from(b.tick.saturating_sub(a.tick)).max(1e-9);
+                let t = ((tick - f64::from(a.tick)) / span) as f32;
+                return Some(a.value + (b.value - a.value) * t);
+            }
+        }
+        self.points.last().map(|p| p.value)
+    }
+
+    /// Keeps points sorted with one point per tick.
+    pub fn sort_points(&mut self) {
+        self.points.sort_by_key(|p| p.tick);
+        self.points.dedup_by_key(|p| p.tick);
+    }
 }
 
 impl Clip {

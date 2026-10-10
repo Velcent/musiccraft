@@ -1,5 +1,6 @@
 //! Built-in commands, grouped by area.
 
+mod automation;
 mod channel;
 mod mixer;
 mod notes;
@@ -23,5 +24,6 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(pattern::commands());
     commands.extend(mixer::commands());
     commands.extend(playlist::commands());
+    commands.extend(automation::commands());
     commands
 }

@@ -31,7 +31,10 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Rename / clone / reorder / delete | `cmd:channel.rename` `cmd:channel.clone` `cmd:channel.move` `cmd:channel.remove` |
 | Channel rack | Instrument parameters | `cmd:channel.set_param` |
 | Channel rack | Swing | `cmd:pattern.set_swing` |
+| Channel rack | Channel settings window (envelope, filter, sample view) | `done` |
+| Channel rack | Melodic patterns previewed in the rack | `done` |
 | Piano roll | Velocity editor lane | `cmd:note.set_velocity` `done` |
+| Piano roll | Select, copy, paste, duplicate, nudge | `cmd:edit.batch` `done` |
 | Channel rack | Per-note pan and pitch graph editor | `todo` |
 | Piano roll | Draw, move, resize, delete notes | `cmd:note.add` `cmd:note.move` `cmd:note.resize` `cmd:note.remove` `spec:piano-roll.md` |
 | Piano roll | Velocity | `cmd:note.set_velocity` |
@@ -48,8 +51,10 @@ of contents; see `docs/clean-room.md`.
 | Patterns | Clone / rename / delete / length | `cmd:pattern.clone` `cmd:pattern.rename` `cmd:pattern.remove` `cmd:pattern.set_length` |
 | Playlist | Place, move, resize, delete clips | `cmd:playlist.add_clip` `cmd:playlist.move_clip` `cmd:playlist.resize_clip` `cmd:playlist.remove_clip` `spec:playlist.md` |
 | Playlist | Track mute | `cmd:playlist.toggle_track_mute` |
-| Playlist | Audio clips | `todo` |
-| Playlist | Automation clips | `todo` |
+| Playlist | Select, duplicate, group move | `cmd:edit.batch` `done` |
+| Playlist | Click the ruler to move the playhead; follow playback | `done` |
+| Playlist | Audio clips (drop samples on the playlist) | `cmd:playlist.add_audio_clip` `done` |
+| Playlist | Automation clips | `cmd:playlist.add_automation_clip` `cmd:automation.create` `cmd:automation.add_point` |
 | Playlist | Markers | `todo` |
 | Mixer | Insert tracks | `cmd:mixer.add_track` `cmd:mixer.remove_track` `spec:mixer.md` |
 | Mixer | Volume / pan / mute / solo | `cmd:mixer.set_volume` `cmd:mixer.set_pan` `cmd:mixer.toggle_mute` `cmd:mixer.toggle_solo` |
@@ -66,6 +71,8 @@ of contents; see `docs/clean-room.md`.
 | Instruments | VST3 plugins | `todo` |
 | Windows | Playlist / rack / piano roll / mixer shortcuts | `key:F5=view.toggle playlist` `key:F6=view.toggle channel_rack` `key:F7=view.toggle piano_roll` `key:F9=view.toggle mixer` `spec:keymap.md` |
 | Windows | Browser | `key:Alt+F8=view.toggle browser` |
+| Browser | Folders, search, click to preview, drag to rack or playlist | `done` |
+| Transport | Oscilloscope, CPU meter, master volume | `done` |
 | Project | New / open / save / save as | `cmd:project.new` `cmd:project.load` `cmd:project.save` `key:Ctrl+S=ui.save` `key:Ctrl+O=ui.open` `spec:project-file.md` |
 | Project | Undo / redo | `key:Ctrl+Z=edit.undo` `key:Ctrl+Y=edit.redo` `spec:commands.md` |
 | Project | Export WAV | `cmd:project.export_wav` `key:Ctrl+R=ui.export` |
@@ -75,6 +82,6 @@ of contents; see `docs/clean-room.md`.
 | Input | MIDI keyboard plays the selected channel | `done` |
 | Input | Record live notes into patterns | `key:Ctrl+E=ui.toggle_record` `done` |
 | Input | Computer keyboard as piano | `key:Ctrl+T=ui.typing_keyboard` `done` |
-| Automation | Parameter automation | `todo` |
+| Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
 | Scripting | Headless CLI and scripts | `done` |
 | Scripting | MCP server for AI agents | `spec:mcp.md` |

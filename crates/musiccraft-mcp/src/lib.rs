@@ -23,7 +23,10 @@ Note times are in steps (1/16 notes) and playlist times in bars; fractions are \
 allowed and `<n>t` is exact ticks (96 per beat). Keys are MIDI numbers or names \
 with C5 = 60. Start with `run_script` for multi-step work, check results with \
 `get_state` or `get_project`, and listen with `analyze_audio`. Every edit is \
-undoable with `edit_undo`.";
+undoable with `edit_undo`. Automate a parameter with `automation_create` (targets \
+like channel:1:cutoff, mixer:0:volume, mixer:2:1:mix), shape it with \
+`automation_add_point` (time in steps, value 0-1), then place it with \
+`playlist_add_automation_clip`; automation plays in song mode.";
 
 /// Converts a command name to a tool name.
 #[must_use]
@@ -367,12 +370,42 @@ impl Server {
                 fx.join(", ")
             ));
         }
+        if !p.automations.is_empty() {
+            out.push("Automations:".to_owned());
+            for (i, a) in p.automations.iter().enumerate() {
+                let points: Vec<String> = a
+                    .points
+                    .iter()
+                    .map(|pt| format!("{}t={:.2}", pt.tick, pt.value))
+                    .collect();
+                out.push(format!(
+                    "  {} {} [{:?}]: {}",
+                    i + 1,
+                    a.name,
+                    a.target,
+                    points.join(" ")
+                ));
+            }
+        }
         out.push(format!("Playlist ({} clips):", p.playlist.clips.len()));
         for clip in &p.playlist.clips {
-            let name = p
-                .pattern_position(clip.pattern)
-                .and_then(|i| p.patterns.get(i))
-                .map_or("?", |pat| pat.name.as_str());
+            let name = match clip.source {
+                musiccraft_project::ClipSource::Pattern(id) => {
+                    p.pattern_position(id).map_or("?".to_owned(), |i| {
+                        format!("pattern {}", p.patterns[i].name)
+                    })
+                }
+                musiccraft_project::ClipSource::Automation(id) => {
+                    p.automation_position(id).map_or("?".to_owned(), |i| {
+                        format!("automation {} ({})", i + 1, p.automations[i].name)
+                    })
+                }
+                musiccraft_project::ClipSource::Audio(id) => {
+                    p.channel_position(id).map_or("?".to_owned(), |i| {
+                        format!("audio of channel {} ({})", i + 1, p.channels[i].name)
+                    })
+                }
+            };
             out.push(format!(
                 "  track {} bar {:.2} len {:.2} bars: {name}",
                 clip.track + 1,

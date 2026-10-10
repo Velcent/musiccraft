@@ -93,6 +93,23 @@ const SCRIPT: &[&str] = &[
     "playlist.set_track_mute 3 on",
     "playlist.toggle_track_mute 3",
     "playlist.remove_clip 1 1.5",
+    "automation.create channel:2:cutoff",
+    "automation.create mixer:0:volume Fade out",
+    "automation.add_point 1 8 0.25",
+    "automation.add_point 1 8 0.75",
+    "automation.move_point 1 8 12 0.5",
+    "automation.remove_point 1 12",
+    "automation.rename 1 Filter sweep",
+    "playlist.add_automation_clip 1 5 0",
+    "playlist.add_automation_clip 2 6 2 1",
+    "channel.add_sampler builtin:rim",
+    "playlist.add_audio_clip 5 7 1 2",
+    "playlist.move_clip 7 1 8 3",
+    "automation.create mixer:2:1:mix",
+    "mixer.add_effect 2 chorus",
+    "mixer.move_effect 2 1 2",
+    "automation.remove 1",
+    "automation.remove 2",
     "mixer.remove_track 2",
     "pattern.remove 1",
     "channel.remove 2",
@@ -266,6 +283,11 @@ fn errors_leave_the_project_unchanged() {
         "mixer.set_effect_param 0 1 size 1",
         "playlist.add_clip 5 1 0",
         "playlist.add_clip 1 65 0",
+        "automation.create channel:9:volume",
+        "automation.create channel:1:wobble",
+        "automation.create mixer:1:5:mix",
+        "automation.create banana",
+        "automation.add_point 1 0 0.5",
         "playlist.remove_clip 1 0",
         "project.set_tempo fast",
         "project.load /no/such/project.mcproj",
@@ -397,4 +419,44 @@ fn removing_a_track_fixes_sends_pointing_at_and_past_it() {
         .map(|x| x.target)
         .collect();
     assert_eq!(targets, [3, 5]);
+}
+
+#[test]
+fn automation_guards_mixer_edits() {
+    let mut s = session();
+    run(&mut s, "mixer.add_effect 2 delay");
+    run(&mut s, "mixer.add_effect 2 reverb");
+    run(&mut s, "automation.create mixer:2:2:mix");
+    fails(&mut s, "mixer.remove_effect 2 2");
+    fails(&mut s, "mixer.remove_track 2");
+    run(&mut s, "mixer.remove_effect 2 1");
+    let target = &s.project().automations[0].target;
+    assert_eq!(
+        *target,
+        musiccraft_project::AutomationTarget::EffectParam {
+            track: 2,
+            slot: 0,
+            param: "mix".into()
+        },
+        "the automation follows its effect to slot 1"
+    );
+    run(&mut s, "mixer.remove_track 1");
+    assert!(matches!(
+        s.project().automations[0].target,
+        musiccraft_project::AutomationTarget::EffectParam { track: 1, .. }
+    ));
+}
+
+#[test]
+fn removing_a_channel_removes_its_audio_clips() {
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:crash");
+    run(&mut s, "playlist.add_audio_clip 1 1 0 1");
+    run(&mut s, "channel.remove 1");
+    assert!(s.project().playlist.clips.is_empty());
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.clips.len(), 1);
+    fails(&mut s, "playlist.add_audio_clip 1 1 0");
+    run(&mut s, "channel.add_synth");
+    fails(&mut s, "playlist.add_audio_clip 2 2 0 1");
 }

@@ -17,6 +17,43 @@
 - In song mode the song length is the end of the last clip rounded up to whole
   bars. Removing a pattern removes its clips (undo restores them).
 
+## Clip kinds
+
+- **Pattern clips** (`playlist.add_clip`) play a pattern, repeating it.
+- **Audio clips** (`playlist.add_audio_clip <channel> <track> <start> <length>`)
+  play a sampler channel's sample once from the clip start, unpitched (at the
+  channel's root key), cut at the clip end. Dropping a sound from the browser on
+  the playlist adds a sampler channel with one-shot off and an audio clip as long
+  as the sample. Removing the channel removes its audio clips (undo restores).
+- **Automation clips** (`playlist.add_automation_clip <automation> <track>
+  <start> [length]`) move one parameter during song playback (see below).
+- `playlist.remove_clip`, `move_clip`, `resize_clip` and selection editing work
+  the same for every kind. Ctrl+B duplicates any kind.
+
+## Automation
+
+- An automation has a name, a target and points (tick from clip start, value
+  0..1 as a control position). Targets: `channel:<n>:volume|pan|<param>`,
+  `mixer:<t>:volume|pan`, `mixer:<t>:<slot>:<param>`. Values map through the
+  same curves as the controls (fader curve for volume, log for frequencies,
+  cubic for times).
+- Commands: `automation.create <target> [name]` (two points at the current value,
+  spanning four bars), `automation.remove`, `automation.rename`,
+  `automation.add_point`, `automation.remove_point`, `automation.move_point`,
+  `automation.set_points`. All undoable.
+- During song playback each automation clip writes its interpolated value once
+  per audio block (at most 256 frames) while the playhead is inside the clip;
+  afterwards the parameter keeps its last value until playback stops, when the
+  project's values are restored. Automation does not play in pattern mode.
+  Exports include automation.
+- A mixer track or effect slot driven by an automation cannot be removed until
+  the automation is deleted; moving or removing other effect slots keeps
+  automation pointing at the right effect.
+- UI: right-click any knob or fader → "Create automation clip" places a new clip
+  on the first empty track. The playlist sidebar lists automations; clicking one
+  paints it instead of the pattern; double-clicking a clip or list entry opens
+  the automation editor (click adds a point, drag moves it, right-click deletes).
+
 ## Editor (UI)
 
 - Left-click on an empty cell places the selected pattern at the snapped bar;

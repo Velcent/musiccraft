@@ -328,3 +328,50 @@ fn soloing_a_source_keeps_its_bus_audible() {
     let (out, _, _) = render(s.project(), options);
     assert!(rms(&out) < 1e-6);
 }
+
+#[test]
+fn automation_clip_fades_the_master_in_song_mode() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_synth
+         note.add 1 0 16 A5
+         playlist.add_clip 1 1 0 4
+         automation.create mixer:0:volume
+         automation.set_points 1 [[0,0.75],[1536,0.0]]
+         playlist.add_automation_clip 1 2 0 4
+         transport.set_mode song",
+    );
+    let seq = build_sequence(s.project());
+    assert_eq!(seq.automation().len(), 1);
+    let options = RenderOptions {
+        max_tail_seconds: 0.0,
+        ..RenderOptions::default()
+    };
+    let (out, _, _) = render(s.project(), options);
+    let second = 44_100;
+    let early = rms(&out[second / 2..second + second / 2]);
+    let late = rms(&out[7 * second + second / 2..8 * second - 100]);
+    assert!(early > 0.05, "early {early}");
+    assert!(late < early / 5.0, "faded: early {early}, late {late}");
+}
+
+#[test]
+fn audio_clips_play_their_sample_unpitched() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:crash
+         channel.set_param 1 one_shot 0
+         channel.set_param 1 root_key 48
+         playlist.add_audio_clip 1 1 1 1
+         transport.set_mode song",
+    );
+    let seq = build_sequence(s.project());
+    let event = seq.events()[0];
+    assert_eq!(
+        (event.start, event.length, event.key),
+        (u64::from(TICKS_PER_BAR), u64::from(TICKS_PER_BAR), 48)
+    );
+}

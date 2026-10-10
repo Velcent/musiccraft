@@ -477,6 +477,11 @@ impl Engine {
         let Some(graph) = self.graph.as_deref_mut() else {
             return;
         };
+        if self.playing {
+            if let Some(sequence) = self.sequence.as_deref() {
+                apply_automation(graph, sequence, self.position);
+            }
+        }
         let Graph { channels, tracks } = graph;
         for node in channels.iter_mut() {
             clear(&mut node.left, frames);
@@ -567,6 +572,57 @@ impl Engine {
             }
         }
         self.position = position;
+    }
+}
+
+/// Writes every automation lane's current value into the graph.
+fn apply_automation(graph: &mut Graph, sequence: &Sequence, position: f64) {
+    use crate::AutomationTarget as T;
+    for lane in sequence.automation() {
+        let Some(value) = lane.value_at(position) else {
+            continue;
+        };
+        match lane.target {
+            T::ChannelVolume(c) => {
+                if let Some(node) = graph.channels.get_mut(usize::from(c)) {
+                    node.params.volume = value;
+                }
+            }
+            T::ChannelPan(c) => {
+                if let Some(node) = graph.channels.get_mut(usize::from(c)) {
+                    node.params.pan = value;
+                }
+            }
+            T::ChannelParam(c, p) => {
+                if let Some(slot) = graph
+                    .channels
+                    .get_mut(usize::from(c))
+                    .and_then(|n| n.params.instrument.get_mut(usize::from(p)))
+                {
+                    *slot = value;
+                }
+            }
+            T::TrackVolume(t) => {
+                if let Some(track) = graph.tracks.get_mut(usize::from(t)) {
+                    track.params.volume = value;
+                }
+            }
+            T::TrackPan(t) => {
+                if let Some(track) = graph.tracks.get_mut(usize::from(t)) {
+                    track.params.pan = value;
+                }
+            }
+            T::EffectParam(t, s, p) => {
+                if let Some(slot) = graph
+                    .tracks
+                    .get_mut(usize::from(t))
+                    .and_then(|track| track.effects.get_mut(usize::from(s)))
+                    .and_then(|slot| slot.params.values.get_mut(usize::from(p)))
+                {
+                    *slot = value;
+                }
+            }
+        }
     }
 }
 

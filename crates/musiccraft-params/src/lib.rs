@@ -90,6 +90,87 @@ impl ParamSpec {
     pub fn accepts(&self, value: f32) -> bool {
         value.is_finite() && value >= self.min && value <= self.max
     }
+
+    /// Maps a value to a 0..1 control position. Frequencies use a log scale and
+    /// times a cubic one, so useful values get most of a knob's travel.
+    #[must_use]
+    pub fn to_unit(&self, value: f32) -> f32 {
+        let value = value.clamp(self.min, self.max);
+        match self.unit {
+            "Hz" if self.min > 0.0 => (value / self.min).ln() / (self.max / self.min).ln(),
+            "s" | "ms" => ((value - self.min) / (self.max - self.min)).cbrt(),
+            _ => (value - self.min) / (self.max - self.min),
+        }
+    }
+
+    /// Inverse of [`ParamSpec::to_unit`], sanitized into range.
+    #[must_use]
+    pub fn from_unit(&self, t: f32) -> f32 {
+        let t = if t.is_finite() {
+            t.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let value = match self.unit {
+            "Hz" if self.min > 0.0 => self.min * (self.max / self.min).powf(t),
+            "s" | "ms" => self.min + t.powi(3) * (self.max - self.min),
+            _ => self.min + t * (self.max - self.min),
+        };
+        self.sanitize(value)
+    }
+
+    /// Formats a value with its unit for display.
+    #[must_use]
+    pub fn format(&self, value: f32) -> String {
+        match self.unit {
+            "Hz" if value >= 1_000.0 => format!("{:.2} kHz", value / 1_000.0),
+            "Hz" => format!("{value:.0} Hz"),
+            "s" if value < 1.0 => format!("{:.0} ms", value * 1_000.0),
+            "s" => format!("{value:.2} s"),
+            "" if self.integer => format!("{value:.0}"),
+            "" => format!("{:.0}%", value * 100.0),
+            unit => format!("{value:.1} {unit}"),
+        }
+    }
+}
+
+/// Fader position (0..1) of a linear gain: silence at the bottom, -24 dB at a
+/// quarter, 0 dB at three quarters and `max` at the top.
+#[must_use]
+pub fn volume_to_unit(gain: f32, max: f32) -> f32 {
+    let max_db = 20.0 * max.max(1e-6).log10();
+    let low = 10.0_f32.powf(-24.0 / 20.0);
+    if gain <= 0.0 || !gain.is_finite() {
+        0.0
+    } else if gain < low {
+        0.25 * gain / low
+    } else {
+        let db = 20.0 * gain.log10();
+        if db <= 0.0 {
+            0.75 + db / 48.0
+        } else {
+            (0.75 + 0.25 * db / max_db).min(1.0)
+        }
+    }
+}
+
+/// Inverse of [`volume_to_unit`].
+#[must_use]
+pub fn volume_from_unit(position: f32, max: f32) -> f32 {
+    let p = if position.is_finite() {
+        position.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let max_db = 20.0 * max.max(1e-6).log10();
+    let low = 10.0_f32.powf(-24.0 / 20.0);
+    if p < 0.25 {
+        p / 0.25 * low
+    } else if p <= 0.75 {
+        10.0_f32.powf((p - 0.75) * 48.0 / 20.0)
+    } else {
+        10.0_f32.powf((p - 0.75) / 0.25 * max_db / 20.0)
+    }
 }
 
 /// Looks up a parameter's index by name.
@@ -343,6 +424,21 @@ mod tests {
             assert_eq!(EffectKind::parse(kind.name()), Some(kind));
         }
         assert_eq!(EffectKind::parse("phaser"), None);
+    }
+
+    #[test]
+    fn unit_mappings_round_trip() {
+        let cutoff = INSTRUMENT_PARAMS[inst::CUTOFF];
+        for value in [20.0, 632.5, 1_000.0, 20_000.0] {
+            assert!((cutoff.from_unit(cutoff.to_unit(value)) - value).abs() / value < 1e-3);
+        }
+        assert!((cutoff.to_unit(632.5) - 0.5).abs() < 0.01);
+        assert_eq!(cutoff.format(2_500.0), "2.50 kHz");
+        for gain in [0.0, 0.01, 0.5, 1.0, 1.25] {
+            let back = volume_from_unit(volume_to_unit(gain, 1.25), 1.25);
+            assert!((back - gain).abs() < 1e-3, "{gain} -> {back}");
+        }
+        assert!((volume_to_unit(1.0, 1.25) - 0.75).abs() < 1e-6);
     }
 
     #[test]

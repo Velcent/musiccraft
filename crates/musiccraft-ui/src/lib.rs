@@ -4,6 +4,7 @@
 
 pub mod keymap;
 
+mod automation;
 mod browser;
 mod channel_rack;
 mod channel_settings;
@@ -62,6 +63,16 @@ pub enum Action {
     Seek(f64),
     /// Audition a sample (file path or `builtin:` name) on the master output.
     PreviewSample(String),
+    /// A sample dropped on the playlist: add it as a channel and an audio clip
+    /// at (track row, start tick). The app knows the sample's length.
+    DropAudio {
+        /// Sample reference.
+        sample: String,
+        /// Playlist row, 0-based.
+        track: u32,
+        /// Start in ticks.
+        start: u32,
+    },
     /// Drop decoded samples and reload them from disk.
     ReloadSamples,
     /// Close the application.
@@ -159,6 +170,11 @@ pub struct UiState {
     pub meters: Vec<(f32, f32)>,
     /// Location of the last autosave, offered by File → Recover autosave.
     pub autosave_path: Option<String>,
+    /// Automation shown in the automation editor.
+    pub automation_editor: Option<musiccraft_project::AutomationId>,
+    automation_drag: Option<automation::PointDrag>,
+    /// The automation editor's drawing area and length in ticks, last frame.
+    pub(crate) automation_view: Option<(egui::Rect, u32)>,
     /// The area between the side and bottom panels, where windows float.
     pub workspace: egui::Rect,
     /// Letter keys play notes on the selected channel.
@@ -191,6 +207,9 @@ impl UiState {
             status: StatusLine::default(),
             meters: Vec::new(),
             autosave_path: None,
+            automation_editor: None,
+            automation_drag: None,
+            automation_view: None,
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             record: false,
@@ -242,6 +261,10 @@ pub struct Frame<'a> {
     pub history: &'a History,
     /// Min/max overview of the selected channel's sample, if it is a sampler.
     pub waveform: Option<&'a [(f32, f32)]>,
+    /// Overviews of samples played by audio clips.
+    pub clip_waveforms: &'a [(musiccraft_project::ChannelId, Vec<(f32, f32)>)],
+    /// Durations in ticks of samples played by audio clips.
+    pub clip_durations: &'a [(musiccraft_project::ChannelId, u32)],
 }
 
 /// Draws the whole interface and returns what the user asked for.
@@ -282,6 +305,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     channel_rack::show(&ctx, state, frame, &mut actions);
     piano_roll::show(&ctx, state, frame, &mut actions);
     channel_settings::show(&ctx, state, frame, &mut actions);
+    automation::show(&ctx, state, frame, &mut actions);
     dialogs::show(&ctx, state, frame, &mut actions);
     dialogs::shortcuts(&ctx, state);
 
@@ -431,6 +455,14 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.quit" => out.push(Action::Quit),
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
+            "ui.automate" => {
+                if let Some(target) = invocation.args.first() {
+                    out.push(Action::Run(automation::create_invocation(
+                        frame.project,
+                        target,
+                    )));
+                }
+            }
             "ui.add_folder" => {
                 if let Some(path) = invocation.args.first() {
                     let path = std::path::PathBuf::from(path);
@@ -467,6 +499,8 @@ mod tests {
             engine: &engine,
             history: &history,
             waveform: None,
+            clip_waveforms: &[],
+            clip_durations: &[],
         };
         let mut state = UiState::default();
         assert!(!state.windows.mixer);

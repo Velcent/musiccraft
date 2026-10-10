@@ -20,6 +20,7 @@ pub enum Purpose {
     RenamePattern(usize),
     RenameTrack(usize),
     AddFolder,
+    RenameAutomation(usize),
 }
 
 /// An open prompt.
@@ -85,6 +86,10 @@ impl Dialog {
         Self::new(Purpose::RenamePattern(pattern), current.to_owned())
     }
 
+    pub fn rename_automation(automation: usize, current: &str) -> Self {
+        Self::new(Purpose::RenameAutomation(automation), current.to_owned())
+    }
+
     pub fn add_folder() -> Self {
         let home = std::env::var("HOME")
             .map(|h| format!("{h}/"))
@@ -107,6 +112,7 @@ impl Dialog {
             Purpose::RenamePattern(_) => "Rename pattern",
             Purpose::RenameTrack(_) => "Rename mixer track",
             Purpose::AddFolder => "Add folder to the browser",
+            Purpose::RenameAutomation(_) => "Rename automation",
         }
     }
 
@@ -131,6 +137,9 @@ impl Dialog {
                 Invocation::new("mixer.rename", [track.to_string(), text])
             }
             Purpose::AddFolder => Invocation::new("ui.add_folder", [text]),
+            Purpose::RenameAutomation(automation) => {
+                Invocation::new("automation.rename", [(automation + 1).to_string(), text])
+            }
         }
     }
 }

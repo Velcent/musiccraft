@@ -157,40 +157,9 @@ pub fn labeled_knob(
     }
 }
 
-/// Fader travel position (0..1) for a linear gain: silence at the bottom,
-/// -24 dB at a quarter, 0 dB at three quarters, the maximum at the top.
-#[must_use]
-pub fn gain_to_fader(gain: f32, max: f32) -> f32 {
-    let max_db = 20.0 * max.max(1e-6).log10();
-    let low = 10.0_f32.powf(-24.0 / 20.0);
-    if gain <= 0.0 {
-        0.0
-    } else if gain < low {
-        0.25 * gain / low
-    } else {
-        let db = 20.0 * gain.log10();
-        if db <= 0.0 {
-            0.75 + db / 48.0
-        } else {
-            (0.75 + 0.25 * db / max_db).min(1.0)
-        }
-    }
-}
-
-/// Inverse of [`gain_to_fader`].
-#[must_use]
-pub fn fader_to_gain(position: f32, max: f32) -> f32 {
-    let p = position.clamp(0.0, 1.0);
-    let max_db = 20.0 * max.max(1e-6).log10();
-    let low = 10.0_f32.powf(-24.0 / 20.0);
-    if p < 0.25 {
-        p / 0.25 * low
-    } else if p <= 0.75 {
-        10.0_f32.powf((p - 0.75) * 48.0 / 20.0)
-    } else {
-        10.0_f32.powf((p - 0.75) / 0.25 * max_db / 20.0)
-    }
-}
+pub use musiccraft_project::params::{
+    volume_from_unit as fader_to_gain, volume_to_unit as gain_to_fader,
+};
 
 /// A vertical mixer fader. Drag the cap; double-click returns to unity.
 pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {

@@ -65,6 +65,8 @@ impl Harness {
                 engine: &engine,
                 history: &history,
                 waveform: None,
+                clip_waveforms: &[],
+                clip_durations: &[],
             };
             let mut output = ctx.run_ui(input, |ui| actions = show(ui, state, &frame));
             // No renderer here: acknowledge texture uploads.
@@ -286,6 +288,8 @@ fn typing_keyboard_performs_notes_instead_of_shortcuts() {
         engine: &engine,
         history: &history,
         waveform: None,
+        clip_waveforms: &[],
+        clip_durations: &[],
     };
     let mut actions = Vec::new();
     let mut out = h
@@ -491,4 +495,80 @@ fn playlist_selection_editing() {
         h.state.playlist.selection,
         BTreeSet::from([(0, bar), (0, 4 * bar)])
     );
+}
+
+#[test]
+fn automation_editor_adds_moves_and_removes_points() {
+    let mut h = Harness::new(&["channel.add_synth", "automation.create channel:1:cutoff"]);
+    let id = h.session.project().automations[0].id;
+    h.state.automation_editor = Some(id);
+    h.settle();
+    let (area, length) = h.state.automation_view.expect("editor drawn");
+    let at = |tick: u32, value: f32| {
+        pos2(
+            area.left() + tick as f32 / length as f32 * area.width(),
+            area.bottom() - value * area.height(),
+        )
+    };
+    let before = h.session.project().automations[0].points.clone();
+    let v = before[0].value;
+
+    let added = h.click(at(TICKS_PER_BAR, 0.25), PointerButton::Primary);
+    assert_eq!(added.len(), 1);
+    assert!(
+        added[0].starts_with("automation.add_point 1 384t 0.2"),
+        "{added:?}"
+    );
+    h.settle();
+
+    let moved = h.drag(at(TICKS_PER_BAR, 0.25), at(2 * TICKS_PER_BAR, 0.9));
+    assert!(
+        moved[0].starts_with("automation.move_point 1 384t 768t 0.9"),
+        "{moved:?}"
+    );
+    h.settle();
+
+    let removed = h.click(at(2 * TICKS_PER_BAR, 0.9), PointerButton::Secondary);
+    assert_eq!(removed, ["automation.remove_point 1 768t"]);
+    let points = &h.session.project().automations[0].points;
+    assert_eq!(points.len(), 2);
+    assert!((points[0].value - v).abs() < 1e-6);
+}
+
+#[test]
+fn automate_request_creates_and_places_a_clip() {
+    let mut h = Harness::new(&["channel.add_synth", "playlist.add_clip 1 1 0"]);
+    h.settle();
+    let engine = EngineStatus::default();
+    let history = History::default();
+    let frame = Frame {
+        project: h.session.project(),
+        engine: &engine,
+        history: &history,
+        waveform: None,
+        clip_waveforms: &[],
+        clip_durations: &[],
+    };
+    let out = crate::resolve_ui_actions(
+        &mut h.state,
+        &frame,
+        vec![Action::Run(
+            musiccraft_commands::Invocation::parse("ui.automate mixer:0:volume").unwrap(),
+        )],
+    );
+    let Action::Run(batch) = &out[0] else {
+        panic!("{out:?}")
+    };
+    h.session.run(batch).unwrap();
+    let project = h.session.project();
+    assert_eq!(project.automations.len(), 1);
+    let clip = project
+        .playlist
+        .clips
+        .iter()
+        .find(|c| c.automation().is_some())
+        .unwrap();
+    assert_eq!(clip.track, 1, "placed on the first free track");
+    h.session.run_line("edit.undo").unwrap();
+    assert!(h.session.project().automations.is_empty());
 }

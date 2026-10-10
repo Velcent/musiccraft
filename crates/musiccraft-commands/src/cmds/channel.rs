@@ -187,6 +187,9 @@ fn add_synth(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
 struct ChannelSnapshot {
     channel: Channel,
     notes: Vec<(PatternId, Note)>,
+    /// Audio clips that played this channel.
+    #[serde(default)]
+    clips: Vec<musiccraft_project::Clip>,
 }
 
 fn remove(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
@@ -204,9 +207,19 @@ fn remove(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
             keep
         });
     }
+    let (clips, kept): (Vec<_>, Vec<_>) = project
+        .playlist
+        .clips
+        .drain(..)
+        .partition(|c| c.audio() == Some(channel.id));
+    project.playlist.clips = kept;
     let name = channel.name.clone();
-    let json = serde_json::to_string(&ChannelSnapshot { channel, notes })
-        .map_err(|e| args.invalid(e.to_string()))?;
+    let json = serde_json::to_string(&ChannelSnapshot {
+        channel,
+        notes,
+        clips,
+    })
+    .map_err(|e| args.invalid(e.to_string()))?;
     Ok(Outcome::undoable(
         format!("removed channel {} ({name})", index + 1),
         Invocation::new("channel.insert", [(index + 1).to_string(), json]),
@@ -236,6 +249,8 @@ fn insert(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
     }
     let name = channel.name.clone();
     project.channels.insert(position - 1, channel);
+    project.playlist.clips.extend(snapshot.clips);
+    project.playlist.sort_clips();
     Ok(Outcome::undoable(
         format!("inserted channel {position} ({name})"),
         Invocation::new("channel.remove", [position.to_string()]),

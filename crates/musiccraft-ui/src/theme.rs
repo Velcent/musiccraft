@@ -24,6 +24,7 @@ pub const GRID_BAR: Color32 = Color32::from_rgb(0x50, 0x5a, 0x6a);
 pub const WHITE_KEY_ROW: Color32 = Color32::from_rgb(0x22, 0x27, 0x30);
 pub const BLACK_KEY_ROW: Color32 = Color32::from_rgb(0x1c, 0x20, 0x27);
 pub const METER_BG: Color32 = Color32::from_rgb(0x0c, 0x0e, 0x12);
+pub const AUTOMATION: Color32 = Color32::from_rgb(0xe0, 0x8c, 0xff);
 pub const PLAYHEAD: Color32 = Color32::from_rgb(0xff, 0xe0, 0x8a);
 
 /// Distinct clip/channel colours, cycled by index.

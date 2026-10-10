@@ -1,5 +1,5 @@
 use musiccraft_project::params::TICKS_PER_BAR;
-use musiccraft_project::{Clip, PLAYLIST_TRACKS, Project};
+use musiccraft_project::{Clip, ClipSource, Instrument, PLAYLIST_TRACKS, Project};
 
 use crate::args::{Args, on_off, ticks};
 use crate::command::cmd;
@@ -12,6 +12,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "playlist.add_clip <pattern> <track> <start bar> [length bars]",
             "Place a pattern on the playlist (bars from 0; <n>t for ticks).",
             add_clip,
+        ),
+        cmd(
+            "playlist.add_automation_clip",
+            "playlist.add_automation_clip <automation> <track> <start bar> [length bars]",
+            "Place an automation on the playlist.",
+            add_automation_clip,
+        ),
+        cmd(
+            "playlist.add_audio_clip",
+            "playlist.add_audio_clip <channel> <track> <start bar> <length bars>",
+            "Place a sampler channel's sample on the playlist as an audio clip.",
+            add_audio_clip,
         ),
         cmd(
             "playlist.remove_clip",
@@ -91,11 +103,18 @@ fn overlaps(project: &Project, clip: &Clip, ignore: Option<usize>) -> bool {
 }
 
 fn add_inverse(project: &Project, clip: &Clip) -> Invocation {
-    let pattern = project.pattern_position(clip.pattern).map_or(0, |i| i + 1);
+    let (name, number) = match clip.source {
+        ClipSource::Pattern(id) => ("playlist.add_clip", project.pattern_position(id)),
+        ClipSource::Automation(id) => (
+            "playlist.add_automation_clip",
+            project.automation_position(id),
+        ),
+        ClipSource::Audio(id) => ("playlist.add_audio_clip", project.channel_position(id)),
+    };
     Invocation::new(
-        "playlist.add_clip",
+        name,
         [
-            pattern.to_string(),
+            number.map_or(0, |i| i + 1).to_string(),
             (clip.track + 1).to_string(),
             ticks(clip.start),
             ticks(clip.length),
@@ -119,25 +138,78 @@ fn add_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
         None => pattern.length_ticks(),
     };
     let clip = Clip {
-        pattern: pattern.id,
+        source: ClipSource::Pattern(pattern.id),
         track: track_arg(args, 1)?,
         start: args.time(2, TICKS_PER_BAR)?,
         length,
     };
+    place(
+        project,
+        args,
+        clip,
+        format!("placed pattern {}", pattern_index + 1),
+    )
+}
+
+/// Adds a clip unless it overlaps another on its track.
+fn place(
+    project: &mut Project,
+    args: &Args<'_>,
+    clip: Clip,
+    what: String,
+) -> Result<Outcome, CommandError> {
     if overlaps(project, &clip, None) {
         return Err(args.invalid(format!("track {} already has a clip there", clip.track + 1)));
     }
     project.playlist.clips.push(clip);
     project.playlist.sort_clips();
     Ok(Outcome::undoable(
-        format!(
-            "placed pattern {} on track {} at {}t",
-            pattern_index + 1,
-            clip.track + 1,
-            clip.start
-        ),
+        format!("{what} on track {} at {}t", clip.track + 1, clip.start),
         remove_inverse(&clip),
     ))
+}
+
+fn add_automation_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 4)?;
+    let index = project.automation_index(args.number(0, "automation")?)?;
+    let automation = &project.automations[index];
+    let length = match args.opt(3) {
+        Some(_) => args.duration(3, TICKS_PER_BAR)?,
+        None => automation.length_ticks(),
+    };
+    let clip = Clip {
+        source: ClipSource::Automation(automation.id),
+        track: track_arg(args, 1)?,
+        start: args.time(2, TICKS_PER_BAR)?,
+        length,
+    };
+    place(
+        project,
+        args,
+        clip,
+        format!("placed automation {}", index + 1),
+    )
+}
+
+fn add_audio_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(4, 4)?;
+    let index = project.channel_index(args.number(0, "channel")?)?;
+    let channel = &project.channels[index];
+    if !matches!(channel.instrument, Instrument::Sampler { .. }) {
+        return Err(args.invalid(format!("channel {} is not a sampler", index + 1)));
+    }
+    let clip = Clip {
+        source: ClipSource::Audio(channel.id),
+        track: track_arg(args, 1)?,
+        start: args.time(2, TICKS_PER_BAR)?,
+        length: args.duration(3, TICKS_PER_BAR)?,
+    };
+    place(
+        project,
+        args,
+        clip,
+        format!("placed audio of channel {}", index + 1),
+    )
 }
 
 fn remove_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
@@ -274,10 +346,12 @@ fn set_clips(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     let clips: Vec<Clip> =
         serde_json::from_str(args.str(0)?).map_err(|e| args.invalid(e.to_string()))?;
     for clip in &clips {
-        if project.pattern_position(clip.pattern).is_none()
-            || clip.length == 0
-            || clip.track >= PLAYLIST_TRACKS
-        {
+        let exists = match clip.source {
+            ClipSource::Pattern(id) => project.pattern_position(id).is_some(),
+            ClipSource::Automation(id) => project.automation_position(id).is_some(),
+            ClipSource::Audio(id) => project.channel_position(id).is_some(),
+        };
+        if !exists || clip.length == 0 || clip.track >= PLAYLIST_TRACKS {
             return Err(args.invalid("a clip refers to a missing pattern or is malformed"));
         }
     }
