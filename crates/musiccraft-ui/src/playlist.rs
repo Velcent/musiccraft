@@ -48,6 +48,8 @@ pub struct PlaylistState {
     /// When set, clicking the playlist places this automation instead of the
     /// selected pattern.
     pub(crate) paint_automation: Option<AutomationId>,
+    /// Loop range being drawn on the ruler.
+    loop_drag: Option<(u32, u32)>,
 }
 
 impl Default for PlaylistState {
@@ -61,6 +63,7 @@ impl Default for PlaylistState {
             selection: BTreeSet::new(),
             marquee: None,
             paint_automation: None,
+            loop_drag: None,
         }
     }
 }
@@ -329,8 +332,8 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 .map(|(i, c)| (i, grid.span(c.track, c.start, c.length)))
                 .collect();
             edit(ui, state, project, &grid, &response, clip, &boxes, actions);
-            draw_ruler(&painter, &grid, clip, project);
-            seek_ruler(ui, state.playlist.snap, &grid, clip, actions);
+            draw_ruler(&painter, &grid, clip, project, state.playlist.loop_drag);
+            ruler(ui, state, project, &grid, clip, actions);
             headers(ui, project, &grid, clip, actions);
             if response.hovered() {
                 let zoom = ui.input(|i| i.zoom_delta());
@@ -577,7 +580,13 @@ fn add_clip_invocation(project: &Project, clip: &Clip, track: u32, start: u32) -
     )
 }
 
-fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, project: &Project) {
+fn draw_ruler(
+    painter: &egui::Painter,
+    grid: &Grid,
+    clip: Rect,
+    project: &Project,
+    dragging: Option<(u32, u32)>,
+) {
     let ruler = Rect::from_min_max(
         pos2(clip.left(), clip.top()),
         pos2(clip.right(), clip.top() + RULER_HEIGHT),
@@ -594,6 +603,40 @@ fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, project: &Projec
             0.0,
             theme::ACCENT_DIM,
         );
+    }
+    let range = dragging
+        .map(|(a, b)| (a.min(b), a.max(b)))
+        .or(project.playlist.loop_range);
+    if let Some((start, end)) = range {
+        let band = Rect::from_min_max(
+            pos2(
+                grid.x(start as f32).max(ruler.left() + HEADER_WIDTH),
+                ruler.top(),
+            ),
+            pos2(grid.x(end as f32), ruler.bottom()),
+        );
+        if band.width() > 0.0 {
+            painter.rect_filled(
+                band,
+                0.0,
+                Color32::from_rgba_unmultiplied(0xff, 0xb3, 0x47, 60),
+            );
+            let shade = Color32::from_rgba_unmultiplied(0xff, 0xb3, 0x47, 14);
+            painter.rect_filled(
+                Rect::from_min_max(
+                    pos2(band.left(), ruler.bottom()),
+                    pos2(band.right(), clip.bottom()),
+                ),
+                0.0,
+                shade,
+            );
+            for x in [band.left(), band.right()] {
+                painter.line_segment(
+                    [pos2(x, ruler.top()), pos2(x, clip.bottom())],
+                    Stroke::new(1.0, theme::HIGHLIGHT),
+                );
+            }
+        }
     }
     let first_bar = grid.tick_at(clip.left()) as u32 / TICKS_PER_BAR;
     let last_bar = grid.tick_at(clip.right()) as u32 / TICKS_PER_BAR + 1;
@@ -612,29 +655,122 @@ fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, project: &Projec
             theme::TEXT,
         );
     }
+    for marker in &project.playlist.markers {
+        let x = grid.x(marker.tick as f32);
+        if x < ruler.left() + HEADER_WIDTH || x > ruler.right() {
+            continue;
+        }
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                pos2(x, ruler.top() + 2.0),
+                pos2(x + 7.0, ruler.top() + 6.0),
+                pos2(x, ruler.top() + 10.0),
+            ],
+            theme::AUTOMATION,
+            Stroke::NONE,
+        ));
+        painter.line_segment(
+            [pos2(x, ruler.top()), pos2(x, clip.bottom())],
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(0xe0, 0x8c, 0xff, 70)),
+        );
+        painter.text(
+            pos2(x + 9.0, ruler.top() + 1.0),
+            Align2::LEFT_TOP,
+            &marker.name,
+            FontId::proportional(10.5),
+            theme::AUTOMATION,
+        );
+    }
 }
 
 /// Clicking or dragging on the ruler moves the playhead.
-fn seek_ruler(ui: &mut egui::Ui, snap: Snap, grid: &Grid, clip: Rect, actions: &mut Vec<Action>) {
-    let ruler = Rect::from_min_max(
+/// Ruler gestures: click or drag to seek, Shift+drag to set the loop,
+/// right-click for markers and the loop.
+fn ruler(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    grid: &Grid,
+    clip: Rect,
+    actions: &mut Vec<Action>,
+) {
+    let snap = state.playlist.snap;
+    let area = Rect::from_min_max(
         pos2(clip.left() + HEADER_WIDTH, clip.top()),
         pos2(clip.right(), clip.top() + RULER_HEIGHT),
     );
     let response = ui
         .interact(
-            ruler,
+            area,
             ui.id().with("playlist-ruler"),
             Sense::click_and_drag(),
         )
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
-    if response.clicked() || response.dragged() {
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text("Click to seek · Shift+drag to loop · right-click for markers");
+    let shift = ui.input(|i| i.modifiers.shift);
+    let tick_at = |x: f32| grid.tick_at(x);
+    let marker_at = |x: f32| {
+        project.playlist.markers.iter().find(|m| {
+            (grid.x(m.tick as f32) - x).abs() < 8.0
+                || (x >= grid.x(m.tick as f32) && x < grid.x(m.tick as f32) + 60.0)
+        })
+    };
+    if response.drag_started() && shift {
+        if let Some(pos) = ui.input(|i| i.pointer.press_origin()) {
+            let start = Snap::Bar.floor(tick_at(pos.x));
+            state.playlist.loop_drag = Some((start, start));
+        }
+    }
+    if let Some((start, end)) = &mut state.playlist.loop_drag {
         if let Some(pos) = response.interact_pointer_pos() {
-            let tick = snap
-                .floor(grid.tick_at(pos.x))
-                .min(Snap::Beat.floor(grid.tick_at(pos.x)));
+            *end = Snap::Bar.round(tick_at(pos.x));
+        }
+        if response.drag_stopped() {
+            let (a, b) = (*start.min(end), *start.max(end));
+            if b > a {
+                actions.push(Action::Run(Invocation::new(
+                    "transport.set_loop",
+                    [format!("{a}t"), format!("{b}t")],
+                )));
+            }
+            state.playlist.loop_drag = None;
+        }
+    } else if response.clicked() || response.dragged() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            let tick = match marker_at(pos.x).filter(|_| response.clicked()) {
+                Some(marker) => marker.tick,
+                None => snap
+                    .floor(tick_at(pos.x))
+                    .min(Snap::Beat.floor(tick_at(pos.x))),
+            };
             actions.push(Action::Seek(f64::from(tick)));
         }
     }
+    let press = response.interact_pointer_pos().or(response.hover_pos());
+    response.context_menu(|ui| {
+        let x = press.map_or(area.left(), |p| p.x);
+        let tick = Snap::Bar.floor(tick_at(x));
+        if ui.button("Add marker here…").clicked() {
+            state.open_dialog(crate::dialogs::Dialog::add_marker(tick));
+            ui.close();
+        }
+        if let Some(marker) = marker_at(x) {
+            if ui
+                .button(format!("Remove marker \"{}\"", marker.name))
+                .clicked()
+            {
+                actions.push(Action::Run(Invocation::new(
+                    "playlist.remove_marker",
+                    [format!("{}t", marker.tick)],
+                )));
+                ui.close();
+            }
+        }
+        if project.playlist.loop_range.is_some() && ui.button("Clear loop").clicked() {
+            actions.push(Action::Run(Invocation::bare("transport.clear_loop")));
+            ui.close();
+        }
+    });
 }
 
 fn headers(

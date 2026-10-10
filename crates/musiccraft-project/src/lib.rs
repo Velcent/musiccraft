@@ -18,8 +18,8 @@ pub use error::ProjectError;
 pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
-    InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, MixerSend, MixerTrack,
-    Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, STEP_KEY,
+    InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MixerSend,
+    MixerTrack, Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, STEP_KEY,
 };
 pub use musiccraft_params as params;
 

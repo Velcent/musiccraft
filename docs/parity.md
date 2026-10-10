@@ -20,7 +20,7 @@ of contents; see `docs/clean-room.md`.
 | Transport | Pattern / song mode | `cmd:transport.set_mode` `key:L=transport.toggle_mode` |
 | Transport | Tempo | `cmd:project.set_tempo` `spec:transport.md` |
 | Transport | Metronome | `cmd:transport.toggle_metronome` `key:Ctrl+M=transport.toggle_metronome` |
-| Transport | Loop a time range of the song | `todo` |
+| Transport | Loop a time range of the song | `cmd:transport.set_loop` `cmd:transport.clear_loop` |
 | Transport | Record audio | `todo` |
 | Channel rack | Sampler channels with built-in sounds | `cmd:channel.add_sampler` `spec:channel-rack.md` |
 | Channel rack | WAV samples | `cmd:channel.set_sample` |
@@ -55,7 +55,7 @@ of contents; see `docs/clean-room.md`.
 | Playlist | Click the ruler to move the playhead; follow playback | `done` |
 | Playlist | Audio clips (drop samples on the playlist) | `cmd:playlist.add_audio_clip` `done` |
 | Playlist | Automation clips | `cmd:playlist.add_automation_clip` `cmd:automation.create` `cmd:automation.add_point` |
-| Playlist | Markers | `todo` |
+| Playlist | Markers | `cmd:playlist.add_marker` `cmd:playlist.remove_marker` |
 | Mixer | Insert tracks | `cmd:mixer.add_track` `cmd:mixer.remove_track` `spec:mixer.md` |
 | Mixer | Volume / pan / mute / solo | `cmd:mixer.set_volume` `cmd:mixer.set_pan` `cmd:mixer.toggle_mute` `cmd:mixer.toggle_solo` |
 | Mixer | Effect slots: add, remove, reorder, bypass | `cmd:mixer.add_effect` `cmd:mixer.remove_effect` `cmd:mixer.move_effect` `cmd:mixer.toggle_effect` |

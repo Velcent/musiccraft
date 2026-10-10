@@ -535,6 +535,15 @@ impl Clip {
     }
 }
 
+/// A named position on the song timeline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Marker {
+    /// Position in ticks.
+    pub tick: u32,
+    /// Label.
+    pub name: String,
+}
+
 /// The song arrangement.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Playlist {
@@ -544,6 +553,12 @@ pub struct Playlist {
     /// Track rows that are muted (0-based).
     #[serde(default)]
     pub muted_tracks: BTreeSet<u32>,
+    /// Song-mode loop region `(start, end)` in ticks, if set.
+    #[serde(default)]
+    pub loop_range: Option<(u32, u32)>,
+    /// Markers sorted by tick.
+    #[serde(default)]
+    pub markers: Vec<Marker>,
 }
 
 impl Playlist {

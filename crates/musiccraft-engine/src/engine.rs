@@ -241,6 +241,26 @@ impl Engine {
         }
     }
 
+    /// Where the loop restarts (and Stop returns to), in ticks.
+    fn loop_start(&self) -> f64 {
+        let start = self.sequence.as_deref().map_or(0, Sequence::loop_start) as f64;
+        if start < self.loop_length() {
+            start
+        } else {
+            0.0
+        }
+    }
+
+    /// Folds a position into the loop.
+    fn fold(&self, position: f64) -> f64 {
+        let (start, end) = (self.loop_start(), self.loop_length());
+        if position < end {
+            position
+        } else {
+            start + (position - start) % (end - start).max(1.0)
+        }
+    }
+
     fn resync_cursor(&mut self) {
         self.cursor = self
             .sequence
@@ -276,8 +296,8 @@ impl Engine {
             }
             EngineMessage::Stop => {
                 self.playing = false;
-                self.position = 0.0;
-                self.cursor = 0;
+                self.position = self.loop_start();
+                self.resync_cursor();
                 self.release_all(true);
             }
             EngineMessage::Pause => {
@@ -291,7 +311,7 @@ impl Engine {
             }
             EngineMessage::Seek(ticks) => {
                 if ticks.is_finite() {
-                    self.position = ticks.max(0.0) % self.loop_length();
+                    self.position = self.fold(ticks.max(0.0));
                     self.resync_cursor();
                 }
             }
@@ -355,10 +375,7 @@ impl Engine {
             }
             EngineMessage::SetSequence(sequence) => {
                 let old = self.sequence.replace(sequence);
-                let length = self.loop_length();
-                if self.position >= length {
-                    self.position %= length;
-                }
+                self.position = self.fold(self.position);
                 self.resync_cursor();
                 if let Some(old) = old {
                     self.discard(Garbage::Sequence(old));
@@ -525,6 +542,7 @@ impl Engine {
         let total = frames as f64;
         let mut done = 0.0;
         let mut position = self.position;
+        let loop_start = self.loop_start();
         for _ in 0..MAX_WRAPS_PER_BLOCK {
             let segment_end = position + (total - done) * tpf;
             let wraps = segment_end >= length;
@@ -565,8 +583,11 @@ impl Engine {
                 break;
             }
             done += (length - position) / tpf;
-            position = 0.0;
-            self.cursor = 0;
+            position = loop_start;
+            self.cursor = self
+                .sequence
+                .as_deref()
+                .map_or(0, |seq| seq.first_at_or_after(loop_start));
             if done >= total {
                 break;
             }

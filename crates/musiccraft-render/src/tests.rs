@@ -375,3 +375,21 @@ fn audio_clips_play_their_sample_unpitched() {
         (u64::from(TICKS_PER_BAR), u64::from(TICKS_PER_BAR), 48)
     );
 }
+
+#[test]
+fn song_loop_region_limits_playback_but_not_export() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick
+         step.toggle 1 0
+         playlist.add_clip 1 1 0 8
+         transport.set_mode song
+         transport.set_loop 2 4",
+    );
+    let seq = build_sequence(s.project());
+    let bar = u64::from(TICKS_PER_BAR);
+    assert_eq!((seq.loop_start(), seq.length()), (2 * bar, 4 * bar));
+    let full = crate::build_full_sequence(s.project());
+    assert_eq!(full.length(), 8 * bar);
+}

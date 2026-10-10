@@ -6,7 +6,7 @@ use musiccraft_params::PPQ;
 use musiccraft_project::{Project, Transport};
 use musiccraft_samples::{WavFormat, write_wav};
 
-use crate::{Bridge, build_sequence};
+use crate::{Bridge, build_full_sequence};
 
 /// Settings for an offline render.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -51,7 +51,7 @@ pub fn render(project: &Project, options: RenderOptions) -> (Vec<f32>, Vec<f32>,
 
     // Repeat the loop `loops` times, then leave room for the tail without
     // wrapping back to the start.
-    let base = build_sequence(project);
+    let base = build_full_sequence(project);
     let loop_ticks = base.length().max(1);
     let loops = u64::from(options.loops.max(1));
     let mut events = Vec::new();

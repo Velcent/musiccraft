@@ -509,3 +509,28 @@ fn automation_moves_a_track_volume_during_playback() {
     assert!((out[BEAT] - 0.5).abs() < 0.02, "got {}", out[BEAT]);
     assert!(out[2 * BEAT + 500].abs() < 0.01, "ramp reached zero");
 }
+
+#[test]
+fn loop_start_is_where_playback_wraps_and_stop_returns() {
+    let (mut engine, _handle) = impulse_engine();
+    // Events at beats 0, 1, 2, 3; loop beats 2..4.
+    let seq = Sequence::new((0..4).map(|b| note(b, 0)).collect(), 4 * u64::from(PPQ))
+        .with_loop_start(2 * u64::from(PPQ));
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::Stop);
+    assert!(
+        (engine.position_beats() - 2.0).abs() < 1e-9,
+        "stop returns to the loop start"
+    );
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 4 * BEAT + 10);
+    assert_eq!(
+        nonzero_frames(&out),
+        [0, BEAT, 2 * BEAT, 3 * BEAT, 4 * BEAT]
+    );
+    engine.apply(EngineMessage::Seek(f64::from(PPQ) * 9.0));
+    assert!(
+        (engine.position_beats() - 3.0).abs() < 1e-9,
+        "seeks fold into the loop"
+    );
+}

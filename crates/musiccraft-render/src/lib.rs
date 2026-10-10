@@ -15,7 +15,7 @@ pub use bridge::{Bridge, SyncReport};
 pub use export::{
     ExportCommand, ExportStemsCommand, RenderOptions, export_stems, export_wav, register, render,
 };
-pub use sequence::build_sequence;
+pub use sequence::{build_full_sequence, build_sequence};
 
 use musiccraft_commands::Registry;
 

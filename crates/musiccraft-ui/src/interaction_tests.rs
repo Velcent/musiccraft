@@ -572,3 +572,56 @@ fn automate_request_creates_and_places_a_clip() {
     h.session.run_line("edit.undo").unwrap();
     assert!(h.session.project().automations.is_empty());
 }
+
+#[test]
+fn ruler_sets_loop_and_jumps_to_markers() {
+    let mut h = Harness::new(&["playlist.add_marker 3 Drop"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.unwrap();
+    let on_ruler = |tick: u32| pos2(grid.x(tick as f32), clip.top() + 10.0);
+    h.modifiers = Modifiers::SHIFT;
+    let set = h.drag(
+        on_ruler(TICKS_PER_BAR + 10),
+        on_ruler(4 * TICKS_PER_BAR - 10),
+    );
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(set, ["transport.set_loop 384t 1536t"]);
+    assert_eq!(h.session.project().playlist.loop_range, Some((384, 1536)));
+    // Clicking a marker's label seeks exactly to it.
+    let engine = EngineStatus::default();
+    let history = History::default();
+    let pos = on_ruler(3 * TICKS_PER_BAR) + vec2(20.0, 0.0);
+    h.frame(vec![Event::PointerMoved(pos)]);
+    let mut actions = Vec::new();
+    for pressed in [true, false] {
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1400.0, 900.0))),
+            time: Some(h.time),
+            events: vec![Event::PointerButton {
+                pos,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        h.time += 1.0 / 60.0;
+        let frame = Frame {
+            project: h.session.project(),
+            engine: &engine,
+            history: &history,
+            waveform: None,
+            clip_waveforms: &[],
+            clip_durations: &[],
+        };
+        let mut out = h
+            .ctx
+            .run_ui(input, |ui| actions.extend(show(ui, &mut h.state, &frame)));
+        out.textures_delta.clear();
+    }
+    assert!(
+        actions.contains(&Action::Seek(f64::from(3 * TICKS_PER_BAR))),
+        "{actions:?}"
+    );
+}

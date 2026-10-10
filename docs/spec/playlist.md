@@ -17,6 +17,17 @@
 - In song mode the song length is the end of the last clip rounded up to whole
   bars. Removing a pattern removes its clips (undo restores them).
 
+## Loop region and markers
+
+- `transport.set_loop <start bar> <end bar>` loops that range in song mode:
+  playback wraps from the end to the start, and Stop returns to the start.
+  `transport.clear_loop` removes it. Exports always render the whole song.
+  UI: Shift+drag on the ruler; right-click the ruler → Clear loop.
+- `playlist.add_marker <bar> <name>` / `playlist.remove_marker <bar>` manage named
+  markers (one per position). UI: right-click the ruler → Add marker here;
+  clicking a marker's label jumps the playhead to it.
+- Both are saved and undoable.
+
 ## Clip kinds
 
 - **Pattern clips** (`playlist.add_clip`) play a pattern, repeating it.

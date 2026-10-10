@@ -56,6 +56,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             toggle_track_mute,
         ),
         cmd(
+            "playlist.add_marker",
+            "playlist.add_marker <bar> <name>",
+            "Add a named marker to the song timeline.",
+            add_marker,
+        ),
+        cmd(
+            "playlist.remove_marker",
+            "playlist.remove_marker <bar>",
+            "Remove the marker at a position.",
+            remove_marker,
+        ),
+        cmd(
             "playlist.clear",
             "playlist.clear",
             "Remove every clip.",
@@ -356,4 +368,43 @@ fn set_clips(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
         }
     }
     replace_clips(project, args, clips)
+}
+
+fn add_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, usize::MAX)?;
+    let tick = args.time(0, TICKS_PER_BAR)?;
+    let name = args.rest(1)?;
+    let markers = &mut project.playlist.markers;
+    let replaced = markers
+        .iter()
+        .position(|m| m.tick == tick)
+        .map(|i| markers.remove(i));
+    markers.push(musiccraft_project::Marker {
+        tick,
+        name: name.clone(),
+    });
+    markers.sort_by_key(|m| m.tick);
+    let inverse = match replaced {
+        Some(old) => Invocation::new("playlist.add_marker", [ticks(old.tick), old.name]),
+        None => Invocation::new("playlist.remove_marker", [ticks(tick)]),
+    };
+    Ok(Outcome::undoable(
+        format!("marker {name} at {tick}t"),
+        inverse,
+    ))
+}
+
+fn remove_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let tick = args.time(0, TICKS_PER_BAR)?;
+    let markers = &mut project.playlist.markers;
+    let index = markers
+        .iter()
+        .position(|m| m.tick == tick)
+        .ok_or_else(|| args.invalid(format!("there is no marker at {tick}t")))?;
+    let old = markers.remove(index);
+    Ok(Outcome::undoable(
+        format!("removed marker {}", old.name),
+        Invocation::new("playlist.add_marker", [ticks(old.tick), old.name]),
+    ))
 }

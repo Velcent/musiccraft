@@ -70,6 +70,7 @@ pub struct Sequence {
     events: Vec<NoteEvent>,
     length: u64,
     automation: Vec<AutomationLane>,
+    loop_start: u64,
 }
 
 impl Sequence {
@@ -83,7 +84,22 @@ impl Sequence {
             events,
             length,
             automation: Vec::new(),
+            loop_start: 0,
         }
+    }
+
+    /// Restarts the loop at `start` ticks instead of 0 (ignored unless it is
+    /// before the end).
+    #[must_use]
+    pub fn with_loop_start(mut self, start: u64) -> Self {
+        self.loop_start = start;
+        self
+    }
+
+    /// Where playback wraps to at the end.
+    #[must_use]
+    pub fn loop_start(&self) -> u64 {
+        self.loop_start
     }
 
     /// Adds automation lanes. Points in each lane are sorted by tick.

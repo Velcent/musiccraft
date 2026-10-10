@@ -201,6 +201,22 @@ fn song_automation(project: &Project) -> Vec<AutomationLane> {
 /// whole arrangement in song mode.
 #[must_use]
 pub fn build_sequence(project: &Project) -> Sequence {
+    let full = build_full_sequence(project);
+    match (project.play_mode, project.playlist.loop_range) {
+        (PlayMode::Song, Some((start, end))) => {
+            let events = full.events().to_vec();
+            let lanes = full.automation().to_vec();
+            Sequence::new(events, u64::from(end))
+                .with_automation(lanes)
+                .with_loop_start(u64::from(start))
+        }
+        _ => full,
+    }
+}
+
+/// The whole pattern or song, ignoring the loop region (used for export).
+#[must_use]
+pub fn build_full_sequence(project: &Project) -> Sequence {
     match project.play_mode {
         PlayMode::Pattern => {
             let pattern = project.current_pattern();

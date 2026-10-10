@@ -32,6 +32,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             toggle_metronome,
         ),
         cmd(
+            "transport.set_loop",
+            "transport.set_loop <start bar> <end bar>",
+            "Loop a range of the song in song mode (bars from 0; <n>t for ticks).",
+            set_loop,
+        ),
+        cmd(
+            "transport.clear_loop",
+            "transport.clear_loop",
+            "Play the whole song again.",
+            clear_loop,
+        ),
+        cmd(
             "transport.toggle_mode",
             "transport.toggle_mode",
             "Switch between pattern and song playback.",
@@ -98,4 +110,41 @@ fn toggle_metronome(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
     } else {
         "metronome off"
     }))
+}
+
+fn loop_inverse(previous: Option<(u32, u32)>) -> crate::Invocation {
+    match previous {
+        Some((start, end)) => crate::Invocation::new(
+            "transport.set_loop",
+            [format!("{start}t"), format!("{end}t")],
+        ),
+        None => crate::Invocation::bare("transport.clear_loop"),
+    }
+}
+
+fn set_loop(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let bar = musiccraft_project::params::TICKS_PER_BAR;
+    let start = args.time(0, bar)?;
+    let end = args.time(1, bar)?;
+    if end <= start {
+        return Err(args.invalid("the loop must end after it starts"));
+    }
+    let previous = project.playlist.loop_range.replace((start, end));
+    let message = format!("loop {start}t to {end}t");
+    if previous == Some((start, end)) {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(message, loop_inverse(previous)))
+}
+
+fn clear_loop(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    match project.playlist.loop_range.take() {
+        Some(previous) => Ok(Outcome::undoable(
+            "loop cleared",
+            loop_inverse(Some(previous)),
+        )),
+        None => Ok(Outcome::done("no loop set")),
+    }
 }
