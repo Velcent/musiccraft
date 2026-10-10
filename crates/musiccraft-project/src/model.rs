@@ -180,6 +180,9 @@ pub struct Note {
     pub key: u8,
     /// Velocity, 1..=127.
     pub velocity: u8,
+    /// Pan, -100 (left) to 100 (right).
+    #[serde(default)]
+    pub pan: i8,
 }
 
 /// A pattern: notes for any number of channels.

@@ -52,6 +52,9 @@
   modulated by the amplitude envelope by `env_amount` octaves.
 - Linear ADSR envelope (`attack`, `decay`, `sustain`, `release`); a minimum 1 ms
   release prevents clicks. `pitch` transposes in semitones.
+- `glide` (seconds, default 0) is portamento: a note that starts while another
+  note on the same channel is still held slides linearly (in semitones) from that
+  note's current pitch over the glide time.
 
 ## Editor (UI)
 
@@ -70,6 +73,11 @@
   Shift+Up/Down by an octave. Every operation is one undo step (`edit.batch`),
   with moves ordered so notes of the selection never overwrite each other.
 - Ctrl+scroll zooms horizontally.
+- Notes have a pan, -100 to 100 (`note.set_pan`; `note.add` takes it as an
+  optional sixth argument; `note.set_all` rows may carry it as a fifth value).
+  It is applied as a balance on top of the channel pan.
+- The bottom lane edits velocity or pan; click its label to switch. In pan mode
+  stems grow up or down from the centre and snap to centre within ±3.
 - A velocity lane is pinned to the bottom of the view: one stem per note of the
   selected channel. Dragging vertically sets the velocity of the note under the
   pointer (the latest-starting one when notes overlap); one drag is one undo step.

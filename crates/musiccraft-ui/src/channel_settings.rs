@@ -318,6 +318,7 @@ fn synth(
         }
         ui.horizontal(|ui| {
             param_knob(ui, state, number, channel, inst::DETUNE, "Detune", actions);
+            param_knob(ui, state, number, channel, inst::GLIDE, "Glide", actions);
             param_knob(ui, state, number, channel, inst::OSC_MIX, "Mix", actions);
         });
     });

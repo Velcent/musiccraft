@@ -26,6 +26,7 @@ fn event(
         channel,
         key: note.key,
         velocity: f32::from(note.velocity) / 127.0,
+        pan: f32::from(note.pan) / 100.0,
     })
 }
 
@@ -67,6 +68,7 @@ fn song_events(project: &Project) -> Vec<NoteEvent> {
                         channel,
                         key: root,
                         velocity: 1.0,
+                        pan: 0.0,
                     });
                 }
             }

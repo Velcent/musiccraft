@@ -23,7 +23,7 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         ),
         cmd(
             "note.add",
-            "note.add <channel> <start> <length> <key> [velocity] [@pattern]",
+            "note.add <channel> <start> <length> <key> [velocity] [pan] [@pattern]",
             "Add a note; times in steps (or <n>t ticks), key as 60 or C5.",
             add,
         ),
@@ -32,6 +32,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "note.add_chord <channel> <start> <length> <root> <quality> [velocity] [@pattern]",
             "Add a chord (major, minor, dim, aug, sus2, sus4, maj7, min7, dom7, dim7, add9).",
             add_chord,
+        ),
+        cmd(
+            "note.set_pan",
+            "note.set_pan <channel> <start> <key> <-100..100> [@pattern]",
+            "Change a note's pan.",
+            set_pan,
         ),
         cmd(
             "note.remove",
@@ -117,6 +123,7 @@ impl Target {
                 ticks(note.length),
                 note.key.to_string(),
                 note.velocity.to_string(),
+                note.pan.to_string(),
                 at_pattern(self.pattern),
             ],
         )
@@ -135,9 +142,17 @@ impl Target {
     }
 
     fn set_all_inverse(&self, notes: &[Note]) -> Invocation {
-        let rows: Vec<[u32; 4]> = notes
+        let rows: Vec<[i64; 5]> = notes
             .iter()
-            .map(|n| [n.start, n.length, u32::from(n.key), u32::from(n.velocity)])
+            .map(|n| {
+                [
+                    i64::from(n.start),
+                    i64::from(n.length),
+                    i64::from(n.key),
+                    i64::from(n.velocity),
+                    i64::from(n.pan),
+                ]
+            })
             .collect();
         let json = serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_owned());
         Invocation::new(
@@ -182,6 +197,7 @@ fn set_step(project: &mut Project, target: &Target, tick: u32, on: bool) -> Opti
                 length: TICKS_PER_STEP,
                 key: STEP_KEY,
                 velocity: DEFAULT_VELOCITY,
+                pan: 0,
             });
             Some(target.remove_inverse(tick, STEP_KEY))
         }
@@ -237,14 +253,19 @@ fn step_set(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
 }
 
 fn add(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
-    args.expect(4, 5)?;
+    args.expect(4, 6)?;
     let target = Target::resolve(project, args)?;
+    let pan = match args.opt(5) {
+        Some(_) => pan_arg(args, 5)?,
+        None => 0,
+    };
     let note = Note {
         channel: project.channels[target.channel].id,
         start: args.time(1, TICKS_PER_STEP)?,
         length: args.duration(2, TICKS_PER_STEP)?,
         key: args.key(3)?,
         velocity: args.velocity(4, DEFAULT_VELOCITY)?,
+        pan,
     };
     let replaced = project.patterns[target.pattern].put_note(note);
     let inverse = match replaced {
@@ -383,16 +404,33 @@ fn clear(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
 fn set_all(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
     let target = Target::resolve(project, args)?;
-    let rows: Vec<[u32; 4]> =
+    let rows: Vec<Vec<i64>> =
         serde_json::from_str(args.str(1)?).map_err(|e| args.invalid(e.to_string()))?;
     let channel = project.channels[target.channel].id;
     let mut notes = Vec::with_capacity(rows.len());
-    for [start, length, key, velocity] in rows {
-        let (Ok(key), Ok(velocity)) = (u8::try_from(key), u8::try_from(velocity)) else {
-            return Err(args.invalid("key and velocity must fit 0-127"));
+    for row in rows {
+        let (start, length, key, velocity, pan) = match row.as_slice() {
+            [s, l, k, v] => (*s, *l, *k, *v, 0),
+            [s, l, k, v, p] => (*s, *l, *k, *v, *p),
+            _ => return Err(args.invalid("each note is [start, length, key, velocity, pan?]")),
         };
-        if key > 127 || !(1..=127).contains(&velocity) || length == 0 {
-            return Err(args.invalid("each note needs length > 0, key 0-127, velocity 1-127"));
+        let parsed = (
+            u32::try_from(start),
+            u32::try_from(length),
+            u8::try_from(key),
+            u8::try_from(velocity),
+            i8::try_from(pan),
+        );
+        let (Ok(start), Ok(length), Ok(key), Ok(velocity), Ok(pan)) = parsed else {
+            return Err(args.invalid("a note value is out of range"));
+        };
+        if key > 127
+            || !(1..=127).contains(&velocity)
+            || length == 0
+            || !(-100..=100).contains(&pan)
+        {
+            return Err(args
+                .invalid("each note needs length > 0, key 0-127, velocity 1-127, pan -100..100"));
         }
         notes.push(Note {
             channel,
@@ -400,6 +438,7 @@ fn set_all(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErr
             length,
             key,
             velocity,
+            pan,
         });
     }
     let (old, count) = rewrite(project, &target, |_| notes);
@@ -478,6 +517,7 @@ fn import_midi(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
             length: convert(n.length).max(1),
             key: n.key.min(127),
             velocity: n.velocity.clamp(1, 127),
+            pan: 0,
         })
         .collect();
     let count = imported.len();
@@ -522,6 +562,7 @@ fn add_chord(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
             length,
             key: root + i,
             velocity,
+            pan: 0,
         })
         .collect();
     let (old, _) = rewrite(project, &target, |mut notes| {
@@ -532,4 +573,22 @@ fn add_chord(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
         format!("added {} {quality} chord at {start}t", key_name(root)),
         target.set_all_inverse(&old),
     ))
+}
+
+fn pan_arg(args: &Args<'_>, i: usize) -> Result<i8, CommandError> {
+    let pan: i8 = args.parse(i, "pan")?;
+    if (-100..=100).contains(&pan) {
+        Ok(pan)
+    } else {
+        Err(args.invalid("pan must be -100 to 100"))
+    }
+}
+
+fn set_pan(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(4, 4)?;
+    let pan = pan_arg(args, 3)?;
+    edit_note(project, args, |note| {
+        note.pan = pan;
+        Ok(format!("note pan {pan}"))
+    })
 }

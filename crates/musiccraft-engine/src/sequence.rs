@@ -11,6 +11,8 @@ pub struct NoteEvent {
     pub key: u8,
     /// Velocity, 0..=1.
     pub velocity: f32,
+    /// Note pan, -1..=1, applied on top of the channel pan.
+    pub pan: f32,
 }
 
 /// A parameter an automation lane writes.
@@ -149,6 +151,7 @@ mod tests {
             channel: 0,
             key: 60,
             velocity: 1.0,
+            pan: 0.0,
         }
     }
 

@@ -56,6 +56,8 @@ pub struct RollState {
     scale: Option<(u8, usize)>,
     /// Note whose velocity is being dragged in the lane.
     lane_drag: Option<Note>,
+    /// What the bottom lane edits.
+    lane_mode: LaneMode,
     /// Selected notes of the shown channel and pattern, as (start, key).
     pub(crate) selection: BTreeSet<(u32, u8)>,
     /// (channel, pattern) the selection belongs to.
@@ -83,6 +85,7 @@ impl Default for RollState {
             chord: None,
             scale: None,
             lane_drag: None,
+            lane_mode: LaneMode::Velocity,
             selection: BTreeSet::new(),
             selection_for: None,
             marquee: None,
@@ -798,6 +801,7 @@ fn edit(
                                 length: state.roll.last_length,
                                 key,
                                 velocity: state.roll.velocity,
+                                pan: 0,
                             },
                             grab: tick - start as f32,
                             start,
@@ -1070,12 +1074,6 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     }
 }
 
-/// Velocity of a pointer height inside the lane.
-fn lane_velocity(lane: Rect, y: f32) -> u8 {
-    let t = ((lane.bottom() - 4.0 - y) / (lane.height() - 8.0)).clamp(0.0, 1.0);
-    (1.0 + t * 126.0).round() as u8
-}
-
 /// The note whose stem is under `x` (the latest-starting note covering it).
 fn note_at_x<'a>(grid: &Grid, notes: &[&'a Note], x: f32) -> Option<&'a Note> {
     let tick = grid.tick_at(x);
@@ -1084,6 +1082,54 @@ fn note_at_x<'a>(grid: &Grid, notes: &[&'a Note], x: f32) -> Option<&'a Note> {
         .filter(|n| (n.start as f32) <= tick && tick < (n.start + n.length) as f32)
         .max_by_key(|n| (n.start, n.key))
         .copied()
+}
+
+/// Lane position 0..1 of a pointer height inside the lane.
+fn lane_unit(lane: Rect, y: f32) -> f32 {
+    ((lane.bottom() - 4.0 - y) / (lane.height() - 8.0)).clamp(0.0, 1.0)
+}
+
+/// What the bottom lane edits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum LaneMode {
+    #[default]
+    Velocity,
+    Pan,
+}
+
+impl LaneMode {
+    fn value(self, note: &Note) -> f32 {
+        match self {
+            Self::Velocity => f32::from(note.velocity.max(1) - 1) / 126.0,
+            Self::Pan => (f32::from(note.pan) + 100.0) / 200.0,
+        }
+    }
+
+    fn invocation(self, channel: usize, note: &Note, t: f32) -> Option<Invocation> {
+        let (name, value, current) = match self {
+            Self::Velocity => {
+                let v = (1.0 + t * 126.0).round() as i32;
+                ("note.set_velocity", v, i32::from(note.velocity))
+            }
+            Self::Pan => {
+                let p = (t * 200.0 - 100.0).round() as i32;
+                // Snap to centre near the middle.
+                let p = if p.abs() <= 3 { 0 } else { p };
+                ("note.set_pan", p, i32::from(note.pan))
+            }
+        };
+        (value != current).then(|| {
+            Invocation::new(
+                name,
+                [
+                    (channel + 1).to_string(),
+                    format!("{}t", note.start),
+                    note.key.to_string(),
+                    value.to_string(),
+                ],
+            )
+        })
+    }
 }
 
 fn velocity_lane(
@@ -1095,6 +1141,7 @@ fn velocity_lane(
     channel: usize,
     actions: &mut Vec<Action>,
 ) {
+    let mode = state.roll.lane_mode;
     let lane = Rect::from_min_max(
         pos2(clip.left() + KEYS_WIDTH, clip.bottom() - LANE_HEIGHT),
         clip.right_bottom(),
@@ -1107,37 +1154,55 @@ fn velocity_lane(
         [strip.left_top(), strip.right_top()],
         Stroke::new(1.0, theme::GRID_BAR),
     );
-    painter.text(
-        pos2(clip.left() + 6.0, lane.center().y),
-        Align2::LEFT_CENTER,
-        "Velocity",
-        FontId::proportional(10.0),
-        theme::TEXT_DIM,
-    );
+    // The lane's label switches between velocity and pan.
+    let label_rect = Rect::from_min_max(strip.left_top(), pos2(lane.left(), strip.bottom()));
+    let label = ui
+        .interact(label_rect, ui.id().with("lane-mode"), Sense::click())
+        .on_hover_text("Click to switch between velocity and pan");
+    if label.clicked() {
+        state.roll.lane_mode = match mode {
+            LaneMode::Velocity => LaneMode::Pan,
+            LaneMode::Pan => LaneMode::Velocity,
+        };
+    }
+    for (i, (text, m)) in [("Velocity", LaneMode::Velocity), ("Pan", LaneMode::Pan)]
+        .into_iter()
+        .enumerate()
+    {
+        painter.text(
+            pos2(clip.left() + 6.0, lane.center().y - 8.0 + i as f32 * 16.0),
+            Align2::LEFT_CENTER,
+            text,
+            FontId::proportional(10.0),
+            if m == mode {
+                theme::ACCENT
+            } else {
+                theme::TEXT_DIM
+            },
+        );
+    }
+    if mode == LaneMode::Pan {
+        painter.line_segment(
+            [
+                pos2(lane.left(), lane.center().y),
+                pos2(lane.right(), lane.center().y),
+            ],
+            Stroke::new(1.0, theme::GRID_BAR),
+        );
+    }
     if response.drag_started() || response.clicked() {
         if let Some(pos) = response.interact_pointer_pos() {
             state.roll.lane_drag = note_at_x(grid, notes, pos.x).copied();
             state.begin_gesture();
         }
     }
-    let mut shown: Option<(Note, u8)> = None;
+    let mut shown: Option<(Note, f32)> = None;
     if let (Some(note), Some(pos)) = (state.roll.lane_drag, response.interact_pointer_pos()) {
         if response.dragged() || response.clicked() {
-            let velocity = lane_velocity(lane, pos.y);
-            shown = Some((note, velocity));
-            if velocity != note.velocity {
-                actions.push(Action::Coalesced(
-                    Invocation::new(
-                        "note.set_velocity",
-                        [
-                            (channel + 1).to_string(),
-                            format!("{}t", note.start),
-                            note.key.to_string(),
-                            velocity.to_string(),
-                        ],
-                    ),
-                    state.gesture(),
-                ));
+            let t = lane_unit(lane, pos.y);
+            shown = Some((note, t));
+            if let Some(invocation) = mode.invocation(channel, &note, t) {
+                actions.push(Action::Coalesced(invocation, state.gesture()));
             }
         }
     }
@@ -1145,22 +1210,23 @@ fn velocity_lane(
         state.roll.lane_drag = None;
     }
     let color = theme::palette(channel);
+    let y_of = |t: f32| lane.bottom() - 4.0 - t * (lane.height() - 8.0);
     for note in notes {
-        let velocity = match shown {
-            Some((n, v)) if n.start == note.start && n.key == note.key => v,
-            _ => note.velocity,
+        let t = match shown {
+            Some((n, t)) if n.start == note.start && n.key == note.key => t,
+            _ => mode.value(note),
         };
         let x = grid.x(note.start as f32) + 2.0;
         if x < lane.left() || x > lane.right() {
             continue;
         }
-        let top =
-            lane.bottom() - 4.0 - f32::from(velocity.max(1) - 1) / 126.0 * (lane.height() - 8.0);
-        painter.line_segment(
-            [pos2(x, lane.bottom()), pos2(x, top)],
-            Stroke::new(2.0, color),
-        );
-        painter.circle_filled(pos2(x, top), 3.0, color);
+        let base = match mode {
+            LaneMode::Velocity => lane.bottom(),
+            LaneMode::Pan => lane.center().y,
+        };
+        let tip = y_of(t);
+        painter.line_segment([pos2(x, base), pos2(x, tip)], Stroke::new(2.0, color));
+        painter.circle_filled(pos2(x, tip), 3.0, color);
     }
 }
 
@@ -1263,6 +1329,7 @@ mod tests {
                 length: 24,
                 key: 60,
                 velocity: 100,
+                pan: 0,
             },
             grab: 0.0,
             start,
@@ -1296,6 +1363,7 @@ mod tests {
             length: 24,
             key,
             velocity: 100,
+            pan: 0,
         }
     }
 
@@ -1329,12 +1397,30 @@ mod tests {
     }
 
     #[test]
-    fn lane_maps_height_to_velocity() {
+    fn lane_modes_map_to_commands() {
+        let note = n(0, 60);
+        assert_eq!(
+            LaneMode::Velocity
+                .invocation(0, &note, 1.0)
+                .unwrap()
+                .to_string(),
+            "note.set_velocity 1 0t 60 127"
+        );
+        assert!(
+            LaneMode::Velocity
+                .invocation(0, &note, LaneMode::Velocity.value(&note))
+                .is_none()
+        );
+        assert_eq!(
+            LaneMode::Pan.invocation(0, &note, 0.0).unwrap().to_string(),
+            "note.set_pan 1 0t 60 -100"
+        );
+        assert!(
+            LaneMode::Pan.invocation(0, &note, 0.51).is_none(),
+            "snaps to centre"
+        );
         let lane = Rect::from_min_max(pos2(0.0, 100.0), pos2(500.0, 164.0));
-        assert_eq!(lane_velocity(lane, 160.0), 1);
-        assert_eq!(lane_velocity(lane, 104.0), 127);
-        assert_eq!(lane_velocity(lane, 50.0), 127);
-        assert_eq!(lane_velocity(lane, 132.0), 64);
+        assert!((lane_unit(lane, 132.0) - 0.5).abs() < 1e-6);
     }
 
     #[test]

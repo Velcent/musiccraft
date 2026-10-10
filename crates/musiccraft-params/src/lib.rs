@@ -222,6 +222,8 @@ pub mod inst {
     pub const ROOT_KEY: usize = 12;
     /// Coarse pitch offset applied to every note, semitones.
     pub const PITCH: usize = 13;
+    /// Synth portamento: time to slide from a held note to a new one, seconds.
+    pub const GLIDE: usize = 14;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -240,6 +242,7 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("one_shot", 0.0, 1.0, 1.0),
     int_spec("root_key", 0.0, 127.0, 60.0),
     spec("pitch", -48.0, 48.0, 0.0, "st"),
+    spec("glide", 0.0, 2.0, 0.0, "s"),
 ];
 
 /// Built-in insert effects.

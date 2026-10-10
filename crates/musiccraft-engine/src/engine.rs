@@ -415,6 +415,8 @@ impl Engine {
             delay: 0,
             gate: None,
             live: true,
+            pan: 0.0,
+            glide_from: None,
         };
         if let Some(graph) = self.graph.as_deref() {
             trigger(
@@ -656,10 +658,23 @@ fn event_start(event: &NoteEvent, offset_frames: f64, tpf: f64) -> VoiceStart {
         delay: (offset_frames - 1e-6).ceil().max(0.0) as u32,
         gate: Some((event.length as f64 / tpf).max(1.0) as u64),
         live: false,
+        pan: event.pan,
+        glide_from: None,
     }
 }
 
-fn trigger(voices: &mut [Voice], counter: &mut u64, channels: &[ChannelNode], start: VoiceStart) {
+fn trigger(
+    voices: &mut [Voice],
+    counter: &mut u64,
+    channels: &[ChannelNode],
+    mut start: VoiceStart,
+) {
+    // A held note on the same channel is where a glide starts from.
+    start.glide_from = voices
+        .iter()
+        .filter(|v| v.channel == start.channel && v.held())
+        .max_by_key(|v| v.age)
+        .map(Voice::current_key);
     let Some(node) = channels.get(usize::from(start.channel)) else {
         return;
     };

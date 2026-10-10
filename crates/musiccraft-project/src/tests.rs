@@ -83,6 +83,7 @@ fn pattern_length_grows_to_fit_notes() {
         length: 10,
         key: 60,
         velocity: 100,
+        pan: 0,
     });
     assert_eq!(pattern.length_ticks(), 2 * TICKS_PER_BAR);
 }
@@ -96,6 +97,7 @@ fn put_note_replaces_same_position_and_key() {
         length: 24,
         key: 60,
         velocity: 100,
+        pan: 0,
     };
     assert_eq!(pattern.put_note(note), None);
     let louder = Note {
@@ -130,6 +132,7 @@ fn rich_project() -> Project {
         length: 24,
         key: 60,
         velocity: 100,
+        pan: 0,
     });
     project.mixer[1]
         .effects

@@ -38,6 +38,7 @@ fn note(start_beats: u64, channel: u16) -> NoteEvent {
         channel,
         key: 60,
         velocity: 1.0,
+        pan: 0.0,
     }
 }
 
@@ -532,5 +533,23 @@ fn loop_start_is_where_playback_wraps_and_stop_returns() {
     assert!(
         (engine.position_beats() - 3.0).abs() < 1e-9,
         "seeks fold into the loop"
+    );
+}
+
+#[test]
+fn note_pan_moves_a_note_left_or_right() {
+    let (mut engine, _handle) = impulse_engine();
+    let mut left = note(0, 0);
+    left.pan = -1.0;
+    engine.apply(EngineMessage::SetSequence(Box::new(Sequence::new(
+        vec![left],
+        384,
+    ))));
+    engine.apply(EngineMessage::Play);
+    let out = render_stereo(&mut engine, 8);
+    assert!(
+        (out[0] - 1.0).abs() < 1e-6 && out[1].abs() < 1e-6,
+        "{:?}",
+        &out[..2]
     );
 }

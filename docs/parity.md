@@ -35,7 +35,8 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Melodic patterns previewed in the rack | `done` |
 | Piano roll | Velocity editor lane | `cmd:note.set_velocity` `done` |
 | Piano roll | Select, copy, paste, duplicate, nudge | `cmd:edit.batch` `done` |
-| Channel rack | Per-note pan and pitch graph editor | `todo` |
+| Piano roll | Per-note pan lane | `cmd:note.set_pan` `done` |
+| Piano roll | Per-note pitch slides | `todo` |
 | Piano roll | Draw, move, resize, delete notes | `cmd:note.add` `cmd:note.move` `cmd:note.resize` `cmd:note.remove` `spec:piano-roll.md` |
 | Piano roll | Velocity | `cmd:note.set_velocity` |
 | Piano roll | Quantize | `cmd:note.quantize` |
@@ -43,7 +44,7 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Snap to grid | `done` |
 | Piano roll | Ghost notes of other channels | `done` |
 | Piano roll | Audition notes from the keyboard | `done` |
-| Piano roll | Note slides / portamento | `todo` |
+| Piano roll | Portamento (glide) | `done` |
 | Piano roll | Chord and scale helpers | `cmd:note.add_chord` `done` |
 | Piano roll | Import MIDI files | `cmd:note.import_midi` |
 | Patterns | New pattern | `cmd:pattern.add` `key:F4=pattern.add` |
