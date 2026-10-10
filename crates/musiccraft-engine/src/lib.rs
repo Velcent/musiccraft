@@ -21,7 +21,7 @@ pub use graph::{
     ChannelNode, ChannelParams, EffectParams, Graph, Instrument, MAX_SENDS, SendParams, TrackParams,
 };
 pub use message::{EngineMessage, Garbage, LiveEvent};
-pub use meters::Meters;
+pub use meters::{Meters, SCOPE_LEN};
 pub use sequence::{NoteEvent, Sequence};
 
 /// Largest number of frames processed in one internal block. Device callbacks of

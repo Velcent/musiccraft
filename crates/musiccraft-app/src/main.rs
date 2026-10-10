@@ -224,6 +224,10 @@ impl App {
             status.playing = meters.is_playing();
             status.voices = meters.active_voices();
             status.peaks = (0..tracks).map(|t| meters.take_peak(t)).collect();
+            status.load = meters.load();
+            let mut scope = vec![0.0; 256];
+            meters.scope(&mut scope);
+            status.scope = scope;
         } else {
             status.peaks = vec![(0.0, 0.0); tracks];
         }
@@ -279,6 +283,10 @@ impl App {
                 });
                 self.pending_offs
                     .push((Instant::now() + SHORT_PREVIEW, channel, key));
+                return;
+            }
+            Action::Seek(ticks) => {
+                self.send(EngineMessage::Seek(ticks));
                 return;
             }
             Action::ReloadSamples => {

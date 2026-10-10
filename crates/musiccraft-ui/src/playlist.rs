@@ -74,49 +74,38 @@ fn finish(drag: &ClipDrag) -> Option<Invocation> {
     }
 }
 
-pub fn show(
-    ctx: &egui::Context,
-    state: &mut UiState,
-    frame: &Frame<'_>,
-    actions: &mut Vec<Action>,
-) {
-    let mut open = state.windows.playlist;
-    egui::Window::new("Playlist")
-        .id(egui::Id::new("playlist"))
-        .open(&mut open)
-        .default_pos([200.0, 400.0])
-        .default_size([900.0, 340.0])
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Snap");
-                egui::ComboBox::from_id_salt("playlist-snap")
-                    .width(80.0)
-                    .selected_text(state.playlist.snap.label())
-                    .show_ui(ui, |ui| {
-                        for snap in [Snap::Step, Snap::Beat, Snap::Bar] {
-                            ui.selectable_value(&mut state.playlist.snap, snap, snap.label());
-                        }
-                    });
-                if ui.button("−").on_hover_text("Zoom out").clicked() {
-                    state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(16.0);
+/// Draws the playlist as the main workspace.
+pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Playlist").strong().size(15.0));
+        ui.label(RichText::new("Arrangement").color(theme::TEXT_DIM));
+        ui.separator();
+        ui.label("Snap");
+        egui::ComboBox::from_id_salt("playlist-snap")
+            .width(70.0)
+            .selected_text(state.playlist.snap.label())
+            .show_ui(ui, |ui| {
+                for snap in [Snap::Step, Snap::Beat, Snap::Bar] {
+                    ui.selectable_value(&mut state.playlist.snap, snap, snap.label());
                 }
-                if ui.button("+").on_hover_text("Zoom in").clicked() {
-                    state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
-                }
-                ui.label(
-                    RichText::new("Click to place the selected pattern · drag to move · edge to resize · right-click to delete")
-                        .small()
-                        .color(theme::TEXT_DIM),
-                );
             });
-            ui.separator();
-            ui.horizontal_top(|ui| {
-                pattern_list(ui, state, frame.project, actions);
-                ui.separator();
-                canvas(ui, state, frame, actions);
-            });
-        });
-    state.windows.playlist = open;
+        if ui.small_button("−").on_hover_text("Zoom out (Ctrl+scroll)").clicked() {
+            state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(16.0);
+        }
+        if ui.small_button("+").on_hover_text("Zoom in (Ctrl+scroll)").clicked() {
+            state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
+        }
+        ui.label(
+            RichText::new("Click to paint the selected pattern · drag to move · edge to resize · right-click deletes · click the ruler to seek")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+    });
+    ui.add_space(2.0);
+    ui.horizontal_top(|ui| {
+        pattern_list(ui, state, frame.project, actions);
+        canvas(ui, state, frame, actions);
+    });
 }
 
 fn pattern_list(
@@ -249,7 +238,15 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 .collect();
             edit(ui, state, project, &grid, &response, clip, &boxes, actions);
             draw_ruler(&painter, &grid, clip, project);
+            seek_ruler(ui, state.playlist.snap, &grid, clip, actions);
             headers(ui, project, &grid, clip, actions);
+            if response.hovered() {
+                let zoom = ui.input(|i| i.zoom_delta());
+                if zoom != 1.0 {
+                    state.playlist.px_per_bar =
+                        (state.playlist.px_per_bar * zoom).clamp(16.0, 400.0);
+                }
+            }
         });
 }
 
@@ -403,6 +400,29 @@ fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, project: &Projec
             FontId::monospace(11.0),
             theme::TEXT,
         );
+    }
+}
+
+/// Clicking or dragging on the ruler moves the playhead.
+fn seek_ruler(ui: &mut egui::Ui, snap: Snap, grid: &Grid, clip: Rect, actions: &mut Vec<Action>) {
+    let ruler = Rect::from_min_max(
+        pos2(clip.left() + HEADER_WIDTH, clip.top()),
+        pos2(clip.right(), clip.top() + RULER_HEIGHT),
+    );
+    let response = ui
+        .interact(
+            ruler,
+            ui.id().with("playlist-ruler"),
+            Sense::click_and_drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    if response.clicked() || response.dragged() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            let tick = snap
+                .floor(grid.tick_at(pos.x))
+                .min(Snap::Beat.floor(grid.tick_at(pos.x)));
+            actions.push(Action::Seek(f64::from(tick)));
+        }
     }
 }
 

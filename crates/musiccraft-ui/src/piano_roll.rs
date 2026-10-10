@@ -133,11 +133,16 @@ pub fn show(
         Some(channel) => format!("Piano roll — {}", channel.name),
         None => "Piano roll".to_owned(),
     };
+    let area = state.workspace;
     egui::Window::new(title)
         .id(egui::Id::new("piano-roll"))
         .open(&mut open)
-        .default_pos([260.0, 160.0])
-        .default_size([860.0, 480.0])
+        .default_pos(area.left_top() + egui::vec2(40.0, 60.0))
+        .default_size([
+            (area.width() - 80.0).max(480.0),
+            (area.height() - 120.0).max(300.0),
+        ])
+        .constrain_to(area)
         .show(ctx, |ui| {
             if project.channels.is_empty() {
                 ui.label(RichText::new("Add a channel to write notes.").color(theme::TEXT_DIM));
@@ -365,6 +370,12 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         );
         draw_ruler(&painter, &grid, clip, length);
         velocity_lane(ui, state, &grid, clip, &notes, channel_index, actions);
+        if response.hovered() {
+            let zoom = ui.input(|i| i.zoom_delta());
+            if zoom != 1.0 {
+                state.roll.px_per_step = (state.roll.px_per_step * zoom).clamp(6.0, 120.0);
+            }
+        }
         keyboard(ui, state, &grid, clip, channel_index, actions);
     });
 }

@@ -1,15 +1,22 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 use musiccraft_params::MAX_MIXER_TRACKS;
 
-/// Values the engine publishes for display: playhead, transport and peak levels.
-/// Shared between threads through atomics only.
+/// Samples kept for the oscilloscope (master output, mono).
+pub const SCOPE_LEN: usize = 2048;
+
+/// Values the engine publishes for display: playhead, transport, peak levels,
+/// a short history of the master output and processing load. Shared between
+/// threads through atomics only.
 #[derive(Debug)]
 pub struct Meters {
     position_bits: AtomicU64,
     playing: AtomicBool,
     active_voices: AtomicU32,
     peaks: Vec<AtomicU32>,
+    scope: Vec<AtomicU32>,
+    scope_write: AtomicUsize,
+    load_bits: AtomicU32,
 }
 
 impl Default for Meters {
@@ -29,7 +36,44 @@ impl Meters {
             peaks: (0..MAX_MIXER_TRACKS * 2)
                 .map(|_| AtomicU32::new(0))
                 .collect(),
+            scope: (0..SCOPE_LEN).map(|_| AtomicU32::new(0)).collect(),
+            scope_write: AtomicUsize::new(0),
+            load_bits: AtomicU32::new(0),
         }
+    }
+
+    /// Fraction of the real-time budget the last callback used (1.0 = all of it).
+    #[must_use]
+    pub fn load(&self) -> f32 {
+        f32::from_bits(self.load_bits.load(Ordering::Relaxed))
+    }
+
+    /// Copies the most recent `out.len()` master samples, oldest first.
+    pub fn scope(&self, out: &mut [f32]) {
+        let n = out.len().min(SCOPE_LEN);
+        let end = self.scope_write.load(Ordering::Relaxed);
+        for (i, slot) in out.iter_mut().take(n).enumerate() {
+            let index = (end + SCOPE_LEN - n + i) % SCOPE_LEN;
+            *slot = self
+                .scope
+                .get(index)
+                .map_or(0.0, |s| f32::from_bits(s.load(Ordering::Relaxed)));
+        }
+    }
+
+    pub(crate) fn push_scope(&self, samples: impl Iterator<Item = f32>) {
+        let mut write = self.scope_write.load(Ordering::Relaxed);
+        for sample in samples {
+            if let Some(slot) = self.scope.get(write % SCOPE_LEN) {
+                slot.store(sample.to_bits(), Ordering::Relaxed);
+            }
+            write = (write + 1) % SCOPE_LEN;
+        }
+        self.scope_write.store(write, Ordering::Relaxed);
+    }
+
+    pub(crate) fn set_load(&self, load: f32) {
+        self.load_bits.store(load.to_bits(), Ordering::Relaxed);
     }
 
     /// Playhead position in ticks.
@@ -92,5 +136,21 @@ mod tests {
         assert_eq!(meters.take_peak(3), (0.0, 0.0));
         meters.record_peak(MAX_MIXER_TRACKS + 5, 1.0, 1.0);
         assert_eq!(meters.take_peak(MAX_MIXER_TRACKS + 5), (0.0, 0.0));
+    }
+
+    #[test]
+    fn scope_returns_latest_samples_in_order() {
+        let meters = Meters::new();
+        meters.push_scope((0..SCOPE_LEN + 3).map(|i| i as f32));
+        let mut out = [0.0; 3];
+        meters.scope(&mut out);
+        assert_eq!(
+            out,
+            [
+                SCOPE_LEN as f32,
+                SCOPE_LEN as f32 + 1.0,
+                SCOPE_LEN as f32 + 2.0
+            ]
+        );
     }
 }

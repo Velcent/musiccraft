@@ -409,6 +409,7 @@ impl Engine {
     /// channels receive left and right; any others are silent; mono receives the
     /// average of left and right.
     pub fn process(&mut self, output: &mut [f32], channels: usize) {
+        let started = std::time::Instant::now();
         self.drain_messages();
         output.fill(0.0);
         if channels == 0 {
@@ -418,6 +419,15 @@ impl Engine {
             let frames = block.len() / channels;
             self.render_block(frames);
             self.write_block(block, channels, frames);
+            if let Some(master) = self.graph.as_deref().and_then(|g| g.tracks.first()) {
+                let mono = master.left.iter().zip(&master.right).take(frames);
+                self.meters.push_scope(mono.map(|(l, r)| (l + r) * 0.5));
+            }
+        }
+        let budget = (output.len() / channels) as f64 / self.sample_rate;
+        if budget > 0.0 {
+            self.meters
+                .set_load((started.elapsed().as_secs_f64() / budget) as f32);
         }
         let voices = self.voices.iter().filter(|v| v.active).count() as u32;
         self.meters.publish(self.position, self.playing, voices);

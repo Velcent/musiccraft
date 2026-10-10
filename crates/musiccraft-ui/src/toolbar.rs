@@ -4,6 +4,7 @@ use egui::{RichText, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::PlayMode;
 
+use crate::icons::{self, Icon};
 use crate::{Action, Frame, UiState, geometry::position_label, theme, widgets};
 
 fn run(actions: &mut Vec<Action>, line: &str) {
@@ -92,175 +93,230 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 ui.separator();
                 window_toggle(ui, state, "Keyboard shortcuts", "shortcuts");
             });
+            window_buttons(ui, state);
         });
     });
 
     egui::Panel::top("transport")
-        .frame(egui::Frame::new().fill(theme::PANEL_DARK).inner_margin(6.0))
+        .frame(
+            egui::Frame::new()
+                .fill(theme::PANEL_DARK)
+                .inner_margin(egui::Margin::symmetric(8, 6)),
+        )
         .show(ui, |ui| {
             ui.horizontal(|ui| transport(ui, state, frame, actions));
         });
 }
 
+/// Window buttons at the right end of the menu bar.
+fn window_buttons(ui: &mut egui::Ui, state: &mut UiState) {
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 3.0;
+        let w = &mut state.windows;
+        for (icon, open, hint) in [
+            (Icon::Mixer, &mut w.mixer, "Mixer (F9)"),
+            (Icon::PianoRoll, &mut w.piano_roll, "Piano roll (F7)"),
+            (Icon::ChannelRack, &mut w.channel_rack, "Channel rack (F6)"),
+            (Icon::Playlist, &mut w.playlist, "Playlist (F5)"),
+            (Icon::Browser, &mut w.browser, "Browser (Alt+F8)"),
+        ] {
+            if icons::button(ui, icon, *open, theme::ACCENT, hint).clicked() {
+                *open = !*open;
+            }
+        }
+    });
+}
+
+fn group(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    ui.spacing_mut().item_spacing.x = 3.0;
+    add(ui);
+    ui.spacing_mut().item_spacing.x = 8.0;
+    ui.add_space(6.0);
+}
+
 fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     let project = frame.project;
     let playing = project.transport().is_playing();
-    let (label, color) = if playing {
-        ("■", theme::HIGHLIGHT)
-    } else {
-        ("▶", theme::ACCENT)
-    };
-    let play =
-        egui::Button::new(RichText::new(label).size(18.0).color(color)).min_size(vec2(36.0, 28.0));
-    if ui.add(play).on_hover_text("Play / stop (Space)").clicked() {
-        run(actions, "transport.toggle");
-    }
-    ui.add_space(6.0);
-    for (mode, text) in [(PlayMode::Pattern, "PAT"), (PlayMode::Song, "SONG")] {
-        let selected = project.play_mode == mode;
-        if ui
-            .selectable_label(selected, RichText::new(text).strong())
-            .on_hover_text("Pattern or song playback (L)")
-            .clicked()
-            && !selected
-        {
-            run(actions, &format!("transport.set_mode {}", mode.label()));
+
+    let mode = usize::from(project.play_mode == PlayMode::Song);
+    if let Some(choice) =
+        icons::segmented(ui, &["PAT", "SONG"], mode, "Pattern or song playback (L)")
+    {
+        if choice != mode {
+            let label = if choice == 1 { "song" } else { "pattern" };
+            run(actions, &format!("transport.set_mode {label}"));
         }
     }
-    let record = egui::Button::new(
-        RichText::new("REC")
-            .small()
-            .strong()
-            .color(if state.record {
-                theme::BACKGROUND
-            } else {
-                theme::DANGER
-            }),
-    )
-    .fill(if state.record {
-        theme::DANGER
-    } else {
-        theme::RAISED
-    });
-    if ui
-        .add(record)
-        .on_hover_text(format!(
+    ui.add_space(6.0);
+
+    group(ui, |ui| {
+        if icons::button(
+            ui,
+            Icon::Play,
+            playing,
+            theme::ACCENT,
+            "Play / stop (Space)",
+        )
+        .clicked()
+        {
+            run(actions, "transport.toggle");
+        }
+        if icons::button(
+            ui,
+            Icon::Stop,
+            false,
+            theme::TEXT,
+            "Stop and return to the start",
+        )
+        .clicked()
+        {
+            run(actions, "transport.stop");
+        }
+        let record_hint = format!(
             "Record live notes into the pattern while playing ({})",
             shortcut(state, "ui.toggle_record")
-        ))
-        .clicked()
-    {
-        state.record = !state.record;
-    }
-    ui.add_space(6.0);
-    let metronome = egui::Button::new(RichText::new("♩").size(16.0).color(if project.metronome {
-        theme::BACKGROUND
-    } else {
-        theme::TEXT_DIM
-    }))
-    .fill(if project.metronome {
-        theme::HIGHLIGHT
-    } else {
-        theme::RAISED
+        );
+        if icons::button(ui, Icon::Record, state.record, theme::DANGER, &record_hint).clicked() {
+            state.record = !state.record;
+        }
     });
-    if ui
-        .add(metronome)
-        .on_hover_text(format!(
-            "Metronome ({})",
-            shortcut(state, "transport.toggle_metronome")
-        ))
-        .clicked()
-    {
-        run(actions, "transport.toggle_metronome");
-    }
-    let typing = egui::Button::new(
-        RichText::new("⌨")
-            .size(15.0)
-            .color(if state.typing_keyboard {
-                theme::BACKGROUND
-            } else {
-                theme::TEXT_DIM
-            }),
+
+    let ticks = frame.engine.position_ticks.max(0.0);
+    let seconds = ticks / f64::from(musiccraft_project::params::PPQ) * 60.0 / project.tempo_bpm();
+    let time = format!("{}:{:05.2}", (seconds / 60.0) as u32, seconds % 60.0);
+    icons::lcd(
+        ui,
+        92.0,
+        position_label(ticks).trim(),
+        &time,
+        egui::Sense::hover(),
     )
-    .fill(if state.typing_keyboard {
-        theme::ACCENT
-    } else {
-        theme::RAISED
-    });
-    if ui
-        .add(typing)
-        .on_hover_text(format!(
-            "Typing keyboard plays notes: Z–M and Q–P rows ({})",
-            shortcut(state, "ui.typing_keyboard")
-        ))
-        .clicked()
-    {
-        state.typing_keyboard = !state.typing_keyboard;
-    }
-    ui.add_space(10.0);
+    .on_hover_text("Song position: bar . beat . step, and time");
 
-    let mut tempo = project.tempo_bpm();
-    let response = ui.add(
-        egui::DragValue::new(&mut tempo)
-            .range(20.0..=999.0)
-            .speed(0.25)
-            .fixed_decimals(1)
-            .suffix(" BPM"),
-    );
-    if response.drag_started() || response.gained_focus() {
-        state.begin_gesture();
-    }
-    if response.changed() {
-        actions.push(Action::Coalesced(
-            Invocation::new("project.set_tempo", [format!("{tempo:.3}")]),
-            state.gesture(),
-        ));
-    }
-    ui.add_space(10.0);
-
-    let current = project.current_pattern;
-    egui::ComboBox::from_id_salt("pattern-select")
-        .width(140.0)
-        .selected_text(format!(
-            "{}  {}",
-            current + 1,
-            project.current_pattern().name
-        ))
-        .show_ui(ui, |ui| {
-            for (i, pattern) in project.patterns.iter().enumerate() {
-                if ui
-                    .selectable_label(i == current, format!("{}  {}", i + 1, pattern.name))
-                    .clicked()
-                {
-                    run(actions, &format!("pattern.select {}", i + 1));
-                }
-            }
-        });
-    if ui.button("+").on_hover_text("New pattern (F4)").clicked() {
-        run(actions, "pattern.add");
-    }
-    ui.add_space(10.0);
-
-    let position = if frame.engine.playing {
-        frame.engine.position_ticks
+    let tempo = project.tempo_bpm();
+    let tempo_lcd = icons::lcd(
+        ui,
+        76.0,
+        &format!("{tempo:.2}"),
+        "BPM",
+        egui::Sense::click_and_drag(),
+    )
+    .on_hover_text("Tempo: drag up/down or scroll (Shift for fine steps)");
+    let fine = ui.input(|i| i.modifiers.shift);
+    let scroll = if tempo_lcd.hovered() {
+        ui.input(|i| i.smooth_scroll_delta.y)
     } else {
         0.0
     };
-    ui.label(
-        RichText::new(position_label(position))
-            .monospace()
-            .size(16.0)
-            .color(theme::PLAYHEAD),
-    )
-    .on_hover_text("Bar . beat . step");
-    ui.add_space(10.0);
+    if tempo_lcd.drag_started() || (scroll != 0.0 && !tempo_lcd.dragged()) {
+        state.begin_gesture();
+    }
+    let delta = -tempo_lcd.drag_delta().y * if fine { 0.02 } else { 0.25 }
+        + scroll * if fine { 0.01 } else { 0.05 };
+    if delta != 0.0 {
+        let value = (tempo + f64::from(delta)).clamp(20.0, 999.0);
+        actions.push(Action::Coalesced(
+            Invocation::new("project.set_tempo", [format!("{value:.3}")]),
+            state.gesture(),
+        ));
+    }
+    ui.add_space(4.0);
+
+    let current = project.current_pattern;
+    egui::ComboBox::from_id_salt("pattern-select")
+        .width(118.0)
+        .selected_text(
+            RichText::new(format!(
+                "{}  {}",
+                current + 1,
+                project.current_pattern().name
+            ))
+            .color(theme::palette(current)),
+        )
+        .show_ui(ui, |ui| {
+            for (i, pattern) in project.patterns.iter().enumerate() {
+                let text =
+                    RichText::new(format!("{}  {}", i + 1, pattern.name)).color(theme::palette(i));
+                if ui.selectable_label(i == current, text).clicked() {
+                    run(actions, &format!("pattern.select {}", i + 1));
+                }
+            }
+        })
+        .response
+        .on_hover_text("Selected pattern (Plus / Minus)");
+    if ui
+        .small_button("+")
+        .on_hover_text("New pattern (F4)")
+        .clicked()
+    {
+        run(actions, "pattern.add");
+    }
+    ui.add_space(4.0);
+
+    group(ui, |ui| {
+        let metronome_hint = format!(
+            "Metronome ({})",
+            shortcut(state, "transport.toggle_metronome")
+        );
+        if icons::button(
+            ui,
+            Icon::Metronome,
+            project.metronome,
+            theme::HIGHLIGHT,
+            &metronome_hint,
+        )
+        .clicked()
+        {
+            run(actions, "transport.toggle_metronome");
+        }
+        let typing_hint = format!(
+            "Typing keyboard plays notes: Z–M and Q–P rows ({})",
+            shortcut(state, "ui.typing_keyboard")
+        );
+        if icons::button(
+            ui,
+            Icon::Keyboard,
+            state.typing_keyboard,
+            theme::ACCENT,
+            &typing_hint,
+        )
+        .clicked()
+        {
+            state.typing_keyboard = !state.typing_keyboard;
+        }
+    });
+
+    if let Some(master) = project.mixer.first() {
+        let knob = widgets::knob(
+            ui,
+            master.volume,
+            0.0,
+            musiccraft_project::MAX_VOLUME,
+            1.0,
+            false,
+        );
+        if knob.started {
+            state.begin_gesture();
+        }
+        if let Some(value) = knob.changed {
+            actions.push(Action::Coalesced(
+                Invocation::new("mixer.set_volume", ["0".to_owned(), format!("{value:.3}")]),
+                state.gesture(),
+            ));
+        }
+        knob.response.on_hover_text(format!(
+            "Master volume {:.1} dB",
+            20.0 * master.volume.max(1e-6).log10()
+        ));
+    }
     let master = state.meters.first().copied().unwrap_or_default();
-    widgets::meter(ui, master, vec2(10.0, 26.0)).on_hover_text("Master level");
-    ui.label(
-        RichText::new(format!("{} voices", frame.engine.voices))
-            .small()
-            .color(theme::TEXT_DIM),
-    );
+    widgets::meter(ui, master, vec2(10.0, 32.0)).on_hover_text("Master level");
+    if ui.available_width() > 150.0 {
+        icons::scope(ui, &frame.engine.scope, vec2(96.0, 32.0)).on_hover_text("Master output");
+    }
+    if ui.available_width() > 50.0 {
+        icons::load_bar(ui, frame.engine.load);
+    }
 }
 
 pub fn status_bar(ui: &mut egui::Ui, state: &UiState, frame: &Frame<'_>) {

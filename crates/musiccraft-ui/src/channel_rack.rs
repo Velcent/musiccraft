@@ -23,11 +23,13 @@ pub fn show(
 ) {
     let mut open = state.windows.channel_rack;
     let project = frame.project;
+    let area = state.workspace;
     egui::Window::new("Channel rack")
         .id(egui::Id::new("channel-rack"))
         .open(&mut open)
-        .default_pos([200.0, 110.0])
-        .default_size([640.0, 260.0])
+        .default_pos(area.left_top() + egui::vec2(150.0, 40.0))
+        .default_width((area.width() - 200.0).clamp(420.0, 760.0))
+        .constrain_to(area)
         .show(ctx, |ui| {
             header(ui, project, actions);
             ui.separator();

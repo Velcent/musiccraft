@@ -14,31 +14,33 @@ fn run(actions: &mut Vec<Action>, name: &str, args: impl IntoIterator<Item = Str
     actions.push(Action::Run(Invocation::new(name, args)));
 }
 
-pub fn show(
-    ctx: &egui::Context,
-    state: &mut UiState,
-    frame: &Frame<'_>,
-    actions: &mut Vec<Action>,
-) {
-    let mut open = state.windows.mixer;
+/// Draws the mixer docked at the bottom of the window.
+pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     let project = frame.project;
-    egui::Window::new("Mixer")
-        .id(egui::Id::new("mixer"))
-        .open(&mut open)
-        .default_pos([220.0, 300.0])
-        .default_size([960.0, 330.0])
-        .show(ctx, |ui| {
+    egui::Panel::bottom("mixer")
+        .resizable(true)
+        .default_size(300.0)
+        .min_size(220.0)
+        .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(6.0))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Mixer").strong().size(15.0));
+                if ui
+                    .small_button("+ Insert")
+                    .on_hover_text("Add an insert track")
+                    .clicked()
+                {
+                    run(actions, "mixer.add_track", []);
+                }
+            });
             ui.horizontal_top(|ui| {
                 egui::ScrollArea::horizontal()
                     .id_salt("mixer-strips")
-                    .max_width(ui.available_width() - 300.0)
+                    .max_width((ui.available_width() - 300.0).max(200.0))
                     .show(ui, |ui| {
                         ui.horizontal_top(|ui| {
                             for (index, track) in project.mixer.iter().enumerate() {
                                 strip(ui, state, index, track, actions);
-                            }
-                            if ui.button("+").on_hover_text("Add insert track").clicked() {
-                                run(actions, "mixer.add_track", []);
                             }
                         });
                     });
@@ -46,7 +48,6 @@ pub fn show(
                 effects(ui, state, project, actions);
             });
         });
-    state.windows.mixer = open;
 }
 
 fn strip(

@@ -8,6 +8,7 @@ mod browser;
 mod channel_rack;
 mod dialogs;
 mod geometry;
+mod icons;
 mod mixer;
 mod piano_roll;
 mod playlist;
@@ -56,6 +57,8 @@ pub enum Action {
         /// MIDI key.
         key: u8,
     },
+    /// Move the playhead to a position in ticks.
+    Seek(f64),
     /// Drop decoded samples and reload them from disk.
     ReloadSamples,
     /// Close the application.
@@ -73,6 +76,10 @@ pub struct EngineStatus {
     pub peaks: Vec<(f32, f32)>,
     /// Sounding voices.
     pub voices: u32,
+    /// Recent master output samples for the oscilloscope.
+    pub scope: Vec<f32>,
+    /// Audio processing load, 0..1 of the real-time budget.
+    pub load: f32,
     /// Audio device description or error.
     pub audio: String,
     /// MIDI input description.
@@ -144,6 +151,8 @@ pub struct UiState {
     pub meters: Vec<(f32, f32)>,
     /// Location of the last autosave, offered by File → Recover autosave.
     pub autosave_path: Option<String>,
+    /// The area between the side and bottom panels, where windows float.
+    pub workspace: egui::Rect,
     /// Letter keys play notes on the selected channel.
     pub typing_keyboard: bool,
     /// Live notes are written into the selected pattern while playing.
@@ -172,6 +181,7 @@ impl UiState {
             status: StatusLine::default(),
             meters: Vec::new(),
             autosave_path: None,
+            workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             record: false,
             gesture: 0,
@@ -236,20 +246,28 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
 
     toolbar::show(ui, state, frame, &mut actions);
     toolbar::status_bar(ui, state, frame);
+    if state.windows.mixer {
+        mixer::show(ui, state, frame, &mut actions);
+    }
     if state.windows.browser {
         browser::show(ui, state, frame, &mut actions);
     }
-    egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(theme::BACKGROUND))
+    let workspace = egui::CentralPanel::default()
+        .frame(egui::Frame::new().fill(theme::BACKGROUND).inner_margin(6.0))
         .show(ui, |ui| {
-            theme::watermark(ui);
-        });
+            if state.windows.playlist {
+                playlist::show(ui, state, frame, &mut actions);
+            } else {
+                theme::watermark(ui);
+            }
+        })
+        .response
+        .rect;
+    state.workspace = workspace;
 
     let ctx = ui.ctx().clone();
     channel_rack::show(&ctx, state, frame, &mut actions);
     piano_roll::show(&ctx, state, frame, &mut actions);
-    playlist::show(&ctx, state, frame, &mut actions);
-    mixer::show(&ctx, state, frame, &mut actions);
     dialogs::show(&ctx, state, frame, &mut actions);
     dialogs::shortcuts(&ctx, state);
 
