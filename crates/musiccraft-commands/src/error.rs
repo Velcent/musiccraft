@@ -8,6 +8,8 @@ use musiccraft_project::ProjectError;
 pub enum CommandError {
     /// The input line contained no command name.
     EmptyLine,
+    /// The input line could not be split into arguments.
+    Parse(String),
     /// No command with this name is registered.
     Unknown(String),
     /// The wrong number of arguments was supplied.
@@ -26,6 +28,8 @@ pub enum CommandError {
     },
     /// The project model rejected the change.
     Project(ProjectError),
+    /// Reading or writing a file failed.
+    Io(String),
     /// A command with this name is already registered.
     Duplicate(String),
     /// The undo stack is empty.
@@ -38,6 +42,7 @@ impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EmptyLine => write!(f, "empty command"),
+            Self::Parse(reason) => write!(f, "cannot parse command: {reason}"),
             Self::Unknown(name) => write!(f, "unknown command `{name}`"),
             Self::Usage { command, usage } => {
                 write!(f, "wrong arguments for `{command}`; usage: {usage}")
@@ -46,6 +51,7 @@ impl fmt::Display for CommandError {
                 write!(f, "invalid argument for `{command}`: {reason}")
             }
             Self::Project(err) => write!(f, "{err}"),
+            Self::Io(reason) => f.write_str(reason),
             Self::Duplicate(name) => write!(f, "command `{name}` is already registered"),
             Self::NothingToUndo => write!(f, "nothing to undo"),
             Self::NothingToRedo => write!(f, "nothing to redo"),

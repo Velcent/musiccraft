@@ -170,6 +170,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
+name = "hound"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
+
+[[package]]
 name = "indexmap"
 version = "2.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -299,8 +305,11 @@ dependencies = [
 name = "musiccraft-cli"
 version = "0.1.0"
 dependencies = [
+ "musiccraft-audio",
  "musiccraft-commands",
+ "musiccraft-engine",
  "musiccraft-project",
+ "musiccraft-render",
 ]
 
 [[package]]
@@ -308,6 +317,8 @@ name = "musiccraft-commands"
 version = "0.1.0"
 dependencies = [
  "musiccraft-project",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -347,6 +358,27 @@ dependencies = [
  "musiccraft-params",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "musiccraft-render"
+version = "0.1.0"
+dependencies = [
+ "musiccraft-commands",
+ "musiccraft-dsp",
+ "musiccraft-engine",
+ "musiccraft-params",
+ "musiccraft-project",
+ "musiccraft-samples",
+]
+
+[[package]]
+name = "musiccraft-samples"
+version = "0.1.0"
+dependencies = [
+ "hound",
+ "musiccraft-dsp",
+ "musiccraft-params",
 ]
 
 [[package]]

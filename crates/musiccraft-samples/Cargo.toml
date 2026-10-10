@@ -1,0 +1,15 @@
+[package]
+name = "musiccraft-samples"
+description = "MusicCraft sample loading, WAV writing and synthesized built-in sounds"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+musiccraft-dsp.workspace = true
+musiccraft-params.workspace = true
+hound.workspace = true
+
+[lints]
+workspace = true

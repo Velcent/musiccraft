@@ -1,0 +1,58 @@
+# A two-pattern beat with a bass line, arranged on the playlist.
+# Run:    musiccraft-cli play examples/basic-beat.mcs 10
+# Export: append `project.export_wav beat.wav` (or use `script`).
+
+project.rename "Basic Beat"
+project.set_tempo 124
+
+# Channel rack: four drums and a synth bass.
+channel.add_sampler builtin:kick
+channel.add_sampler builtin:clap
+channel.add_sampler builtin:hat
+channel.add_sampler builtin:open_hat
+channel.add_synth Bass
+channel.set_volume 3 0.5
+channel.set_param 5 cutoff 900
+channel.set_param 5 env_amount 2
+channel.set_param 5 release 0.05
+
+# Pattern 1: drums.
+pattern.rename 1 Drums
+step.toggle 1 0
+step.toggle 1 4
+step.toggle 1 8
+step.toggle 1 12
+step.toggle 2 4
+step.toggle 2 12
+step.toggle 3 2
+step.toggle 3 6
+step.toggle 3 10
+step.toggle 4 14
+
+# Pattern 2: bass (times in steps, keys as note names).
+pattern.add Bass
+note.add 5 0 2 A3
+note.add 5 3 1 A3
+note.add 5 6 2 C4
+note.add 5 10 2 G3
+note.add 5 13 3 E3
+
+# Mixer: drums to insert 1 with compression, bass to insert 2 with a filter,
+# reverb on the master.
+channel.route 1 1
+channel.route 2 1
+channel.route 3 1
+channel.route 4 1
+channel.route 5 2
+mixer.rename 1 Drums
+mixer.rename 2 Bass
+mixer.add_effect 1 compressor
+mixer.add_effect 2 filter
+mixer.set_effect_param 2 1 cutoff 1500
+mixer.add_effect 0 reverb
+mixer.set_effect_param 0 1 mix 0.12
+
+# Playlist: drums for 8 bars, bass enters at bar 2.
+playlist.add_clip 1 1 0 8
+playlist.add_clip 2 2 2 6
+transport.set_mode song

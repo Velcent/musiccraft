@@ -1,0 +1,18 @@
+[package]
+name = "musiccraft-render"
+description = "Translates MusicCraft projects into engine state; offline rendering and export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+musiccraft-commands.workspace = true
+musiccraft-dsp.workspace = true
+musiccraft-engine.workspace = true
+musiccraft-params.workspace = true
+musiccraft-project.workspace = true
+musiccraft-samples.workspace = true
+
+[lints]
+workspace = true

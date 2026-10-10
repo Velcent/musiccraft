@@ -1,0 +1,446 @@
+use musiccraft_project::music::key_name;
+use musiccraft_project::params::TICKS_PER_STEP;
+use musiccraft_project::{DEFAULT_VELOCITY, MAX_PATTERN_STEPS, Note, Project, STEP_KEY};
+
+use super::channel::channel_arg;
+use crate::args::{Args, at_pattern, ticks};
+use crate::command::cmd;
+use crate::{BATCH, Command, CommandError, Invocation, Outcome};
+
+pub(super) fn commands() -> Vec<Box<dyn Command>> {
+    vec![
+        cmd(
+            "step.toggle",
+            "step.toggle <channel> <step> [@pattern]",
+            "Toggle a step (0-based) in the channel rack.",
+            step_toggle,
+        ),
+        cmd(
+            "step.set",
+            "step.set <channel> <step> <on|off> [@pattern]",
+            "Turn a step on or off.",
+            step_set,
+        ),
+        cmd(
+            "note.add",
+            "note.add <channel> <start> <length> <key> [velocity] [@pattern]",
+            "Add a note; times in steps (or <n>t ticks), key as 60 or C5.",
+            add,
+        ),
+        cmd(
+            "note.remove",
+            "note.remove <channel> <start> <key> [@pattern]",
+            "Remove the note at a start time and key.",
+            remove,
+        ),
+        cmd(
+            "note.move",
+            "note.move <channel> <start> <key> <new start> <new key> [@pattern]",
+            "Move a note in time and pitch.",
+            move_note,
+        ),
+        cmd(
+            "note.resize",
+            "note.resize <channel> <start> <key> <length> [@pattern]",
+            "Change a note's length.",
+            resize,
+        ),
+        cmd(
+            "note.set_velocity",
+            "note.set_velocity <channel> <start> <key> <1-127> [@pattern]",
+            "Change a note's velocity.",
+            set_velocity,
+        ),
+        cmd(
+            "note.clear",
+            "note.clear <channel> [@pattern]",
+            "Remove every note of a channel in the pattern.",
+            clear,
+        ),
+        cmd(
+            "note.set_all",
+            "note.set_all <channel> <json> [@pattern]",
+            "Replace a channel's notes with [[start,length,key,velocity],...] in ticks.",
+            set_all,
+        ),
+        cmd(
+            "note.transpose",
+            "note.transpose <channel> <semitones> [@pattern]",
+            "Shift every note of a channel up or down.",
+            transpose,
+        ),
+        cmd(
+            "note.quantize",
+            "note.quantize <channel> <grid steps> [@pattern]",
+            "Snap note starts to a grid.",
+            quantize,
+        ),
+    ]
+}
+
+/// The pattern, channel index and channel number a note command applies to.
+struct Target {
+    pattern: usize,
+    channel: usize,
+}
+
+impl Target {
+    fn resolve(project: &Project, args: &Args<'_>) -> Result<Self, CommandError> {
+        Ok(Self {
+            pattern: args.pattern_index(project)?,
+            channel: channel_arg(project, args, 0)?,
+        })
+    }
+
+    fn number(&self) -> String {
+        (self.channel + 1).to_string()
+    }
+
+    fn add_inverse(&self, note: &Note) -> Invocation {
+        Invocation::new(
+            "note.add",
+            [
+                self.number(),
+                ticks(note.start),
+                ticks(note.length),
+                note.key.to_string(),
+                note.velocity.to_string(),
+                at_pattern(self.pattern),
+            ],
+        )
+    }
+
+    fn remove_inverse(&self, start: u32, key: u8) -> Invocation {
+        Invocation::new(
+            "note.remove",
+            [
+                self.number(),
+                ticks(start),
+                key.to_string(),
+                at_pattern(self.pattern),
+            ],
+        )
+    }
+
+    fn set_all_inverse(&self, notes: &[Note]) -> Invocation {
+        let rows: Vec<[u32; 4]> = notes
+            .iter()
+            .map(|n| [n.start, n.length, u32::from(n.key), u32::from(n.velocity)])
+            .collect();
+        let json = serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_owned());
+        Invocation::new(
+            "note.set_all",
+            [self.number(), json, at_pattern(self.pattern)],
+        )
+    }
+}
+
+fn batch(inverses: Vec<Invocation>) -> Invocation {
+    if inverses.len() == 1 {
+        inverses
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| Invocation::bare(BATCH))
+    } else {
+        Invocation::new(BATCH, inverses.iter().map(ToString::to_string))
+    }
+}
+
+fn step_tick(args: &Args<'_>, i: usize) -> Result<u32, CommandError> {
+    let step: u32 = args.parse(i, "step")?;
+    if step >= MAX_PATTERN_STEPS {
+        return Err(args.invalid(format!("step must be below {MAX_PATTERN_STEPS}")));
+    }
+    Ok(step * TICKS_PER_STEP)
+}
+
+fn set_step(project: &mut Project, target: &Target, tick: u32, on: bool) -> Option<Invocation> {
+    let channel = project.channels[target.channel].id;
+    let pattern = &mut project.patterns[target.pattern];
+    let existing: Vec<Note> = pattern
+        .notes_of(channel)
+        .filter(|n| n.start == tick)
+        .copied()
+        .collect();
+    match (on, existing.is_empty()) {
+        (true, true) => {
+            pattern.put_note(Note {
+                channel,
+                start: tick,
+                length: TICKS_PER_STEP,
+                key: STEP_KEY,
+                velocity: DEFAULT_VELOCITY,
+            });
+            Some(target.remove_inverse(tick, STEP_KEY))
+        }
+        (false, false) => {
+            pattern
+                .notes
+                .retain(|n| !(n.channel == channel && n.start == tick));
+            Some(batch(
+                existing.iter().map(|n| target.add_inverse(n)).collect(),
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn step_toggle(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = Target::resolve(project, args)?;
+    let tick = step_tick(args, 1)?;
+    let channel = project.channels[target.channel].id;
+    let on = !project.patterns[target.pattern]
+        .notes_of(channel)
+        .any(|n| n.start == tick);
+    let inverse = set_step(project, &target, tick, on);
+    let message = format!(
+        "channel {} step {} {}",
+        target.channel + 1,
+        tick / TICKS_PER_STEP,
+        if on { "on" } else { "off" }
+    );
+    Ok(match inverse {
+        Some(inverse) => Outcome::undoable(message, inverse),
+        None => Outcome::done(message),
+    })
+}
+
+fn step_set(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let target = Target::resolve(project, args)?;
+    let tick = step_tick(args, 1)?;
+    let on = args.flag(2)?;
+    let inverse = set_step(project, &target, tick, on);
+    let message = format!(
+        "channel {} step {} {}",
+        target.channel + 1,
+        tick / TICKS_PER_STEP,
+        if on { "on" } else { "off" }
+    );
+    Ok(match inverse {
+        Some(inverse) => Outcome::undoable(message, inverse),
+        None => Outcome::done(message),
+    })
+}
+
+fn add(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(4, 5)?;
+    let target = Target::resolve(project, args)?;
+    let note = Note {
+        channel: project.channels[target.channel].id,
+        start: args.time(1, TICKS_PER_STEP)?,
+        length: args.duration(2, TICKS_PER_STEP)?,
+        key: args.key(3)?,
+        velocity: args.velocity(4, DEFAULT_VELOCITY)?,
+    };
+    let replaced = project.patterns[target.pattern].put_note(note);
+    let inverse = match replaced {
+        Some(old) => target.add_inverse(&old),
+        None => target.remove_inverse(note.start, note.key),
+    };
+    Ok(Outcome::undoable(
+        format!(
+            "added {} at {}t to channel {}",
+            key_name(note.key),
+            note.start,
+            target.channel + 1
+        ),
+        inverse,
+    ))
+}
+
+/// Finds the note named by arguments `start_arg` and `start_arg + 1`.
+fn find(
+    project: &Project,
+    args: &Args<'_>,
+    target: &Target,
+    start_arg: usize,
+) -> Result<usize, CommandError> {
+    let start = args.time(start_arg, TICKS_PER_STEP)?;
+    let key = args.key(start_arg + 1)?;
+    let channel = project.channels[target.channel].id;
+    project.patterns[target.pattern]
+        .find_note(channel, start, key)
+        .ok_or_else(|| {
+            args.invalid(format!(
+                "channel {} has no {} note at {start}t",
+                target.channel + 1,
+                key_name(key)
+            ))
+        })
+}
+
+fn remove(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let target = Target::resolve(project, args)?;
+    let index = find(project, args, &target, 1)?;
+    let note = project.patterns[target.pattern].notes.remove(index);
+    Ok(Outcome::undoable(
+        format!("removed {} at {}t", key_name(note.key), note.start),
+        target.add_inverse(&note),
+    ))
+}
+
+fn move_note(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(5, 5)?;
+    let target = Target::resolve(project, args)?;
+    let index = find(project, args, &target, 1)?;
+    let new_start = args.time(3, TICKS_PER_STEP)?;
+    let new_key = args.key(4)?;
+    let pattern = &mut project.patterns[target.pattern];
+    let old = pattern.notes.remove(index);
+    let moved = Note {
+        start: new_start,
+        key: new_key,
+        ..old
+    };
+    let replaced = pattern.put_note(moved);
+    let mut inverses = vec![target.remove_inverse(new_start, new_key)];
+    inverses.extend(replaced.map(|n| target.add_inverse(&n)));
+    inverses.push(target.add_inverse(&old));
+    Ok(Outcome::undoable(
+        format!("moved note to {} at {new_start}t", key_name(new_key)),
+        batch(inverses),
+    ))
+}
+
+fn edit_note(
+    project: &mut Project,
+    args: &Args<'_>,
+    change: impl FnOnce(&mut Note) -> Result<String, CommandError>,
+) -> Result<Outcome, CommandError> {
+    let target = Target::resolve(project, args)?;
+    let index = find(project, args, &target, 1)?;
+    let note = &mut project.patterns[target.pattern].notes[index];
+    let old = *note;
+    let message = change(note)?;
+    Ok(Outcome::undoable(message, target.add_inverse(&old)))
+}
+
+fn resize(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(4, 4)?;
+    let length = args.duration(3, TICKS_PER_STEP)?;
+    edit_note(project, args, |note| {
+        note.length = length;
+        Ok(format!("note length {length}t"))
+    })
+}
+
+fn set_velocity(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(4, 4)?;
+    let velocity: u8 = args.parse(3, "velocity")?;
+    if !(1..=127).contains(&velocity) {
+        return Err(args.invalid("velocity must be 1 to 127"));
+    }
+    edit_note(project, args, |note| {
+        note.velocity = velocity;
+        Ok(format!("note velocity {velocity}"))
+    })
+}
+
+/// Replaces a channel's notes in the target pattern with the result of `f`.
+fn rewrite(
+    project: &mut Project,
+    target: &Target,
+    f: impl FnOnce(Vec<Note>) -> Vec<Note>,
+) -> (Vec<Note>, usize) {
+    let channel = project.channels[target.channel].id;
+    let pattern = &mut project.patterns[target.pattern];
+    let (old, kept): (Vec<Note>, Vec<Note>) =
+        pattern.notes.drain(..).partition(|n| n.channel == channel);
+    pattern.notes = kept;
+    let new = f(old.clone());
+    let count = new.len();
+    for note in new {
+        pattern.put_note(Note { channel, ..note });
+    }
+    (old, count)
+}
+
+fn clear(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let target = Target::resolve(project, args)?;
+    let (old, _) = rewrite(project, &target, |_| Vec::new());
+    Ok(Outcome::undoable(
+        format!("cleared {} notes", old.len()),
+        target.set_all_inverse(&old),
+    ))
+}
+
+fn set_all(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = Target::resolve(project, args)?;
+    let rows: Vec<[u32; 4]> =
+        serde_json::from_str(args.str(1)?).map_err(|e| args.invalid(e.to_string()))?;
+    let channel = project.channels[target.channel].id;
+    let mut notes = Vec::with_capacity(rows.len());
+    for [start, length, key, velocity] in rows {
+        let (Ok(key), Ok(velocity)) = (u8::try_from(key), u8::try_from(velocity)) else {
+            return Err(args.invalid("key and velocity must fit 0-127"));
+        };
+        if key > 127 || !(1..=127).contains(&velocity) || length == 0 {
+            return Err(args.invalid("each note needs length > 0, key 0-127, velocity 1-127"));
+        }
+        notes.push(Note {
+            channel,
+            start,
+            length,
+            key,
+            velocity,
+        });
+    }
+    let (old, count) = rewrite(project, &target, |_| notes);
+    Ok(Outcome::undoable(
+        format!("channel {} now has {count} notes", target.channel + 1),
+        target.set_all_inverse(&old),
+    ))
+}
+
+fn transpose(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = Target::resolve(project, args)?;
+    let semitones: i32 = args.parse(1, "semitone count")?;
+    if !(-127..=127).contains(&semitones) {
+        return Err(args.invalid("transpose by at most 127 semitones"));
+    }
+    let channel = project.channels[target.channel].id;
+    let out_of_range = project.patterns[target.pattern]
+        .notes_of(channel)
+        .any(|n| !(0..=127).contains(&(i32::from(n.key) + semitones)));
+    if out_of_range {
+        return Err(args.invalid("transposing would move notes outside keys 0-127"));
+    }
+    let (old, count) = rewrite(project, &target, |notes| {
+        notes
+            .into_iter()
+            .map(|n| Note {
+                key: u8::try_from(i32::from(n.key) + semitones).unwrap_or(n.key),
+                ..n
+            })
+            .collect()
+    });
+    Ok(Outcome::undoable(
+        format!("transposed {count} notes by {semitones}"),
+        target.set_all_inverse(&old),
+    ))
+}
+
+fn quantize(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = Target::resolve(project, args)?;
+    let grid = args.duration(1, TICKS_PER_STEP)?;
+    let (old, count) = rewrite(project, &target, |notes| {
+        notes
+            .into_iter()
+            .map(|n| Note {
+                start: (n.start + grid / 2) / grid * grid,
+                ..n
+            })
+            .collect()
+    });
+    Ok(Outcome::undoable(
+        format!("quantized {count} notes to {grid}t"),
+        target.set_all_inverse(&old),
+    ))
+}

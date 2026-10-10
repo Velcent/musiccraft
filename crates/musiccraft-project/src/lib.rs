@@ -99,7 +99,10 @@ pub fn check_range(what: &str, value: f32, min: f32, max: f32) -> Result<f32, Pr
 }
 
 /// A MusicCraft project.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Equality compares content: the identifier allocator and the file location are
+/// ignored, so a project equals itself after an edit and its undo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     name: String,
     tempo_bpm: f64,
@@ -219,6 +222,19 @@ impl Project {
         let id = self.next_id;
         self.next_id += 1;
         id
+    }
+
+    /// The next identifier [`Project::alloc_id`] will return.
+    #[must_use]
+    pub fn next_id(&self) -> u32 {
+        self.next_id
+    }
+
+    /// Rewinds or advances the identifier allocator. Undo history uses this so
+    /// that redoing a command recreates the identifiers it created originally;
+    /// callers must ensure no existing item uses an identifier at or above `id`.
+    pub fn set_next_id(&mut self, id: u32) {
+        self.next_id = id;
     }
 
     /// Ensures future identifiers are greater than `id` (used when restoring).
@@ -388,6 +404,20 @@ impl Project {
         });
         self.playlist.sort_clips();
         Ok(())
+    }
+}
+
+impl PartialEq for Project {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.tempo_bpm == other.tempo_bpm
+            && self.transport == other.transport
+            && self.play_mode == other.play_mode
+            && self.channels == other.channels
+            && self.patterns == other.patterns
+            && self.current_pattern == other.current_pattern
+            && self.mixer == other.mixer
+            && self.playlist == other.playlist
     }
 }
 

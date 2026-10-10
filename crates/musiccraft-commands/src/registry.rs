@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use musiccraft_project::Project;
 
-use crate::{Command, CommandError, Invocation, Outcome, builtin};
+use crate::{Command, CommandError, Invocation, Outcome, cmds};
 
 /// The set of commands that can change a project.
 #[derive(Default)]
@@ -21,7 +21,7 @@ impl Registry {
     #[must_use]
     pub fn with_builtin() -> Self {
         let mut registry = Self::new();
-        for command in builtin::all() {
+        for command in cmds::all() {
             registry.commands.insert(command.name(), command);
         }
         registry
@@ -52,6 +52,18 @@ impl Registry {
         self.commands.values().map(|command| &**command)
     }
 
+    /// Number of registered commands.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.commands.len()
+    }
+
+    /// Whether no commands are registered.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.commands.is_empty()
+    }
+
     /// Runs an invocation against a project.
     ///
     /// # Errors
@@ -75,18 +87,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builtin_registry_lists_commands_in_order() {
+    fn builtin_registry_is_sorted_and_namespaced() {
         let registry = Registry::with_builtin();
         let names: Vec<_> = registry.iter().map(Command::name).collect();
-        assert_eq!(
-            names,
-            [
-                "project.set_tempo",
-                "transport.play",
-                "transport.stop",
-                "transport.toggle"
-            ]
-        );
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        assert_eq!(names, sorted);
+        for name in &names {
+            let (area, action) = name.split_once('.').expect("area.action");
+            assert!(!area.is_empty() && !action.is_empty());
+        }
+        for expected in [
+            "project.set_tempo",
+            "transport.toggle",
+            "channel.add_sampler",
+            "step.toggle",
+            "note.add",
+            "pattern.add",
+            "mixer.add_effect",
+            "playlist.add_clip",
+        ] {
+            assert!(names.contains(&expected), "{expected} missing");
+        }
+    }
+
+    #[test]
+    fn every_usage_starts_with_its_name() {
+        for command in Registry::with_builtin().iter() {
+            assert!(
+                command.usage().starts_with(command.name()),
+                "{} usage `{}`",
+                command.name(),
+                command.usage()
+            );
+        }
     }
 
     #[test]
@@ -102,7 +136,7 @@ mod tests {
     #[test]
     fn duplicate_registration_is_rejected() {
         let mut registry = Registry::with_builtin();
-        let duplicate = builtin::all().remove(0);
+        let duplicate = cmds::all().remove(0);
         assert!(matches!(
             registry.register(duplicate),
             Err(CommandError::Duplicate(_))

@@ -248,6 +248,9 @@ mod tests {
         let mut high = Biquad::default();
         high.set_high_shelf(5_000.0, 0.0, 44_100.0);
         let rms = rms_through(|x| high.process(low.process(x)), 1_000.0);
-        assert!((rms - std::f32::consts::FRAC_1_SQRT_2).abs() < 0.01, "rms {rms}");
+        assert!(
+            (rms - std::f32::consts::FRAC_1_SQRT_2).abs() < 0.01,
+            "rms {rms}"
+        );
     }
 }

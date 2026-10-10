@@ -25,6 +25,13 @@ pub const MAX_EFFECT_SLOTS: usize = 8;
 /// Maximum number of mixer tracks, master included.
 pub const MAX_MIXER_TRACKS: usize = 128;
 
+/// Sounds synthesized at start-up, addressed as `builtin:<name>` sample names.
+pub const BUILTIN_SAMPLES: [&str; 8] = [
+    "kick", "snare", "clap", "hat", "open_hat", "tom", "rim", "crash",
+];
+/// Prefix of built-in sample names.
+pub const BUILTIN_PREFIX: &str = "builtin:";
+
 /// Description of one numeric parameter.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ParamSpec {

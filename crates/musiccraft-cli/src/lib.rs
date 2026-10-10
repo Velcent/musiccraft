@@ -3,22 +3,36 @@
 
 use std::io::{self, Write};
 
-use musiccraft_commands::{Invocation, REDO, Registry, Session, UNDO};
+use musiccraft_commands::{Invocation, Registry, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
 
-/// Creates a session with a fresh project and every built-in command.
+/// A registry with every built-in command plus rendering and export.
+#[must_use]
+pub fn full_registry() -> Registry {
+    let mut registry = Registry::with_builtin();
+    // Registration into a fresh registry cannot collide.
+    let _ = musiccraft_render::register(&mut registry);
+    registry
+}
+
+/// Creates a session with a fresh project and every command.
 #[must_use]
 pub fn new_session() -> Session {
-    Session::new(Project::default(), Registry::with_builtin())
+    Session::new(Project::default(), full_registry())
 }
 
 /// One-line summary of the project state.
 #[must_use]
 pub fn format_state(project: &Project) -> String {
     format!(
-        "state: tempo={} bpm, transport={}",
+        "state: tempo={} bpm, transport={}, mode={}, pattern={}/{}, channels={}, clips={}",
         project.tempo_bpm(),
-        project.transport()
+        project.transport(),
+        project.play_mode.label(),
+        project.current_pattern + 1,
+        project.patterns.len(),
+        project.channels.len(),
+        project.playlist.clips.len(),
     )
 }
 
@@ -29,11 +43,13 @@ pub fn format_state(project: &Project) -> String {
 /// Returns any error from writing to `out`.
 pub fn list_commands(session: &Session, out: &mut impl Write) -> io::Result<()> {
     for command in session.registry().iter() {
-        writeln!(out, "{:<20} {}", command.name(), command.summary())?;
-        writeln!(out, "{:<20} usage: {}", "", command.usage())?;
+        writeln!(out, "{:<28} {}", command.name(), command.summary())?;
+        writeln!(out, "{:<28} usage: {}", "", command.usage())?;
     }
-    writeln!(out, "{UNDO:<20} Undo the last undoable command.")?;
-    writeln!(out, "{REDO:<20} Redo the last undone command.")?;
+    for (name, usage, summary) in SESSION_COMMANDS {
+        writeln!(out, "{name:<28} {summary}")?;
+        writeln!(out, "{:<28} usage: {usage}", "")?;
+    }
     Ok(())
 }
 
@@ -44,16 +60,19 @@ pub fn list_commands(session: &Session, out: &mut impl Write) -> io::Result<()> 
 ///
 /// Returns any error from writing to `out`.
 pub fn run_script(session: &mut Session, script: &str, out: &mut impl Write) -> io::Result<bool> {
-    for raw in script.lines() {
-        let line = raw
-            .split_once('#')
-            .map_or(raw, |(code, _comment)| code)
-            .trim();
-        if line.is_empty() {
-            continue;
-        }
-        writeln!(out, "> {line}")?;
-        match Invocation::parse(line).and_then(|invocation| session.run(&invocation)) {
+    for line in script.lines() {
+        let invocation = match Invocation::parse(line) {
+            Ok(invocation) => invocation,
+            Err(musiccraft_commands::CommandError::EmptyLine) => continue,
+            Err(err) => {
+                writeln!(out, "> {}", line.trim())?;
+                writeln!(out, "error: {err}")?;
+                writeln!(out, "{}", format_state(session.project()))?;
+                return Ok(false);
+            }
+        };
+        writeln!(out, "> {invocation}")?;
+        match session.run(&invocation) {
             Ok(outcome) => writeln!(out, "ok: {}", outcome.message)?,
             Err(err) => {
                 writeln!(out, "error: {err}")?;
@@ -83,7 +102,7 @@ mod tests {
         assert!(ok);
         assert!(output.contains("> project.set_tempo 140"));
         assert!(output.contains("ok: tempo 140 BPM"));
-        assert!(output.ends_with("state: tempo=140 bpm, transport=playing\n"));
+        assert!(output.contains("state: tempo=140 bpm, transport=playing"));
     }
 
     #[test]
@@ -102,12 +121,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_errors_stop_the_script() {
+        let (ok, output) = run("project.rename \"unterminated\n");
+        assert!(!ok);
+        assert!(output.contains("error: cannot parse command"));
+    }
+
+    #[test]
     fn undo_and_redo_work_in_scripts() {
         let (ok, output) = run("project.set_tempo 150\nedit.undo\nedit.redo\n");
         assert!(ok);
         assert!(output.contains("ok: undid `project.set_tempo 150`"));
         assert!(output.contains("ok: redid `project.set_tempo 150`"));
-        assert!(output.ends_with("state: tempo=150 bpm, transport=stopped\n"));
+        assert!(output.contains("state: tempo=150 bpm, transport=stopped"));
     }
 
     #[test]
@@ -116,9 +142,15 @@ mod tests {
         let mut out = Vec::new();
         list_commands(&session, &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
-        assert!(text.contains("transport.toggle"));
-        assert!(text.contains("project.set_tempo"));
-        assert!(text.contains("edit.undo"));
-        assert!(text.contains("edit.redo"));
+        for name in [
+            "transport.toggle",
+            "project.set_tempo",
+            "project.export_wav",
+            "edit.undo",
+            "edit.redo",
+            "edit.batch",
+        ] {
+            assert!(text.contains(name), "{name} missing");
+        }
     }
 }
