@@ -21,7 +21,7 @@ of contents; see `docs/clean-room.md`.
 | Transport | Tempo | `cmd:project.set_tempo` `spec:transport.md` |
 | Transport | Metronome | `cmd:transport.toggle_metronome` `key:Ctrl+M=transport.toggle_metronome` |
 | Transport | Loop a time range of the song | `cmd:transport.set_loop` `cmd:transport.clear_loop` |
-| Transport | Record audio | `todo` |
+| Transport | Record audio into the playlist | `done` |
 | Channel rack | Sampler channels with built-in sounds | `cmd:channel.add_sampler` `spec:channel-rack.md` |
 | Channel rack | WAV samples | `cmd:channel.set_sample` |
 | Channel rack | Step sequencer | `cmd:step.toggle` |

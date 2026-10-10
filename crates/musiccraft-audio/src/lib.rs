@@ -204,3 +204,157 @@ impl AudioOutput {
         self.errors.load(Ordering::Relaxed)
     }
 }
+
+/// Seconds of input audio buffered between the device and the main thread.
+const INPUT_BUFFER_SECONDS: usize = 4;
+
+/// A running input stream (microphone / line in). Samples arrive interleaved
+/// in a lock-free ring; the main thread drains them with [`AudioInput::drain`].
+pub struct AudioInput {
+    _stream: cpal::Stream,
+    samples: rtrb::Consumer<f32>,
+    sample_rate: u32,
+    channels: u16,
+    name: String,
+    dropped: Arc<AtomicU32>,
+}
+
+impl AudioInput {
+    /// Opens the default input device.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is no input device or it cannot start.
+    pub fn open_default() -> Result<Self, AudioError> {
+        let host = cpal::default_host();
+        let device = host.default_input_device().ok_or(AudioError::NoDevice)?;
+        let supported = device.default_input_config().map_err(device_error)?;
+        let config = supported.config();
+        let name = device
+            .description()
+            .map_or_else(|_| "input".to_owned(), |d| d.name().to_owned());
+        let capacity =
+            config.sample_rate as usize * usize::from(config.channels) * INPUT_BUFFER_SECONDS;
+        let (producer, consumer) = rtrb::RingBuffer::new(capacity.max(1));
+        let dropped = Arc::new(AtomicU32::new(0));
+        let stream = match supported.sample_format() {
+            SampleFormat::F32 => build_input::<f32>(&device, config, producer, &dropped)?,
+            SampleFormat::I16 => build_input::<i16>(&device, config, producer, &dropped)?,
+            SampleFormat::I32 => build_input::<i32>(&device, config, producer, &dropped)?,
+            SampleFormat::U16 => build_input::<u16>(&device, config, producer, &dropped)?,
+            other => return Err(AudioError::UnsupportedFormat(other.to_string())),
+        };
+        stream.play().map_err(device_error)?;
+        Ok(Self {
+            _stream: stream,
+            samples: consumer,
+            sample_rate: config.sample_rate,
+            channels: config.channels,
+            name,
+            dropped,
+        })
+    }
+
+    /// Moves every buffered sample (interleaved) into `out`.
+    pub fn drain(&mut self, out: &mut Vec<f32>) {
+        while let Ok(sample) = self.samples.pop() {
+            out.push(sample);
+        }
+    }
+
+    /// Discards buffered samples (call before a take starts).
+    pub fn clear(&mut self) {
+        while self.samples.pop().is_ok() {}
+    }
+
+    /// Input sample rate.
+    #[must_use]
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
+    /// Interleaved channel count.
+    #[must_use]
+    pub fn channels(&self) -> u16 {
+        self.channels
+    }
+
+    /// Device name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Samples lost because the main thread fell behind.
+    #[must_use]
+    pub fn dropped(&self) -> u32 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+}
+
+fn build_input<T>(
+    device: &cpal::Device,
+    config: StreamConfig,
+    mut producer: rtrb::Producer<f32>,
+    dropped: &Arc<AtomicU32>,
+) -> Result<cpal::Stream, AudioError>
+where
+    T: SizedSample + Send + 'static,
+    f32: FromSample<T>,
+{
+    let lost = Arc::clone(dropped);
+    device
+        .build_input_stream(
+            config,
+            move |data: &[T], _: &cpal::InputCallbackInfo| {
+                for sample in data {
+                    if producer
+                        .push(<f32 as FromSample<T>>::from_sample_(*sample))
+                        .is_err()
+                    {
+                        lost.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            },
+            |_err| {},
+            None,
+        )
+        .map_err(device_error)
+}
+
+/// Splits interleaved input into stereo: mono is duplicated, extra channels
+/// are ignored.
+#[must_use]
+pub fn deinterleave(samples: &[f32], channels: u16) -> (Vec<f32>, Vec<f32>) {
+    let channels = usize::from(channels.max(1));
+    let frames = samples.len() / channels;
+    let mut left = Vec::with_capacity(frames);
+    let mut right = Vec::with_capacity(frames);
+    for frame in samples.chunks_exact(channels) {
+        let l = frame.first().copied().unwrap_or(0.0);
+        left.push(l);
+        right.push(frame.get(1).copied().unwrap_or(l));
+    }
+    (left, right)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deinterleave_handles_mono_stereo_and_more() {
+        assert_eq!(
+            deinterleave(&[0.1, 0.2], 1),
+            (vec![0.1, 0.2], vec![0.1, 0.2])
+        );
+        assert_eq!(
+            deinterleave(&[0.1, 0.2, 0.3, 0.4], 2),
+            (vec![0.1, 0.3], vec![0.2, 0.4])
+        );
+        assert_eq!(
+            deinterleave(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], 3),
+            (vec![1.0, 4.0], vec![2.0, 5.0])
+        );
+    }
+}

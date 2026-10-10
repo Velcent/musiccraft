@@ -41,6 +41,16 @@
 - `playlist.remove_clip`, `move_clip`, `resize_clip` and selection editing work
   the same for every kind. Ctrl+B duplicates any kind.
 
+## Audio recording
+
+- With File → Record audio input on, REC armed and the transport playing in song
+  mode, the default input device is captured. When playback stops or REC is
+  disarmed, the take is written as a 32-bit float WAV to `recordings/` beside the
+  project (the per-user data folder for unsaved projects) and placed as an audio
+  clip at the position where recording started, on the first empty track, as one
+  undo step. Takes under 0.1 s are discarded. Input arrives through a lock-free
+  ring buffer holding four seconds; no latency compensation is applied yet.
+
 ## Automation
 
 - An automation has a name, a target and points (tick from clip start, value

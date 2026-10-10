@@ -63,6 +63,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                         ui.close();
                     }
                 }
+                ui.checkbox(&mut state.record_audio, "Record audio input")
+                    .on_hover_text(
+                        "With REC armed in song mode, capture the input as an audio clip",
+                    );
                 if ui.button("Reload samples").clicked() {
                     actions.push(Action::ReloadSamples);
                     ui.close();

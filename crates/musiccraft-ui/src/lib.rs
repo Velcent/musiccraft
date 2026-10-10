@@ -181,6 +181,8 @@ pub struct UiState {
     pub typing_keyboard: bool,
     /// Live notes are written into the selected pattern while playing.
     pub record: bool,
+    /// While recording in song mode, also capture the audio input.
+    pub record_audio: bool,
     gesture: u64,
     browser: browser::BrowserState,
     roll: piano_roll::RollState,
@@ -213,6 +215,7 @@ impl UiState {
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             record: false,
+            record_audio: false,
             gesture: 0,
             browser: browser::BrowserState::with_default_folders(),
             roll: piano_roll::RollState::default(),

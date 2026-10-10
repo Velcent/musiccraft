@@ -18,6 +18,7 @@ musiccraft-dsp.workspace = true
 musiccraft-engine.workspace = true
 musiccraft-project.workspace = true
 musiccraft-render.workspace = true
+musiccraft-samples.workspace = true
 musiccraft-ui.workspace = true
 eframe.workspace = true
 midir.workspace = true

@@ -110,7 +110,7 @@ impl Dialog {
         match self.purpose {
             Purpose::Open => "Open project",
             Purpose::SaveAs => "Save project as",
-            Purpose::Export => "Export WAV",
+            Purpose::Export => "Export audio",
             Purpose::AddSample => "Add WAV sample",
             Purpose::SetSample(_) => "Change sample",
             Purpose::RenameChannel(_) => "Rename channel",

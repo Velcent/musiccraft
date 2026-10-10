@@ -5,6 +5,7 @@ mod autosave;
 mod midi;
 mod recorder;
 mod screenshot;
+mod take;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -57,6 +58,10 @@ struct App {
     overview: Option<(String, Vec<(f32, f32)>)>,
     /// Overviews and durations (seconds) of samples played by audio clips.
     clip_audio: Vec<ClipAudio>,
+    /// Audio input, opened the first time an audio take starts.
+    input: Option<musiccraft_audio::AudioInput>,
+    take: Option<take::Take>,
+    takes: u32,
 }
 
 /// Display data for a sample that audio clips play.
@@ -250,6 +255,9 @@ impl App {
             midi_notes: Some(played_rx),
             overview: None,
             clip_audio: Vec::new(),
+            input: None,
+            take: None,
+            takes: 0,
         }
     }
 
@@ -534,6 +542,67 @@ impl App {
         self.clip_audio = fresh;
     }
 
+    /// Starts, feeds and finishes audio takes as recording turns on and off.
+    fn record_audio(&mut self) {
+        let Some(audio) = &self.audio else {
+            return;
+        };
+        let meters = audio.handle.meters();
+        let song = self.session.project().play_mode == musiccraft_project::PlayMode::Song;
+        let wanted = self.ui.record && self.ui.record_audio && meters.is_playing() && song;
+        if wanted && self.take.is_none() {
+            if self.input.is_none() {
+                match musiccraft_audio::AudioInput::open_default() {
+                    Ok(input) => self.input = Some(input),
+                    Err(err) => {
+                        self.ui.record_audio = false;
+                        self.ui.set_status(format!("no audio input: {err}"), true);
+                        return;
+                    }
+                }
+            }
+            if let Some(input) = &mut self.input {
+                input.clear();
+                self.take = Some(take::Take {
+                    start: meters.position_ticks(),
+                    samples: Vec::new(),
+                });
+                self.ui
+                    .set_status(format!("recording from {}", input.name()), false);
+            }
+        }
+        if let (Some(take), Some(input)) = (&mut self.take, &mut self.input) {
+            input.drain(&mut take.samples);
+        }
+        if !wanted {
+            if let (Some(take), Some(input)) = (self.take.take(), &self.input) {
+                self.takes += 1;
+                let name = format!(
+                    "take-{}-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| d.as_secs()),
+                    self.takes
+                );
+                let finished = take::finish(
+                    take,
+                    input.channels(),
+                    input.sample_rate(),
+                    self.session.project(),
+                    &name,
+                );
+                match finished {
+                    Ok(Some(invocation)) => match self.session.run(&invocation) {
+                        Ok(_) => self.ui.set_status(format!("recorded {name}"), false),
+                        Err(err) => self.ui.set_status(err.to_string(), true),
+                    },
+                    Ok(None) => {}
+                    Err(err) => self.ui.set_status(format!("recording failed: {err}"), true),
+                }
+            }
+        }
+    }
+
     fn drain_midi(&mut self) {
         let notes: Vec<midi::Played> = self
             .midi_notes
@@ -623,6 +692,7 @@ impl eframe::App for App {
             self.apply(&ctx, action);
         }
         self.drain_midi();
+        self.record_audio();
         self.selected_channel
             .store(self.ui.selected_channel, Ordering::Relaxed);
         self.sync();
@@ -641,7 +711,10 @@ impl eframe::App for App {
             Some(Err(err)) => self.ui.set_status(format!("autosave failed: {err}"), true),
             None => {}
         }
-        let busy = engine.playing || !self.pending_offs.is_empty() || engine.voices > 0;
+        let busy = engine.playing
+            || !self.pending_offs.is_empty()
+            || engine.voices > 0
+            || self.take.is_some();
         let meters_moving = self.ui.meters.iter().any(|(l, r)| *l > 1e-4 || *r > 1e-4);
         if busy || meters_moving {
             ctx.request_repaint_after(Duration::from_millis(16));
