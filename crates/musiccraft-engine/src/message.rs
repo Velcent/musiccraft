@@ -1,4 +1,4 @@
-use crate::{ChannelParams, EffectParams, Graph, Sequence, TrackParams};
+use crate::{ChannelParams, EffectParams, Graph, Preview, Sequence, TrackParams};
 
 /// A message from the main thread to the engine.
 ///
@@ -63,13 +63,20 @@ pub enum EngineMessage {
     SetGraph(Box<Graph>),
     /// Replace the note sequence.
     SetSequence(Box<Sequence>),
+    /// Audition a sample directly on the master output (browser preview).
+    PlayPreview(Box<Preview>),
+    /// Silence the browser preview.
+    StopPreview,
 }
 
 impl EngineMessage {
     /// Whether applying this message produces a [`Garbage`] value.
     #[must_use]
     pub fn returns_garbage(&self) -> bool {
-        matches!(self, Self::SetGraph(_) | Self::SetSequence(_))
+        matches!(
+            self,
+            Self::SetGraph(_) | Self::SetSequence(_) | Self::PlayPreview(_)
+        )
     }
 }
 
@@ -80,6 +87,8 @@ pub enum Garbage {
     Graph(Box<Graph>),
     /// A previous sequence.
     Sequence(Box<Sequence>),
+    /// A previous preview.
+    Preview(Box<Preview>),
 }
 
 /// A note event from a live source such as a MIDI keyboard. Sent through its own

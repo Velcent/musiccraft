@@ -340,6 +340,18 @@ impl Bridge {
         report
     }
 
+    /// The decoded sample a channel plays, loading it if needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message if the sample cannot be loaded.
+    pub fn sample(&mut self, sample: &str, project: &Project) -> Result<Arc<SampleBuffer>, String> {
+        let key = sample_key(sample, project.path().and_then(Path::parent));
+        self.samples
+            .get(&key, None, self.sample_rate)
+            .map_err(|e| e.to_string())
+    }
+
     /// Sample rate this bridge prepares data for.
     #[must_use]
     pub fn sample_rate(&self) -> u32 {

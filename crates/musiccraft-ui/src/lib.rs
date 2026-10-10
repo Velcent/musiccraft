@@ -6,6 +6,7 @@ pub mod keymap;
 
 mod browser;
 mod channel_rack;
+mod channel_settings;
 mod dialogs;
 mod geometry;
 mod icons;
@@ -59,6 +60,8 @@ pub enum Action {
     },
     /// Move the playhead to a position in ticks.
     Seek(f64),
+    /// Audition a sample (file path or `builtin:` name) on the master output.
+    PreviewSample(String),
     /// Drop decoded samples and reload them from disk.
     ReloadSamples,
     /// Close the application.
@@ -110,6 +113,8 @@ pub struct Windows {
     pub browser: bool,
     /// Keyboard shortcut reference.
     pub shortcuts: bool,
+    /// Instrument editor of the selected channel.
+    pub channel_settings: bool,
 }
 
 impl Default for Windows {
@@ -121,6 +126,7 @@ impl Default for Windows {
             mixer: false,
             browser: true,
             shortcuts: false,
+            channel_settings: false,
         }
     }
 }
@@ -158,6 +164,7 @@ pub struct UiState {
     /// Live notes are written into the selected pattern while playing.
     pub record: bool,
     gesture: u64,
+    browser: browser::BrowserState,
     roll: piano_roll::RollState,
     playlist: playlist::PlaylistState,
     dialog: Option<dialogs::Dialog>,
@@ -185,6 +192,7 @@ impl UiState {
             typing_keyboard: false,
             record: false,
             gesture: 0,
+            browser: browser::BrowserState::with_default_folders(),
             roll: piano_roll::RollState::default(),
             playlist: playlist::PlaylistState::default(),
             dialog: None,
@@ -229,6 +237,8 @@ pub struct Frame<'a> {
     pub engine: &'a EngineStatus,
     /// Undo information.
     pub history: &'a History,
+    /// Min/max overview of the selected channel's sample, if it is a sampler.
+    pub waveform: Option<&'a [(f32, f32)]>,
 }
 
 /// Draws the whole interface and returns what the user asked for.
@@ -268,9 +278,27 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     let ctx = ui.ctx().clone();
     channel_rack::show(&ctx, state, frame, &mut actions);
     piano_roll::show(&ctx, state, frame, &mut actions);
+    channel_settings::show(&ctx, state, frame, &mut actions);
     dialogs::show(&ctx, state, frame, &mut actions);
     dialogs::shortcuts(&ctx, state);
 
+    if let Some(dragged) = egui::DragAndDrop::payload::<browser::Dragged>(&ctx) {
+        if let Some(pos) = ctx.pointer_hover_pos() {
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip,
+                egui::Id::new("drag-ghost"),
+            ));
+            let galley = painter.layout_no_wrap(
+                format!("♪ {}", dragged.label()),
+                egui::FontId::proportional(13.0),
+                theme::BACKGROUND,
+            );
+            let rect =
+                egui::Rect::from_min_size(pos + egui::vec2(12.0, 8.0), galley.size()).expand(5.0);
+            painter.rect_filled(rect, 4.0, theme::ACCENT);
+            painter.galley(rect.min + egui::vec2(5.0, 5.0), galley, theme::BACKGROUND);
+        }
+    }
     handle_keys(&ctx, state, frame, &mut actions);
     resolve_ui_actions(state, frame, actions)
 }
@@ -400,6 +428,14 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.quit" => out.push(Action::Quit),
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
+            "ui.add_folder" => {
+                if let Some(path) = invocation.args.first() {
+                    let path = std::path::PathBuf::from(path);
+                    if !state.browser.folders.contains(&path) {
+                        state.browser.folders.push(path);
+                    }
+                }
+            }
             "ui.toggle_record" => state.record = !state.record,
             _ => out.push(action),
         }
@@ -427,6 +463,7 @@ mod tests {
             project: &project,
             engine: &engine,
             history: &history,
+            waveform: None,
         };
         let mut state = UiState::default();
         assert!(!state.windows.mixer);

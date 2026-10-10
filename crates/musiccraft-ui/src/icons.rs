@@ -181,6 +181,33 @@ pub fn button(ui: &mut Ui, icon: Icon, active: bool, accent: Color32, hint: &str
     response.on_hover_text(hint)
 }
 
+/// A quieter toggle for showing and hiding windows: an underline marks it on.
+pub fn toggle(ui: &mut Ui, icon: Icon, on: bool, hint: &str) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(28.0, 24.0), Sense::click());
+    let hovered = response.hovered();
+    if hovered || on {
+        ui.painter().rect_filled(
+            rect,
+            CornerRadius::same(4),
+            if hovered {
+                theme::RAISED_HOVER
+            } else {
+                theme::RAISED
+            },
+        );
+    }
+    let color = if on { theme::ACCENT } else { theme::TEXT_DIM };
+    paint(ui.painter(), rect.shrink(1.0), icon, color);
+    if on {
+        let y = rect.bottom() - 1.5;
+        ui.painter().line_segment(
+            [pos2(rect.left() + 6.0, y), pos2(rect.right() - 6.0, y)],
+            Stroke::new(2.0, theme::ACCENT),
+        );
+    }
+    response.on_hover_text(hint)
+}
+
 /// A dark "LCD" panel showing a large value and a small caption underneath.
 pub fn lcd(ui: &mut Ui, width: f32, main: &str, caption: &str, sense: Sense) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(width, 32.0), sense);

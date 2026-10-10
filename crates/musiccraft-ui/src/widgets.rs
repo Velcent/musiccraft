@@ -71,6 +71,92 @@ pub fn knob(
     }
 }
 
+/// A larger knob over a normalized 0..1 value, with a caption that shows the
+/// formatted value while hovered or dragged. Double-click resets to `default`.
+pub fn labeled_knob(
+    ui: &mut Ui,
+    label: &str,
+    t: f32,
+    default: f32,
+    bipolar: bool,
+    value: &str,
+) -> KnobOutput {
+    let size = vec2(52.0, 60.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    let mut changed = None;
+    if response.dragged() {
+        let fine = ui.input(|i| i.modifiers.shift);
+        let delta = -response.drag_delta().y / if fine { 600.0 } else { 150.0 };
+        if delta != 0.0 {
+            changed = Some((t + delta).clamp(0.0, 1.0));
+        }
+    }
+    if response.hovered() {
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        if scroll != 0.0 {
+            changed = Some((t + scroll / 600.0).clamp(0.0, 1.0));
+        }
+    }
+    if response.double_clicked() {
+        changed = Some(default);
+    }
+    let shown = changed.unwrap_or(t);
+    let painter = ui.painter_at(rect);
+    let center = pos2(rect.center().x, rect.top() + 22.0);
+    let radius = 15.0;
+    painter.circle_filled(center, radius + 3.0, theme::PANEL_DARK);
+    painter.circle_filled(center, radius - 2.0, theme::RAISED);
+    let start = PI * 0.75;
+    let sweep = PI * 1.5;
+    let angle = |k: f32| start + sweep * k;
+    let arc = |from: f32, to: f32| -> Vec<Pos2> {
+        (0..=24)
+            .map(|i| {
+                let a = angle(from + (to - from) * i as f32 / 24.0);
+                center + vec2(a.cos(), a.sin()) * (radius + 1.0)
+            })
+            .collect()
+    };
+    painter.add(egui::Shape::line(
+        arc(0.0, 1.0),
+        Stroke::new(3.0, theme::PANEL),
+    ));
+    let from = if bipolar { 0.5 } else { 0.0 };
+    painter.add(egui::Shape::line(
+        arc(from, shown),
+        Stroke::new(3.0, theme::ACCENT),
+    ));
+    let a = angle(shown);
+    painter.line_segment(
+        [
+            center + vec2(a.cos(), a.sin()) * 4.0,
+            center + vec2(a.cos(), a.sin()) * (radius - 3.0),
+        ],
+        Stroke::new(2.0, theme::TEXT),
+    );
+    let active = response.hovered() || response.dragged();
+    painter.text(
+        pos2(rect.center().x, rect.bottom() - 9.0),
+        egui::Align2::CENTER_CENTER,
+        if active { value } else { label },
+        egui::FontId::proportional(10.5),
+        if active {
+            theme::PLAYHEAD
+        } else {
+            theme::TEXT_DIM
+        },
+    );
+    let started = response.drag_started();
+    KnobOutput {
+        changed,
+        started: started
+            || (response.hovered()
+                && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
+                && !response.dragged()),
+        response,
+    }
+}
+
 /// A round on/off indicator button.
 pub fn dot(ui: &mut Ui, on: bool, color: Color32) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::click());

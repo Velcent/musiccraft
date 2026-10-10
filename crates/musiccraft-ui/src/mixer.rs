@@ -348,7 +348,7 @@ fn routing(
                 .map_or("?", |t| t.name.as_str());
             ui.add_sized(
                 vec2(72.0, 16.0),
-                egui::Label::new(RichText::new(format!("→ {} {name}", send.target)).small()),
+                egui::Label::new(RichText::new(format!("to {} {name}", send.target)).small()),
             );
             let mut level = send.level;
             let response =

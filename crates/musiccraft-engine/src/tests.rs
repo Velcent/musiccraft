@@ -463,3 +463,28 @@ fn sends_to_lower_tracks_are_ignored() {
     let out = render_mono(&mut engine, 16);
     assert!((out[0] - 1.0).abs() < 1e-6);
 }
+
+#[test]
+fn preview_plays_on_master_and_is_returned_as_garbage() {
+    let (mut engine, mut handle) = engine_pair(SR);
+    engine.apply(EngineMessage::SetGraph(Box::default()));
+    let sample = Arc::new(SampleBuffer::mono(vec![0.5; 100], f64::from(SR)));
+    handle
+        .send(EngineMessage::PlayPreview(Box::new(Preview::new(
+            Arc::clone(&sample),
+            1.0,
+        ))))
+        .unwrap();
+    let out = render_mono(&mut engine, 200);
+    assert!((out[50] - 0.5).abs() < 1e-6);
+    assert!(out[150].abs() < 1e-6, "stops at the end of the sample");
+    handle
+        .send(EngineMessage::PlayPreview(Box::new(Preview::new(
+            sample, 1.0,
+        ))))
+        .unwrap();
+    handle.send(EngineMessage::StopPreview).unwrap();
+    let out = render_mono(&mut engine, 50);
+    assert!(out.iter().all(|s| s.abs() < 1e-6));
+    assert_eq!(handle.collect_garbage(), 1, "the replaced first preview");
+}

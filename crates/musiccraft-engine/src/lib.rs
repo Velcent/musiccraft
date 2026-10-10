@@ -18,7 +18,8 @@ mod voice;
 
 pub use engine::{Engine, EngineHandle, LiveSender, engine_pair};
 pub use graph::{
-    ChannelNode, ChannelParams, EffectParams, Graph, Instrument, MAX_SENDS, SendParams, TrackParams,
+    ChannelNode, ChannelParams, EffectParams, Graph, Instrument, MAX_SENDS, Preview, SendParams,
+    TrackParams,
 };
 pub use message::{EngineMessage, Garbage, LiveEvent};
 pub use meters::{Meters, SCOPE_LEN};

@@ -28,7 +28,8 @@ usage: musiccraft [project.mcproj] [--keymap <file>] [--empty] [--open <windows>
   --keymap <file>    use a keymap file instead of the default shortcuts
   --empty            start with an empty project instead of the drum starter kit
   --open <windows>   comma-separated windows to show at start:
-                     channel_rack, piano_roll, playlist, mixer, browser";
+                     channel_rack, piano_roll, playlist, mixer, browser,
+                     channel_settings";
 
 /// Audio running on a device.
 struct Audio {
@@ -52,6 +53,30 @@ struct App {
     autosave: autosave::Autosave,
     recorder: recorder::Recorder,
     midi_notes: Option<Receiver<midi::Played>>,
+    /// Waveform overview of the selected channel's sample, keyed by sample.
+    overview: Option<(String, Vec<(f32, f32)>)>,
+}
+
+/// Min/max pairs summarizing a sample for display.
+fn overview(buffer: &musiccraft_dsp::SampleBuffer, points: usize) -> Vec<(f32, f32)> {
+    let len = buffer.len();
+    if len == 0 {
+        return Vec::new();
+    }
+    let per = len.div_ceil(points).max(1);
+    buffer
+        .left()
+        .chunks(per)
+        .zip(buffer.right().chunks(per))
+        .map(|(l, r)| {
+            l.iter()
+                .zip(r)
+                .fold((0.0_f32, 0.0_f32), |(lo, hi), (a, b)| {
+                    let m = (a + b) * 0.5;
+                    (lo.min(m), hi.max(m))
+                })
+        })
+        .collect()
 }
 
 /// A new project with a few drum channels, ready to program.
@@ -187,6 +212,7 @@ impl App {
             w.playlist = windows.iter().any(|n| n == "playlist");
             w.mixer = windows.iter().any(|n| n == "mixer");
             w.browser = windows.iter().any(|n| n == "browser");
+            w.channel_settings = windows.iter().any(|n| n == "channel_settings");
         }
         if let Some(text) = status {
             ui.set_status(text, true);
@@ -208,6 +234,7 @@ impl App {
             autosave: autosave::Autosave::new(revision),
             recorder: recorder::Recorder::default(),
             midi_notes: Some(played_rx),
+            overview: None,
         }
     }
 
@@ -285,6 +312,22 @@ impl App {
                     .push((Instant::now() + SHORT_PREVIEW, channel, key));
                 return;
             }
+            Action::PreviewSample(sample) => {
+                let loaded = self
+                    .audio
+                    .as_mut()
+                    .map(|audio| audio.bridge.sample(&sample, self.session.project()));
+                match loaded {
+                    Some(Ok(buffer)) => {
+                        self.send(EngineMessage::PlayPreview(Box::new(
+                            musiccraft_engine::Preview::new(buffer, 0.8),
+                        )));
+                    }
+                    Some(Err(err)) => self.ui.set_status(format!("cannot preview: {err}"), true),
+                    None => {}
+                }
+                return;
+            }
             Action::Seek(ticks) => {
                 self.send(EngineMessage::Seek(ticks));
                 return;
@@ -358,6 +401,37 @@ impl App {
         }
     }
 
+    /// Keeps the waveform overview in step with the selected channel's sample.
+    fn update_overview(&mut self) {
+        let project = self.session.project();
+        let sample = match project
+            .channels
+            .get(self.ui.selected_channel)
+            .map(|c| &c.instrument)
+        {
+            Some(musiccraft_project::Instrument::Sampler { sample }) => sample.clone(),
+            _ => {
+                self.overview = None;
+                return;
+            }
+        };
+        if self
+            .overview
+            .as_ref()
+            .is_some_and(|(key, _)| *key == sample)
+        {
+            return;
+        }
+        let Some(audio) = &mut self.audio else {
+            return;
+        };
+        let points = match audio.bridge.sample(&sample, self.session.project()) {
+            Ok(buffer) => overview(&buffer, 400),
+            Err(_) => Vec::new(),
+        };
+        self.overview = Some((sample, points));
+    }
+
     fn drain_midi(&mut self) {
         let notes: Vec<midi::Played> = self
             .midi_notes
@@ -418,11 +492,13 @@ impl eframe::App for App {
             undo: self.session.undo_label().map(ToString::to_string),
             can_redo: self.session.redo_depth() > 0,
         };
+        self.update_overview();
         let actions = {
             let frame = Frame {
                 project: self.session.project(),
                 engine: &engine,
                 history: &history,
+                waveform: self.overview.as_ref().map(|(_, points)| points.as_slice()),
             };
             musiccraft_ui::show(ui, &mut self.ui, &frame)
         };

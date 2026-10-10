@@ -19,6 +19,7 @@ pub enum Purpose {
     RenameChannel(usize),
     RenamePattern(usize),
     RenameTrack(usize),
+    AddFolder,
 }
 
 /// An open prompt.
@@ -84,6 +85,13 @@ impl Dialog {
         Self::new(Purpose::RenamePattern(pattern), current.to_owned())
     }
 
+    pub fn add_folder() -> Self {
+        let home = std::env::var("HOME")
+            .map(|h| format!("{h}/"))
+            .unwrap_or_default();
+        Self::new(Purpose::AddFolder, home)
+    }
+
     pub fn rename_track(track: usize, current: &str) -> Self {
         Self::new(Purpose::RenameTrack(track), current.to_owned())
     }
@@ -98,6 +106,7 @@ impl Dialog {
             Purpose::RenameChannel(_) => "Rename channel",
             Purpose::RenamePattern(_) => "Rename pattern",
             Purpose::RenameTrack(_) => "Rename mixer track",
+            Purpose::AddFolder => "Add folder to the browser",
         }
     }
 
@@ -121,6 +130,7 @@ impl Dialog {
             Purpose::RenameTrack(track) => {
                 Invocation::new("mixer.rename", [track.to_string(), text])
             }
+            Purpose::AddFolder => Invocation::new("ui.add_folder", [text]),
         }
     }
 }

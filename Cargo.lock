@@ -1392,6 +1392,7 @@ dependencies = [
  "musiccraft-audio",
  "musiccraft-cli",
  "musiccraft-commands",
+ "musiccraft-dsp",
  "musiccraft-engine",
  "musiccraft-project",
  "musiccraft-render",

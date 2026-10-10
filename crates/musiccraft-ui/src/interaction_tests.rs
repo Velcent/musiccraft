@@ -64,6 +64,7 @@ impl Harness {
                 project: session.project(),
                 engine: &engine,
                 history: &history,
+                waveform: None,
             };
             let mut output = ctx.run_ui(input, |ui| actions = show(ui, state, &frame));
             // No renderer here: acknowledge texture uploads.
@@ -284,6 +285,7 @@ fn typing_keyboard_performs_notes_instead_of_shortcuts() {
         project: h.session.project(),
         engine: &engine,
         history: &history,
+        waveform: None,
     };
     let mut actions = Vec::new();
     let mut out = h

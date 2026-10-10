@@ -120,7 +120,7 @@ fn window_buttons(ui: &mut egui::Ui, state: &mut UiState) {
             (Icon::Playlist, &mut w.playlist, "Playlist (F5)"),
             (Icon::Browser, &mut w.browser, "Browser (Alt+F8)"),
         ] {
-            if icons::button(ui, icon, *open, theme::ACCENT, hint).clicked() {
+            if icons::toggle(ui, icon, *open, hint).clicked() {
                 *open = !*open;
             }
         }

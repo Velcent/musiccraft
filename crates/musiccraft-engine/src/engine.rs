@@ -150,6 +150,7 @@ pub struct Engine {
     voice_counter: u64,
     metronome: bool,
     click: Click,
+    preview: Option<Box<crate::Preview>>,
 }
 
 /// Creates an engine and the handle that controls it. Call on the main thread,
@@ -180,6 +181,7 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
         voice_counter: 0,
         metronome: false,
         click: Click::default(),
+        preview: None,
     };
     let handle = EngineHandle {
         messages: message_tx,
@@ -333,6 +335,16 @@ impl Engine {
             EngineMessage::NoteOff { channel, key } => self.live_note_off(channel, key),
             EngineMessage::AllNotesOff => self.release_all(true),
             EngineMessage::SetMetronome(on) => self.metronome = on,
+            EngineMessage::PlayPreview(preview) => {
+                if let Some(old) = self.preview.replace(preview) {
+                    self.discard(Garbage::Preview(old));
+                }
+            }
+            EngineMessage::StopPreview => {
+                if let Some(preview) = self.preview.as_deref_mut() {
+                    preview.position = f64::INFINITY;
+                }
+            }
             EngineMessage::SetGraph(graph) => {
                 for voice in &mut self.voices {
                     voice.active = false;
@@ -492,11 +504,11 @@ impl Engine {
         mix_tracks(tracks, frames, ctx, &self.meters);
         if let Some(master) = tracks.first_mut() {
             let TrackNode { left, right, .. } = master;
-            self.click.render(
-                prefix(left, frames),
-                prefix(right, frames),
-                self.sample_rate,
-            );
+            let (l, r) = (prefix(left, frames), prefix(right, frames));
+            self.click.render(l, r, self.sample_rate);
+            if let Some(preview) = self.preview.as_deref_mut() {
+                preview.render(l, r, self.sample_rate);
+            }
         }
     }
 

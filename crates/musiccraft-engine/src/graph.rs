@@ -204,3 +204,38 @@ impl Graph {
         self.tracks.len()
     }
 }
+
+/// A sample auditioned from the browser, played straight to the output.
+#[derive(Debug, Clone)]
+pub struct Preview {
+    pub(crate) buffer: Arc<SampleBuffer>,
+    pub(crate) position: f64,
+    pub(crate) gain: f32,
+}
+
+impl Preview {
+    /// A preview of `buffer` at `gain`, starting from the beginning.
+    #[must_use]
+    pub fn new(buffer: Arc<SampleBuffer>, gain: f32) -> Self {
+        Self {
+            buffer,
+            position: 0.0,
+            gain,
+        }
+    }
+
+    /// Adds the next frames into `left`/`right`.
+    pub(crate) fn render(&mut self, left: &mut [f32], right: &mut [f32], sample_rate: f64) {
+        let step = self.buffer.sample_rate() / sample_rate.max(1.0);
+        let end = self.buffer.len() as f64;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if self.position >= end {
+                return;
+            }
+            let (sl, sr) = self.buffer.read(self.position);
+            *l += sl * self.gain;
+            *r += sr * self.gain;
+            self.position += step;
+        }
+    }
+}
