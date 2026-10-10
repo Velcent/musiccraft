@@ -68,11 +68,15 @@ cargo test --workspace
 ## Milestones
 
 - [x] M0 Workspace, docs, command registry, CLI (set tempo, play/stop/toggle, undo/redo)
-- [ ] M1 Audio callback (cpal) with sine oscillator driven by engine messages
-- [ ] M2 Step sequencer with sample playback
-- [ ] M3 Mixer: channel strips, volume/pan, first effects
-- [ ] M4 Piano roll with a basic synth and default shortcuts
-- [ ] M5 Playlist with patterns and clips
-- [ ] M6 Project save/load, WAV export
-- [ ] M7 MCP server, plugin hosting (CLAP first)
-- [ ] M8 Parity checklist (`cargo xtask parity`) and UI polish
+- [x] M1 Audio callback (cpal) with sine oscillator driven by engine messages
+- [x] M2 Step sequencer with sample playback
+- [x] M3 Mixer: channel strips, volume/pan, first effects
+- [x] M4 Piano roll with a basic synth and default shortcuts
+- [x] M5 Playlist with patterns and clips
+- [x] M6 Project save/load, WAV export
+- [x] M7 MCP server
+- [ ] M7 Plugin hosting (CLAP first) — blocked: loading plugins needs `unsafe` FFI,
+      which is forbidden; needs an explicit decision from the user first
+- [x] M8 Parity checklist (`cargo xtask parity`) and UI polish
+
+Open items are tracked as `todo` rows in `docs/parity.md`.
