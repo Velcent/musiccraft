@@ -10,6 +10,13 @@
   windows and file dialogs and do not change the project); everything else runs
   through the command registry.
 
+## Typing keyboard
+
+- While enabled (Ctrl+T or the ⌨ button), the letter rows play notes on the
+  selected channel instead of triggering shortcuts: `Z S X D C V G B H N J M ,`
+  play C4 to C5 with black keys on the home row; `Q 2 W 3 E R 5 T 6 Y 7 U I 9 O P`
+  continue from C5. Shift is allowed; other modifiers pass through to shortcuts.
+
 ## Defaults
 
 | Chord | Action |
@@ -17,6 +24,8 @@
 | Space | Play / stop |
 | L | Toggle pattern / song mode |
 | Ctrl+M | Metronome on / off |
+| Ctrl+E | Arm / disarm recording |
+| Ctrl+T | Typing keyboard plays notes |
 | F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer |
 | Alt+F8 | Browser |
 | F4 | New pattern |
@@ -34,5 +43,6 @@
   the publicly published FL Studio online manual ("Keyboard shortcuts"). Shortcuts
   are a convenience for users switching tools; the bindings are data and can be
   changed.
+- Ctrl+E (record) and Ctrl+T (typing keyboard): own choices.
 - Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo and redo: common desktop convention (own
   choice; the manual describes a different undo toggle).

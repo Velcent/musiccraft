@@ -46,6 +46,10 @@ pub struct RollState {
     centred_for: Option<usize>,
     /// Grid and visible area from the last frame (used by tests and tools).
     pub(crate) last_view: Option<(Grid, Rect)>,
+    /// Chord drawn by a click, or `None` for single notes.
+    chord: Option<&'static str>,
+    /// Highlighted scale: (root pitch class, scale index).
+    scale: Option<(u8, usize)>,
 }
 
 impl Default for RollState {
@@ -60,6 +64,8 @@ impl Default for RollState {
             preview: None,
             centred_for: None,
             last_view: None,
+            chord: None,
+            scale: None,
         }
     }
 }
@@ -165,6 +171,44 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                     ui.selectable_value(&mut state.roll.snap, snap, snap.label());
                 }
             });
+        egui::ComboBox::from_id_salt("roll-chord")
+            .width(70.0)
+            .selected_text(state.roll.chord.unwrap_or("Note"))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.roll.chord, None, "Note");
+                for (name, _) in musiccraft_project::music::CHORDS {
+                    ui.selectable_value(&mut state.roll.chord, Some(name), name);
+                }
+            })
+            .response
+            .on_hover_text("Click draws a single note or a chord");
+        let scale_label = match state.roll.scale {
+            Some((root, i)) => format!(
+                "{} {}",
+                key_name(root).trim_end_matches(char::is_numeric),
+                musiccraft_project::music::SCALES[i].0
+            ),
+            None => "No scale".to_owned(),
+        };
+        egui::ComboBox::from_id_salt("roll-scale")
+            .width(120.0)
+            .selected_text(scale_label)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.roll.scale, None, "No scale");
+                for root in 0..12_u8 {
+                    let name = key_name(root);
+                    let name = name.trim_end_matches(char::is_numeric);
+                    for (i, (scale, _)) in musiccraft_project::music::SCALES.iter().enumerate() {
+                        ui.selectable_value(
+                            &mut state.roll.scale,
+                            Some((root, i)),
+                            format!("{name} {scale}"),
+                        );
+                    }
+                }
+            })
+            .response
+            .on_hover_text("Highlight the keys of a scale");
         ui.label("Velocity");
         ui.add(egui::DragValue::new(&mut state.roll.velocity).range(1..=127));
         ui.separator();
@@ -248,6 +292,9 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         state.roll.last_view = Some((grid, clip));
         let painter = ui.painter_at(clip);
         draw_background(&painter, &grid, clip, rect, length);
+        if let Some((root, scale)) = state.roll.scale {
+            draw_scale(&painter, &grid, clip, rect, root, scale);
+        }
 
         // Other channels' notes, faded, for context.
         for note in pattern.notes.iter().filter(|n| n.channel != channel.id) {
@@ -406,6 +453,36 @@ fn draw_background(painter: &egui::Painter, grid: &Grid, clip: Rect, rect: Rect,
             [pos2(x, grid.origin.y), pos2(x, rect.bottom())],
             Stroke::new(1.0, color),
         );
+    }
+}
+
+fn draw_scale(
+    painter: &egui::Painter,
+    grid: &Grid,
+    clip: Rect,
+    rect: Rect,
+    root: u8,
+    scale: usize,
+) {
+    let Some((_, degrees)) = musiccraft_project::music::SCALES.get(scale) else {
+        return;
+    };
+    let first = grid.row_at(clip.top().max(grid.origin.y)).unwrap_or(0);
+    let last = grid.row_at(clip.bottom() - 1.0).unwrap_or(KEYS - 1);
+    for row in first..=last {
+        let key = key_of_row(row);
+        if musiccraft_project::music::in_scale(key, root, degrees) {
+            let y = grid.y(row);
+            let tint = if key % 12 == root % 12 { 22 } else { 12 };
+            painter.rect_filled(
+                Rect::from_min_max(
+                    pos2(grid.origin.x, y),
+                    pos2(rect.right(), y + grid.row_height),
+                ),
+                0.0,
+                Color32::from_rgba_unmultiplied(0x2e, 0xc4, 0xb6, tint),
+            );
+        }
     }
 }
 

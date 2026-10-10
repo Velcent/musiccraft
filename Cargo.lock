@@ -3560,6 +3560,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "musiccraft-commands",
+ "musiccraft-params",
  "musiccraft-render",
  "musiccraft-ui",
 ]

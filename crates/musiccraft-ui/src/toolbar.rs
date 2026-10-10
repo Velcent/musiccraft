@@ -127,6 +127,31 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             run(actions, &format!("transport.set_mode {}", mode.label()));
         }
     }
+    let record = egui::Button::new(
+        RichText::new("REC")
+            .small()
+            .strong()
+            .color(if state.record {
+                theme::BACKGROUND
+            } else {
+                theme::DANGER
+            }),
+    )
+    .fill(if state.record {
+        theme::DANGER
+    } else {
+        theme::RAISED
+    });
+    if ui
+        .add(record)
+        .on_hover_text(format!(
+            "Record live notes into the pattern while playing ({})",
+            shortcut(state, "ui.toggle_record")
+        ))
+        .clicked()
+    {
+        state.record = !state.record;
+    }
     ui.add_space(6.0);
     let metronome = egui::Button::new(RichText::new("♩").size(16.0).color(if project.metronome {
         theme::BACKGROUND
@@ -147,6 +172,30 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
         .clicked()
     {
         run(actions, "transport.toggle_metronome");
+    }
+    let typing = egui::Button::new(
+        RichText::new("⌨")
+            .size(15.0)
+            .color(if state.typing_keyboard {
+                theme::BACKGROUND
+            } else {
+                theme::TEXT_DIM
+            }),
+    )
+    .fill(if state.typing_keyboard {
+        theme::ACCENT
+    } else {
+        theme::RAISED
+    });
+    if ui
+        .add(typing)
+        .on_hover_text(format!(
+            "Typing keyboard plays notes: Z–M and Q–P rows ({})",
+            shortcut(state, "ui.typing_keyboard")
+        ))
+        .clicked()
+    {
+        state.typing_keyboard = !state.typing_keyboard;
     }
     ui.add_space(10.0);
 

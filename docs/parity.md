@@ -6,6 +6,7 @@ What a pattern-based DAW user expects, and whether MusicCraft has it. Checked by
 - `cmd:<name>` — the command is registered.
 - `key:<chord>=<invocation>` — the default keymap binds the chord to it.
 - `spec:<file>` — `docs/spec/<file>` exists.
+- `fx:<kind>` — the mixer offers this effect kind.
 - `done` — implemented in the UI or app; verified by tests and review, not by
   the checker.
 - `todo` — not implemented yet.
@@ -39,7 +40,7 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Ghost notes of other channels | `done` |
 | Piano roll | Audition notes from the keyboard | `done` |
 | Piano roll | Note slides / portamento | `todo` |
-| Piano roll | Chord and scale helpers | `todo` |
+| Piano roll | Chord and scale helpers | `cmd:note.add_chord` `done` |
 | Piano roll | Import MIDI files | `cmd:note.import_midi` |
 | Patterns | New pattern | `cmd:pattern.add` `key:F4=pattern.add` |
 | Patterns | Next / previous pattern | `key:Plus=pattern.next` `key:Minus=pattern.prev` |
@@ -56,9 +57,9 @@ of contents; see `docs/clean-room.md`.
 | Mixer | Peak meters | `done` |
 | Mixer | Sends between inserts | `todo` |
 | Mixer | Sidechain | `todo` |
-| Effects | Filter, EQ, delay, reverb, compressor, distortion | `cmd:mixer.add_effect` |
-| Effects | Chorus | `todo` |
-| Effects | Limiter | `todo` |
+| Effects | Filter, EQ, delay, reverb, compressor, distortion | `fx:filter` `fx:eq` `fx:delay` `fx:reverb` `fx:compressor` `fx:distortion` |
+| Effects | Chorus | `fx:chorus` |
+| Effects | Limiter | `fx:limiter` |
 | Instruments | Subtractive synth | `cmd:channel.add_synth` |
 | Instruments | CLAP plugins | `todo` |
 | Instruments | VST3 plugins | `todo` |
@@ -71,8 +72,8 @@ of contents; see `docs/clean-room.md`.
 | Project | Export compressed audio (MP3, Ogg, FLAC) | `todo` |
 | Project | Autosave and crash recovery | `done` |
 | Input | MIDI keyboard plays the selected channel | `done` |
-| Input | Record MIDI into patterns | `todo` |
-| Input | Computer keyboard as piano | `todo` |
+| Input | Record live notes into patterns | `key:Ctrl+E=ui.toggle_record` `done` |
+| Input | Computer keyboard as piano | `key:Ctrl+T=ui.typing_keyboard` `done` |
 | Automation | Parameter automation | `todo` |
 | Scripting | Headless CLI and scripts | `done` |
 | Scripting | MCP server for AI agents | `spec:mcp.md` |

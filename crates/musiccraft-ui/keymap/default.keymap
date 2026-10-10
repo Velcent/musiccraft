@@ -9,6 +9,8 @@
 Space        = transport.toggle
 L            = transport.toggle_mode
 Ctrl+M       = transport.toggle_metronome
+Ctrl+E       = ui.toggle_record
+Ctrl+T       = ui.typing_keyboard
 
 # Windows
 F5           = view.toggle playlist

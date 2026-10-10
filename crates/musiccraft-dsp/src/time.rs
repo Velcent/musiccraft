@@ -123,3 +123,112 @@ mod tests {
         assert!((l[30] - 0.25).abs() < 1e-6);
     }
 }
+
+/// Longest chorus delay (base plus depth) in seconds.
+const MAX_CHORUS_SECONDS: f32 = 0.05;
+
+/// Stereo chorus: a short delay per channel modulated by sine LFOs a quarter
+/// cycle apart, mixed with the dry signal.
+///
+/// Parameters: `[rate Hz, depth ms, delay ms, mix]`.
+#[derive(Debug, Clone)]
+pub struct Chorus {
+    left: Vec<f32>,
+    right: Vec<f32>,
+    write: usize,
+    phase: f32,
+}
+
+impl Chorus {
+    /// Allocates the delay lines. Main thread only.
+    #[must_use]
+    pub fn new(sample_rate: f32) -> Self {
+        let len = (sample_rate.max(1.0) * MAX_CHORUS_SECONDS) as usize + 2;
+        Self {
+            left: vec![0.0; len],
+            right: vec![0.0; len],
+            write: 0,
+            phase: 0.0,
+        }
+    }
+
+    /// Clears the delay memory.
+    pub fn reset(&mut self) {
+        self.left.fill(0.0);
+        self.right.fill(0.0);
+    }
+
+    fn read(buffer: &[f32], write: usize, delay: f32) -> f32 {
+        let len = buffer.len();
+        let delay = delay.clamp(1.0, (len - 2) as f32);
+        let whole = delay as usize;
+        let frac = delay - whole as f32;
+        let a = buffer
+            .get((write + len - whole) % len)
+            .copied()
+            .unwrap_or(0.0);
+        let b = buffer
+            .get((write + len - whole - 1) % len)
+            .copied()
+            .unwrap_or(0.0);
+        a + (b - a) * frac
+    }
+
+    /// Processes a block in place.
+    pub fn process(&mut self, left: &mut [f32], right: &mut [f32], p: &[f32], ctx: ProcessContext) {
+        let len = self.left.len();
+        if len < 4 || self.right.len() != len {
+            return;
+        }
+        let param = |i: usize, default: f32| p.get(i).copied().unwrap_or(default);
+        let sr = ctx.sample_rate.max(1.0);
+        let rate = param(0, 0.8).max(0.0);
+        let depth = param(1, 3.0).max(0.0) * 0.001 * sr;
+        let base = param(2, 12.0).max(0.0) * 0.001 * sr;
+        let mix = param(3, 0.4).clamp(0.0, 1.0);
+        let step = rate / sr;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if let Some(slot) = self.left.get_mut(self.write) {
+                *slot = *l;
+            }
+            if let Some(slot) = self.right.get_mut(self.write) {
+                *slot = *r;
+            }
+            let lfo_l = (self.phase * std::f32::consts::TAU).sin();
+            let lfo_r = ((self.phase + 0.25) * std::f32::consts::TAU).sin();
+            let wet_l = Self::read(&self.left, self.write, base + depth * (0.5 + 0.5 * lfo_l));
+            let wet_r = Self::read(&self.right, self.write, base + depth * (0.5 + 0.5 * lfo_r));
+            *l += (wet_l - *l) * mix;
+            *r += (wet_r - *r) * mix;
+            self.write = (self.write + 1) % len;
+            self.phase = (self.phase + step).fract();
+        }
+    }
+}
+
+#[cfg(test)]
+mod chorus_tests {
+    use super::*;
+
+    #[test]
+    fn chorus_delays_and_modulates() {
+        let ctx = ProcessContext {
+            sample_rate: 10_000.0,
+            tempo_bpm: 120.0,
+        };
+        let mut chorus = Chorus::new(ctx.sample_rate);
+        // Fully wet, no modulation: a pure 10 ms delay.
+        let mut l = vec![0.0; 300];
+        let mut r = vec![0.0; 300];
+        l[0] = 1.0;
+        r[0] = 1.0;
+        chorus.process(&mut l, &mut r, &[0.0, 0.0, 10.0, 1.0], ctx);
+        assert!(l[0].abs() < 1e-6);
+        assert!((l[100] - 1.0).abs() < 1e-4, "got {}", l[100]);
+        // With modulation the output stays bounded and finite.
+        let mut l: Vec<f32> = (0..10_000).map(|i| (i as f32 * 0.03).sin()).collect();
+        let mut r = l.clone();
+        chorus.process(&mut l, &mut r, &[5.0, 10.0, 30.0, 0.5], ctx);
+        assert!(l.iter().chain(&r).all(|s| s.is_finite() && s.abs() <= 1.01));
+    }
+}

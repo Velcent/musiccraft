@@ -239,3 +239,63 @@ fn shortcuts_run_commands_but_not_while_typing() {
     h.settle();
     assert!(h.frame(vec![space(true)]).is_empty());
 }
+
+#[test]
+fn typing_keyboard_performs_notes_instead_of_shortcuts() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.settle();
+    let key = |key, pressed| Event::Key {
+        key,
+        physical_key: None,
+        pressed,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    // Off: L toggles the play mode as usual.
+    assert_eq!(
+        h.frame(vec![key(egui::Key::L, true)]),
+        ["transport.toggle_mode"]
+    );
+    h.state.typing_keyboard = true;
+    let input = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1400.0, 900.0))),
+        events: vec![
+            key(egui::Key::Z, true),
+            key(egui::Key::Q, true),
+            key(egui::Key::Z, false),
+        ],
+        ..Default::default()
+    };
+    let engine = EngineStatus::default();
+    let history = History::default();
+    let frame = Frame {
+        project: h.session.project(),
+        engine: &engine,
+        history: &history,
+    };
+    let mut actions = Vec::new();
+    let mut out = h
+        .ctx
+        .run_ui(input, |ui| actions = show(ui, &mut h.state, &frame));
+    out.textures_delta.clear();
+    assert_eq!(
+        actions,
+        [
+            Action::Perform {
+                channel: 0,
+                key: 48,
+                on: true
+            },
+            Action::Perform {
+                channel: 0,
+                key: 60,
+                on: true
+            },
+            Action::Perform {
+                channel: 0,
+                key: 48,
+                on: false
+            },
+        ]
+    );
+}

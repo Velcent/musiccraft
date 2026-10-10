@@ -3,11 +3,13 @@
 
 mod autosave;
 mod midi;
+mod recorder;
 mod screenshot;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
@@ -48,6 +50,8 @@ struct App {
     title: String,
     screenshot: Option<screenshot::Request>,
     autosave: autosave::Autosave,
+    recorder: recorder::Recorder,
+    midi_notes: Option<Receiver<midi::Played>>,
 }
 
 /// A new project with a few drum channels, ready to program.
@@ -98,7 +102,7 @@ fn parse_args() -> Result<Options, String> {
 }
 
 impl App {
-    fn new(options: &Options) -> Self {
+    fn new(options: &Options, ctx: &egui::Context) -> Self {
         let mut status = None;
         let keymap = match &options.keymap {
             Some(path) => match std::fs::read_to_string(path)
@@ -127,23 +131,33 @@ impl App {
         }
 
         let selected_channel = Arc::new(AtomicUsize::new(0));
+        let (played_tx, played_rx) = channel();
         let (audio, audio_label, midi, midi_label) = match OutputDevice::default_device() {
             Ok(device) => {
                 let label = format!("{} · {} Hz", device.name(), device.sample_rate());
                 let rate = device.sample_rate();
                 let (engine, mut handle) = engine_pair(rate);
                 let live = handle.take_live_sender();
+                let meters = Arc::clone(handle.meters());
                 match device.start(engine) {
                     Ok(output) => {
-                        let (midi, midi_label) =
-                            match live.map(|l| midi::connect(l, Arc::clone(&selected_channel))) {
-                                Some(Ok(midi)) => {
-                                    let label = format!("MIDI: {}", midi.name);
-                                    (Some(midi), label)
-                                }
-                                Some(Err(err)) => (None, format!("MIDI: {err}")),
-                                None => (None, "MIDI: unavailable".to_owned()),
-                            };
+                        let connected = live.map(|l| {
+                            midi::connect(
+                                l,
+                                Arc::clone(&selected_channel),
+                                meters,
+                                played_tx,
+                                ctx.clone(),
+                            )
+                        });
+                        let (midi, midi_label) = match connected {
+                            Some(Ok(midi)) => {
+                                let label = format!("MIDI: {}", midi.name);
+                                (Some(midi), label)
+                            }
+                            Some(Err(err)) => (None, format!("MIDI: {err}")),
+                            None => (None, "MIDI: unavailable".to_owned()),
+                        };
                         (
                             Some(Audio {
                                 _output: output,
@@ -192,6 +206,8 @@ impl App {
             title: String::new(),
             screenshot: screenshot::Request::from_env(),
             autosave: autosave::Autosave::new(revision),
+            recorder: recorder::Recorder::default(),
+            midi_notes: Some(played_rx),
         }
     }
 
@@ -237,6 +253,23 @@ impl App {
                 });
                 return;
             }
+            Action::Perform { channel, key, on } => {
+                let channel16 = u16::try_from(channel).unwrap_or(0);
+                self.send(if on {
+                    EngineMessage::NoteOn {
+                        channel: channel16,
+                        key,
+                        velocity: 0.8,
+                    }
+                } else {
+                    EngineMessage::NoteOff {
+                        channel: channel16,
+                        key,
+                    }
+                });
+                self.record(key, if on { 100 } else { 0 }, None);
+                return;
+            }
             Action::PreviewShort { channel, key } => {
                 let channel = u16::try_from(channel).unwrap_or(0);
                 self.send(EngineMessage::NoteOn {
@@ -264,6 +297,67 @@ impl App {
         match result {
             Ok(outcome) => self.ui.set_status(outcome.message, false),
             Err(err) => self.ui.set_status(err.to_string(), true),
+        }
+    }
+
+    /// Feeds a live note into the recorder; velocity 0 means note off.
+    /// `position` is the engine position when the note happened, if known.
+    fn record(&mut self, key: u8, velocity: u8, position: Option<f64>) {
+        let Some(audio) = &self.audio else {
+            return;
+        };
+        let meters = audio.handle.meters();
+        if !self.ui.record || !meters.is_playing() {
+            self.recorder.clear();
+            return;
+        }
+        let position = position.unwrap_or_else(|| meters.position_ticks());
+        if velocity > 0 {
+            self.recorder.note_on(key, velocity, position);
+            return;
+        }
+        let project = self.session.project();
+        let pattern_ticks = project.current_pattern().length_ticks();
+        let loop_ticks = match project.play_mode {
+            musiccraft_project::PlayMode::Pattern => pattern_ticks,
+            musiccraft_project::PlayMode::Song => project.song_length_ticks(),
+        };
+        let Some(note) = self
+            .recorder
+            .note_off(key, position, loop_ticks, pattern_ticks)
+        else {
+            return;
+        };
+        let channel = self.ui.selected_channel;
+        if channel >= project.channels.len() {
+            return;
+        }
+        let invocation = Invocation::new(
+            "note.add",
+            [
+                (channel + 1).to_string(),
+                format!("{}t", note.start),
+                format!("{}t", note.length),
+                note.key.to_string(),
+                note.velocity.to_string(),
+            ],
+        );
+        match self.session.run(&invocation) {
+            Ok(outcome) => self
+                .ui
+                .set_status(format!("recorded: {}", outcome.message), false),
+            Err(err) => self.ui.set_status(err.to_string(), true),
+        }
+    }
+
+    fn drain_midi(&mut self) {
+        let notes: Vec<midi::Played> = self
+            .midi_notes
+            .as_ref()
+            .map(|rx| rx.try_iter().collect())
+            .unwrap_or_default();
+        for (key, velocity, position) in notes {
+            self.record(key, velocity, Some(position));
         }
     }
 
@@ -327,6 +421,7 @@ impl eframe::App for App {
         for action in actions {
             self.apply(&ctx, action);
         }
+        self.drain_midi();
         self.selected_channel
             .store(self.ui.selected_channel, Ordering::Relaxed);
         self.sync();
@@ -380,7 +475,7 @@ fn main() -> eframe::Result {
         native,
         Box::new(move |creation| {
             musiccraft_ui::apply_theme(&creation.egui_ctx);
-            Ok(Box::new(App::new(&options)))
+            Ok(Box::new(App::new(&options, &creation.egui_ctx)))
         }),
     )
 }

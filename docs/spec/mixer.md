@@ -26,7 +26,9 @@
 | `eq` | low gain/freq (shelf), mid gain/freq/q (peak), high gain/freq (shelf) |
 | `delay` | time in beats (tempo-synced), feedback, mix, ping_pong, damping |
 | `reverb` | size, damping, width, mix |
+| `chorus` | rate Hz, depth ms, delay ms, mix |
 | `compressor` | threshold dB, ratio, attack ms, release ms, makeup dB |
+| `limiter` | input gain dB, ceiling dB, release ms (instant attack; output never exceeds the ceiling) |
 | `distortion` | drive dB, mix, output dB |
 
 Ranges and defaults are defined in `musiccraft-params`.
@@ -41,4 +43,5 @@ Ranges and defaults are defined in `musiccraft-params`.
   slots) follows the workflow described in the FL Studio online manual, "Mixer"
   section. Effects are our own implementations of textbook designs: RBJ "Audio EQ
   Cookbook" biquads, Freeverb-style reverb (public domain algorithm by Jezar),
-  feed-forward compression, tanh soft clipping.
+  feed-forward compression, peak limiting, a modulated-delay chorus, tanh soft
+  clipping.

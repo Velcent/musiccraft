@@ -53,6 +53,11 @@ impl Checker {
                 None => Err(format!("`{chord}` is not bound")),
             };
         }
+        if let Some(kind) = requirement.strip_prefix("fx:") {
+            return musiccraft_params::EffectKind::parse(kind)
+                .map(|_| ())
+                .ok_or_else(|| format!("effect `{kind}` does not exist"));
+        }
         if let Some(file) = requirement.strip_prefix("spec:") {
             return if self.spec_dir.join(file).is_file() {
                 Ok(())
@@ -223,6 +228,8 @@ mod tests {
         assert!(c.check("key:F9=view.toggle playlist").is_err());
         assert!(c.check("spec:transport.md").is_ok());
         assert!(c.check("spec:nope.md").is_err());
+        assert!(c.check("fx:reverb").is_ok());
+        assert!(c.check("fx:phaser").is_err());
         assert!(c.check("wat").is_err());
     }
 

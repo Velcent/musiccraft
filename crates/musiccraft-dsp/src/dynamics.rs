@@ -58,6 +58,50 @@ impl Compressor {
     }
 }
 
+/// Peak limiter with instant attack and exponential release. Output never
+/// exceeds the ceiling.
+///
+/// Parameters: `[input gain dB, ceiling dB, release ms]`.
+#[derive(Debug, Clone)]
+pub struct Limiter {
+    gain: f32,
+}
+
+impl Default for Limiter {
+    fn default() -> Self {
+        Self { gain: 1.0 }
+    }
+}
+
+impl Limiter {
+    /// Current gain reduction in dB (≥ 0), for metering.
+    #[must_use]
+    pub fn gain_reduction_db(&self) -> f32 {
+        -gain_to_db(self.gain)
+    }
+
+    /// Processes a block in place.
+    pub fn process(&mut self, left: &mut [f32], right: &mut [f32], p: &[f32], ctx: ProcessContext) {
+        let param = |i: usize, default: f32| p.get(i).copied().unwrap_or(default);
+        let input = db_to_gain(param(0, 0.0));
+        let ceiling = db_to_gain(param(1, -0.3).min(0.0));
+        let release_ms = param(2, 80.0).max(1.0);
+        let release = (-1.0 / (release_ms * 0.001 * ctx.sample_rate.max(1.0))).exp();
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let (xl, xr) = (*l * input, *r * input);
+            let peak = xl.abs().max(xr.abs());
+            let target = if peak > ceiling { ceiling / peak } else { 1.0 };
+            self.gain = if target < self.gain {
+                target
+            } else {
+                target + (self.gain - target) * release
+            };
+            *l = (xl * self.gain).clamp(-ceiling, ceiling);
+            *r = (xr * self.gain).clamp(-ceiling, ceiling);
+        }
+    }
+}
+
 /// Soft-clipping (tanh) distortion.
 ///
 /// Parameters: `[drive dB, mix, output dB]`.
@@ -109,6 +153,25 @@ mod tests {
         let mut r = vec![0.01; 100];
         comp.process(&mut l, &mut r, &[-20.0, 4.0, 1.0, 50.0, 0.0], ctx);
         assert!((l[99] - 0.01).abs() < 1e-6);
+    }
+
+    #[test]
+    fn limiter_holds_the_ceiling_and_recovers() {
+        let mut limiter = Limiter::default();
+        let ctx = ProcessContext {
+            sample_rate: 1_000.0,
+            tempo_bpm: 120.0,
+        };
+        let mut l = vec![2.0; 100];
+        let mut r = vec![-2.0; 100];
+        limiter.process(&mut l, &mut r, &[0.0, -6.0206, 20.0], ctx);
+        assert!(l.iter().chain(&r).all(|s| s.abs() <= 0.5 + 1e-4));
+        assert!((l[99] - 0.5).abs() < 1e-3);
+        assert!((limiter.gain_reduction_db() - 12.04).abs() < 0.05);
+        let mut quiet_l = vec![0.1; 500];
+        let mut quiet_r = vec![0.1; 500];
+        limiter.process(&mut quiet_l, &mut quiet_r, &[0.0, -6.0206, 20.0], ctx);
+        assert!((quiet_l[499] - 0.1).abs() < 1e-3, "released back to unity");
     }
 
     #[test]

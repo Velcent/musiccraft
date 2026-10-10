@@ -39,6 +39,16 @@ pub enum Action {
         /// `true` for note on, `false` for note off.
         on: bool,
     },
+    /// A live performance note on the selected channel (typing keyboard). The app
+    /// records these into the pattern while recording.
+    Perform {
+        /// Channel index.
+        channel: usize,
+        /// MIDI key.
+        key: u8,
+        /// `true` for note on, `false` for note off.
+        on: bool,
+    },
     /// Play a short audition note that the app stops by itself.
     PreviewShort {
         /// Channel index.
@@ -134,6 +144,10 @@ pub struct UiState {
     pub meters: Vec<(f32, f32)>,
     /// Location of the last autosave, offered by File → Recover autosave.
     pub autosave_path: Option<String>,
+    /// Letter keys play notes on the selected channel.
+    pub typing_keyboard: bool,
+    /// Live notes are written into the selected pattern while playing.
+    pub record: bool,
     gesture: u64,
     roll: piano_roll::RollState,
     playlist: playlist::PlaylistState,
@@ -158,6 +172,8 @@ impl UiState {
             status: StatusLine::default(),
             meters: Vec::new(),
             autosave_path: None,
+            typing_keyboard: false,
+            record: false,
             gesture: 0,
             roll: piano_roll::RollState::default(),
             playlist: playlist::PlaylistState::default(),
@@ -241,31 +257,95 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     resolve_ui_actions(state, frame, actions)
 }
 
+/// Typing-keyboard layout: (key, semitones above C4). The bottom letter row is
+/// one octave, the top row the next, with the number row as black keys.
+const TYPING_KEYS: [(egui::Key, u8); 29] = {
+    use egui::Key::*;
+    [
+        (Z, 0),
+        (S, 1),
+        (X, 2),
+        (D, 3),
+        (C, 4),
+        (V, 5),
+        (G, 6),
+        (B, 7),
+        (H, 8),
+        (N, 9),
+        (J, 10),
+        (M, 11),
+        (Comma, 12),
+        (Q, 12),
+        (Num2, 13),
+        (W, 14),
+        (Num3, 15),
+        (E, 16),
+        (R, 17),
+        (Num5, 18),
+        (T, 19),
+        (Num6, 20),
+        (Y, 21),
+        (Num7, 22),
+        (U, 23),
+        (I, 24),
+        (Num9, 25),
+        (O, 26),
+        (P, 28),
+    ]
+};
+/// Key that the first typing-keyboard note (Z) plays: C4.
+const TYPING_BASE: u8 = 48;
+
+fn typing_note(key: egui::Key, modifiers: egui::Modifiers) -> Option<u8> {
+    if modifiers.any() && !modifiers.shift_only() {
+        return None;
+    }
+    TYPING_KEYS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, offset)| TYPING_BASE + offset)
+}
+
 fn handle_keys(ctx: &egui::Context, state: &UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     if ctx.egui_wants_keyboard_input() {
         return;
     }
-    let pressed: Vec<Chord> = ctx.input(|i| {
+    let events: Vec<(egui::Key, bool, bool, egui::Modifiers)> = ctx.input(|i| {
         i.events
             .iter()
             .filter_map(|event| match event {
                 egui::Event::Key {
                     key,
-                    pressed: true,
-                    repeat: false,
+                    pressed,
+                    repeat,
                     modifiers,
                     ..
-                } => Some(Chord::from_event(*key, *modifiers)),
+                } => Some((*key, *pressed, *repeat, *modifiers)),
                 _ => None,
             })
             .collect()
     });
-    for chord in pressed {
-        if let Some(invocation) = state.keymap.lookup(&chord) {
+    let channel_exists = state.selected_channel < frame.project.channels.len();
+    for (key, pressed, repeat, modifiers) in events {
+        if state.typing_keyboard && channel_exists {
+            if let Some(note) = typing_note(key, modifiers) {
+                if !repeat {
+                    actions.push(Action::Perform {
+                        channel: state.selected_channel,
+                        key: note,
+                        on: pressed,
+                    });
+                }
+                continue;
+            }
+        }
+        if !pressed || repeat {
+            continue;
+        }
+        if let Some(invocation) = state.keymap.lookup(&Chord::from_event(key, modifiers)) {
             actions.push(Action::Run(invocation.clone()));
         }
     }
-    let _ = frame;
 }
 
 /// Handles `view.*` and `ui.*` invocations here; passes the rest through.
@@ -301,6 +381,8 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             "ui.save_as" => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.quit" => out.push(Action::Quit),
+            "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
+            "ui.toggle_record" => state.record = !state.record,
             _ => out.push(action),
         }
     }

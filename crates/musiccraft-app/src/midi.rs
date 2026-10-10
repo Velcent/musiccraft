@@ -3,9 +3,15 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::Sender;
 
+use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
-use musiccraft_engine::{LiveEvent, LiveSender};
+use musiccraft_engine::{LiveEvent, LiveSender, Meters};
+
+/// A note event forwarded to the main thread for recording: (key, velocity or 0
+/// for note off, engine position in ticks when it arrived).
+pub type Played = (u8, u8, f64);
 
 /// A live MIDI input connection. Dropping it disconnects.
 pub struct MidiIn {
@@ -39,7 +45,13 @@ fn decode(message: &[u8], channel: u16) -> Option<LiveEvent> {
 /// # Errors
 ///
 /// Returns a description when there is no port or connecting fails.
-pub fn connect(mut sender: LiveSender, selected: Arc<AtomicUsize>) -> Result<MidiIn, String> {
+pub fn connect(
+    mut sender: LiveSender,
+    selected: Arc<AtomicUsize>,
+    meters: Arc<Meters>,
+    played: Sender<Played>,
+    ctx: egui::Context,
+) -> Result<MidiIn, String> {
     let input = MidiInput::new("MusicCraft").map_err(|e| e.to_string())?;
     let ports = input.ports();
     // Prefer a real device over virtual loopback ports such as ALSA's "Midi Through".
@@ -62,6 +74,15 @@ pub fn connect(mut sender: LiveSender, selected: Arc<AtomicUsize>) -> Result<Mid
                 let channel = u16::try_from(selected.load(Ordering::Relaxed)).unwrap_or(0);
                 if let Some(event) = decode(message, channel) {
                     sender.send(event);
+                    let position = meters.position_ticks();
+                    let note = match event {
+                        LiveEvent::NoteOn { key, velocity, .. } => {
+                            (key, (velocity * 127.0).round().max(1.0) as u8, position)
+                        }
+                        LiveEvent::NoteOff { key, .. } => (key, 0, position),
+                    };
+                    let _ = played.send(note);
+                    ctx.request_repaint();
                 }
             },
             (),

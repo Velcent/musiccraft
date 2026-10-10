@@ -23,6 +23,21 @@
   in the pattern. File ticks are scaled to 96 per beat. Notes left sounding at a
   track's end stop there. SMPTE-timed files are rejected. One undo step.
 
+## Chords, scales and recording
+
+- `note.add_chord <channel> <start> <length> <root> <quality> [velocity]` adds
+  the notes of a chord (major, minor, dim, aug, sus2, sus4, maj7, min7, dom7,
+  dim7, add9) as one undo step. The piano roll's chord menu makes a click draw
+  the chosen chord.
+- The scale menu tints the rows of a scale (major, natural and harmonic minor,
+  dorian, mixolydian, major and minor pentatonic) on any root; the root row is
+  tinted more strongly. Display only.
+- With recording armed (REC button or Ctrl+E) and playback running, notes played on
+  a MIDI keyboard or the typing keyboard are written into the selected pattern on
+  the selected channel at the playhead position (folded into the pattern length
+  in song mode). Each recorded note is one undo step. Notes held across the loop
+  point keep their full length.
+
 ## Pattern length
 
 - A pattern has a minimum length in steps (default 16). When notes start past it,

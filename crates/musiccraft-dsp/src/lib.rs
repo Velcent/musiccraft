@@ -12,12 +12,12 @@ mod sample;
 mod time;
 mod util;
 
-pub use dynamics::{Compressor, Distortion};
+pub use dynamics::{Compressor, Distortion, Limiter};
 pub use effect::{Effect, FilterEffect, ProcessContext, ThreeBandEq};
 pub use envelope::{Adsr, AdsrParams};
 pub use filter::{Biquad, Svf, SvfMode};
 pub use osc::{Oscillator, Sine, Waveform};
 pub use reverb::Reverb;
 pub use sample::SampleBuffer;
-pub use time::Delay;
+pub use time::{Chorus, Delay};
 pub use util::{db_to_gain, gain_to_db, key_to_hz, pan_gains};

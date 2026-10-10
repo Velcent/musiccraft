@@ -1,6 +1,6 @@
 use musiccraft_params::{EffectKind, MAX_EFFECT_PARAMS};
 
-use crate::{Biquad, Compressor, Delay, Distortion, Reverb, Svf, SvfMode};
+use crate::{Biquad, Chorus, Compressor, Delay, Distortion, Limiter, Reverb, Svf, SvfMode};
 
 /// Information every effect may need while processing.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -86,6 +86,10 @@ pub enum Effect {
     Compressor(Compressor),
     /// See [`Distortion`].
     Distortion,
+    /// See [`Chorus`].
+    Chorus(Chorus),
+    /// See [`Limiter`].
+    Limiter(Limiter),
 }
 
 impl Effect {
@@ -100,6 +104,8 @@ impl Effect {
             EffectKind::Reverb => Self::Reverb(Reverb::new(sample_rate)),
             EffectKind::Compressor => Self::Compressor(Compressor::new()),
             EffectKind::Distortion => Self::Distortion,
+            EffectKind::Chorus => Self::Chorus(Chorus::new(sample_rate)),
+            EffectKind::Limiter => Self::Limiter(Limiter::default()),
         }
     }
 
@@ -113,6 +119,8 @@ impl Effect {
             Self::Reverb(_) => EffectKind::Reverb,
             Self::Compressor(_) => EffectKind::Compressor,
             Self::Distortion => EffectKind::Distortion,
+            Self::Chorus(_) => EffectKind::Chorus,
+            Self::Limiter(_) => EffectKind::Limiter,
         }
     }
 
@@ -131,6 +139,8 @@ impl Effect {
             Self::Reverb(fx) => fx.process(left, right, params),
             Self::Compressor(fx) => fx.process(left, right, params, ctx),
             Self::Distortion => Distortion::process(left, right, params),
+            Self::Chorus(fx) => fx.process(left, right, params, ctx),
+            Self::Limiter(fx) => fx.process(left, right, params, ctx),
         }
     }
 
@@ -143,6 +153,8 @@ impl Effect {
             Self::Reverb(fx) => fx.reset(),
             Self::Compressor(fx) => fx.reset(),
             Self::Distortion => {}
+            Self::Chorus(fx) => fx.reset(),
+            Self::Limiter(fx) => *fx = Limiter::default(),
         }
     }
 }

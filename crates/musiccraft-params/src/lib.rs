@@ -177,15 +177,21 @@ pub enum EffectKind {
     Compressor,
     /// Soft-clipping distortion.
     Distortion,
+    /// Stereo chorus (modulated delay).
+    Chorus,
+    /// Peak limiter.
+    Limiter,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 6] = [
+pub const EFFECT_KINDS: [EffectKind; 8] = [
     EffectKind::Filter,
     EffectKind::Eq,
     EffectKind::Delay,
     EffectKind::Reverb,
+    EffectKind::Chorus,
     EffectKind::Compressor,
+    EffectKind::Limiter,
     EffectKind::Distortion,
 ];
 
@@ -229,6 +235,19 @@ const COMPRESSOR_PARAMS: &[ParamSpec] = &[
     spec("makeup", 0.0, 24.0, 0.0, "dB"),
 ];
 
+const CHORUS_PARAMS: &[ParamSpec] = &[
+    spec("rate", 0.05, 5.0, 0.8, "Hz"),
+    spec("depth", 0.0, 10.0, 3.0, "ms"),
+    spec("delay", 5.0, 30.0, 12.0, "ms"),
+    spec("mix", 0.0, 1.0, 0.4, ""),
+];
+
+const LIMITER_PARAMS: &[ParamSpec] = &[
+    spec("input", 0.0, 24.0, 0.0, "dB"),
+    spec("ceiling", -12.0, 0.0, -0.3, "dB"),
+    spec("release", 10.0, 1_000.0, 80.0, "ms"),
+];
+
 const DISTORTION_PARAMS: &[ParamSpec] = &[
     spec("drive", 0.0, 48.0, 12.0, "dB"),
     spec("mix", 0.0, 1.0, 1.0, ""),
@@ -246,6 +265,8 @@ impl EffectKind {
             Self::Reverb => "reverb",
             Self::Compressor => "compressor",
             Self::Distortion => "distortion",
+            Self::Chorus => "chorus",
+            Self::Limiter => "limiter",
         }
     }
 
@@ -265,6 +286,8 @@ impl EffectKind {
             Self::Reverb => REVERB_PARAMS,
             Self::Compressor => COMPRESSOR_PARAMS,
             Self::Distortion => DISTORTION_PARAMS,
+            Self::Chorus => CHORUS_PARAMS,
+            Self::Limiter => LIMITER_PARAMS,
         }
     }
 

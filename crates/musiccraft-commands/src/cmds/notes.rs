@@ -28,6 +28,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             add,
         ),
         cmd(
+            "note.add_chord",
+            "note.add_chord <channel> <start> <length> <root> <quality> [velocity] [@pattern]",
+            "Add a chord (major, minor, dim, aug, sus2, sus4, maj7, min7, dom7, dim7, add9).",
+            add_chord,
+        ),
+        cmd(
             "note.remove",
             "note.remove <channel> <start> <key> [@pattern]",
             "Remove the note at a start time and key.",
@@ -481,6 +487,49 @@ fn import_midi(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
     });
     Ok(Outcome::undoable(
         format!("imported {count} notes into channel {}", target.channel + 1),
+        target.set_all_inverse(&old),
+    ))
+}
+
+fn add_chord(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    use musiccraft_project::music::{CHORDS, chord};
+    args.expect(5, 6)?;
+    let target = Target::resolve(project, args)?;
+    let start = args.time(1, TICKS_PER_STEP)?;
+    let length = args.duration(2, TICKS_PER_STEP)?;
+    let root = args.key(3)?;
+    let quality = args.str(4)?;
+    let intervals = chord(quality).ok_or_else(|| {
+        let names: Vec<_> = CHORDS.iter().map(|(n, _)| *n).collect();
+        args.invalid(format!(
+            "unknown chord `{quality}`; choose from {}",
+            names.join(", ")
+        ))
+    })?;
+    let velocity = args.velocity(5, DEFAULT_VELOCITY)?;
+    if intervals
+        .iter()
+        .any(|i| u16::from(root) + u16::from(*i) > 127)
+    {
+        return Err(args.invalid("the chord goes above key 127"));
+    }
+    let channel = project.channels[target.channel].id;
+    let added: Vec<Note> = intervals
+        .iter()
+        .map(|i| Note {
+            channel,
+            start,
+            length,
+            key: root + i,
+            velocity,
+        })
+        .collect();
+    let (old, _) = rewrite(project, &target, |mut notes| {
+        notes.extend(added);
+        notes
+    });
+    Ok(Outcome::undoable(
+        format!("added {} {quality} chord at {start}t", key_name(root)),
         target.set_all_inverse(&old),
     ))
 }

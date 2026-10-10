@@ -54,6 +54,7 @@ const SCRIPT: &[&str] = &[
     "note.set_velocity 3 0 C4 127",
     "note.transpose 3 12",
     "note.quantize 3 2",
+    "note.add_chord 3 8 4 A3 min7 90",
     "channel.clone 1",
     "channel.move 4 1",
     "pattern.add Verse",
@@ -244,6 +245,8 @@ fn errors_leave_the_project_unchanged() {
         "note.add 1 0 1 60 @7",
         "note.remove 1 0 60",
         "note.transpose 1 200",
+        "note.add_chord 1 0 1 C5 jazzy",
+        "note.add_chord 1 0 1 G10 major",
         "note.set_all 1 [[0,0,60,100]]",
         "step.toggle 1 99999",
         "pattern.set_length 1 0",
@@ -350,4 +353,21 @@ fn import_midi_converts_ticks_and_undoes() {
         &format!("note.import_midi 1 \"{}\"", path.display()),
     );
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn chords_add_stacked_notes() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add_chord 1 0 4 C5 maj7");
+    let keys: Vec<u8> = s
+        .project()
+        .current_pattern()
+        .notes
+        .iter()
+        .map(|n| n.key)
+        .collect();
+    assert_eq!(keys, [60, 64, 67, 71]);
+    run(&mut s, "edit.undo");
+    assert!(s.project().current_pattern().notes.is_empty());
 }
