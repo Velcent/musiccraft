@@ -1,5 +1,7 @@
 //! The piano roll: edit the selected channel's notes in the selected pattern.
 
+use std::collections::BTreeSet;
+
 use egui::{
     Align2, Color32, FontId, PointerButton, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2,
 };
@@ -54,6 +56,16 @@ pub struct RollState {
     scale: Option<(u8, usize)>,
     /// Note whose velocity is being dragged in the lane.
     lane_drag: Option<Note>,
+    /// Selected notes of the shown channel and pattern, as (start, key).
+    pub(crate) selection: BTreeSet<(u32, u8)>,
+    /// (channel, pattern) the selection belongs to.
+    selection_for: Option<(usize, usize)>,
+    /// Rubber-band selection in progress: (origin, current) in screen space.
+    marquee: Option<(Pos2, Pos2)>,
+    /// Copied notes, with starts relative to the earliest one.
+    clipboard: Vec<Note>,
+    /// Snapped tick under the pointer, used as the paste position.
+    hover_tick: Option<u32>,
 }
 
 impl Default for RollState {
@@ -71,6 +83,11 @@ impl Default for RollState {
             chord: None,
             scale: None,
             lane_drag: None,
+            selection: BTreeSet::new(),
+            selection_for: None,
+            marquee: None,
+            clipboard: Vec::new(),
+            hover_tick: None,
         }
     }
 }
@@ -85,6 +102,103 @@ fn key_of_row(row: u32) -> u8 {
 
 pub(crate) fn row_of_key(key: u8) -> u32 {
     KEYS - 1 - u32::from(key)
+}
+
+fn ticks(value: u32) -> String {
+    format!("{value}t")
+}
+
+/// Wraps several invocations into one undo step.
+fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
+    match invocations.len() {
+        0 => None,
+        1 => invocations.into_iter().next(),
+        _ => Some(Invocation::new(
+            musiccraft_commands::BATCH,
+            invocations.iter().map(ToString::to_string),
+        )),
+    }
+}
+
+/// Moves notes by `dt` ticks and `dk` semitones as one undo step. The deltas are
+/// clamped so nothing moves before the start or outside the keyboard, and the
+/// notes are processed in an order where no moved note lands on one that has not
+/// moved yet.
+fn clamp_delta(notes: &[Note], dt: i64, dk: i32) -> (i64, i32) {
+    let min_start = notes.iter().map(|n| i64::from(n.start)).min().unwrap_or(0);
+    let (lo, hi) = notes.iter().fold((127_i32, 0_i32), |(lo, hi), n| {
+        (lo.min(i32::from(n.key)), hi.max(i32::from(n.key)))
+    });
+    (dt.max(-min_start), dk.clamp(-lo, 127 - hi))
+}
+
+fn move_notes(channel: usize, notes: &[Note], dt: i64, dk: i32) -> Option<Invocation> {
+    let (dt, dk) = clamp_delta(notes, dt, dk);
+    if notes.is_empty() || (dt == 0 && dk == 0) {
+        return None;
+    }
+    let mut ordered = notes.to_vec();
+    ordered.sort_by_key(|n| (n.start, n.key));
+    if dt > 0 || (dt == 0 && dk > 0) {
+        ordered.reverse();
+    }
+    let ch = (channel + 1).to_string();
+    batch(
+        ordered
+            .iter()
+            .map(|n| {
+                let start = u32::try_from(i64::from(n.start) + dt).unwrap_or(0);
+                let key = u8::try_from(i32::from(n.key) + dk).unwrap_or(n.key);
+                Invocation::new(
+                    "note.move",
+                    [
+                        ch.clone(),
+                        ticks(n.start),
+                        n.key.to_string(),
+                        ticks(start),
+                        key.to_string(),
+                    ],
+                )
+            })
+            .collect(),
+    )
+}
+
+/// Adds copies of `notes` shifted by `offset` ticks.
+fn add_notes(channel: usize, notes: &[Note], offset: u32) -> Option<Invocation> {
+    let ch = (channel + 1).to_string();
+    batch(
+        notes
+            .iter()
+            .map(|n| {
+                Invocation::new(
+                    "note.add",
+                    [
+                        ch.clone(),
+                        ticks(n.start + offset),
+                        ticks(n.length),
+                        n.key.to_string(),
+                        n.velocity.to_string(),
+                    ],
+                )
+            })
+            .collect(),
+    )
+}
+
+fn remove_notes(channel: usize, notes: &[Note]) -> Option<Invocation> {
+    let ch = (channel + 1).to_string();
+    batch(
+        notes
+            .iter()
+            .map(|n| {
+                Invocation::new(
+                    "note.remove",
+                    [ch.clone(), ticks(n.start), n.key.to_string()],
+                )
+            })
+            .collect(),
+    )
 }
 
 /// Invocation that finishes a drag gesture.
@@ -134,7 +248,7 @@ pub fn show(
         None => "Piano roll".to_owned(),
     };
     let area = state.workspace;
-    egui::Window::new(title)
+    let window = egui::Window::new(title)
         .id(egui::Id::new("piano-roll"))
         .open(&mut open)
         .default_pos(area.left_top() + egui::vec2(40.0, 60.0))
@@ -153,6 +267,13 @@ pub fn show(
             canvas(ui, state, frame, actions);
         });
     state.windows.piano_roll = open;
+    let hovered = window.is_some_and(|w| {
+        ctx.pointer_hover_pos()
+            .is_some_and(|p| w.response.rect.contains(p))
+    });
+    if open && hovered && !ctx.egui_wants_keyboard_input() {
+        keys(ctx, state, project, actions);
+    }
 }
 
 fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
@@ -267,6 +388,11 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         return;
     };
     let pattern = project.current_pattern();
+    let context = (channel_index, project.current_pattern);
+    if state.roll.selection_for != Some(context) {
+        state.roll.selection.clear();
+        state.roll.selection_for = Some(context);
+    }
     let length = pattern.length_ticks();
     let visible_ticks = length.max(2 * TICKS_PER_BAR) + TICKS_PER_BAR;
     let px_per_tick = state.roll.px_per_step / TICKS_PER_STEP as f32;
@@ -313,11 +439,20 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         }
         let notes: Vec<&Note> = pattern.notes_of(channel.id).collect();
         let color = theme::palette(channel_index);
-        let dragged = state.roll.drag.map(|d| d.original);
+        // While dragging, the affected notes are drawn at their new place.
+        let moving: Vec<Note> = match state.roll.drag {
+            Some(d) if d.kind == DragKind::Create => Vec::new(),
+            Some(d) => {
+                let mut group = selected_notes(state, &notes);
+                if group.is_empty() {
+                    group.push(d.original);
+                }
+                group
+            }
+            None => Vec::new(),
+        };
         for note in &notes {
-            if state.roll.drag.is_some_and(|d| d.kind != DragKind::Create)
-                && Some(**note) == dragged
-            {
+            if moving.contains(note) {
                 continue;
             }
             draw_note(
@@ -330,17 +465,72 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 color,
                 false,
             );
+            if state.roll.selection.contains(&(note.start, note.key)) {
+                let r = grid
+                    .span(row_of_key(note.key), note.start, note.length)
+                    .shrink2(vec2(0.5, 1.0));
+                painter.rect_stroke(
+                    r,
+                    3.0,
+                    Stroke::new(1.5, theme::TEXT),
+                    egui::StrokeKind::Inside,
+                );
+            }
         }
         if let Some(drag) = state.roll.drag {
-            draw_note(
-                &painter,
-                &grid,
-                drag.start,
-                drag.length,
-                drag.key,
-                state.roll.velocity,
-                color,
-                true,
+            if drag.kind == DragKind::Create {
+                draw_note(
+                    &painter,
+                    &grid,
+                    drag.start,
+                    drag.length,
+                    drag.key,
+                    state.roll.velocity,
+                    color,
+                    true,
+                );
+            } else {
+                let dt = i64::from(drag.start) - i64::from(drag.original.start);
+                let dk = i32::from(drag.key) - i32::from(drag.original.key);
+                let (dt, dk) = clamp_delta(&moving, dt, dk);
+                let dl = i64::from(drag.length) - i64::from(drag.original.length);
+                for note in &moving {
+                    let (start, key, length) = match drag.kind {
+                        DragKind::Resize => (
+                            note.start,
+                            note.key,
+                            u32::try_from((i64::from(note.length) + dl).max(1)).unwrap_or(1),
+                        ),
+                        _ => {
+                            let (start, key) = shifted(note, dt, dk);
+                            (start, key, note.length)
+                        }
+                    };
+                    draw_note(
+                        &painter,
+                        &grid,
+                        start,
+                        length,
+                        key,
+                        note.velocity,
+                        color,
+                        true,
+                    );
+                }
+            }
+        }
+        if let Some((origin, current)) = state.roll.marquee {
+            let area = Rect::from_two_pos(origin, current);
+            painter.rect_filled(
+                area,
+                0.0,
+                Color32::from_rgba_unmultiplied(0x2e, 0xc4, 0xb6, 24),
+            );
+            painter.rect_stroke(
+                area,
+                0.0,
+                Stroke::new(1.0, theme::ACCENT),
+                egui::StrokeKind::Inside,
             );
         }
 
@@ -528,6 +718,21 @@ fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, length: u32) {
     }
 }
 
+fn selected_notes(state: &UiState, notes: &[&Note]) -> Vec<Note> {
+    notes
+        .iter()
+        .filter(|n| state.roll.selection.contains(&(n.start, n.key)))
+        .map(|n| **n)
+        .collect()
+}
+
+fn shifted(note: &Note, dt: i64, dk: i32) -> (u32, u8) {
+    (
+        u32::try_from(i64::from(note.start) + dt).unwrap_or(0),
+        u8::try_from(i32::from(note.key) + dk).unwrap_or(note.key),
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn edit(
     ui: &egui::Ui,
@@ -548,6 +753,11 @@ fn edit(
     let snap = state.roll.snap;
     let at =
         |p: Pos2| -> (f32, Option<u8>) { (grid.tick_at(p.x), grid.row_at(p.y).map(key_of_row)) };
+    let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
+    state.roll.hover_tick = response
+        .hover_pos()
+        .filter(|p| editable(*p))
+        .map(|p| snap.floor(grid.tick_at(p.x)));
 
     if response.drag_started_by(PointerButton::Primary) {
         let origin = ui
@@ -556,49 +766,62 @@ fn edit(
         if let Some(origin) = origin {
             let (tick, key) = at(origin);
             let hit = hit_test(boxes.iter().copied(), origin);
-            state.roll.drag = match hit {
-                Hit::Body(i) | Hit::Edge(i) => notes.get(i).map(|n| NoteDrag {
-                    kind: if matches!(hit, Hit::Edge(_)) {
-                        DragKind::Resize
-                    } else {
-                        DragKind::Move
-                    },
-                    original: **n,
-                    grab: tick - n.start as f32,
-                    start: n.start,
-                    key: n.key,
-                    length: n.length,
-                }),
-                Hit::Empty => key.map(|key| {
-                    let start = snap.floor(tick);
-                    NoteDrag {
-                        kind: DragKind::Create,
-                        original: Note {
-                            channel: musiccraft_project::ChannelId(0),
+            if ctrl && hit == Hit::Empty {
+                state.roll.marquee = Some((origin, origin));
+            } else {
+                state.roll.drag = match hit {
+                    Hit::Body(i) | Hit::Edge(i) => notes.get(i).map(|n| {
+                        if !state.roll.selection.contains(&(n.start, n.key)) {
+                            state.roll.selection = BTreeSet::from([(n.start, n.key)]);
+                        }
+                        NoteDrag {
+                            kind: if matches!(hit, Hit::Edge(_)) {
+                                DragKind::Resize
+                            } else {
+                                DragKind::Move
+                            },
+                            original: **n,
+                            grab: tick - n.start as f32,
+                            start: n.start,
+                            key: n.key,
+                            length: n.length,
+                        }
+                    }),
+                    Hit::Empty => key.map(|key| {
+                        state.roll.selection.clear();
+                        let start = snap.floor(tick);
+                        NoteDrag {
+                            kind: DragKind::Create,
+                            original: Note {
+                                channel: musiccraft_project::ChannelId(0),
+                                start,
+                                length: state.roll.last_length,
+                                key,
+                                velocity: state.roll.velocity,
+                            },
+                            grab: tick - start as f32,
                             start,
-                            length: state.roll.last_length,
                             key,
-                            velocity: state.roll.velocity,
-                        },
-                        grab: tick - start as f32,
-                        start,
-                        key,
-                        length: state.roll.last_length,
-                    }
-                }),
-            };
-            if let Some(drag) = state.roll.drag {
-                actions.push(Action::Preview {
-                    channel,
-                    key: drag.key,
-                    on: true,
-                });
-                state.roll.preview = Some((channel, drag.key));
+                            length: state.roll.last_length,
+                        }
+                    }),
+                };
+                if let Some(drag) = state.roll.drag {
+                    actions.push(Action::Preview {
+                        channel,
+                        key: drag.key,
+                        on: true,
+                    });
+                    state.roll.preview = Some((channel, drag.key));
+                }
             }
         }
     }
     if response.dragged_by(PointerButton::Primary) {
-        if let (Some(drag), Some(pos)) = (&mut state.roll.drag, response.interact_pointer_pos()) {
+        let pos = response.interact_pointer_pos();
+        if let (Some((_, current)), Some(pos)) = (&mut state.roll.marquee, pos) {
+            *current = pos;
+        } else if let (Some(drag), Some(pos)) = (&mut state.roll.drag, pos) {
             let (tick, key) = at(pos);
             match drag.kind {
                 DragKind::Create | DragKind::Move => {
@@ -631,12 +854,58 @@ fn edit(
         }
     }
     if response.drag_stopped_by(PointerButton::Primary) {
-        if let Some(drag) = state.roll.drag.take() {
+        if let Some((origin, current)) = state.roll.marquee.take() {
+            let area = Rect::from_two_pos(origin, current);
+            if !shift {
+                state.roll.selection.clear();
+            }
+            for (i, rect) in boxes {
+                if let (true, Some(n)) = (area.intersects(*rect), notes.get(*i)) {
+                    state.roll.selection.insert((n.start, n.key));
+                }
+            }
+        } else if let Some(drag) = state.roll.drag.take() {
             if drag.kind != DragKind::Move {
                 state.roll.last_length = drag.length;
             }
-            if let Some(invocation) = finish(&drag, channel, state.roll.velocity) {
-                actions.push(Action::Run(invocation));
+            let selected = selected_notes(state, notes);
+            let group = selected.len() > 1;
+            match drag.kind {
+                DragKind::Move if group => {
+                    let dt = i64::from(drag.start) - i64::from(drag.original.start);
+                    let dk = i32::from(drag.key) - i32::from(drag.original.key);
+                    let (dt, dk) = clamp_delta(&selected, dt, dk);
+                    if let Some(invocation) = move_notes(channel, &selected, dt, dk) {
+                        actions.push(Action::Run(invocation));
+                        state.roll.selection =
+                            selected.iter().map(|n| shifted(n, dt, dk)).collect();
+                    }
+                }
+                DragKind::Resize if group => {
+                    let dl = i64::from(drag.length) - i64::from(drag.original.length);
+                    let ch = (channel + 1).to_string();
+                    let resizes = selected
+                        .iter()
+                        .filter(|_| dl != 0)
+                        .map(|n| {
+                            let length =
+                                u32::try_from((i64::from(n.length) + dl).max(1)).unwrap_or(1);
+                            Invocation::new(
+                                "note.resize",
+                                [ch.clone(), ticks(n.start), n.key.to_string(), ticks(length)],
+                            )
+                        })
+                        .collect();
+                    if let Some(invocation) = batch(resizes) {
+                        actions.push(Action::Run(invocation));
+                    }
+                }
+                _ => {
+                    if let Some(invocation) = finish(&drag, channel, state.roll.velocity) {
+                        actions.push(Action::Run(invocation));
+                    }
+                    state.roll.selection = BTreeSet::from([(drag.start, drag.key)]);
+                }
             }
         }
     }
@@ -651,19 +920,50 @@ fn edit(
     }
     if response.clicked_by(PointerButton::Primary) {
         if let Some(pos) = response.interact_pointer_pos().filter(|p| editable(*p)) {
-            if let (Hit::Empty, (tick, Some(key))) = (hit_test(boxes.iter().copied(), pos), at(pos))
-            {
-                actions.push(Action::Run(Invocation::new(
-                    "note.add",
-                    [
-                        (channel + 1).to_string(),
-                        format!("{}t", snap.floor(tick)),
-                        format!("{}t", state.roll.last_length),
-                        key.to_string(),
-                        state.roll.velocity.to_string(),
-                    ],
-                )));
-                actions.push(Action::PreviewShort { channel, key });
+            match (hit_test(boxes.iter().copied(), pos), at(pos)) {
+                (Hit::Body(i) | Hit::Edge(i), _) => {
+                    if let Some(n) = notes.get(i) {
+                        let id = (n.start, n.key);
+                        if shift {
+                            if !state.roll.selection.remove(&id) {
+                                state.roll.selection.insert(id);
+                            }
+                        } else {
+                            state.roll.selection = BTreeSet::from([id]);
+                        }
+                        actions.push(Action::PreviewShort {
+                            channel,
+                            key: n.key,
+                        });
+                    }
+                }
+                (Hit::Empty, (tick, Some(key))) => {
+                    let start = snap.floor(tick);
+                    let length = ticks(state.roll.last_length);
+                    let velocity = state.roll.velocity.to_string();
+                    let ch = (channel + 1).to_string();
+                    let invocation = match state.roll.chord {
+                        Some(quality) => Invocation::new(
+                            "note.add_chord",
+                            [
+                                ch,
+                                ticks(start),
+                                length,
+                                key.to_string(),
+                                quality.to_owned(),
+                                velocity,
+                            ],
+                        ),
+                        None => Invocation::new(
+                            "note.add",
+                            [ch, ticks(start), length, key.to_string(), velocity],
+                        ),
+                    };
+                    actions.push(Action::Run(invocation));
+                    actions.push(Action::PreviewShort { channel, key });
+                    state.roll.selection.clear();
+                }
+                _ => {}
             }
         }
     }
@@ -671,14 +971,8 @@ fn edit(
         if let Some(pos) = response.interact_pointer_pos() {
             if let Hit::Body(i) | Hit::Edge(i) = hit_test(boxes.iter().copied(), pos) {
                 if let Some(note) = notes.get(i) {
-                    actions.push(Action::Run(Invocation::new(
-                        "note.remove",
-                        [
-                            (channel + 1).to_string(),
-                            format!("{}t", note.start),
-                            note.key.to_string(),
-                        ],
-                    )));
+                    state.roll.selection.remove(&(note.start, note.key));
+                    actions.extend(remove_notes(channel, &[**note]).map(Action::Run));
                 }
             }
         }
@@ -687,9 +981,92 @@ fn edit(
         let cursor = match hit_test(boxes.iter().copied(), pos) {
             Hit::Edge(_) => egui::CursorIcon::ResizeHorizontal,
             Hit::Body(_) => egui::CursorIcon::Grab,
+            Hit::Empty if ctrl => egui::CursorIcon::Cell,
             Hit::Empty => egui::CursorIcon::Crosshair,
         };
         ui.ctx().set_cursor_icon(cursor);
+    }
+}
+
+/// Editing keys, active while the pointer is over the piano roll.
+fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
+    use egui::{Key, Modifiers};
+    let channel = state.selected_channel;
+    let Some(id) = project.channels.get(channel).map(|c| c.id) else {
+        return;
+    };
+    let notes: Vec<Note> = project.current_pattern().notes_of(id).copied().collect();
+    let selected: Vec<Note> = notes
+        .iter()
+        .filter(|n| state.roll.selection.contains(&(n.start, n.key)))
+        .copied()
+        .collect();
+    let snap = i64::from(state.roll.snap.ticks());
+    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
+
+    if pressed(Modifiers::COMMAND, Key::A) {
+        state.roll.selection = notes.iter().map(|n| (n.start, n.key)).collect();
+    }
+    if pressed(Modifiers::NONE, Key::Escape) {
+        state.roll.selection.clear();
+    }
+    if pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace) {
+        actions.extend(remove_notes(channel, &selected).map(Action::Run));
+        state.roll.selection.clear();
+    }
+    let copy = pressed(Modifiers::COMMAND, Key::C);
+    let cut = pressed(Modifiers::COMMAND, Key::X);
+    if (copy || cut) && !selected.is_empty() {
+        let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
+        state.roll.clipboard = selected
+            .iter()
+            .map(|n| Note {
+                start: n.start - first,
+                ..*n
+            })
+            .collect();
+        if cut {
+            actions.extend(remove_notes(channel, &selected).map(Action::Run));
+            state.roll.selection.clear();
+        }
+    }
+    if pressed(Modifiers::COMMAND, Key::V) && !state.roll.clipboard.is_empty() {
+        let at = state.roll.hover_tick.unwrap_or(0);
+        actions.extend(add_notes(channel, &state.roll.clipboard, at).map(Action::Run));
+        state.roll.selection = state
+            .roll
+            .clipboard
+            .iter()
+            .map(|n| (n.start + at, n.key))
+            .collect();
+    }
+    if pressed(Modifiers::COMMAND, Key::B) && !selected.is_empty() {
+        let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
+        let end = selected
+            .iter()
+            .map(|n| n.start + n.length)
+            .max()
+            .unwrap_or(first);
+        let span = (end - first).div_ceil(snap.max(1) as u32) * snap.max(1) as u32;
+        actions.extend(add_notes(channel, &selected, span).map(Action::Run));
+        state.roll.selection = selected.iter().map(|n| (n.start + span, n.key)).collect();
+    }
+    let moves = [
+        (Modifiers::NONE, Key::ArrowUp, 0, 1),
+        (Modifiers::NONE, Key::ArrowDown, 0, -1),
+        (Modifiers::SHIFT, Key::ArrowUp, 0, 12),
+        (Modifiers::SHIFT, Key::ArrowDown, 0, -12),
+        (Modifiers::NONE, Key::ArrowRight, snap, 0),
+        (Modifiers::NONE, Key::ArrowLeft, -snap, 0),
+    ];
+    for (modifiers, key, dt, dk) in moves {
+        if pressed(modifiers, key) && !selected.is_empty() {
+            let (dt, dk) = clamp_delta(&selected, dt, dk);
+            if let Some(invocation) = move_notes(channel, &selected, dt, dk) {
+                actions.push(Action::Run(invocation));
+                state.roll.selection = selected.iter().map(|n| shifted(n, dt, dk)).collect();
+            }
+        }
     }
 }
 
@@ -909,6 +1286,45 @@ mod tests {
         assert!(
             finish(&drag(DragKind::Resize, 24, 60, 24), 0, 100).is_none(),
             "no-op resize"
+        );
+    }
+
+    fn n(start: u32, key: u8) -> Note {
+        Note {
+            channel: ChannelId(1),
+            start,
+            length: 24,
+            key,
+            velocity: 100,
+        }
+    }
+
+    #[test]
+    fn group_moves_are_ordered_and_clamped() {
+        // Moving right: the later note moves first so it is never overwritten.
+        let right = move_notes(0, &[n(0, 60), n(24, 60)], 24, 0)
+            .unwrap()
+            .to_string();
+        assert_eq!(
+            right,
+            r#"edit.batch "note.move 1 24t 60 48t 60" "note.move 1 0t 60 24t 60""#
+        );
+        let left = move_notes(0, &[n(24, 60), n(48, 60)], -24, 0)
+            .unwrap()
+            .to_string();
+        assert!(
+            left.starts_with(r#"edit.batch "note.move 1 24t 60 0t 60""#),
+            "{left}"
+        );
+        // Cannot move before the start or past the top key.
+        assert_eq!(clamp_delta(&[n(12, 120)], -100, 20), (-12, 7));
+        assert!(
+            move_notes(0, &[n(0, 60)], -5, 0).is_none(),
+            "already at the start"
+        );
+        assert_eq!(
+            move_notes(0, &[n(0, 60)], 0, 2).unwrap().to_string(),
+            "note.move 1 0t 60 0t 62"
         );
     }
 

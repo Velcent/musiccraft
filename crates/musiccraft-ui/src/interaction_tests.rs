@@ -1,6 +1,8 @@
 //! Drives the real views headlessly with synthetic input and checks the commands
 //! they produce.
 
+use std::collections::BTreeSet;
+
 use egui::{Event, Modifiers, PointerButton, Pos2, Rect, pos2, vec2};
 use musiccraft_commands::{Registry, Session};
 use musiccraft_project::Project;
@@ -14,6 +16,8 @@ struct Harness {
     state: UiState,
     session: Session,
     time: f64,
+    /// Modifier keys held during the next frames.
+    modifiers: Modifiers,
 }
 
 impl Harness {
@@ -31,12 +35,14 @@ impl Harness {
             state,
             session,
             time: 0.0,
+            modifiers: Modifiers::NONE,
         }
     }
 
     /// Runs one frame with `events` and returns the project commands produced
     /// (previews are dropped), applying them to the session.
-    fn frame(&mut self, events: Vec<Event>) -> Vec<String> {
+    fn frame(&mut self, mut events: Vec<Event>) -> Vec<String> {
+        events.insert(0, Event::ModifiersChanged(self.modifiers));
         let input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1400.0, 900.0))),
             time: Some(self.time),
@@ -93,17 +99,18 @@ impl Harness {
                 pos,
                 button,
                 pressed: true,
-                modifiers: Modifiers::NONE,
+                modifiers: self.modifiers,
             },
         ])
     }
 
     fn release(&mut self, pos: Pos2, button: PointerButton) -> Vec<String> {
+        let modifiers = self.modifiers;
         self.frame(vec![Event::PointerButton {
             pos,
             button,
             pressed: false,
-            modifiers: Modifiers::NONE,
+            modifiers,
         }])
     }
 
@@ -331,4 +338,155 @@ fn velocity_lane_drag_is_one_undo_step() {
     );
     h.session.run_line("edit.undo").unwrap();
     assert_eq!(h.session.project().current_pattern().notes[0].velocity, 100);
+}
+
+impl Harness {
+    fn key(&mut self, key: egui::Key, modifiers: Modifiers) -> Vec<String> {
+        let held = self.modifiers;
+        self.modifiers = modifiers;
+        let event = |pressed| Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers,
+        };
+        let out = self.frame(vec![event(true), event(false)]);
+        self.modifiers = held;
+        out
+    }
+
+    fn roll_notes(&self) -> Vec<(u32, u8)> {
+        self.session
+            .project()
+            .current_pattern()
+            .notes
+            .iter()
+            .map(|n| (n.start, n.key))
+            .collect()
+    }
+
+    /// Keeps the pointer over the piano roll so its editing keys are active.
+    fn hover_roll(&mut self, tick: u32, key: u8) {
+        let p = self.roll_point(tick, key);
+        self.frame(vec![Event::PointerMoved(p)]);
+    }
+}
+
+#[test]
+fn piano_roll_selection_editing() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 1 60",
+        "note.add 1 2 1 62",
+        "note.add 1 8 1 64",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+
+    // Ctrl+drag a box around the first two notes.
+    h.modifiers = Modifiers::COMMAND;
+    let selected = h.drag(
+        h.roll_point(step / 2 + 300, 66),
+        h.roll_point(step / 2 + 300, 58),
+    );
+    assert!(selected.is_empty(), "selecting runs no commands");
+    h.modifiers = Modifiers::NONE;
+    // The box above started right of every note: nothing selected yet.
+    assert!(h.state.roll.selection.is_empty());
+    h.modifiers = Modifiers::COMMAND;
+    h.drag(h.roll_point(3 * step + 6, 63), h.roll_point(2, 59));
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(h.state.roll.selection.len(), 2);
+
+    // Drag one of them: both move two steps right.
+    let moved = h.drag(h.roll_point(6, 60), h.roll_point(2 * step + 6, 60));
+    assert_eq!(moved.len(), 1);
+    assert!(moved[0].starts_with("edit.batch"), "{moved:?}");
+    assert_eq!(h.roll_notes(), [(48, 60), (96, 62), (192, 64)]);
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.roll_notes(), [(0, 60), (48, 62), (192, 64)]);
+    h.session.run_line("edit.redo").unwrap();
+    h.settle();
+
+    // Arrow up transposes the selection; Ctrl+B duplicates it to the right.
+    h.hover_roll(10 * step, 60);
+    h.key(egui::Key::ArrowUp, Modifiers::NONE);
+    assert_eq!(h.roll_notes(), [(48, 61), (96, 63), (192, 64)]);
+    h.key(egui::Key::B, Modifiers::COMMAND);
+    assert_eq!(h.roll_notes().len(), 5);
+    assert!(
+        h.roll_notes().contains(&(120, 61)),
+        "copy starts where the selection ends: {:?}",
+        h.roll_notes()
+    );
+
+    // Ctrl+A then Delete clears the pattern in one undo step.
+    h.key(egui::Key::A, Modifiers::COMMAND);
+    h.key(egui::Key::Delete, Modifiers::NONE);
+    assert!(h.roll_notes().is_empty());
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.roll_notes().len(), 5);
+
+    // Copy one note and paste it where the pointer is.
+    h.settle();
+    h.click(h.roll_point(192 + 6, 64), PointerButton::Primary);
+    h.key(egui::Key::C, Modifiers::COMMAND);
+    h.hover_roll(12 * step + 2, 70);
+    h.key(egui::Key::V, Modifiers::COMMAND);
+    assert!(h.roll_notes().contains(&(288, 64)), "{:?}", h.roll_notes());
+}
+
+#[test]
+fn playlist_selection_editing() {
+    let mut h = Harness::new(&[
+        "pattern.add",
+        "playlist.add_clip 1 1 0",
+        "playlist.add_clip 2 2 0",
+        "playlist.add_clip 1 1 4",
+    ]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let clips = |h: &Harness| -> Vec<(u32, u32)> {
+        h.session
+            .project()
+            .playlist
+            .clips
+            .iter()
+            .map(|c| (c.track, c.start))
+            .collect()
+    };
+    let bar = TICKS_PER_BAR;
+
+    // Shift+click selects the first two clips; dragging one moves both.
+    h.click(h.playlist_point(40, 0), PointerButton::Primary);
+    h.modifiers = Modifiers::SHIFT;
+    h.click(h.playlist_point(40, 1), PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(h.state.playlist.selection.len(), 2);
+    let moved = h.drag(h.playlist_point(40, 0), h.playlist_point(bar + 40, 0));
+    assert!(moved[0].starts_with("edit.batch"), "{moved:?}");
+    assert_eq!(clips(&h), [(0, bar), (0, 4 * bar), (1, bar)]);
+
+    // Ctrl+B duplicates the selection right after itself; Delete removes it.
+    h.settle();
+    h.frame(vec![Event::PointerMoved(h.playlist_point(10 * bar, 5))]);
+    h.key(egui::Key::B, Modifiers::COMMAND);
+    assert_eq!(
+        clips(&h),
+        [(0, bar), (0, 2 * bar), (0, 4 * bar), (1, bar), (1, 2 * bar)]
+    );
+    h.key(egui::Key::Delete, Modifiers::NONE);
+    assert_eq!(clips(&h), [(0, bar), (0, 4 * bar), (1, bar)]);
+
+    // Ctrl+drag a box over track 1 selects both of its clips.
+    h.settle();
+    h.modifiers = Modifiers::COMMAND;
+    h.drag(h.playlist_point(6 * bar, 0), h.playlist_point(10, 0));
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(
+        h.state.playlist.selection,
+        BTreeSet::from([(0, bar), (0, 4 * bar)])
+    );
 }

@@ -1,5 +1,7 @@
 //! The playlist: arrange patterns as clips on track rows.
 
+use std::collections::BTreeSet;
+
 use egui::{
     Align2, Color32, FontId, PointerButton, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2,
 };
@@ -39,6 +41,10 @@ pub struct PlaylistState {
     drag: Option<ClipDrag>,
     /// Grid and visible area from the last frame (used by tests and tools).
     pub(crate) last_view: Option<(Grid, Rect)>,
+    /// Selected clips as (track, start).
+    pub(crate) selection: BTreeSet<(u32, u32)>,
+    /// Rubber-band selection in progress.
+    marquee: Option<(Pos2, Pos2)>,
 }
 
 impl Default for PlaylistState {
@@ -49,10 +55,13 @@ impl Default for PlaylistState {
             snap: Snap::Bar,
             drag: None,
             last_view: None,
+            selection: BTreeSet::new(),
+            marquee: None,
         }
     }
 }
 
+#[cfg(test)]
 fn finish(drag: &ClipDrag) -> Option<Invocation> {
     let o = drag.original;
     let t = |ticks: u32| format!("{ticks}t");
@@ -196,32 +205,55 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             draw_grid(&painter, &grid, clip, rect);
 
             let clips = &project.playlist.clips;
-            let dragged = state.playlist.drag.map(|d| d.original);
+            let moving = moving_clips(state, clips);
+            let (dt, dtrack, dl) = drag_delta(state, &moving);
             for clip_item in clips {
-                if Some(*clip_item) == dragged {
-                    continue;
+                let is_moving = moving.contains(clip_item);
+                if !is_moving {
+                    draw_clip(
+                        &painter,
+                        &grid,
+                        project,
+                        clip_item,
+                        clip_item.track,
+                        clip_item.start,
+                        clip_item.length,
+                        false,
+                    );
+                    if state
+                        .playlist
+                        .selection
+                        .contains(&(clip_item.track, clip_item.start))
+                    {
+                        let r = grid
+                            .span(clip_item.track, clip_item.start, clip_item.length)
+                            .shrink2(vec2(0.5, 1.5));
+                        painter.rect_stroke(
+                            r,
+                            4.0,
+                            Stroke::new(1.5, theme::TEXT),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
                 }
-                draw_clip(
-                    &painter,
-                    &grid,
-                    project,
-                    clip_item,
-                    clip_item.track,
-                    clip_item.start,
-                    clip_item.length,
-                    false,
-                );
             }
-            if let Some(drag) = state.playlist.drag {
-                draw_clip(
-                    &painter,
-                    &grid,
-                    project,
-                    &drag.original,
-                    drag.track,
-                    drag.start,
-                    drag.length,
-                    true,
+            for c in &moving {
+                let (track, start) = shifted(c, dt, dtrack);
+                let length = u32::try_from((i64::from(c.length) + dl).max(1)).unwrap_or(1);
+                draw_clip(&painter, &grid, project, c, track, start, length, true);
+            }
+            if let Some((origin, current)) = state.playlist.marquee {
+                let area = Rect::from_two_pos(origin, current);
+                painter.rect_filled(
+                    area,
+                    0.0,
+                    Color32::from_rgba_unmultiplied(0x2e, 0xc4, 0xb6, 24),
+                );
+                painter.rect_stroke(
+                    area,
+                    0.0,
+                    Stroke::new(1.0, theme::ACCENT),
+                    egui::StrokeKind::Inside,
                 );
             }
             if frame.engine.playing && project.play_mode == PlayMode::Song {
@@ -230,6 +262,15 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     [pos2(x, clip.top()), pos2(x, clip.bottom())],
                     Stroke::new(1.5, theme::PLAYHEAD),
                 );
+                // Follow the playhead when it leaves the view.
+                let visible = clip.left() + HEADER_WIDTH..clip.right() - 40.0;
+                if !visible.contains(&x) && state.playlist.drag.is_none() {
+                    let target = Rect::from_min_size(
+                        pos2(x - HEADER_WIDTH - 20.0, clip.top()),
+                        vec2(clip.width() - 60.0, 1.0),
+                    );
+                    ui.scroll_to_rect(target, Some(egui::Align::Min));
+                }
             }
             let boxes: Vec<(usize, Rect)> = clips
                 .iter()
@@ -478,6 +519,98 @@ fn headers(
     }
 }
 
+fn moving_clips(state: &UiState, clips: &[Clip]) -> Vec<Clip> {
+    let Some(drag) = state.playlist.drag else {
+        return Vec::new();
+    };
+    let mut group: Vec<Clip> = clips
+        .iter()
+        .filter(|c| state.playlist.selection.contains(&(c.track, c.start)))
+        .copied()
+        .collect();
+    if !group.contains(&drag.original) {
+        group = vec![drag.original];
+    }
+    group
+}
+
+/// The (start, track, length) change of the drag in progress, clamped so no
+/// moved clip leaves the playlist.
+fn drag_delta(state: &UiState, group: &[Clip]) -> (i64, i64, i64) {
+    let Some(drag) = state.playlist.drag else {
+        return (0, 0, 0);
+    };
+    let o = drag.original;
+    match drag.kind {
+        DragKind::Move => {
+            let (dt, dtrack) = clamp_delta(
+                group,
+                i64::from(drag.start) - i64::from(o.start),
+                i64::from(drag.track) - i64::from(o.track),
+            );
+            (dt, dtrack, 0)
+        }
+        DragKind::Resize => (0, 0, i64::from(drag.length) - i64::from(o.length)),
+    }
+}
+
+fn clamp_delta(group: &[Clip], dt: i64, dtrack: i64) -> (i64, i64) {
+    let min_start = group.iter().map(|c| i64::from(c.start)).min().unwrap_or(0);
+    let lo = group.iter().map(|c| i64::from(c.track)).min().unwrap_or(0);
+    let hi = group.iter().map(|c| i64::from(c.track)).max().unwrap_or(0);
+    (
+        dt.max(-min_start),
+        dtrack.clamp(-lo, i64::from(PLAYLIST_TRACKS) - 1 - hi),
+    )
+}
+
+fn shifted(clip: &Clip, dt: i64, dtrack: i64) -> (u32, u32) {
+    (
+        u32::try_from(i64::from(clip.track) + dtrack).unwrap_or(0),
+        u32::try_from(i64::from(clip.start) + dt).unwrap_or(0),
+    )
+}
+
+fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
+    match invocations.len() {
+        0 => None,
+        1 => invocations.into_iter().next(),
+        _ => Some(Invocation::new(
+            musiccraft_commands::BATCH,
+            invocations.iter().map(ToString::to_string),
+        )),
+    }
+}
+
+/// Moves clips as one undo step, ordered so no clip lands on one not yet moved.
+fn move_clips(group: &[Clip], dt: i64, dtrack: i64) -> Option<Invocation> {
+    if dt == 0 && dtrack == 0 {
+        return None;
+    }
+    let mut ordered = group.to_vec();
+    ordered.sort_by_key(|c| (c.start, c.track));
+    if dt > 0 || (dt == 0 && dtrack > 0) {
+        ordered.reverse();
+    }
+    batch(
+        ordered
+            .iter()
+            .map(|c| {
+                let (track, start) = shifted(c, dt, dtrack);
+                Invocation::new(
+                    "playlist.move_clip",
+                    [
+                        (c.track + 1).to_string(),
+                        format!("{}t", c.start),
+                        (track + 1).to_string(),
+                        format!("{start}t"),
+                    ],
+                )
+            })
+            .collect(),
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn edit(
     ui: &egui::Ui,
@@ -492,6 +625,7 @@ fn edit(
     let editable = |p: Pos2| p.x > clip.left() + HEADER_WIDTH && p.y > clip.top() + RULER_HEIGHT;
     let snap = state.playlist.snap;
     let clips = &project.playlist.clips;
+    let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
 
     if response.drag_started_by(PointerButton::Primary) {
         if let Some(origin) = ui
@@ -499,30 +633,37 @@ fn edit(
             .filter(|p| editable(*p))
         {
             let tick = grid.tick_at(origin.x);
-            state.playlist.drag = match hit_test(boxes.iter().copied(), origin) {
-                Hit::Body(i) => clips.get(i).map(|c| ClipDrag {
-                    kind: DragKind::Move,
-                    original: *c,
-                    grab: tick - c.start as f32,
-                    track: c.track,
-                    start: c.start,
-                    length: c.length,
-                }),
-                Hit::Edge(i) => clips.get(i).map(|c| ClipDrag {
-                    kind: DragKind::Resize,
-                    original: *c,
-                    grab: 0.0,
-                    track: c.track,
-                    start: c.start,
-                    length: c.length,
+            let hit = hit_test(boxes.iter().copied(), origin);
+            if ctrl && hit == Hit::Empty {
+                state.playlist.marquee = Some((origin, origin));
+            }
+            state.playlist.drag = match hit {
+                Hit::Body(i) | Hit::Edge(i) => clips.get(i).map(|c| {
+                    if !state.playlist.selection.contains(&(c.track, c.start)) {
+                        state.playlist.selection = BTreeSet::from([(c.track, c.start)]);
+                    }
+                    ClipDrag {
+                        kind: if matches!(hit, Hit::Edge(_)) {
+                            DragKind::Resize
+                        } else {
+                            DragKind::Move
+                        },
+                        original: *c,
+                        grab: tick - c.start as f32,
+                        track: c.track,
+                        start: c.start,
+                        length: c.length,
+                    }
                 }),
                 Hit::Empty => None,
             };
         }
     }
     if response.dragged_by(PointerButton::Primary) {
-        if let (Some(drag), Some(pos)) = (&mut state.playlist.drag, response.interact_pointer_pos())
-        {
+        let pos = response.interact_pointer_pos();
+        if let (Some((_, current)), Some(pos)) = (&mut state.playlist.marquee, pos) {
+            *current = pos;
+        } else if let (Some(drag), Some(pos)) = (&mut state.playlist.drag, pos) {
             let tick = grid.tick_at(pos.x);
             match drag.kind {
                 DragKind::Move => {
@@ -539,24 +680,77 @@ fn edit(
         }
     }
     if response.drag_stopped_by(PointerButton::Primary) {
-        if let Some(invocation) = state.playlist.drag.take().as_ref().and_then(finish) {
-            actions.push(Action::Run(invocation));
+        if let Some((origin, current)) = state.playlist.marquee.take() {
+            let area = Rect::from_two_pos(origin, current);
+            if !shift {
+                state.playlist.selection.clear();
+            }
+            for (i, rect) in boxes {
+                if let (true, Some(c)) = (area.intersects(*rect), clips.get(*i)) {
+                    state.playlist.selection.insert((c.track, c.start));
+                }
+            }
+        } else {
+            let group = moving_clips(state, clips);
+            let (dt, dtrack, dl) = drag_delta(state, &group);
+            if let Some(drag) = state.playlist.drag.take() {
+                let invocation = match drag.kind {
+                    DragKind::Move => move_clips(&group, dt, dtrack),
+                    DragKind::Resize => batch(
+                        group
+                            .iter()
+                            .filter(|_| dl != 0)
+                            .map(|c| {
+                                let length =
+                                    u32::try_from((i64::from(c.length) + dl).max(1)).unwrap_or(1);
+                                Invocation::new(
+                                    "playlist.resize_clip",
+                                    [
+                                        (c.track + 1).to_string(),
+                                        format!("{}t", c.start),
+                                        format!("{length}t"),
+                                    ],
+                                )
+                            })
+                            .collect(),
+                    ),
+                };
+                if let Some(invocation) = invocation {
+                    actions.push(Action::Run(invocation));
+                    state.playlist.selection =
+                        group.iter().map(|c| shifted(c, dt, dtrack)).collect();
+                }
+            }
         }
     }
     if response.clicked_by(PointerButton::Primary) {
         if let Some(pos) = response.interact_pointer_pos().filter(|p| editable(*p)) {
-            if let (Hit::Empty, Some(row)) =
-                (hit_test(boxes.iter().copied(), pos), grid.row_at(pos.y))
-            {
-                let start = snap.floor(grid.tick_at(pos.x));
-                actions.push(Action::Run(Invocation::new(
-                    "playlist.add_clip",
-                    [
-                        (project.current_pattern + 1).to_string(),
-                        (row + 1).to_string(),
-                        format!("{start}t"),
-                    ],
-                )));
+            match (hit_test(boxes.iter().copied(), pos), grid.row_at(pos.y)) {
+                (Hit::Body(i) | Hit::Edge(i), _) => {
+                    if let Some(c) = clips.get(i) {
+                        let id = (c.track, c.start);
+                        if shift {
+                            if !state.playlist.selection.remove(&id) {
+                                state.playlist.selection.insert(id);
+                            }
+                        } else {
+                            state.playlist.selection = BTreeSet::from([id]);
+                        }
+                    }
+                }
+                (Hit::Empty, Some(row)) => {
+                    let start = snap.floor(grid.tick_at(pos.x));
+                    actions.push(Action::Run(Invocation::new(
+                        "playlist.add_clip",
+                        [
+                            (project.current_pattern + 1).to_string(),
+                            (row + 1).to_string(),
+                            format!("{start}t"),
+                        ],
+                    )));
+                    state.playlist.selection.clear();
+                }
+                _ => {}
             }
         }
     }
@@ -564,6 +758,7 @@ fn edit(
         if let Some(pos) = response.interact_pointer_pos() {
             if let Hit::Body(i) | Hit::Edge(i) = hit_test(boxes.iter().copied(), pos) {
                 if let Some(c) = clips.get(i) {
+                    state.playlist.selection.remove(&(c.track, c.start));
                     actions.push(Action::Run(Invocation::new(
                         "playlist.remove_clip",
                         [(c.track + 1).to_string(), format!("{}t", c.start)],
@@ -572,13 +767,75 @@ fn edit(
             }
         }
     }
+    if response.contains_pointer() {
+        keys(ui.ctx(), state, project, actions);
+    }
     if let Some(pos) = response.hover_pos().filter(|p| editable(*p)) {
         let cursor = match hit_test(boxes.iter().copied(), pos) {
             Hit::Edge(_) => egui::CursorIcon::ResizeHorizontal,
             Hit::Body(_) => egui::CursorIcon::Grab,
+            Hit::Empty if ctrl => egui::CursorIcon::Cell,
             Hit::Empty => egui::CursorIcon::Default,
         };
         ui.ctx().set_cursor_icon(cursor);
+    }
+}
+
+/// Editing keys while the pointer is over the playlist.
+fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
+    use egui::{Key, Modifiers};
+    if ctx.egui_wants_keyboard_input() {
+        return;
+    }
+    let clips = &project.playlist.clips;
+    let selected: Vec<Clip> = clips
+        .iter()
+        .filter(|c| state.playlist.selection.contains(&(c.track, c.start)))
+        .copied()
+        .collect();
+    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
+    if pressed(Modifiers::COMMAND, Key::A) {
+        state.playlist.selection = clips.iter().map(|c| (c.track, c.start)).collect();
+    }
+    if pressed(Modifiers::NONE, Key::Escape) {
+        state.playlist.selection.clear();
+    }
+    if (pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace))
+        && !selected.is_empty()
+    {
+        let removes = selected
+            .iter()
+            .map(|c| {
+                Invocation::new(
+                    "playlist.remove_clip",
+                    [(c.track + 1).to_string(), format!("{}t", c.start)],
+                )
+            })
+            .collect();
+        actions.extend(batch(removes).map(Action::Run));
+        state.playlist.selection.clear();
+    }
+    if pressed(Modifiers::COMMAND, Key::B) && !selected.is_empty() {
+        let first = selected.iter().map(|c| c.start).min().unwrap_or(0);
+        let end = selected.iter().map(Clip::end).max().unwrap_or(first);
+        let span = end - first;
+        let adds = selected
+            .iter()
+            .map(|c| {
+                let pattern = project.pattern_position(c.pattern).map_or(1, |i| i + 1);
+                Invocation::new(
+                    "playlist.add_clip",
+                    [
+                        pattern.to_string(),
+                        (c.track + 1).to_string(),
+                        format!("{}t", c.start + span),
+                        format!("{}t", c.length),
+                    ],
+                )
+            })
+            .collect();
+        actions.extend(batch(adds).map(Action::Run));
+        state.playlist.selection = selected.iter().map(|c| (c.track, c.start + span)).collect();
     }
 }
 

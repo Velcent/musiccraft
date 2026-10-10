@@ -59,6 +59,17 @@
 - Left-click on empty grid adds a note with the last used length; dragging a note
   moves it; dragging its right edge resizes it; right-click deletes.
 - Each finished gesture is one undoable command.
+- Selection: click a note to select it, Shift+click toggles, Ctrl+drag on empty
+  grid draws a selection rectangle (Shift adds to the selection). Dragging a
+  selected note moves the whole selection; dragging its edge resizes all
+  selected notes by the same amount. Selected notes are outlined.
+- Keys while the pointer is over the piano roll: Delete/Backspace remove the
+  selection; Ctrl+A selects all; Escape clears; Ctrl+C / Ctrl+X copy / cut;
+  Ctrl+V pastes at the pointer; Ctrl+B duplicates the selection right after its
+  end (rounded up to the snap); arrows move by one key or one snap step, and
+  Shift+Up/Down by an octave. Every operation is one undo step (`edit.batch`),
+  with moves ordered so notes of the selection never overwrite each other.
+- Ctrl+scroll zooms horizontally.
 - A velocity lane is pinned to the bottom of the view: one stem per note of the
   selected channel. Dragging vertically sets the velocity of the note under the
   pointer (the latest-starting one when notes overlap); one drag is one undo step.

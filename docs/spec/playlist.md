@@ -22,6 +22,12 @@
 - Left-click on an empty cell places the selected pattern at the snapped bar;
   dragging a clip moves it; dragging its right edge resizes it; right-click
   deletes. The pattern list next to the playlist selects the pattern to paint.
+- The playlist is the main workspace. Click or drag on the ruler to move the
+  playhead; during song playback the view follows the playhead.
+- Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
+  dragging moves or resizes every selected clip; Delete removes; Ctrl+A selects
+  all; Ctrl+B duplicates the selection right after its end. One undo step each.
+- Ctrl+scroll zooms horizontally.
 
 ## Sources
 
