@@ -29,15 +29,27 @@ channel_rack,piano_roll,playlist,mixer,browser`.
 | Ctrl+S, Ctrl+O, Ctrl+R | Save / open / export WAV |
 | Ctrl+M, Ctrl+E, Ctrl+T | Metronome / record / typing keyboard |
 
+- **Playlist** (main workspace): paint patterns, automation or audio clips;
+  click, Shift+click or Ctrl+drag to select; drag to move or resize; Delete,
+  Ctrl+B duplicate. Click the ruler to seek, Shift+drag it to set a loop,
+  right-click it for markers.
 - **Channel rack**: click steps; knobs for pan and volume (double-click resets);
-  the number routes the channel to a mixer insert; right-click a name for more.
-- **Piano roll**: click to draw, drag to move, drag the right edge to resize,
-  right-click to delete; chord and scale menus; velocity lane at the bottom.
-- **Playlist**: pick a pattern on the left, click to place it, drag to move or
-  resize, right-click to delete.
-- **Mixer**: faders, pan, mute/solo, eight effect slots per track (filter, EQ,
-  delay, reverb, chorus, compressor, limiter, distortion), sends to buses.
-- A MIDI keyboard plays the selected channel; arm REC while playing to record.
+  click a channel name for its settings (envelope, filter, glide, sample view);
+  melodic channels show a mini piano roll.
+- **Piano roll**: click to draw (single notes or chords), drag to move, drag the
+  right edge to resize, right-click to delete; selection with copy, paste,
+  Ctrl+B and arrow keys; velocity/pan lane at the bottom; scale highlighting.
+- **Mixer** (docked): faders with a dB curve, pan, on/solo, eight effect slots
+  (filter, EQ, delay, reverb, chorus, compressor with sidechain, limiter,
+  distortion), sends via the arrows under each strip.
+- **Automation**: right-click any knob or fader → Create automation clip;
+  double-click the clip to edit its curve.
+- **Browser**: built-in sounds, your folders, search; click previews,
+  double-click adds, drag onto the rack (new channel) or the playlist (audio
+  clip).
+- **Recording**: REC + playing records a MIDI or typing keyboard into the
+  pattern; with File → Record audio input, song-mode takes become audio clips.
+- **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
 
 Built-in sounds (`builtin:kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`,
 `rim`, `crash`) are synthesized at start-up; WAV files can be loaded as samples.
@@ -51,8 +63,8 @@ cargo run -p musiccraft-cli -- play examples/basic-beat.mcs 10
 cargo run -p musiccraft-cli -- dump examples/basic-beat.mcs  # project JSON
 ```
 
-Add `project.export_wav beat.wav` or `project.export_stems stems/` to a script to
-render audio. See `docs/spec/commands.md` for argument conventions.
+Add `project.export_wav beat.wav`, `project.export_flac beat.flac` or
+`project.export_stems stems/` to a script to render audio. See `docs/spec/commands.md` for argument conventions.
 
 ## AI agents (MCP)
 

@@ -30,9 +30,9 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`. |
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects, sample buffers. Allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voices, sequencing, mixing, meters. Driven only by messages. |
-| `musiccraft-samples` | WAV decoding/encoding, sample cache, synthesized built-in sounds. Main thread only. |
+| `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
 | `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`. |
-| `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback. |
+| `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
 | `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer) and the keymap. Emits invocations only. |
@@ -69,8 +69,8 @@ xtask ──► commands, render, ui (keymap) ───────────�
 
 ### Message rule (refines the CLAUDE.md audio-thread rule)
 
-Control messages are plain `Copy` data. Two messages, `SetGraph` and
-`SetSequence`, carry a `Box` allocated on the main thread. Moving a box is a
+Control messages are plain `Copy` data. Three messages, `SetGraph`,
+`SetSequence` and `PlayPreview`, carry a `Box` allocated on the main thread. Moving a box is a
 fixed-size pointer move, not an allocation. The value it replaces is pushed onto
 a return queue and dropped on the main thread. The engine checks that the return
 queue has room *before* taking such a message; if it does not, the message waits
@@ -110,5 +110,6 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 - Custom `wgpu` renderer if egui cannot reach the target look.
 - Plugin hosting (CLAP first). Loading plugins requires `unsafe` FFI, which is
   forbidden workspace-wide; this needs an explicit decision before it starts.
-- Compressed sample formats (FLAC, Ogg, MP3), likely via `symphonia`.
+- Decoding compressed samples (FLAC, Ogg, MP3), likely via `symphonia`; lossy
+  export formats.
 - Time signatures other than 4/4, tempo automation, audio clips and recording.
