@@ -719,7 +719,8 @@ fn mix_tracks(tracks: &mut [TrackNode], frames: usize, ctx: ProcessContext, mete
         let Some((track, after)) = rest.split_first_mut() else {
             continue;
         };
-        process_track(track, frames, ctx);
+        // Inserts below this one are finished and can key its compressors.
+        process_track(track, frames, ctx, before, 0);
         meters.record_peak(i, peak(&track.left, frames), peak(&track.right, frames));
         if track.params.to_master {
             if let Some(master) = before.first_mut() {
@@ -736,13 +737,24 @@ fn mix_tracks(tracks: &mut [TrackNode], frames: usize, ctx: ProcessContext, mete
             add_scaled(&mut dest.right, &track.right, send.level, frames);
         }
     }
-    if let Some(master) = tracks.first_mut() {
-        process_track(master, frames, ctx);
+    if let Some((master, inserts)) = tracks.split_first_mut() {
+        process_track(master, frames, ctx, inserts, 1);
         meters.record_peak(0, peak(&master.left, frames), peak(&master.right, frames));
     }
 }
 
-fn process_track(track: &mut TrackNode, frames: usize, ctx: ProcessContext) {
+/// Index of the sidechain parameter in the compressor's table.
+const SIDECHAIN_PARAM: usize = 5;
+
+/// Runs a track's effects and fader. `keys` are already-processed tracks that
+/// may feed compressor sidechains; `keys[i]` is mixer track `i + key_offset`.
+fn process_track(
+    track: &mut TrackNode,
+    frames: usize,
+    ctx: ProcessContext,
+    keys: &[TrackNode],
+    key_offset: usize,
+) {
     let TrackNode {
         params,
         effects,
@@ -751,7 +763,27 @@ fn process_track(track: &mut TrackNode, frames: usize, ctx: ProcessContext) {
     } = track;
     let (l, r) = (prefix(left, frames), prefix(right, frames));
     for slot in effects.iter_mut().filter(|s| s.params.enabled) {
-        slot.effect.process(l, r, &slot.params.values, ctx);
+        let source = slot
+            .params
+            .values
+            .get(SIDECHAIN_PARAM)
+            .copied()
+            .unwrap_or(0.0);
+        let key = match slot.effect.kind() {
+            musiccraft_params::EffectKind::Compressor if source >= 0.5 => (source.round() as usize)
+                .checked_sub(key_offset)
+                .and_then(|i| keys.get(i))
+                .map(|t| {
+                    let n = frames.min(t.left.len()).min(t.right.len());
+                    (
+                        t.left.get(..n).unwrap_or_default(),
+                        t.right.get(..n).unwrap_or_default(),
+                    )
+                }),
+            _ => None,
+        };
+        slot.effect
+            .process_keyed(l, r, &slot.params.values, ctx, key);
     }
     let (pl, pr) = pan_gains(params.pan);
     let volume = if params.mute { 0.0 } else { params.volume };

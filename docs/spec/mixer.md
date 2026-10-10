@@ -35,11 +35,21 @@
 | `delay` | time in beats (tempo-synced), feedback, mix, ping_pong, damping |
 | `reverb` | size, damping, width, mix |
 | `chorus` | rate Hz, depth ms, delay ms, mix |
-| `compressor` | threshold dB, ratio, attack ms, release ms, makeup dB |
+| `compressor` | threshold dB, ratio, attack ms, release ms, makeup dB, sidechain (0 = off, else the insert whose post-fader output drives detection) |
 | `limiter` | input gain dB, ceiling dB, release ms (instant attack; output never exceeds the ceiling) |
 | `distortion` | drive dB, mix, output dB |
 
 Ranges and defaults are defined in `musiccraft-params`.
+
+## Sidechain
+
+- A compressor's `sidechain` parameter names an insert whose post-fader output
+  drives its level detection (classic "kick ducks the bass"). The source must be
+  a lower-numbered insert, or any insert for a compressor on the master, so it is
+  always processed first. A source can be taken off the master
+  (`mixer.route_to_master <t> off`) to key without being heard.
+- Removing a track used as a sidechain source is refused; removing or inserting
+  other tracks renumbers sources.
 
 ## Metering
 

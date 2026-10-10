@@ -32,6 +32,19 @@ impl Compressor {
 
     /// Processes a block in place.
     pub fn process(&mut self, left: &mut [f32], right: &mut [f32], p: &[f32], ctx: ProcessContext) {
+        self.process_keyed(left, right, p, ctx, None);
+    }
+
+    /// Processes a block in place, detecting level on `key` (a sidechain
+    /// signal) when given instead of on the input.
+    pub fn process_keyed(
+        &mut self,
+        left: &mut [f32],
+        right: &mut [f32],
+        p: &[f32],
+        ctx: ProcessContext,
+        key: Option<(&[f32], &[f32])>,
+    ) {
         let param = |i: usize, default: f32| p.get(i).copied().unwrap_or(default);
         let threshold = param(0, -18.0);
         let ratio = param(1, 4.0).max(1.0);
@@ -41,8 +54,15 @@ impl Compressor {
         let makeup = db_to_gain(param(4, 0.0));
         let slope = 1.0 - 1.0 / ratio;
 
-        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
-            let level_db = gain_to_db(l.abs().max(r.abs()));
+        for (i, (l, r)) in left.iter_mut().zip(right.iter_mut()).enumerate() {
+            let (dl, dr) = match key {
+                Some((kl, kr)) => (
+                    kl.get(i).copied().unwrap_or(0.0),
+                    kr.get(i).copied().unwrap_or(0.0),
+                ),
+                None => (*l, *r),
+            };
+            let level_db = gain_to_db(dl.abs().max(dr.abs()));
             let coeff = if level_db > self.envelope_db {
                 attack
             } else {
@@ -140,6 +160,31 @@ mod tests {
         let out_db = gain_to_db(l[4_999]);
         assert!((out_db + 15.0).abs() < 0.1, "out {out_db} dB");
         assert!((comp.gain_reduction_db() - 15.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn sidechain_key_ducks_the_input() {
+        let mut comp = Compressor::new();
+        let ctx = ProcessContext {
+            sample_rate: 1_000.0,
+            tempo_bpm: 120.0,
+        };
+        let mut l = vec![0.1; 2_000];
+        let mut r = vec![0.1; 2_000];
+        let key = vec![1.0; 2_000];
+        comp.process_keyed(
+            &mut l,
+            &mut r,
+            &[-20.0, 4.0, 1.0, 50.0, 0.0],
+            ctx,
+            Some((&key, &key)),
+        );
+        // The quiet input is reduced by the gain the loud key causes (15 dB).
+        assert!(
+            (gain_to_db(l[1_999]) - (-20.0 - 15.0)).abs() < 0.2,
+            "{}",
+            gain_to_db(l[1_999])
+        );
     }
 
     #[test]

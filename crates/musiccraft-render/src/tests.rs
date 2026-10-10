@@ -393,3 +393,36 @@ fn song_loop_region_limits_playback_but_not_export() {
     let full = crate::build_full_sequence(s.project());
     assert_eq!(full.length(), 8 * bar);
 }
+
+#[test]
+fn sidechained_compressor_ducks_on_each_kick() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_sampler builtin:kick
+         channel.add_synth Pad
+         step.toggle 1 0
+         step.toggle 1 8
+         note.add 2 0 16 A4
+         channel.route 1 1
+         channel.route 2 2
+         mixer.route_to_master 1 off
+         mixer.add_effect 2 compressor
+         mixer.set_effect_param 2 1 threshold -40
+         mixer.set_effect_param 2 1 ratio 20
+         mixer.set_effect_param 2 1 sidechain 1",
+    );
+    let options = RenderOptions {
+        max_tail_seconds: 0.0,
+        ..RenderOptions::default()
+    };
+    let ducked = render(s.project(), options).0;
+    // The pad holds steady before the second kick (at 1 s) and drops under it.
+    let before = rms(&ducked[44_100 - 8_000..44_100 - 500]);
+    let under = rms(&ducked[44_100 + 500..44_100 + 4_000]);
+    assert!(
+        under < 0.5 * before,
+        "pad ducks under the kick: before {before}, under {under}"
+    );
+}

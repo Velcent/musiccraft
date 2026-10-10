@@ -132,12 +132,25 @@ impl Effect {
         params: &[f32; MAX_EFFECT_PARAMS],
         ctx: ProcessContext,
     ) {
+        self.process_keyed(left, right, params, ctx, None);
+    }
+
+    /// Like [`Effect::process`], with an optional sidechain signal for
+    /// effects that use one (the compressor).
+    pub fn process_keyed(
+        &mut self,
+        left: &mut [f32],
+        right: &mut [f32],
+        params: &[f32; MAX_EFFECT_PARAMS],
+        ctx: ProcessContext,
+        key: Option<(&[f32], &[f32])>,
+    ) {
         match self {
             Self::Filter(fx) => fx.process(left, right, params, ctx),
             Self::Eq(fx) => fx.process(left, right, params, ctx),
             Self::Delay(fx) => fx.process(left, right, params, ctx),
             Self::Reverb(fx) => fx.process(left, right, params),
-            Self::Compressor(fx) => fx.process(left, right, params, ctx),
+            Self::Compressor(fx) => fx.process_keyed(left, right, params, ctx, key),
             Self::Distortion => Distortion::process(left, right, params),
             Self::Chorus(fx) => fx.process(left, right, params, ctx),
             Self::Limiter(fx) => fx.process(left, right, params, ctx),

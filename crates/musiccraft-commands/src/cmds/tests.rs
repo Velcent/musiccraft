@@ -473,3 +473,22 @@ fn removing_a_channel_removes_its_audio_clips() {
     run(&mut s, "channel.add_synth");
     fails(&mut s, "playlist.add_audio_clip 2 2 0 1");
 }
+
+#[test]
+fn sidechain_sources_are_validated_and_renumbered() {
+    let mut s = session();
+    run(&mut s, "mixer.add_effect 3 compressor");
+    fails(&mut s, "mixer.set_effect_param 3 1 sidechain 3");
+    fails(&mut s, "mixer.set_effect_param 3 1 sidechain 5");
+    fails(&mut s, "mixer.set_effect_param 3 1 sidechain 99");
+    run(&mut s, "mixer.set_effect_param 3 1 sidechain 2");
+    fails(&mut s, "mixer.remove_track 2");
+    run(&mut s, "mixer.remove_track 1");
+    let value = s.project().mixer[2].effects[0].values[5];
+    assert!(
+        (value - 1.0).abs() < f32::EPSILON,
+        "source followed the renumbering: {value}"
+    );
+    run(&mut s, "edit.undo");
+    assert!((s.project().mixer[3].effects[0].values[5] - 2.0).abs() < f32::EPSILON);
+}

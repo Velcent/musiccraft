@@ -63,7 +63,7 @@ of contents; see `docs/clean-room.md`.
 | Mixer | Effect parameters | `cmd:mixer.set_effect_param` |
 | Mixer | Peak meters | `done` |
 | Mixer | Sends between inserts and buses | `cmd:mixer.set_send` `cmd:mixer.route_to_master` |
-| Mixer | Sidechain | `todo` |
+| Mixer | Sidechain compression | `fx:compressor` `done` |
 | Effects | Filter, EQ, delay, reverb, compressor, distortion | `fx:filter` `fx:eq` `fx:delay` `fx:reverb` `fx:compressor` `fx:distortion` |
 | Effects | Chorus | `fx:chorus` |
 | Effects | Limiter | `fx:limiter` |

@@ -317,6 +317,7 @@ const COMPRESSOR_PARAMS: &[ParamSpec] = &[
     spec("attack", 0.1, 200.0, 10.0, "ms"),
     spec("release", 5.0, 2_000.0, 120.0, "ms"),
     spec("makeup", 0.0, 24.0, 0.0, "dB"),
+    int_spec("sidechain", 0.0, 127.0, 0.0),
 ];
 
 const CHORUS_PARAMS: &[ParamSpec] = &[

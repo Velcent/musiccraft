@@ -350,7 +350,15 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                                         crate::channel_settings::to_unit(spec, value),
                                         crate::channel_settings::to_unit(spec, spec.default),
                                         spec.min < 0.0 && spec.max > 0.0,
-                                        &crate::channel_settings::format_value(spec, value),
+                                        &if spec.name == "sidechain" {
+                                            if value < 0.5 {
+                                                "off".to_owned()
+                                            } else {
+                                                format!("from {value:.0}")
+                                            }
+                                        } else {
+                                            crate::channel_settings::format_value(spec, value)
+                                        },
                                     );
                                     crate::automation::menu(
                                         &out.response,

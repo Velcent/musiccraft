@@ -130,6 +130,33 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
     ]
 }
 
+/// Index of the compressor's sidechain parameter.
+const SIDECHAIN: usize = 5;
+
+/// Sidechain sources of every compressor, as (track, slot, source).
+fn sidechains(project: &Project) -> Vec<(usize, usize, usize)> {
+    let mut out = Vec::new();
+    for (t, track) in project.mixer.iter().enumerate() {
+        for (s, effect) in track.effects.iter().enumerate() {
+            let source = effect.values.get(SIDECHAIN).copied().unwrap_or(0.0).round() as usize;
+            if effect.kind == EffectKind::Compressor && source > 0 {
+                out.push((t, s, source));
+            }
+        }
+    }
+    out
+}
+
+/// Shifts compressor sidechain sources at or after `from` by `delta`.
+fn shift_sidechains(project: &mut Project, from: usize, delta: isize) {
+    for (t, s, source) in sidechains(project) {
+        if source >= from {
+            project.mixer[t].effects[s].values[SIDECHAIN] =
+                source.saturating_add_signed(delta) as f32;
+        }
+    }
+}
+
 fn track_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, CommandError> {
     Ok(project.mixer_index(args.parse(i, "mixer track")?)?)
 }
@@ -191,6 +218,13 @@ fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     if super::automation::targets_track(project, index, None) {
         return Err(args.invalid("an automation drives this track; delete the automation first"));
     }
+    if sidechains(project)
+        .iter()
+        .any(|(_, _, source)| *source == index)
+    {
+        return Err(args.invalid("a compressor uses this track as its sidechain; change it first"));
+    }
+    shift_sidechains(project, index + 1, -1);
     let track = project.mixer.remove(index);
     super::automation::shift_tracks(project, index + 1, -1);
     let mut incoming = Vec::new();
@@ -267,6 +301,7 @@ fn insert_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     }
     let name = snapshot.track.name.clone();
     super::automation::shift_tracks(project, index, 1);
+    shift_sidechains(project, index, 1);
     project.mixer.insert(index, snapshot.track);
     Ok(Outcome::undoable(
         format!("inserted mixer track {index} ({name})"),
@@ -491,6 +526,7 @@ fn set_effect_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
     args.expect(4, 4)?;
     let index = track_arg(project, args, 0)?;
     let slot = slot_arg(project, args, index, 1)?;
+    let project_tracks = project.mixer.len();
     let effect = &mut project.mixer[index].effects[slot];
     let specs = effect.kind.params();
     let name = args.str(2)?;
@@ -514,6 +550,15 @@ fn set_effect_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
         .into());
     }
     let value = spec.sanitize(value);
+    if effect.kind == EffectKind::Compressor && param == SIDECHAIN && value >= 0.5 {
+        let source = value as usize;
+        let valid = source < project_tracks && source != index && (index == 0 || source < index);
+        if !valid {
+            return Err(args.invalid(
+                "a sidechain comes from a lower-numbered insert (or any insert for the master)",
+            ));
+        }
+    }
     let previous = std::mem::replace(&mut effect.values[param], value);
     let message = format!("{} {name} {}", effect.kind, num(value));
     if previous == value {
