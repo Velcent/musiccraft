@@ -28,7 +28,7 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-params` | Shared tables: timing (PPQ), instrument and effect parameter specs, built-in sound names. No logic. |
 | `musiccraft-project` | Project data model and JSON file format. No audio, no UI. |
 | `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`. |
-| `musiccraft-dsp` | Oscillators, envelopes, filters, effects, sample buffers. Allocation-free processing. |
+| `musiccraft-dsp` | Oscillators, envelopes, filters, effects (incl. a small radix-2 FFT for convolution and the analyzer), sample buffers. Allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voices, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
 | `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **The only crate (with its test fixture `musiccraft-clap-testplugin`) allowed to use `unsafe`.** |
@@ -36,7 +36,7 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
-| `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response` module only to draw filter, EQ and dynamics curves. |
+| `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response` and `fft` modules only to draw effect curves and the spectrum analyzer. |
 | `musiccraft-app` | Wires session, bridge, audio device, MIDI input and UI together. |
 | `xtask` | `cargo xtask parity`: checks the feature checklist against the registry and keymap. |
 

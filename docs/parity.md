@@ -73,6 +73,19 @@ of contents; see `docs/clean-room.md`.
 | Effects | Phaser, flanger | `fx:phaser` `fx:flanger` |
 | Effects | Bitcrusher, stereo tool | `fx:bitcrusher` `fx:stereo` |
 | Effects | Tempo-synced trance gate (16 steps) and auto-pan | `fx:gate` `fx:autopan` |
+| Effects | Graphic EQ (7 bands) and parametric EQ (7 draggable bands) | `fx:graphic_eq` `fx:parametric_eq` `spec:mixer.md` |
+| Effects | Bass boost, overdrive, soft clipper, waveshaper | `fx:bass_boost` `fx:overdrive` `fx:soft_clipper` `fx:waveshaper` |
+| Effects | DC remover, ring modulator, frequency shifter | `fx:dc_block` `fx:ring_mod` `fx:freq_shift` |
+| Effects | Vowel (formant) filter and LFO/envelope auto filter | `fx:formant` `fx:auto_filter` |
+| Effects | Noise gate and transient shaper | `fx:noise_gate` `fx:transient` |
+| Effects | Multi-tap delay and stutter | `fx:multi_tap` `fx:stutter` |
+| Effects | Multiband compressor | `fx:multiband` |
+| Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |
+| Effects | Pitch shifter | `fx:pitch_shift` |
+| Effects | Convolution reverb with impulse files or generated rooms | `fx:convolution` `cmd:mixer.set_effect_file` |
+| Effects | Spectrum analyzer | `done` |
+| Effects | Pitch correction and tuner | `todo` |
+| Generators | MIDI out to external gear | `todo` |
 | Instruments | Subtractive synth with unison, sub, drive, filter types, LFO and presets | `cmd:channel.add_synth` `spec:piano-roll.md` |
 | Instruments | Drum synth (kick, snare, hat, tom, clap) with presets | `cmd:channel.add_drum` `spec:channel-rack.md` |
 | Instruments | Plucked string with presets | `cmd:channel.add_pluck` `spec:channel-rack.md` |
