@@ -978,11 +978,8 @@ fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals
     }
 }
 
-/// Index of the sidechain parameter in the compressor's table.
-const SIDECHAIN_PARAM: usize = 5;
-
 /// Runs a track's effects and fader. `keys` are already-processed tracks that
-/// may feed compressor sidechains; `keys[i]` is mixer track `i + key_offset`.
+/// may feed effect sidechains; `keys[i]` is mixer track `i + key_offset`.
 fn process_track(
     track: &mut TrackNode,
     fx: FxContext,
@@ -1011,13 +1008,14 @@ fn process_track(
             continue;
         }
         let source = slot
-            .params
-            .values
-            .get(SIDECHAIN_PARAM)
+            .effect
+            .kind()
+            .sidechain_index()
+            .and_then(|i| slot.params.values.get(i))
             .copied()
             .unwrap_or(0.0);
-        let key = match slot.effect.kind() {
-            musiccraft_params::EffectKind::Compressor if source >= 0.5 => (source.round() as usize)
+        let key = match source {
+            source if source >= 0.5 => (source.round() as usize)
                 .checked_sub(key_offset)
                 .and_then(|i| keys.get(i))
                 .map(|t| {

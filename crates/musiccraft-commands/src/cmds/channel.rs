@@ -175,7 +175,11 @@ pub(super) fn channel_arg(
 }
 
 /// Checks a sample reference and returns a default channel name for it.
-fn check_sample(project: &Project, args: &Args<'_>, sample: &str) -> Result<String, CommandError> {
+pub(super) fn check_sample(
+    project: &Project,
+    args: &Args<'_>,
+    sample: &str,
+) -> Result<String, CommandError> {
     if let Some(name) = sample.strip_prefix(BUILTIN_PREFIX) {
         if !BUILTIN_SAMPLES.contains(&name) {
             return Err(args.invalid(format!(

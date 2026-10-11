@@ -351,6 +351,11 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::MultiTap => "Multi-tap delay",
         K::GraphicEq => "Graphic EQ",
         K::ParametricEq => "Parametric EQ",
+        K::Multiband => "Multiband compressor",
+        K::Vocoder => "Vocoder",
+        K::PitchShift => "Pitch shifter",
+        K::Stutter => "Stutter",
+        K::Convolution => "Convolution reverb",
         K::Plugin => "Plugin",
     }
 }

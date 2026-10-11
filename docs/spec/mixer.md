@@ -60,8 +60,29 @@
 | `noise_gate` | threshold dB, attack ms, hold ms, release ms, range dB (attenuation while closed) |
 | `transient` | attack (−1 soften – 1 boost), sustain (−1–1), output dB; from the difference of a fast and a slow envelope |
 | `multi_tap` | four taps of time (beats) and level, alternating left/right, feedback, mix, damping |
+| `multiband` | low/mid and mid/high crossover Hz (Linkwitz–Riley, bands sum flat), threshold dB / ratio / gain dB per band, attack ms, release ms, output dB |
+| `vocoder` | sidechain (the modulator, e.g. a voice; this insert's audio is the carrier), bandwidth, attack ms, release ms, shift semitones (moves the carrier bands), noise (hiss mixed into the carrier for consonants), mix, output dB; 16 bands 120 Hz–7.5 kHz. Without a sidechain only the dry share passes |
+| `pitch_shift` | pitch semitones (−24–24), fine cents, window ms (longer is smoother, shorter tracks transients better), mix |
+| `stutter` | slice (1/32 note – 1 bar), every (period, 1/32 note – 1 bar), portion (share at the end of each period that repeats), decay (level of each repeat relative to the last), mix |
+| `convolution` | mix, predelay ms, low cut Hz, high cut Hz, output dB; the impulse response is chosen with `mixer.set_effect_file` |
 
-The gate, auto-pan and auto filter follow the song position while playing (so they stay in
+Effects with a `sidechain` parameter (the compressor and the vocoder) read the
+post-fader output of the insert it names: a lower-numbered insert, or any insert
+for the master. Removing that insert is refused while it is used; removing
+another renumbers the source.
+
+`mixer.set_effect_file <track> <slot> <file|ir:name|->` sets the convolution
+reverb's impulse response: a WAV/FLAC file (any length, cut at six seconds) or
+a generated room (`ir:room`, `ir:chamber`, `ir:plate`, `ir:hall`,
+`ir:cathedral`); `-` restores the default hall. The response is normalized to
+unit energy, so swapping rooms keeps the level. The convolution adds 512
+samples of latency to the wet signal. Undoable.
+
+The **spectrum analyzer** (View menu, or click the toolbar oscilloscope) shows
+the master output's last 2048 samples by frequency (Hann window, log frequency
+axis, 0 to −90 dB) with a slowly falling peak line.
+
+The gate, auto-pan, auto filter and stutter follow the song position while playing (so they stay in
 time with the beat) and a free-running clock at the project tempo while
 stopped. The gate's window shows the 16 steps; clicking one turns it on or off.
 
@@ -113,6 +134,10 @@ Ranges and defaults are defined in `musiccraft-params`.
   textbook averages (Peterson & Barney style tables). The range of effect types
   (graphic and parametric EQ, gate, transient processing, multi-tap delay,
   waveshaping, frequency shifting) mirrors the categories in the FL Studio
-  manual's effects list; the designs are ours.
+  manual's effects list; the designs are ours. Convolution is uniformly
+  partitioned overlap-save (textbook); the vocoder is a classic channel
+  vocoder (band-pass filter banks and envelope followers); the pitch shifter is
+  a two-tap crossfaded delay-line design; the generated impulse responses are
+  filtered decaying noise with early reflections, our own.
 - Effect windows (preset bar, graph, knobs) follow the common layout of plugin
   windows in pattern-based DAWs; the graphs and factory presets are our own.

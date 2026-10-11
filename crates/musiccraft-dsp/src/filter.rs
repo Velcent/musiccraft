@@ -47,12 +47,17 @@ impl Svf {
 
     /// Sets cutoff (hertz) and resonance (0..=1) for a sample rate.
     pub fn set(&mut self, cutoff: f32, resonance: f32, sample_rate: f32) {
+        // Resonance 0 → Q 0.5, resonance 1 → Q ~ 25.
+        let q = 0.5 + resonance.clamp(0.0, 1.0).powi(2) * 24.5;
+        self.set_q(cutoff, q, sample_rate);
+    }
+
+    /// Sets cutoff (hertz) and Q directly (0.707 is Butterworth).
+    pub fn set_q(&mut self, cutoff: f32, q: f32, sample_rate: f32) {
         let nyquist = sample_rate * 0.49;
         let cutoff = cutoff.clamp(10.0, nyquist.max(10.0));
         let g = (PI * cutoff / sample_rate.max(1.0)).tan();
-        // Resonance 0 → Q 0.5, resonance 1 → Q ~ 25.
-        let q = 0.5 + resonance.clamp(0.0, 1.0).powi(2) * 24.5;
-        self.k = 1.0 / q;
+        self.k = 1.0 / q.max(0.01);
         self.a1 = 1.0 / (1.0 + g * (g + self.k));
         self.a2 = g * self.a1;
         self.a3 = g * self.a2;
@@ -62,6 +67,20 @@ impl Svf {
     pub fn reset(&mut self) {
         self.ic1eq = 0.0;
         self.ic2eq = 0.0;
+    }
+
+    /// Filters one sample, returning the low-pass and high-pass outputs.
+    pub fn process_split(&mut self, input: f32) -> (f32, f32) {
+        let v3 = input - self.ic2eq;
+        let v1 = self.a1 * self.ic1eq + self.a2 * v3;
+        let v2 = self.ic2eq + self.a2 * self.ic1eq + self.a3 * v3;
+        self.ic1eq = 2.0 * v1 - self.ic1eq;
+        self.ic2eq = 2.0 * v2 - self.ic2eq;
+        if !self.ic1eq.is_finite() || !self.ic2eq.is_finite() {
+            self.reset();
+            return (0.0, 0.0);
+        }
+        (v2, input - self.k * v1 - v2)
     }
 
     /// Filters one sample.

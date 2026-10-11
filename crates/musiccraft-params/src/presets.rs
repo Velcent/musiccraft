@@ -1142,6 +1142,107 @@ const PARAMETRIC_EQ: &[Preset] = &[
     preset("Air", &[("band7_gain", 6.0), ("band7_freq", 10_000.0)]),
 ];
 
+const MULTIBAND: &[Preset] = &[
+    preset("Gentle glue", &[]),
+    preset(
+        "Master polish",
+        &[
+            ("low_thresh", -20.0),
+            ("low_ratio", 2.0),
+            ("mid_thresh", -16.0),
+            ("mid_ratio", 2.0),
+            ("high_thresh", -22.0),
+            ("high_ratio", 2.5),
+            ("high_gain", 1.5),
+        ],
+    ),
+    preset(
+        "Tame lows",
+        &[
+            ("low_thresh", -30.0),
+            ("low_ratio", 6.0),
+            ("mid_ratio", 1.0),
+            ("high_ratio", 1.0),
+        ],
+    ),
+    preset(
+        "De-ess",
+        &[
+            ("high_freq", 5_000.0),
+            ("high_thresh", -30.0),
+            ("high_ratio", 8.0),
+            ("low_ratio", 1.0),
+            ("mid_ratio", 1.0),
+        ],
+    ),
+    preset(
+        "Upfront",
+        &[
+            ("low_thresh", -30.0),
+            ("mid_thresh", -30.0),
+            ("high_thresh", -30.0),
+            ("low_ratio", 6.0),
+            ("mid_ratio", 6.0),
+            ("high_ratio", 6.0),
+            ("output", 6.0),
+        ],
+    ),
+];
+
+const VOCODER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Robot",
+        &[("bandwidth", 0.8), ("release", 30.0), ("noise", 0.0)],
+    ),
+    preset("Whisper", &[("noise", 0.8), ("bandwidth", 0.3)]),
+    preset("Deep", &[("shift", -5.0)]),
+    preset("Chipmunk", &[("shift", 7.0)]),
+];
+
+const PITCH_SHIFT: &[Preset] = &[
+    preset("Octave up", &[]),
+    preset("Octave down", &[("pitch", -12.0)]),
+    preset("Fifth", &[("pitch", 7.0), ("mix", 0.5)]),
+    preset(
+        "Doubler",
+        &[
+            ("pitch", 0.0),
+            ("fine", 12.0),
+            ("window", 30.0),
+            ("mix", 0.5),
+        ],
+    ),
+];
+
+const STUTTER: &[Preset] = &[
+    preset("Bar end", &[]),
+    preset("Build", &[("slice", 0.0), ("portion", 0.5)]),
+    preset(
+        "Half-bar echo",
+        &[("slice", 2.0), ("every", 4.0), ("decay", 0.7)],
+    ),
+    preset(
+        "Glitch",
+        &[
+            ("slice", 0.0),
+            ("every", 3.0),
+            ("portion", 0.5),
+            ("mix", 0.8),
+        ],
+    ),
+];
+
+const CONVOLUTION: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Subtle", &[("mix", 0.15), ("high_cut", 8_000.0)]),
+    preset(
+        "Distant",
+        &[("mix", 0.6), ("predelay", 40.0), ("low_cut", 200.0)],
+    ),
+    preset("Dark", &[("mix", 0.35), ("high_cut", 3_000.0)]),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1174,6 +1275,11 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::MultiTap => MULTI_TAP,
         EffectKind::GraphicEq => GRAPHIC_EQ,
         EffectKind::ParametricEq => PARAMETRIC_EQ,
+        EffectKind::Multiband => MULTIBAND,
+        EffectKind::Vocoder => VOCODER,
+        EffectKind::PitchShift => PITCH_SHIFT,
+        EffectKind::Stutter => STUTTER,
+        EffectKind::Convolution => CONVOLUTION,
         EffectKind::Plugin => &[],
     }
 }

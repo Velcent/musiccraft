@@ -387,6 +387,10 @@ pub const LFO_TARGETS: [&str; 3] = ["pitch", "cutoff", "volume"];
 /// Names of the synth filter types, by `filter_type` value.
 pub const FILTER_TYPES: [&str; 3] = ["low-pass", "band-pass", "high-pass"];
 
+/// Generated impulse responses for the convolution reverb, used as
+/// `ir:<name>`.
+pub const IMPULSE_RESPONSES: [&str; 5] = ["room", "chamber", "plate", "hall", "cathedral"];
+
 /// Built-in insert effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -447,13 +451,23 @@ pub enum EffectKind {
     GraphicEq,
     /// Seven-band parametric equalizer.
     ParametricEq,
+    /// Three-band compressor.
+    Multiband,
+    /// Channel vocoder; the sidechain is the modulator.
+    Vocoder,
+    /// Delay-line pitch shifter.
+    PitchShift,
+    /// Tempo-synced slice repeater.
+    Stutter,
+    /// Convolution reverb with a loaded or generated impulse response.
+    Convolution,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 28] = [
+pub const EFFECT_KINDS: [EffectKind; 33] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -462,13 +476,18 @@ pub const EFFECT_KINDS: [EffectKind; 28] = [
     EffectKind::ParametricEq,
     EffectKind::Delay,
     EffectKind::MultiTap,
+    EffectKind::Stutter,
     EffectKind::Reverb,
+    EffectKind::Convolution,
     EffectKind::Chorus,
     EffectKind::Phaser,
     EffectKind::Flanger,
     EffectKind::RingMod,
     EffectKind::FreqShift,
+    EffectKind::PitchShift,
+    EffectKind::Vocoder,
     EffectKind::Compressor,
+    EffectKind::Multiband,
     EffectKind::Limiter,
     EffectKind::NoiseGate,
     EffectKind::Transient,
@@ -624,6 +643,57 @@ const PARAMETRIC_EQ_PARAMS: &[ParamSpec] = &[
     spec("output", -18.0, 6.0, 0.0, "dB"),
 ];
 
+const MULTIBAND_PARAMS: &[ParamSpec] = &[
+    spec("low_freq", 40.0, 1_000.0, 200.0, "Hz"),
+    spec("high_freq", 500.0, 16_000.0, 2_500.0, "Hz"),
+    spec("low_thresh", -60.0, 0.0, -18.0, "dB"),
+    spec("low_ratio", 1.0, 20.0, 3.0, ":1"),
+    spec("low_gain", -18.0, 18.0, 0.0, "dB"),
+    spec("mid_thresh", -60.0, 0.0, -18.0, "dB"),
+    spec("mid_ratio", 1.0, 20.0, 3.0, ":1"),
+    spec("mid_gain", -18.0, 18.0, 0.0, "dB"),
+    spec("high_thresh", -60.0, 0.0, -18.0, "dB"),
+    spec("high_ratio", 1.0, 20.0, 3.0, ":1"),
+    spec("high_gain", -18.0, 18.0, 0.0, "dB"),
+    spec("attack", 0.1, 200.0, 10.0, "ms"),
+    spec("release", 5.0, 2_000.0, 150.0, "ms"),
+    spec("output", -18.0, 12.0, 0.0, "dB"),
+];
+
+const VOCODER_PARAMS: &[ParamSpec] = &[
+    int_spec("sidechain", 0.0, 127.0, 0.0),
+    spec("bandwidth", 0.0, 1.0, 0.5, ""),
+    spec("attack", 0.1, 100.0, 5.0, "ms"),
+    spec("release", 5.0, 1_000.0, 60.0, "ms"),
+    spec("shift", -12.0, 12.0, 0.0, "st"),
+    spec("noise", 0.0, 1.0, 0.1, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+    spec("output", -24.0, 12.0, 0.0, "dB"),
+];
+
+const PITCH_SHIFT_PARAMS: &[ParamSpec] = &[
+    spec("pitch", -24.0, 24.0, 12.0, "st"),
+    spec("fine", -100.0, 100.0, 0.0, "ct"),
+    spec("window", 10.0, 100.0, 50.0, "ms"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const STUTTER_PARAMS: &[ParamSpec] = &[
+    int_spec("slice", 0.0, 5.0, 1.0),
+    int_spec("every", 0.0, 5.0, 5.0),
+    spec("portion", 0.0, 1.0, 0.25, ""),
+    spec("decay", 0.0, 1.0, 1.0, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const CONVOLUTION_PARAMS: &[ParamSpec] = &[
+    spec("mix", 0.0, 1.0, 0.3, ""),
+    spec("predelay", 0.0, 250.0, 0.0, "ms"),
+    spec("low_cut", 20.0, 1_000.0, 20.0, "Hz"),
+    spec("high_cut", 1_000.0, 20_000.0, 20_000.0, "Hz"),
+    spec("output", -24.0, 12.0, 0.0, "dB"),
+];
+
 const PHASER_PARAMS: &[ParamSpec] = &[
     spec("rate", 0.05, 10.0, 0.5, "Hz"),
     spec("depth", 0.0, 1.0, 0.7, ""),
@@ -761,6 +831,11 @@ impl EffectKind {
             Self::MultiTap => "multi_tap",
             Self::GraphicEq => "graphic_eq",
             Self::ParametricEq => "parametric_eq",
+            Self::Multiband => "multiband",
+            Self::Vocoder => "vocoder",
+            Self::PitchShift => "pitch_shift",
+            Self::Stutter => "stutter",
+            Self::Convolution => "convolution",
             Self::Plugin => "plugin",
         }
     }
@@ -803,8 +878,20 @@ impl EffectKind {
             Self::MultiTap => MULTI_TAP_PARAMS,
             Self::GraphicEq => GRAPHIC_EQ_PARAMS,
             Self::ParametricEq => PARAMETRIC_EQ_PARAMS,
+            Self::Multiband => MULTIBAND_PARAMS,
+            Self::Vocoder => VOCODER_PARAMS,
+            Self::PitchShift => PITCH_SHIFT_PARAMS,
+            Self::Stutter => STUTTER_PARAMS,
+            Self::Convolution => CONVOLUTION_PARAMS,
             Self::Plugin => &[],
         }
+    }
+
+    /// Index of the `sidechain` parameter (the insert whose output feeds the
+    /// effect's detector or modulator), for effects that have one.
+    #[must_use]
+    pub fn sidechain_index(self) -> Option<usize> {
+        self.params().iter().position(|p| p.name == "sidechain")
     }
 
     /// Default parameter values for this effect.
@@ -874,7 +961,7 @@ mod tests {
         for kind in EFFECT_KINDS {
             assert_eq!(EffectKind::parse(kind.name()), Some(kind));
         }
-        assert_eq!(EffectKind::parse("vocoder"), None);
+        assert_eq!(EffectKind::parse("theremin"), None);
         assert_eq!(EffectKind::parse("plugin"), None);
     }
 

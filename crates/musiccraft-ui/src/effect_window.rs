@@ -170,9 +170,62 @@ fn contents(
         0 => 48_000.0,
         rate => rate as f32,
     };
+    if effect.kind == EffectKind::Convolution {
+        impulse_picker(ui, state, track, slot, effect, actions);
+    }
     graph(ui, state, track, slot, effect, sample_rate, actions);
     ui.add_space(4.0);
     knobs(ui, state, track, slot, effect, actions);
+}
+
+/// The convolution reverb's impulse response: generated rooms or a file.
+fn impulse_picker(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    track: usize,
+    slot: usize,
+    effect: &EffectSlot,
+    actions: &mut Vec<Action>,
+) {
+    let current = effect.file.clone().unwrap_or_else(|| "ir:hall".to_owned());
+    let label = current.strip_prefix("ir:").map_or_else(
+        || {
+            std::path::Path::new(&current)
+                .file_name()
+                .map_or_else(|| current.clone(), |n| n.to_string_lossy().into_owned())
+        },
+        pretty,
+    );
+    ui.horizontal(|ui| {
+        ui.label("Impulse");
+        egui::ComboBox::from_id_salt(("impulse", track, slot))
+            .selected_text(label)
+            .show_ui(ui, |ui| {
+                for name in musiccraft_project::params::IMPULSE_RESPONSES {
+                    let key = format!("ir:{name}");
+                    if ui.selectable_label(current == key, pretty(name)).clicked() {
+                        actions.push(Action::Run(Invocation::new(
+                            "mixer.set_effect_file",
+                            [track.to_string(), (slot + 1).to_string(), key],
+                        )));
+                    }
+                }
+            })
+            .response
+            .hint("Generated rooms, from small to huge");
+        if ui
+            .button("Load file…")
+            .hint("Use an audio file (a recorded impulse response) as the room")
+            .clicked()
+        {
+            let start = effect.file.clone().filter(|f| !f.starts_with("ir:"));
+            state.open_dialog(crate::dialogs::Dialog::set_effect_file(
+                track,
+                slot,
+                start.unwrap_or_default(),
+            ));
+        }
+    });
 }
 
 fn preset_bar(
@@ -254,6 +307,8 @@ fn knobs(
                 effect.kind,
                 EffectKind::Gate | EffectKind::Autopan | EffectKind::AutoFilter
             );
+            let synced = synced
+                || (effect.kind == EffectKind::Stutter && matches!(spec.name, "slice" | "every"));
             let pick = |names: &[&str]| {
                 names
                     .get(value.round() as usize)
@@ -264,7 +319,7 @@ fn knobs(
             let text = match spec.name {
                 "sidechain" if value < 0.5 => "off".to_owned(),
                 "sidechain" => format!("from {value:.0}"),
-                "rate" if synced => SYNC_RATE_NAMES
+                "rate" | "slice" | "every" if synced => SYNC_RATE_NAMES
                     .get(value.round() as usize)
                     .copied()
                     .unwrap_or("?")
@@ -957,6 +1012,181 @@ fn graph(
                 painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
             }
             hint = "A drum hit's level before (grey) and after: attack shapes the front, sustain the tail";
+        }
+        EffectKind::Multiband => {
+            frequency_grid(&painter, rect);
+            let (f1, f2) = (value(effect, "low_freq"), value(effect, "high_freq"));
+            let (top, bottom) = db_range(EffectKind::GraphicEq);
+            let edges = [F_LOW, f1, f2, F_HIGH];
+            for (band, name) in ["low", "mid", "high"].iter().enumerate() {
+                let (a, b) = (freq_x(rect, edges[band]), freq_x(rect, edges[band + 1]));
+                let threshold = value(effect, &format!("{name}_thresh"));
+                let ratio = value(effect, &format!("{name}_ratio"));
+                // Darker bands compress harder (at −6 dB input).
+                let squeeze = -musiccraft_dsp::creative::band_gain_db(-6.0, threshold, ratio);
+                let fill = color.gamma_multiply((0.1 + squeeze / 40.0).clamp(0.1, 0.6));
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(a, rect.top()), pos2(b, rect.bottom())),
+                    0.0,
+                    fill,
+                );
+                let gain = db_y(rect, value(effect, &format!("{name}_gain")), top, bottom);
+                painter.line_segment([pos2(a, gain), pos2(b, gain)], Stroke::new(2.0, color));
+                painter.text(
+                    pos2((a + b) * 0.5, rect.top() + 4.0),
+                    egui::Align2::CENTER_TOP,
+                    format!("{name} {threshold:.0} dB {ratio:.1}:1"),
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT,
+                );
+            }
+            let mid = rect.center().y;
+            handles.push((pos2(freq_x(rect, f1), mid), Some("low_freq"), None));
+            handles.push((pos2(freq_x(rect, f2), mid), Some("high_freq"), None));
+            hint = "Three bands with their own compressors; drag the points to move the crossovers. Lines show each band's gain; brighter shading compresses harder";
+        }
+        EffectKind::Vocoder => {
+            frequency_grid(&painter, rect);
+            let shift = 2.0_f32.powf(value(effect, "shift") / 12.0);
+            for f in musiccraft_dsp::creative::vocoder_freqs() {
+                let x = freq_x(rect, f);
+                let xs = freq_x(rect, (f * shift).min(F_HIGH));
+                painter.line_segment(
+                    [pos2(x, rect.bottom() - 4.0), pos2(x, rect.center().y)],
+                    Stroke::new(2.0, theme::TEXT_DIM),
+                );
+                painter.line_segment(
+                    [pos2(xs, rect.center().y), pos2(xs, rect.top() + 16.0)],
+                    Stroke::new(2.0, color),
+                );
+            }
+            let source = value(effect, "sidechain");
+            painter.text(
+                pos2(rect.left() + 4.0, rect.top() + 2.0),
+                egui::Align2::LEFT_TOP,
+                if source < 0.5 {
+                    "No modulator: set Sidechain to the insert with the voice".to_owned()
+                } else {
+                    format!("Modulator: insert {source:.0}")
+                },
+                egui::FontId::proportional(11.0),
+                theme::TEXT,
+            );
+            hint = "16 bands: the modulator's levels (grey, from the sidechain) shape the carrier on this insert (colour)";
+        }
+        EffectKind::PitchShift => {
+            frequency_grid(&painter, rect);
+            let ratio =
+                2.0_f32.powf((value(effect, "pitch") + value(effect, "fine") / 100.0) / 12.0);
+            let mix = value(effect, "mix");
+            let h = rect.height() * 0.8;
+            for (k, f) in [220.0_f32, 440.0, 660.0].iter().enumerate() {
+                let level = 1.0 / (k as f32 + 1.0);
+                for (freq, height, c) in [
+                    (*f, h * level * (1.0 - mix).max(0.08), theme::TEXT_DIM),
+                    (*f * ratio, h * level * mix.max(0.08), color),
+                ] {
+                    let x = freq_x(rect, freq.clamp(F_LOW, F_HIGH));
+                    painter.line_segment(
+                        [
+                            pos2(x, rect.bottom() - 4.0),
+                            pos2(x, rect.bottom() - 4.0 - height),
+                        ],
+                        Stroke::new(3.0, c),
+                    );
+                }
+            }
+            hint = "A 220 Hz note and its harmonics (grey) and where they end up (colour)";
+        }
+        EffectKind::Stutter => {
+            let names = musiccraft_dsp::modulation::SYNC_RATES;
+            let pick = |name: &str| {
+                names
+                    .get(value(effect, name).round().max(0.0) as usize)
+                    .copied()
+                    .unwrap_or(1.0) as f32
+            };
+            let every = pick("every").max(pick("slice"));
+            let slice = pick("slice");
+            let portion = value(effect, "portion");
+            let start = rect.left() + rect.width() * (1.0 - portion);
+            let beats = every.ceil() as i32;
+            for beat in 0..=beats {
+                let x = rect.left() + rect.width() * beat as f32 / every;
+                painter.line_segment(
+                    [pos2(x, rect.top()), pos2(x, rect.bottom())],
+                    Stroke::new(1.0, theme::GRID_LINE),
+                );
+            }
+            painter.rect_filled(
+                Rect::from_min_max(
+                    pos2(start, rect.top() + 6.0),
+                    pos2(rect.right(), rect.bottom() - 6.0),
+                ),
+                2.0,
+                color.gamma_multiply(0.25),
+            );
+            let width_slice = rect.width() * slice / every;
+            let decay = value(effect, "decay");
+            let mut x = start;
+            let mut level = 1.0;
+            while x < rect.right() - 0.5 && width_slice > 1.0 {
+                let end = (x + width_slice).min(rect.right());
+                let top = rect.bottom() - 6.0 - (rect.height() - 12.0) * level;
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(x + 1.0, top), pos2(end - 1.0, rect.bottom() - 6.0)),
+                    1.0,
+                    color.gamma_multiply(0.8),
+                );
+                x = end;
+                level *= decay;
+            }
+            hint = "One period (grid lines are beats): the shaded end repeats the slice that starts it";
+        }
+        EffectKind::Convolution => {
+            let file = effect.file.as_deref().unwrap_or("ir:hall");
+            let rt60 = match file {
+                "ir:room" => 0.6,
+                "ir:chamber" => 1.1,
+                "ir:plate" => 1.6,
+                "ir:cathedral" => 4.5,
+                _ => 2.4,
+            };
+            let span = 5.0;
+            let predelay = value(effect, "predelay") / 1_000.0;
+            let mix = value(effect, "mix");
+            for second in 0..=5 {
+                let x = rect.left() + rect.width() * second as f32 / span;
+                painter.line_segment(
+                    [pos2(x, rect.top()), pos2(x, rect.bottom())],
+                    Stroke::new(1.0, theme::GRID_LINE),
+                );
+            }
+            let points = (0..=width)
+                .map(|i| {
+                    let t = i as f32 / width as f32 * span - predelay;
+                    let level = if t < 0.0 {
+                        0.0
+                    } else {
+                        mix.max(0.05) * (-6.9 * t / rt60).exp()
+                    };
+                    pos2(
+                        rect.left() + i as f32,
+                        rect.bottom() - level * rect.height() * 0.9,
+                    )
+                })
+                .collect();
+            curve(&painter, rect, color, points);
+            if !file.starts_with("ir:") {
+                painter.text(
+                    pos2(rect.right() - 4.0, rect.top() + 2.0),
+                    egui::Align2::RIGHT_TOP,
+                    "from file",
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT_DIM,
+                );
+            }
+            hint = "The tail over five seconds (a sketch for files): pick a room above or load a recorded impulse response";
         }
         EffectKind::Plugin => {}
     }

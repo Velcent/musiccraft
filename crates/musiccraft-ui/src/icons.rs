@@ -371,7 +371,7 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize, hint: &str) -> O
 
 /// An oscilloscope of recent output samples.
 pub fn scope(ui: &mut Ui, samples: &[f32], size: egui::Vec2) -> Response {
-    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, CornerRadius::same(4), theme::LCD_BG);
     painter.line_segment(

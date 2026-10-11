@@ -458,6 +458,9 @@ pub struct EffectSlot {
     pub values: [f32; MAX_EFFECT_PARAMS],
     /// The hosted plugin of a plugin slot.
     pub plugin: Option<Box<PluginRef>>,
+    /// A file the effect loads: the convolution reverb's impulse response
+    /// (an audio file or `ir:<name>`). `None` uses the effect's default.
+    pub file: Option<String>,
 }
 
 impl EffectSlot {
@@ -469,6 +472,7 @@ impl EffectSlot {
             enabled: true,
             values: kind.defaults(),
             plugin: None,
+            file: None,
         }
     }
 
@@ -499,6 +503,8 @@ struct EffectRepr {
     params: BTreeMap<String, f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     plugin: Option<PluginRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
 }
 
 impl From<EffectSlot> for EffectRepr {
@@ -508,6 +514,7 @@ impl From<EffectSlot> for EffectRepr {
             enabled: slot.enabled,
             params: params_to_map(slot.kind.params(), &slot.values),
             plugin: slot.plugin.map(|p| *p),
+            file: slot.file,
         }
     }
 }
@@ -522,6 +529,7 @@ impl From<EffectRepr> for EffectSlot {
             enabled,
             values: params_from_map(repr.kind.params(), &repr.params),
             plugin: repr.plugin.map(Box::new),
+            file: repr.file,
         }
     }
 }

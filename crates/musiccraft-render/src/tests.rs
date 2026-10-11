@@ -518,8 +518,10 @@ fn every_effect_preset_keeps_audio_sane() {
             let (left, _, _) = render(s.project(), options);
             let peak = left.iter().fold(0.0_f32, |p, x| p.max(x.abs()));
             assert!(left.iter().all(|x| x.is_finite()), "{kind} {}", preset.name);
+            // The vocoder is silent without a modulator (tested separately).
+            let quiet_ok = kind == musiccraft_params::EffectKind::Vocoder;
             assert!(
-                peak > 0.005 && peak < 1.5,
+                (quiet_ok || peak > 0.005) && peak < 1.5,
                 "{kind} {}: peak {peak}",
                 preset.name
             );
@@ -787,4 +789,53 @@ fn layers_double_sequenced_notes_and_kits_play_pads() {
     let (left, _, warnings) = render(s.project(), RenderOptions::default());
     assert!(warnings.is_empty(), "{warnings:?}");
     assert!(rms(&left[..4_410]) > 0.01);
+}
+
+#[test]
+fn vocoder_follows_its_sidechain() {
+    let level = |sidechain: u32| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_synth\nnote.add 1 0 16 C4 110\nchannel.route 1 1\n\
+                 mixer.route_to_master 1 off\nchannel.add_synth\n\
+                 note.add 2 0 16 C3 110\nchannel.route 2 2\n\
+                 mixer.add_effect 2 vocoder\nmixer.set_effect_param 2 1 sidechain {sidechain}"
+            ),
+        );
+        let options = RenderOptions {
+            sample_rate: 22_050,
+            loops: 1,
+            max_tail_seconds: 0.0,
+        };
+        let (left, _, _) = render(s.project(), options);
+        rms(&left[left.len() / 4..left.len() / 2])
+    };
+    let keyed = level(1);
+    let unkeyed = level(0);
+    assert!(keyed > 0.01, "vocoded output: {keyed}");
+    assert!(
+        unkeyed < keyed * 0.1,
+        "silent without a modulator: {unkeyed}"
+    );
+}
+
+#[test]
+fn convolution_reverb_loads_its_impulse() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:rim\nstep.set 1 1 on\nmixer.add_effect 0 convolution\n\
+         mixer.set_effect_param 0 1 mix 1\nmixer.set_effect_file 0 1 ir:cathedral",
+    );
+    let options = RenderOptions {
+        sample_rate: 22_050,
+        loops: 1,
+        max_tail_seconds: 3.0,
+    };
+    let (left, _, _) = render(s.project(), options);
+    // A short click, so anything a second later is the cathedral's tail.
+    let late = rms(&left[22_050..33_075]);
+    assert!(late > 1e-4, "tail: {late}");
 }

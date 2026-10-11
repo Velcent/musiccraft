@@ -43,6 +43,7 @@ fn window_toggle(ui: &mut egui::Ui, state: &mut UiState, label: &str, which: &st
         "piano_roll" => &mut state.windows.piano_roll,
         "mixer" => &mut state.windows.mixer,
         "browser" => &mut state.windows.browser,
+        "spectrum" => &mut state.windows.spectrum,
         _ => &mut state.windows.shortcuts,
     };
     ui.checkbox(open, label);
@@ -207,6 +208,7 @@ fn view_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     window_toggle(ui, state, "Piano roll (F7)", "piano_roll");
     window_toggle(ui, state, "Browser (Alt+F8)", "browser");
     window_toggle(ui, state, "Mixer (F9)", "mixer");
+    window_toggle(ui, state, "Spectrum analyzer", "spectrum");
     ui.separator();
     let mut hints = frame.settings.show_hints;
     if ui.checkbox(&mut hints, "Hint bar").changed() {
@@ -555,7 +557,14 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     let master = state.meters.first().copied().unwrap_or_default();
     widgets::meter(ui, master, vec2(10.0, 32.0)).hint("Master level");
     if ui.available_width() > 150.0 {
-        icons::scope(ui, &frame.engine.scope, vec2(96.0, 32.0)).hint("Master output");
+        let recent = frame.engine.scope.len().saturating_sub(256);
+        let scope = frame.engine.scope.get(recent..).unwrap_or_default();
+        if icons::scope(ui, scope, vec2(96.0, 32.0))
+            .hint("Master output; click for the spectrum analyzer")
+            .clicked()
+        {
+            state.windows.spectrum = !state.windows.spectrum;
+        }
     }
     if ui.available_width() > 50.0 {
         icons::load_bar(ui, frame.engine.load).hint(format!(

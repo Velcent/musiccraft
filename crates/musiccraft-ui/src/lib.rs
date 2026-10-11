@@ -18,6 +18,7 @@ mod piano_roll;
 mod playlist;
 mod plugins;
 pub mod settings;
+mod spectrum;
 mod theme;
 mod toolbar;
 mod widgets;
@@ -147,6 +148,8 @@ pub struct Windows {
     pub shortcuts: bool,
     /// Instrument editor of the selected channel.
     pub channel_settings: bool,
+    /// Spectrum analyzer of the master output.
+    pub spectrum: bool,
 }
 
 impl Default for Windows {
@@ -159,6 +162,7 @@ impl Default for Windows {
             browser: true,
             shortcuts: false,
             channel_settings: false,
+            spectrum: false,
         }
     }
 }
@@ -208,6 +212,8 @@ pub struct UiState {
     pub plugin_filter: String,
     /// Hint of the control hovered last frame.
     pub(crate) hint: Option<String>,
+    /// Smoothed spectrum analyzer levels and their falling peaks (dB per bin).
+    pub(crate) spectrum: (Vec<f32>, Vec<f32>),
     /// Open effect windows: (mixer track, slot index).
     pub effect_windows: Vec<(usize, usize)>,
     pub(crate) effect_drag: Option<effect_window::Drag>,
@@ -258,6 +264,7 @@ impl UiState {
             plugin_filter: String::new(),
             hint: None,
             effect_windows: Vec::new(),
+            spectrum: (Vec::new(), Vec::new()),
             effect_drag: None,
             effect_graph: None,
             settings_tab: None,
@@ -366,6 +373,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     dialogs::show(&ctx, state, frame, &mut actions);
     dialogs::shortcuts(&ctx, state);
     effect_window::show_all(&ctx, state, frame, &mut actions);
+    spectrum::show(&ctx, state, frame);
     settings::show(&ctx, state, frame, &mut actions);
 
     if let Some(dragged) = egui::DragAndDrop::payload::<browser::Dragged>(&ctx) {
@@ -498,6 +506,7 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                     Some("mixer") => Some(&mut windows.mixer),
                     Some("browser") => Some(&mut windows.browser),
                     Some("shortcuts") => Some(&mut windows.shortcuts),
+                    Some("spectrum") => Some(&mut windows.spectrum),
                     _ => None,
                 };
                 if let Some(flag) = flag {

@@ -4,6 +4,8 @@ use crate::character::{
     AutoFilter, BassBoost, DcBlock, Formant, FreqShift, GraphicEq, MultiTap, NoiseGate, Overdrive,
     ParametricEq, RingMod, Transient,
 };
+use crate::convolution::Convolver;
+use crate::creative::{MultibandCompressor, PitchShifter, Stutter, Vocoder};
 use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
 use crate::{Biquad, Chorus, Compressor, Delay, Distortion, Limiter, Reverb, Svf, SvfMode};
 
@@ -81,6 +83,9 @@ impl ThreeBandEq {
 
 /// One insert effect with its own state.
 #[derive(Debug, Clone)]
+// Effects are built once on the main thread and live inline in pre-allocated
+// slots; boxing the big filter banks would add an indirection per block.
+#[allow(clippy::large_enum_variant)]
 pub enum Effect {
     /// See [`FilterEffect`].
     Filter(FilterEffect),
@@ -138,6 +143,16 @@ pub enum Effect {
     SoftClipper,
     /// See [`crate::character::waveshaper`].
     Waveshaper,
+    /// See [`MultibandCompressor`].
+    Multiband(MultibandCompressor),
+    /// See [`Vocoder`].
+    Vocoder(Vocoder),
+    /// See [`PitchShifter`].
+    PitchShift(PitchShifter),
+    /// See [`Stutter`].
+    Stutter(Stutter),
+    /// See [`Convolver`].
+    Convolution(Convolver),
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -177,6 +192,11 @@ impl Effect {
             EffectKind::MultiTap => Self::MultiTap(MultiTap::new(sample_rate)),
             EffectKind::SoftClipper => Self::SoftClipper,
             EffectKind::Waveshaper => Self::Waveshaper,
+            EffectKind::Multiband => Self::Multiband(MultibandCompressor::default()),
+            EffectKind::Vocoder => Self::Vocoder(Vocoder::default()),
+            EffectKind::PitchShift => Self::PitchShift(PitchShifter::new(sample_rate)),
+            EffectKind::Stutter => Self::Stutter(Stutter::new(sample_rate)),
+            EffectKind::Convolution => Self::Convolution(Convolver::builtin("hall", sample_rate)),
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -213,6 +233,11 @@ impl Effect {
             Self::MultiTap(_) => EffectKind::MultiTap,
             Self::SoftClipper => EffectKind::SoftClipper,
             Self::Waveshaper => EffectKind::Waveshaper,
+            Self::Multiband(_) => EffectKind::Multiband,
+            Self::Vocoder(_) => EffectKind::Vocoder,
+            Self::PitchShift(_) => EffectKind::PitchShift,
+            Self::Stutter(_) => EffectKind::Stutter,
+            Self::Convolution(_) => EffectKind::Convolution,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -229,7 +254,7 @@ impl Effect {
     }
 
     /// Like [`Effect::process`], with an optional sidechain signal for
-    /// effects that use one (the compressor).
+    /// effects that use one (the compressor and the vocoder).
     pub fn process_keyed(
         &mut self,
         left: &mut [f32],
@@ -267,6 +292,11 @@ impl Effect {
             Self::MultiTap(fx) => fx.process(left, right, params, ctx),
             Self::SoftClipper => crate::character::soft_clipper(left, right, params),
             Self::Waveshaper => crate::character::waveshaper(left, right, params),
+            Self::Multiband(fx) => fx.process(left, right, params, ctx),
+            Self::Vocoder(fx) => fx.process_keyed(left, right, params, ctx, key),
+            Self::PitchShift(fx) => fx.process(left, right, params, ctx),
+            Self::Stutter(fx) => fx.process(left, right, params, ctx),
+            Self::Convolution(fx) => fx.process(left, right, params, ctx),
             Self::Passthrough => {}
         }
     }
@@ -286,6 +316,11 @@ impl Effect {
             | Self::SoftClipper
             | Self::Waveshaper => {}
             Self::MultiTap(fx) => fx.reset(),
+            Self::Multiband(fx) => *fx = MultibandCompressor::default(),
+            Self::Vocoder(fx) => *fx = Vocoder::default(),
+            Self::PitchShift(fx) => fx.reset(),
+            Self::Stutter(fx) => fx.reset(),
+            Self::Convolution(fx) => fx.reset(),
             Self::BassBoost(fx) => *fx = BassBoost::default(),
             Self::Overdrive(fx) => *fx = Overdrive::default(),
             Self::DcBlock(fx) => *fx = DcBlock::default(),

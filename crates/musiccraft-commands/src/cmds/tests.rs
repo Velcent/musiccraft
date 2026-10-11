@@ -361,7 +361,7 @@ fn errors_leave_the_project_unchanged() {
         "pattern.set_length 1 0",
         "pattern.set_swing 1 101",
         "pattern.select 4",
-        "mixer.add_effect 1 vocoder",
+        "mixer.add_effect 1 theremin",
         "mixer.set_send 2 1 0.5",
         "mixer.set_send 0 1 0.5",
         "mixer.set_send 1 2 3",
@@ -567,6 +567,26 @@ fn sidechain_sources_are_validated_and_renumbered() {
     );
     run(&mut s, "edit.undo");
     assert!((s.project().mixer[3].effects[0].values[5] - 2.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn vocoder_sidechain_and_impulse_files() {
+    let mut s = session();
+    run(&mut s, "mixer.add_effect 3 vocoder");
+    fails(&mut s, "mixer.set_effect_param 3 1 sidechain 4");
+    run(&mut s, "mixer.set_effect_param 3 1 sidechain 1");
+    fails(&mut s, "mixer.remove_track 1");
+    fails(&mut s, "mixer.set_effect_file 3 1 ir:hall");
+    run(&mut s, "mixer.add_effect 2 convolution");
+    fails(&mut s, "mixer.set_effect_file 2 1 ir:garage");
+    fails(&mut s, "mixer.set_effect_file 2 1 /no/such/impulse.wav");
+    run(&mut s, "mixer.set_effect_file 2 1 ir:plate");
+    assert_eq!(
+        s.project().mixer[2].effects[0].file.as_deref(),
+        Some("ir:plate")
+    );
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().mixer[2].effects[0].file, None);
 }
 
 const TOOLS_SCRIPT: &[&str] = &[

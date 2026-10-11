@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
+use musiccraft_dsp::convolution::Convolver;
 use musiccraft_dsp::{Effect, SampleBuffer};
 use musiccraft_engine::{
     ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_BLOCK,
@@ -35,12 +36,17 @@ enum Source {
     Plugin(Option<u16>),
 }
 
+/// What a rebuild depends on for one effect slot: its kind, the engine slot
+/// of a plugin, and the file it loads.
+type SlotShape = (EffectKind, Option<u16>, Option<String>);
+
 /// The parts of a project that require a new [`Graph`] when they change.
 #[derive(Debug, Clone, PartialEq)]
 struct Structure {
     channels: Vec<Source>,
-    /// Effect kinds per track, with the engine slot of plugin effects.
-    tracks: Vec<Vec<(EffectKind, Option<u16>)>>,
+    /// Effect kinds per track, with the engine slot of plugin effects and
+    /// the file an effect loads.
+    tracks: Vec<Vec<SlotShape>>,
 }
 
 /// A plugin instance the bridge keeps alive.
@@ -223,7 +229,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                                 .plugin
                                 .as_ref()
                                 .and_then(|p| slots.get(&p.instance).copied());
-                            (e.kind, slot)
+                            (e.kind, slot, e.file.clone())
                         })
                         .collect()
                 })
@@ -496,6 +502,28 @@ impl Bridge {
         }
     }
 
+    /// A built-in effect, with its file loaded (the convolution reverb's
+    /// impulse response).
+    fn effect(
+        &mut self,
+        slot: &musiccraft_project::EffectSlot,
+        warnings: &mut Vec<String>,
+    ) -> Effect {
+        let sr = self.sample_rate as f32;
+        if slot.kind != EffectKind::Convolution {
+            return Effect::new(slot.kind, sr);
+        }
+        let file = slot.file.as_deref().unwrap_or("ir:hall");
+        let convolver = match file.strip_prefix("ir:") {
+            Some(name) => Convolver::builtin(name, sr),
+            None => {
+                let buffer = self.load(file, warnings);
+                Convolver::new(buffer.left(), buffer.right(), sr)
+            }
+        };
+        Effect::Convolution(convolver)
+    }
+
     fn build_graph(&mut self, project: &Project, desc: &Desc, warnings: &mut Vec<String>) -> Graph {
         let mut graph = Graph::new();
         for (source, params) in desc.structure.channels.iter().zip(&desc.channels) {
@@ -519,14 +547,13 @@ impl Bridge {
             };
             graph.add_channel(instrument, *params);
         }
-        let sr = self.sample_rate as f32;
         for (i, (track, params)) in project.mixer.iter().zip(&desc.tracks).enumerate() {
             let effects = track
                 .effects
                 .iter()
                 .map(|e| {
                     (
-                        Effect::new(e.kind, sr),
+                        self.effect(e, warnings),
                         EffectParams {
                             enabled: e.enabled,
                             values: e.values,
@@ -540,7 +567,7 @@ impl Bridge {
                 graph.add_track(*params, effects);
             }
             let slots = desc.structure.tracks.get(i).into_iter().flatten();
-            for (s, (_, external)) in slots.enumerate() {
+            for (s, (_, external, _)) in slots.enumerate() {
                 if let Some(external) = external {
                     graph.attach_external(i, s, *external);
                 }

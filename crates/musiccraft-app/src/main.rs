@@ -210,6 +210,7 @@ impl App {
             w.mixer = windows.iter().any(|n| n == "mixer");
             w.browser = windows.iter().any(|n| n == "browser");
             w.channel_settings = windows.iter().any(|n| n == "channel_settings");
+            w.spectrum = windows.iter().any(|n| n == "spectrum");
             for spec in windows.iter().filter_map(|n| n.strip_prefix("effect:")) {
                 if let Some((track, slot)) = spec.split_once(':') {
                     if let (Ok(track), Ok(slot)) = (track.parse::<usize>(), slot.parse::<usize>()) {
@@ -397,7 +398,8 @@ impl App {
             status.voices = meters.active_voices();
             status.peaks = (0..tracks).map(|t| meters.take_peak(t)).collect();
             status.load = meters.load();
-            let mut scope = vec![0.0; 256];
+            // Enough for the spectrum analyzer; the toolbar scope uses the end.
+            let mut scope = vec![0.0; 2048];
             meters.scope(&mut scope);
             status.scope = scope;
         } else {

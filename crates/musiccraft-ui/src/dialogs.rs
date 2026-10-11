@@ -18,6 +18,7 @@ pub enum Purpose {
     AddSample,
     SetSample(usize),
     SetPad(usize, usize),
+    SetEffectFile(usize, usize),
     RenameChannel(usize),
     RenamePattern(usize),
     RenameTrack(usize),
@@ -94,6 +95,10 @@ impl Dialog {
         Self::new(Purpose::SetPad(channel, pad), current)
     }
 
+    pub fn set_effect_file(track: usize, slot: usize, current: String) -> Self {
+        Self::new(Purpose::SetEffectFile(track, slot), current)
+    }
+
     pub fn rename_channel(channel: usize, current: &str) -> Self {
         Self::new(Purpose::RenameChannel(channel), current.to_owned())
     }
@@ -137,6 +142,7 @@ impl Dialog {
             Purpose::AddSample => "Add WAV sample",
             Purpose::SetSample(_) => "Change sample",
             Purpose::SetPad(_, _) => "Pad sample (file path or builtin:<sound>; - clears)",
+            Purpose::SetEffectFile(_, _) => "Impulse response (audio file or ir:<name>)",
             Purpose::RenameChannel(_) => "Rename channel",
             Purpose::RenamePattern(_) => "Rename pattern",
             Purpose::RenameTrack(_) => "Rename mixer track",
@@ -163,6 +169,10 @@ impl Dialog {
             Purpose::SetPad(channel, pad) => Invocation::new(
                 "channel.set_pad",
                 [(channel + 1).to_string(), (pad + 1).to_string(), text],
+            ),
+            Purpose::SetEffectFile(track, slot) => Invocation::new(
+                "mixer.set_effect_file",
+                [track.to_string(), (slot + 1).to_string(), text],
             ),
             Purpose::SetSample(channel) => {
                 Invocation::new("channel.set_sample", [(channel + 1).to_string(), text])

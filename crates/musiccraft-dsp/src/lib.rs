@@ -3,9 +3,12 @@
 //! and must be called on the main thread.
 
 pub mod character;
+pub mod convolution;
+pub mod creative;
 mod dynamics;
 mod effect;
 mod envelope;
+pub mod fft;
 mod filter;
 pub mod modulation;
 mod osc;

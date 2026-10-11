@@ -122,6 +122,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_effect_enabled,
         ),
         cmd(
+            "mixer.set_effect_file",
+            "mixer.set_effect_file <track> <slot> <file|ir:name|->",
+            "Load the convolution reverb's impulse response: an audio file or a generated one (ir:room, ir:chamber, ir:plate, ir:hall, ir:cathedral); - restores the default.",
+            set_effect_file,
+        ),
+        cmd(
             "mixer.toggle_effect",
             "mixer.toggle_effect <track> <slot>",
             "Toggle an effect's bypass.",
@@ -130,29 +136,29 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
     ]
 }
 
-/// Index of the compressor's sidechain parameter.
-const SIDECHAIN: usize = 5;
-
-/// Sidechain sources of every compressor, as (track, slot, source).
-fn sidechains(project: &Project) -> Vec<(usize, usize, usize)> {
+/// Sidechain sources of every effect that has one, as (track, slot,
+/// parameter index, source).
+fn sidechains(project: &Project) -> Vec<(usize, usize, usize, usize)> {
     let mut out = Vec::new();
     for (t, track) in project.mixer.iter().enumerate() {
         for (s, effect) in track.effects.iter().enumerate() {
-            let source = effect.values.get(SIDECHAIN).copied().unwrap_or(0.0).round() as usize;
-            if effect.kind == EffectKind::Compressor && source > 0 {
-                out.push((t, s, source));
+            let Some(index) = effect.kind.sidechain_index() else {
+                continue;
+            };
+            let source = effect.values.get(index).copied().unwrap_or(0.0).round() as usize;
+            if source > 0 {
+                out.push((t, s, index, source));
             }
         }
     }
     out
 }
 
-/// Shifts compressor sidechain sources at or after `from` by `delta`.
+/// Shifts sidechain sources at or after `from` by `delta`.
 fn shift_sidechains(project: &mut Project, from: usize, delta: isize) {
-    for (t, s, source) in sidechains(project) {
+    for (t, s, index, source) in sidechains(project) {
         if source >= from {
-            project.mixer[t].effects[s].values[SIDECHAIN] =
-                source.saturating_add_signed(delta) as f32;
+            project.mixer[t].effects[s].values[index] = source.saturating_add_signed(delta) as f32;
         }
     }
 }
@@ -224,9 +230,9 @@ fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     }
     if sidechains(project)
         .iter()
-        .any(|(_, _, source)| *source == index)
+        .any(|(_, _, _, source)| *source == index)
     {
-        return Err(args.invalid("a compressor uses this track as its sidechain; change it first"));
+        return Err(args.invalid("an effect uses this track as its sidechain; change it first"));
     }
     shift_sidechains(project, index + 1, -1);
     let track = project.mixer.remove(index);
@@ -564,7 +570,7 @@ fn set_effect_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
         .into());
     }
     let value = spec.sanitize(value);
-    if effect.kind == EffectKind::Compressor && param == SIDECHAIN && value >= 0.5 {
+    if effect.kind.sidechain_index() == Some(param) && value >= 0.5 {
         let source = value as usize;
         let valid = source < project_tracks && source != index && (index == 0 || source < index);
         if !valid {
@@ -615,6 +621,45 @@ fn set_effect_enabled(project: &mut Project, args: &Args<'_>) -> Result<Outcome,
                 index.to_string(),
                 (slot + 1).to_string(),
                 on_off(previous).to_owned(),
+            ],
+        ),
+    ))
+}
+
+fn set_effect_file(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = track_arg(project, args, 0)?;
+    let slot = slot_arg(project, args, index, 1)?;
+    let file = args.str(2)?;
+    if project.mixer[index].effects[slot].kind != EffectKind::Convolution {
+        return Err(args.invalid("only the convolution reverb loads a file"));
+    }
+    let new = match file {
+        "-" => None,
+        _ => {
+            if let Some(name) = file.strip_prefix("ir:") {
+                if !musiccraft_project::params::IMPULSE_RESPONSES.contains(&name) {
+                    return Err(args.invalid(format!(
+                        "unknown impulse response `{name}`; choose from {}",
+                        musiccraft_project::params::IMPULSE_RESPONSES.join(", ")
+                    )));
+                }
+            } else {
+                super::channel::check_sample(project, args, file)?;
+            }
+            Some(file.to_owned())
+        }
+    };
+    let effect = &mut project.mixer[index].effects[slot];
+    let previous = std::mem::replace(&mut effect.file, new);
+    Ok(Outcome::undoable(
+        format!("{} loads {file}", effect.kind),
+        Invocation::new(
+            args.name(),
+            [
+                index.to_string(),
+                (slot + 1).to_string(),
+                previous.unwrap_or_else(|| "-".to_owned()),
             ],
         ),
     ))
