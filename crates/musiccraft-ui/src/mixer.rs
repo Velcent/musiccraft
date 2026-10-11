@@ -16,16 +16,31 @@ fn run(actions: &mut Vec<Action>, name: &str, args: impl IntoIterator<Item = Str
 }
 
 /// Draws the mixer docked at the bottom of the window.
-pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+/// Height of the strips area in the mixer window.
+const STRIPS_HEIGHT: f32 = 330.0;
+
+pub fn show(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    actions: &mut Vec<Action>,
+) {
     let project = frame.project;
-    egui::Panel::bottom("mixer")
-        .resizable(true)
-        .default_size(320.0)
-        .min_size(250.0)
-        .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(6.0))
-        .show(ui, |ui| {
+    let mut open = state.windows.mixer;
+    let area = state.workspace;
+    let title = match project.mixer.get(state.selected_track) {
+        Some(track) if state.selected_track > 0 => format!("Mixer — {}", track.name),
+        _ => "Mixer — Master".to_owned(),
+    };
+    egui::Window::new(title)
+        .id(egui::Id::new("mixer-window"))
+        .open(&mut open)
+        .default_pos(area.left_bottom() + egui::vec2(8.0, -(STRIPS_HEIGHT + 90.0)))
+        .default_width((area.width() - 72.0).clamp(500.0, 1200.0))
+        .max_width((area.width() - 72.0).max(500.0))
+        .constrain_to(area)
+        .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Mixer").strong().size(15.0));
                 if ui
                     .small_button("+ Insert")
                     .hint("Add an insert track")
@@ -41,11 +56,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                     .color(theme::TEXT_DIM),
                 );
             });
-            let height = ui.available_height();
+            let height = STRIPS_HEIGHT;
             ui.horizontal_top(|ui| {
                 egui::ScrollArea::horizontal()
                     .id_salt("mixer-strips")
-                    .max_width((ui.available_width() - EFFECTS_WIDTH - 12.0).max(200.0))
+                    .max_width((ui.available_width() - EFFECTS_WIDTH - 12.0).max(160.0))
                     .show(ui, |ui| {
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = 3.0;
@@ -61,9 +76,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 effects(ui, state, project, frame.plugins, actions);
             });
         });
+    state.windows.mixer = open;
 }
 
-const EFFECTS_WIDTH: f32 = 320.0;
+const EFFECTS_WIDTH: f32 = 270.0;
 
 fn led(
     ui: &mut egui::Ui,

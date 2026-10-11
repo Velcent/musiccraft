@@ -5,7 +5,9 @@
 - Mixer track 0 is the **master**; tracks 1… are **inserts**. New projects have
   eight inserts. At most 128 tracks.
 - Each track has a name, volume (linear 0–1.25, default 1.0), pan (-1–1), mute,
-  solo and up to eight insert effects processed in order.
+  solo and up to ten insert effects processed in order. The mixer is a floating
+  window (F9) with the strips on the left and the selected track's effect slots
+  on the right.
 - Channels feed exactly one track. Each insert feeds the master unless
   `mixer.route_to_master <track> off`, and may also have up to eight post-fader
   **sends** to higher-numbered inserts (`mixer.set_send <track> <target>

@@ -1,6 +1,7 @@
-//! Side panel for finding sounds: built-in sounds, instruments, samples used by
-//! the project, and folders on disk. Click previews, double-click adds a
-//! channel, and items can be dragged onto the channel rack.
+//! Side panel for finding things: the current project, the plugin database
+//! (generators and effects), sound packs and folders on disk. Click previews,
+//! double-click adds a channel, and sounds can be dragged onto the channel
+//! rack or the playlist.
 
 use crate::hint::Hint;
 use std::collections::BTreeMap;
@@ -9,7 +10,7 @@ use std::path::{Path, PathBuf};
 use egui::{RichText, Sense};
 use musiccraft_commands::Invocation;
 use musiccraft_project::Instrument;
-use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES};
+use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES, EFFECT_KINDS};
 
 use crate::{Action, Frame, UiState, dialogs::Dialog, theme};
 
@@ -158,9 +159,19 @@ fn folder(
         });
 }
 
-/// Installed plugins: click an instrument to add a channel, an effect to add
-/// it to the selected mixer track.
-fn plugin_section(
+fn heading(text: &str) -> RichText {
+    RichText::new(text).strong()
+}
+
+fn plugin_button(ui: &mut egui::Ui, label: &str, hint: String) -> bool {
+    ui.add(egui::Button::new(label).frame(false))
+        .hint(hint)
+        .clicked()
+}
+
+/// Generators (instruments) and effects, built-in and installed. Click a
+/// generator to add a channel, an effect to add it to the selected mixer track.
+fn plugin_database(
     ui: &mut egui::Ui,
     state: &UiState,
     frame: &Frame<'_>,
@@ -168,48 +179,142 @@ fn plugin_section(
     actions: &mut Vec<Action>,
 ) {
     let plugins = frame.plugins;
-    if !plugins.available {
-        return;
-    }
-    egui::CollapsingHeader::new(
-        RichText::new(format!("Plugins ({})", plugins.catalog.len())).strong(),
-    )
-    .default_open(false)
-    .show(ui, |ui| {
-        for entry in plugins.catalog.iter().filter(|p| matches(search, &p.name)) {
-            let (icon, hint, invocation) = if entry.instrument {
-                (
-                    "♪",
-                    "Click to add a channel",
-                    Invocation::new("channel.add_plugin", [entry.id.clone(), entry.name.clone()]),
-                )
-            } else {
-                (
-                    "fx",
-                    "Click to add to the selected mixer track",
-                    Invocation::new(
-                        "mixer.add_plugin",
-                        [
-                            state.selected_track.to_string(),
-                            entry.id.clone(),
-                            entry.name.clone(),
-                        ],
-                    ),
-                )
-            };
-            let button = egui::Button::new(format!("{icon}  {}", entry.name)).frame(false);
-            if ui
-                .add(button)
-                .hint(format!("{} · {}\n{hint}", entry.vendor, entry.id))
-                .clicked()
-            {
-                actions.push(Action::Run(invocation));
+    let track = state.selected_track.to_string();
+    egui::CollapsingHeader::new(heading("Plugin database"))
+        .default_open(true)
+        .show(ui, |ui| {
+            egui::CollapsingHeader::new("Generators")
+                .default_open(true)
+                .show(ui, |ui| {
+                    if matches(search, "synth") {
+                        item(ui, "Synth", Dragged(None), actions);
+                    }
+                    for entry in plugins.of_kind(true).filter(|p| matches(search, &p.name)) {
+                        let hint =
+                            format!("{} · {} — click to add a channel", entry.vendor, entry.id);
+                        if plugin_button(ui, &format!("♪  {}", entry.name), hint) {
+                            actions.push(Action::Run(Invocation::new(
+                                "channel.add_plugin",
+                                [entry.id.clone(), entry.name.clone()],
+                            )));
+                        }
+                    }
+                });
+            egui::CollapsingHeader::new("Effects")
+                .default_open(false)
+                .show(ui, |ui| {
+                    for kind in EFFECT_KINDS.iter().filter(|k| matches(search, k.name())) {
+                        let hint = format!(
+                            "Built-in {} — click to add to the selected mixer track",
+                            kind.name()
+                        );
+                        if plugin_button(ui, &format!("fx  {}", effect_title(*kind)), hint) {
+                            actions.push(Action::Run(Invocation::new(
+                                "mixer.add_effect",
+                                [track.clone(), kind.name().to_owned()],
+                            )));
+                        }
+                    }
+                    for entry in plugins.of_kind(false).filter(|p| matches(search, &p.name)) {
+                        let hint = format!(
+                            "{} · {} — click to add to the selected mixer track",
+                            entry.vendor, entry.id
+                        );
+                        if plugin_button(ui, &format!("fx  {}", entry.name), hint) {
+                            actions.push(Action::Run(Invocation::new(
+                                "mixer.add_plugin",
+                                [track.clone(), entry.id.clone(), entry.name.clone()],
+                            )));
+                        }
+                    }
+                });
+            if plugins.available && ui.small_button("Rescan plugins").clicked() {
+                actions.push(Action::RescanPlugins);
             }
-        }
-        if ui.small_button("Rescan").clicked() {
-            actions.push(Action::RescanPlugins);
-        }
-    });
+        });
+}
+
+/// Display name of a built-in effect.
+#[must_use]
+pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static str {
+    use musiccraft_project::params::EffectKind as K;
+    match kind {
+        K::Filter => "Filter",
+        K::Eq => "Equalizer",
+        K::Delay => "Delay",
+        K::Reverb => "Reverb",
+        K::Compressor => "Compressor",
+        K::Distortion => "Distortion",
+        K::Chorus => "Chorus",
+        K::Limiter => "Limiter",
+        K::Plugin => "Plugin",
+    }
+}
+
+/// Patterns, automation and samples of the open project.
+fn current_project(ui: &mut egui::Ui, frame: &Frame<'_>, search: &str, actions: &mut Vec<Action>) {
+    let project = frame.project;
+    egui::CollapsingHeader::new(heading("Current project"))
+        .default_open(false)
+        .show(ui, |ui| {
+            egui::CollapsingHeader::new(format!("Patterns ({})", project.patterns.len())).show(
+                ui,
+                |ui| {
+                    for (i, pattern) in project.patterns.iter().enumerate() {
+                        if !matches(search, &pattern.name) {
+                            continue;
+                        }
+                        let text =
+                            RichText::new(format!("▪ {}", pattern.name)).color(theme::palette(i));
+                        if ui
+                            .add(egui::Button::new(text).frame(false))
+                            .hint("Click to select this pattern")
+                            .clicked()
+                        {
+                            actions.push(Action::Run(Invocation::new(
+                                "pattern.select",
+                                [(i + 1).to_string()],
+                            )));
+                        }
+                    }
+                },
+            );
+            egui::CollapsingHeader::new(format!("Automation ({})", project.automations.len()))
+                .show(ui, |ui| {
+                    for automation in project
+                        .automations
+                        .iter()
+                        .filter(|a| matches(search, &a.name))
+                    {
+                        ui.label(
+                            RichText::new(format!("~ {}", automation.name))
+                                .color(theme::AUTOMATION),
+                        );
+                    }
+                });
+            let mut used: Vec<&str> = project
+                .channels
+                .iter()
+                .filter_map(|c| match &c.instrument {
+                    Instrument::Sampler { sample } if !sample.starts_with(BUILTIN_PREFIX) => {
+                        Some(sample.as_str())
+                    }
+                    _ => None,
+                })
+                .collect();
+            used.sort_unstable();
+            used.dedup();
+            egui::CollapsingHeader::new(format!("Samples ({})", used.len())).show(ui, |ui| {
+                for sample in used {
+                    let name = Path::new(sample)
+                        .file_name()
+                        .map_or_else(|| sample.to_owned(), |n| n.to_string_lossy().into_owned());
+                    if matches(search, &name) {
+                        item(ui, &name, Dragged(Some(sample.to_owned())), actions);
+                    }
+                }
+            });
+        });
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
@@ -241,57 +346,27 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 .id_salt("browser-scroll")
                 .show(ui, |ui| {
                     let search = state.browser.search.clone();
-                    egui::CollapsingHeader::new(RichText::new("Built-in sounds").strong())
+                    current_project(ui, frame, &search, actions);
+                    plugin_database(ui, state, frame, &search, actions);
+                    egui::CollapsingHeader::new(heading("Packs"))
                         .default_open(true)
                         .show(ui, |ui| {
-                            for name in BUILTIN_SAMPLES.iter().filter(|n| matches(&search, n)) {
-                                item(
-                                    ui,
-                                    &name.replace('_', " "),
-                                    Dragged(Some(format!("{BUILTIN_PREFIX}{name}"))),
-                                    actions,
-                                );
-                            }
+                            egui::CollapsingHeader::new("Drums (built-in)")
+                                .default_open(true)
+                                .show(ui, |ui| {
+                                    for name in
+                                        BUILTIN_SAMPLES.iter().filter(|n| matches(&search, n))
+                                    {
+                                        item(
+                                            ui,
+                                            &name.replace('_', " "),
+                                            Dragged(Some(format!("{BUILTIN_PREFIX}{name}"))),
+                                            actions,
+                                        );
+                                    }
+                                });
                         });
-                    egui::CollapsingHeader::new(RichText::new("Instruments").strong())
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            if matches(&search, "synth") {
-                                item(ui, "Synth", Dragged(None), actions);
-                            }
-                        });
-                    plugin_section(ui, state, frame, &search, actions);
-                    let mut used: Vec<&str> = frame
-                        .project
-                        .channels
-                        .iter()
-                        .filter_map(|c| match &c.instrument {
-                            Instrument::Sampler { sample }
-                                if !sample.starts_with(BUILTIN_PREFIX) =>
-                            {
-                                Some(sample.as_str())
-                            }
-                            _ => None,
-                        })
-                        .collect();
-                    used.sort_unstable();
-                    used.dedup();
-                    egui::CollapsingHeader::new(
-                        RichText::new(format!("Project samples ({})", used.len())).strong(),
-                    )
-                    .default_open(false)
-                    .show(ui, |ui| {
-                        for sample in used {
-                            let name = Path::new(sample).file_name().map_or_else(
-                                || sample.to_owned(),
-                                |n| n.to_string_lossy().into_owned(),
-                            );
-                            if matches(&search, &name) {
-                                item(ui, &name, Dragged(Some(sample.to_owned())), actions);
-                            }
-                        }
-                    });
-                    egui::CollapsingHeader::new(RichText::new("Folders").strong())
+                    egui::CollapsingHeader::new(heading("Folders"))
                         .default_open(true)
                         .show(ui, |ui| {
                             for dir in frame.settings.browser_folders.clone() {

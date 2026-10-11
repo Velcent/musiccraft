@@ -21,7 +21,7 @@ pub const MAX_EFFECT_PARAMS: usize = 8;
 /// Capacity of an instrument parameter array.
 pub const MAX_INSTRUMENT_PARAMS: usize = 16;
 /// Maximum number of effect slots on one mixer track.
-pub const MAX_EFFECT_SLOTS: usize = 8;
+pub const MAX_EFFECT_SLOTS: usize = 10;
 /// Maximum number of mixer tracks, master included.
 pub const MAX_MIXER_TRACKS: usize = 128;
 

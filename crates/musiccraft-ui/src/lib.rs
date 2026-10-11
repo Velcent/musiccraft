@@ -330,9 +330,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
 
     state.hint = hint::begin_frame(ui.ctx(), frame.settings.show_hints);
     toolbar::show(ui, state, frame, &mut actions);
-    if state.windows.mixer {
-        mixer::show(ui, state, frame, &mut actions);
-    }
     if state.windows.browser {
         browser::show(ui, state, frame, &mut actions);
     }
@@ -350,6 +347,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     state.workspace = workspace;
 
     let ctx = ui.ctx().clone();
+    if state.windows.mixer {
+        mixer::show(&ctx, state, frame, &mut actions);
+    }
     channel_rack::show(&ctx, state, frame, &mut actions);
     piano_roll::show(&ctx, state, frame, &mut actions);
     channel_settings::show(&ctx, state, frame, &mut actions);

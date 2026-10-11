@@ -61,7 +61,7 @@ channel_rack,piano_roll,playlist,mixer,browser`.
 - **Piano roll**: click to draw (single notes or chords), drag to move, drag the
   right edge to resize, right-click to delete; selection with copy, paste,
   Ctrl+B and arrow keys; velocity/pan lane at the bottom; scale highlighting.
-- **Mixer** (docked): faders with a dB curve, pan, on/solo, eight effect slots
+- **Mixer** (F9, floating): faders with a dB curve, pan, on/solo, ten effect slots
   (filter, EQ, delay, reverb, chorus, compressor with sidechain, limiter,
   distortion), sends via the arrows under each strip.
 - **Automation**: right-click any knob or fader → Create automation clip;
