@@ -29,6 +29,8 @@ pub enum Icon {
     Eraser,
     /// Select tool (dashed box).
     Select,
+    /// Mute tool (speaker with a slash).
+    Mute,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -99,6 +101,22 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 Stroke::NONE,
             ));
             painter.line_segment([p(r, 0.05, 0.98), p(r, 0.95, 0.98)], stroke);
+        }
+        Icon::Mute => {
+            painter.add(Shape::convex_polygon(
+                vec![
+                    p(r, 0.05, 0.35),
+                    p(r, 0.3, 0.35),
+                    p(r, 0.55, 0.1),
+                    p(r, 0.55, 0.9),
+                    p(r, 0.3, 0.65),
+                    p(r, 0.05, 0.65),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+            painter.line_segment([p(r, 0.68, 0.3), p(r, 0.98, 0.7)], stroke);
+            painter.line_segment([p(r, 0.98, 0.3), p(r, 0.68, 0.7)], stroke);
         }
         Icon::Select => {
             let corners = [

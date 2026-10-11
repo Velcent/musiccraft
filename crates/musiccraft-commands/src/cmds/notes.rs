@@ -46,6 +46,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_slide,
         ),
         cmd(
+            "note.restore",
+            "note.restore <channel> <json> [@pattern]",
+            "Put a note back exactly from its JSON form (used by undo).",
+            restore,
+        ),
+        cmd(
+            "note.set_prop",
+            "note.set_prop <channel> <start> <key> <release|fine|mod_x|mod_y|color|porta|muted> <value> [@pattern]",
+            "Set a per-note property.",
+            set_prop,
+        ),
+        cmd(
             "note.remove",
             "note.remove <channel> <start> <key> [@pattern]",
             "Remove the note at a start time and key.",
@@ -120,20 +132,13 @@ impl Target {
         (self.channel + 1).to_string()
     }
 
+    /// Puts `note` back exactly as it was, every property included.
     fn add_inverse(&self, note: &Note) -> Invocation {
-        let mut args = vec![
-            self.number(),
-            ticks(note.start),
-            ticks(note.length),
-            note.key.to_string(),
-            note.velocity.to_string(),
-            note.pan.to_string(),
-        ];
-        if note.slide {
-            args.push("slide".to_owned());
-        }
-        args.push(at_pattern(self.pattern));
-        Invocation::new("note.add", args)
+        let json = serde_json::to_string(&NoteJson::from(note)).unwrap_or_default();
+        Invocation::new(
+            "note.restore",
+            [self.number(), json, at_pattern(self.pattern)],
+        )
     }
 
     fn remove_inverse(&self, start: u32, key: u8) -> Invocation {
@@ -149,27 +154,67 @@ impl Target {
     }
 
     pub(super) fn set_all_inverse(&self, notes: &[Note]) -> Invocation {
-        let rows: Vec<Vec<i64>> = notes
-            .iter()
-            .map(|n| {
-                let mut row = vec![
-                    i64::from(n.start),
-                    i64::from(n.length),
-                    i64::from(n.key),
-                    i64::from(n.velocity),
-                    i64::from(n.pan),
-                ];
-                if n.slide {
-                    row.push(1);
-                }
-                row
-            })
-            .collect();
+        let rows: Vec<NoteJson> = notes.iter().map(NoteJson::from).collect();
         let json = serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_owned());
         Invocation::new(
             "note.set_all",
             [self.number(), json, at_pattern(self.pattern)],
         )
+    }
+}
+
+/// A note without its channel, as stored in undo inverses.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct NoteJson {
+    start: u32,
+    length: u32,
+    key: u8,
+    velocity: u8,
+    #[serde(default)]
+    pan: i8,
+    #[serde(default)]
+    slide: bool,
+    #[serde(flatten)]
+    props: musiccraft_project::NoteProps,
+}
+
+impl From<&Note> for NoteJson {
+    fn from(n: &Note) -> Self {
+        Self {
+            start: n.start,
+            length: n.length,
+            key: n.key,
+            velocity: n.velocity,
+            pan: n.pan,
+            slide: n.slide,
+            props: n.props,
+        }
+    }
+}
+
+impl NoteJson {
+    /// The note for `channel`, if its values are in range.
+    fn note(self, channel: musiccraft_project::ChannelId) -> Option<Note> {
+        let p = self.props;
+        let valid = self.key <= 127
+            && (1..=127).contains(&self.velocity)
+            && self.length > 0
+            && (-100..=100).contains(&self.pan)
+            && p.release <= 127
+            && (-100..=100).contains(&p.fine)
+            && p.mod_x <= 127
+            && p.mod_y <= 127
+            && p.color < 16;
+        valid.then_some(Note {
+            channel,
+            start: self.start,
+            length: self.length,
+            key: self.key,
+            velocity: self.velocity,
+            pan: self.pan,
+            slide: self.slide,
+            props: p,
+        })
     }
 }
 
@@ -203,6 +248,7 @@ fn set_step(project: &mut Project, target: &Target, tick: u32, on: bool) -> Opti
     match (on, existing.is_empty()) {
         (true, true) => {
             pattern.put_note(Note {
+                props: musiccraft_project::NoteProps::default(),
                 slide: false,
                 channel,
                 start: tick,
@@ -277,6 +323,7 @@ fn add(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> 
         Some(other) => return Err(args.invalid(format!("`{other}` is not `slide`"))),
     };
     let note = Note {
+        props: musiccraft_project::NoteProps::default(),
         slide,
         channel: project.channels[target.channel].id,
         start: args.time(1, TICKS_PER_STEP)?,
@@ -422,48 +469,45 @@ fn clear(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
 fn set_all(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
     let target = Target::resolve(project, args)?;
-    let rows: Vec<Vec<i64>> =
+    let rows: Vec<serde_json::Value> =
         serde_json::from_str(args.str(1)?).map_err(|e| args.invalid(e.to_string()))?;
     let channel = project.channels[target.channel].id;
     let mut notes = Vec::with_capacity(rows.len());
     for row in rows {
-        let (start, length, key, velocity, pan, slide) = match row.as_slice() {
-            [s, l, k, v] => (*s, *l, *k, *v, 0, false),
-            [s, l, k, v, p] => (*s, *l, *k, *v, *p, false),
-            [s, l, k, v, p, slide] => (*s, *l, *k, *v, *p, *slide != 0),
-            _ => {
-                return Err(
-                    args.invalid("each note is [start, length, key, velocity, pan?, slide?]")
-                );
+        let note = match row {
+            serde_json::Value::Array(values) => {
+                let n: Vec<i64> = values
+                    .iter()
+                    .filter_map(serde_json::Value::as_i64)
+                    .collect();
+                let (start, length, key, velocity, pan, slide) = match n.as_slice() {
+                    [s, l, k, v] => (*s, *l, *k, *v, 0, false),
+                    [s, l, k, v, p] => (*s, *l, *k, *v, *p, false),
+                    [s, l, k, v, p, slide] => (*s, *l, *k, *v, *p, *slide != 0),
+                    _ => {
+                        return Err(args.invalid(
+                            "each note is [start, length, key, velocity, pan?, slide?] or an object",
+                        ));
+                    }
+                };
+                let json = NoteJson {
+                    start: u32::try_from(start).unwrap_or(u32::MAX),
+                    length: u32::try_from(length).unwrap_or(0),
+                    key: u8::try_from(key).unwrap_or(255),
+                    velocity: u8::try_from(velocity).unwrap_or(0),
+                    pan: i8::try_from(pan).unwrap_or(i8::MAX),
+                    slide,
+                    props: musiccraft_project::NoteProps::default(),
+                };
+                json.note(channel)
             }
+            other => serde_json::from_value::<NoteJson>(other)
+                .map_err(|e| args.invalid(e.to_string()))?
+                .note(channel),
         };
-        let parsed = (
-            u32::try_from(start),
-            u32::try_from(length),
-            u8::try_from(key),
-            u8::try_from(velocity),
-            i8::try_from(pan),
-        );
-        let (Ok(start), Ok(length), Ok(key), Ok(velocity), Ok(pan)) = parsed else {
-            return Err(args.invalid("a note value is out of range"));
-        };
-        if key > 127
-            || !(1..=127).contains(&velocity)
-            || length == 0
-            || !(-100..=100).contains(&pan)
-        {
-            return Err(args
-                .invalid("each note needs length > 0, key 0-127, velocity 1-127, pan -100..100"));
-        }
-        notes.push(Note {
-            slide,
-            channel,
-            start,
-            length,
-            key,
-            velocity,
-            pan,
-        });
+        notes.push(note.ok_or_else(|| {
+            args.invalid("a note value is out of range (length > 0, key 0-127, velocity 1-127, pan -100..100)")
+        })?);
     }
     let (old, count) = rewrite(project, &target, |_| notes);
     Ok(Outcome::undoable(
@@ -536,6 +580,7 @@ fn import_midi(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
         .notes
         .iter()
         .map(|n| Note {
+            props: musiccraft_project::NoteProps::default(),
             slide: false,
             channel,
             start: convert(n.start),
@@ -582,6 +627,7 @@ fn add_chord(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     let added: Vec<Note> = intervals
         .iter()
         .map(|i| Note {
+            props: musiccraft_project::NoteProps::default(),
             slide: false,
             channel,
             start,
@@ -608,6 +654,79 @@ fn pan_arg(args: &Args<'_>, i: usize) -> Result<i8, CommandError> {
     } else {
         Err(args.invalid("pan must be -100 to 100"))
     }
+}
+
+fn restore(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = Target::resolve(project, args)?;
+    let channel = project.channels[target.channel].id;
+    let note = serde_json::from_str::<NoteJson>(args.str(1)?)
+        .map_err(|e| args.invalid(e.to_string()))?
+        .note(channel)
+        .ok_or_else(|| args.invalid("a note value is out of range"))?;
+    let replaced = project.patterns[target.pattern].put_note(note);
+    let inverse = match replaced {
+        Some(old) => target.add_inverse(&old),
+        None => target.remove_inverse(note.start, note.key),
+    };
+    Ok(Outcome::undoable(
+        format!("restored {} at {}t", key_name(note.key), note.start),
+        inverse,
+    ))
+}
+
+fn set_prop(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(5, 5)?;
+    let prop = args.str(3)?;
+    let raw = args.str(4)?;
+    let number = |min: i32, max: i32| -> Result<i32, CommandError> {
+        let v: i32 = args.parse(4, prop)?;
+        if (min..=max).contains(&v) {
+            Ok(v)
+        } else {
+            Err(args.invalid(format!("{prop} must be {min} to {max}")))
+        }
+    };
+    type Change = Box<dyn FnOnce(&mut Note)>;
+    let change: Change = match prop {
+        "release" => {
+            let v = number(0, 127)? as u8;
+            Box::new(move |n| n.props.release = v)
+        }
+        "fine" => {
+            let v = number(-100, 100)? as i8;
+            Box::new(move |n| n.props.fine = v)
+        }
+        "mod_x" => {
+            let v = number(0, 127)? as u8;
+            Box::new(move |n| n.props.mod_x = v)
+        }
+        "mod_y" => {
+            let v = number(0, 127)? as u8;
+            Box::new(move |n| n.props.mod_y = v)
+        }
+        "color" => {
+            let v = (number(1, 16)? - 1) as u8;
+            Box::new(move |n| n.props.color = v)
+        }
+        "porta" => {
+            let v = args.flag(4)?;
+            Box::new(move |n| n.props.porta = v)
+        }
+        "muted" => {
+            let v = args.flag(4)?;
+            Box::new(move |n| n.props.muted = v)
+        }
+        other => {
+            return Err(args.invalid(format!(
+                "unknown property `{other}`; choose from release, fine, mod_x, mod_y, color, porta, muted"
+            )));
+        }
+    };
+    edit_note(project, args, |note| {
+        change(note);
+        Ok(format!("note {prop} {raw}"))
+    })
 }
 
 fn set_slide(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

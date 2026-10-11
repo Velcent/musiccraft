@@ -19,8 +19,21 @@ fn event(
     start: u32,
     length: u32,
 ) -> Option<NoteEvent> {
+    if note.props.muted {
+        return None;
+    }
     let channel = u16::try_from(project.channel_position(note.channel)?).ok()?;
+    let p = note.props;
+    let centred = |v: u8| (f32::from(v) - 64.0) / 64.0;
     Some(NoteEvent {
+        shape: musiccraft_engine::NoteShape {
+            fine: f32::from(p.fine) / 100.0,
+            // Release velocity 0..127 scales the release ×0.25..×4.
+            release: 4.0_f32.powf(centred(p.release)),
+            cutoff: centred(p.mod_x) * 3.0,
+            resonance: centred(p.mod_y) * 0.5,
+            porta: p.porta,
+        },
         slide: note.slide,
         start: u64::from(start),
         length: u64::from(length.max(1)),
@@ -64,6 +77,7 @@ fn song_events(project: &Project) -> Vec<NoteEvent> {
                     .get(musiccraft_params::inst::ROOT_KEY) as u8;
                 if let Ok(channel) = u16::try_from(index) {
                     events.push(NoteEvent {
+                        shape: musiccraft_engine::NoteShape::default(),
                         slide: false,
                         start: u64::from(clip.start),
                         length: u64::from(clip.length.max(1)),

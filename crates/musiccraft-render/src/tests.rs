@@ -693,3 +693,51 @@ fn sliced_samples_play_back_slice_by_slice() {
         1.0
     );
 }
+
+#[test]
+fn note_properties_shape_the_sound() {
+    let sr = 48_000.0;
+    let options = RenderOptions {
+        sample_rate: 48_000,
+        loops: 1,
+        max_tail_seconds: 1.0,
+    };
+    let sine = "project.set_tempo 120
+         channel.add_synth
+         channel.set_param 1 wave1 0
+         channel.set_param 1 osc_mix 0
+         channel.set_param 1 sustain 1";
+    let render_with = |extra: &str| {
+        let mut s = session();
+        run(&mut s, &format!("{sine}\n{extra}"));
+        render(s.project(), options).0
+    };
+    let hz = |key: f32| 440.0 * 2f32.powf((key - 69.0) / 12.0);
+
+    // Muted notes do not play.
+    let muted = render_with("note.add 1 0 4 A4\nnote.set_prop 1 0 A4 muted on");
+    assert!(muted.iter().all(|s| s.abs() < 1e-6));
+
+    // Fine pitch: +50 cents.
+    let fine = render_with("note.add 1 0 8 A4\nnote.set_prop 1 0 A4 fine 50");
+    let f = frequency(&fine[4_800..43_200], sr);
+    // A4 is key 57 here (C4 = 48).
+    assert!((f - hz(57.5)).abs() < 2.0, "fine {f}");
+
+    // Portamento: glides from the previous (already ended) note.
+    let porta = render_with("note.add 1 0 2 A3\nnote.add 1 8 8 A4\nnote.set_prop 1 8 A4 porta on");
+    let start = (1.0 * sr) as usize;
+    let early = frequency(&porta[start + 480..start + 2_880], sr);
+    let late = frequency(&porta[start + 24_000..start + 43_000], sr);
+    assert!(early < hz(54.0), "starts low: {early}");
+    assert!((late - hz(57.0)).abs() < 3.0, "arrives: {late}");
+
+    // Release velocity: a high one rings longer after the note ends.
+    let tail = |release: u8| {
+        let out = render_with(&format!(
+            "channel.set_param 1 release 0.2\nnote.add 1 0 2 A4\nnote.set_prop 1 0 A4 release {release}"
+        ));
+        out.iter().rposition(|s| s.abs() > 1e-3).unwrap_or(0)
+    };
+    assert!(tail(127) > tail(0) + 4_800, "{} vs {}", tail(127), tail(0));
+}

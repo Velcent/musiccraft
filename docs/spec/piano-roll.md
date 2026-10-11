@@ -38,6 +38,28 @@
   in song mode). Each recorded note is one undo step. Notes held across the loop
   point keep their full length.
 
+## Note properties and kinds
+
+- Besides start, length, key, velocity, pan and slide, every note has:
+  `release` (release velocity 0–127, default 64: lower is a shorter release,
+  higher a longer one, up to ×4), `fine` (−100…100 cents), `mod_x` and `mod_y`
+  (0–127, default 64; on the synth they offset the filter cutoff by up to ±3
+  octaves and the resonance), `color` (1–16, a colour group for display;
+  plugins receive notes on one channel), `porta` and `muted`.
+- `note.set_prop <channel> <start> <key> <prop> <value> [@pattern]` sets one
+  (`release`, `fine`, `mod_x`, `mod_y`, `color`, `porta on|off`,
+  `muted on|off`); undoable.
+- **Portamento notes** start a new voice that glides from the pitch of the
+  channel's previous note over the channel's `glide` time (0.1 s when that is
+  0). Unlike slide notes they retrigger the envelope.
+- **Muted notes** stay in the pattern but do not play; they are drawn hollow.
+  The piano roll's Mute tool toggles muting on the notes it clicks or sweeps.
+- The bottom lane edits velocity, pan, release, fine pitch, Mod X or Mod Y.
+- New notes take the toolbar's colour and Portamento setting. Fine pitch,
+  release velocity and Mod X/Y apply to the built-in instruments; plugins get
+  the note's key and velocity.
+- Project files store only properties that differ from their defaults.
+
 ## Slide notes
 
 - A note can be a **slide note** (`note.set_slide <channel> <start> <key>

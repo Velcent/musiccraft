@@ -1078,7 +1078,8 @@ fn tool_stroke(
             }
             !state.playlist.painted.is_empty()
         }
-        Tool::Draw | Tool::Select => false,
+        // The playlist has no mute tool.
+        Tool::Draw | Tool::Select | Tool::Mute => false,
     }
 }
 

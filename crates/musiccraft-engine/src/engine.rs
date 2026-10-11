@@ -160,6 +160,8 @@ pub struct Engine {
     externals: Vec<Option<Box<dyn External>>>,
     /// Beats elapsed on the free-running clock (used while stopped).
     free_beats: f64,
+    /// Pitch of each channel's last note, for portamento notes.
+    last_keys: Vec<Option<f32>>,
 }
 
 impl Drop for Engine {
@@ -203,6 +205,7 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
         preview: None,
         externals: (0..MAX_EXTERNALS).map(|_| None).collect(),
         free_beats: 0.0,
+        last_keys: vec![None; PORTA_CHANNELS],
     };
     let handle = EngineHandle {
         messages: message_tx,
@@ -459,6 +462,7 @@ impl Engine {
 
     fn live_note_on(&mut self, channel: u16, key: u8, velocity: f32) {
         let start = VoiceStart {
+            shape: crate::NoteShape::default(),
             slide: false,
             channel,
             key,
@@ -475,6 +479,7 @@ impl Engine {
                 &mut self.voice_counter,
                 &graph.channels,
                 &mut self.externals,
+                &mut self.last_keys,
                 start,
             );
         }
@@ -671,6 +676,7 @@ impl Engine {
                             &mut self.voice_counter,
                             &graph.channels,
                             &mut self.externals,
+                            &mut self.last_keys,
                             start,
                         );
                     }
@@ -748,6 +754,7 @@ fn apply_automation(graph: &mut Graph, sequence: &Sequence, position: f64) {
 
 fn event_start(event: &NoteEvent, offset_frames: f64, tpf: f64) -> VoiceStart {
     VoiceStart {
+        shape: event.shape,
         channel: event.channel,
         key: event.key,
         velocity: event.velocity,
@@ -761,11 +768,15 @@ fn event_start(event: &NoteEvent, offset_frames: f64, tpf: f64) -> VoiceStart {
     }
 }
 
+/// Most channels whose last note is remembered for portamento.
+const PORTA_CHANNELS: usize = 512;
+
 fn trigger(
     voices: &mut [Voice],
     counter: &mut u64,
     channels: &[ChannelNode],
     externals: &mut Externals,
+    last_keys: &mut [Option<f32>],
     mut start: VoiceStart,
 ) {
     if let Some(ChannelNode {
@@ -798,6 +809,22 @@ fn trigger(
             return;
         }
     }
+    // A portamento note glides from the channel's previous note, held or not.
+    let previous = last_keys.get(usize::from(start.channel)).copied().flatten();
+    if let Some(slot) = last_keys.get_mut(usize::from(start.channel)) {
+        *slot = Some(f32::from(start.key) + start.shape.fine);
+    }
+    if start.shape.porta {
+        start.glide_from = previous;
+        let Some(node) = channels.get(usize::from(start.channel)) else {
+            return;
+        };
+        if let Some(voice) = free_voice(voices) {
+            *counter += 1;
+            voice.start(start, &node.instrument, &node.params, *counter);
+        }
+        return;
+    }
     // A held note on the same channel is where a glide starts from.
     start.glide_from = voices
         .iter()
@@ -807,17 +834,22 @@ fn trigger(
     let Some(node) = channels.get(usize::from(start.channel)) else {
         return;
     };
+    if let Some(voice) = free_voice(voices) {
+        *counter += 1;
+        voice.start(start, &node.instrument, &node.params, *counter);
+    }
+}
+
+/// An idle voice, or the oldest one to steal.
+fn free_voice(voices: &mut [Voice]) -> Option<&mut Voice> {
     let index = voices.iter().position(|v| !v.active).or_else(|| {
         voices
             .iter()
             .enumerate()
             .min_by_key(|(_, v)| v.age)
             .map(|(i, _)| i)
-    });
-    if let Some(voice) = index.and_then(|i| voices.get_mut(i)) {
-        *counter += 1;
-        voice.start(start, &node.instrument, &node.params, *counter);
-    }
+    })?;
+    voices.get_mut(index)
 }
 
 fn mix_channels(channels: &mut [ChannelNode], tracks: &mut [TrackNode], frames: usize) {

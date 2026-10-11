@@ -21,8 +21,8 @@ pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
     InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MixerSend,
-    MixerTrack, Note, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist, PluginRef,
-    PluginSlot, STEP_KEY,
+    MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist,
+    PluginRef, PluginSlot, STEP_KEY,
 };
 pub use musiccraft_params as params;
 

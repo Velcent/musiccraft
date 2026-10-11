@@ -138,6 +138,7 @@ mod tests {
 
     fn note(start: u64, length: u64, key: u8) -> NoteEvent {
         NoteEvent {
+            shape: musiccraft_engine::NoteShape::default(),
             start,
             length,
             channel: 0,

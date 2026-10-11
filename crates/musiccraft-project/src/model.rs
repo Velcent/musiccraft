@@ -282,6 +282,65 @@ pub struct Note {
     /// instead of starting a new one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub slide: bool,
+    /// Further per-note properties.
+    #[serde(flatten)]
+    pub props: NoteProps,
+}
+
+fn is_mid(v: &u8) -> bool {
+    *v == 64
+}
+
+fn is_zero_u8(v: &u8) -> bool {
+    *v == 0
+}
+
+fn is_zero_i8(v: &i8) -> bool {
+    *v == 0
+}
+
+fn mid() -> u8 {
+    64
+}
+
+/// Per-note properties beyond time, key, velocity, pan and slide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteProps {
+    /// Release velocity, 0–127 (64 neutral).
+    #[serde(default = "mid", skip_serializing_if = "is_mid")]
+    pub release: u8,
+    /// Fine pitch in cents, −100–100.
+    #[serde(default, skip_serializing_if = "is_zero_i8")]
+    pub fine: i8,
+    /// Modulation X, 0–127 (64 neutral): filter cutoff on the synth.
+    #[serde(default = "mid", skip_serializing_if = "is_mid")]
+    pub mod_x: u8,
+    /// Modulation Y, 0–127 (64 neutral): filter resonance on the synth.
+    #[serde(default = "mid", skip_serializing_if = "is_mid")]
+    pub mod_y: u8,
+    /// Colour group, 0–15 (shown as 1–16).
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub color: u8,
+    /// Glide from the channel's previous note, retriggering.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub porta: bool,
+    /// Kept in the pattern but not played.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub muted: bool,
+}
+
+impl Default for NoteProps {
+    fn default() -> Self {
+        Self {
+            release: 64,
+            fine: 0,
+            mod_x: 64,
+            mod_y: 64,
+            color: 0,
+            porta: false,
+            muted: false,
+        }
+    }
 }
 
 /// A pattern: notes for any number of channels.

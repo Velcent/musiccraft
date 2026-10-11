@@ -406,6 +406,7 @@ fn slice(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
     let (old, count) = rewrite(project, &target, |_| {
         (0..slices)
             .map(|i| Note {
+                props: musiccraft_project::NoteProps::default(),
                 channel: musiccraft_project::ChannelId(0),
                 start: i * piece,
                 length: piece,
@@ -455,6 +456,7 @@ fn fill(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
             let start = step * TICKS_PER_STEP;
             if !notes.iter().any(|n| n.start == start) {
                 notes.push(Note {
+                    props: musiccraft_project::NoteProps::default(),
                     slide: false,
                     channel: musiccraft_project::ChannelId(0),
                     start,

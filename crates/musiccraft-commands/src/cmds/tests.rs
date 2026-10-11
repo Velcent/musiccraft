@@ -54,6 +54,13 @@ const SCRIPT: &[&str] = &[
     "note.set_velocity 3 0 C4 127",
     "note.set_pan 3 0 C4 -40",
     "note.set_slide 3 0 C4 on",
+    "note.set_prop 3 0 C4 release 100",
+    "note.set_prop 3 0 C4 fine -30",
+    "note.set_prop 3 0 C4 mod_x 90",
+    "note.set_prop 3 0 C4 mod_y 20",
+    "note.set_prop 3 0 C4 color 5",
+    "note.set_prop 3 0 C4 porta on",
+    "note.set_prop 3 3 F4 muted on",
     "note.add 3 10 1 C5 90 0 slide",
     "note.add 3 6 1 B4 80 25",
     "note.transpose 3 12",
@@ -686,4 +693,32 @@ fn note_tools_produce_the_expected_notes() {
     let starts: Vec<u32> = notes_of(&s, 0).iter().map(|n| n.0).collect();
     assert_eq!(starts, [72, 168, 264, 360]);
     fails(&mut s, "step.fill 1 0");
+}
+
+#[test]
+fn note_props_survive_edits_and_files() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C4");
+    run(&mut s, "note.set_prop 1 0 C4 fine 25");
+    run(&mut s, "note.set_prop 1 0 C4 color 3");
+    run(&mut s, "note.set_prop 1 0 C4 muted on");
+    // A velocity change and its undo keep every property.
+    run(&mut s, "note.set_velocity 1 0 C4 30");
+    run(&mut s, "edit.undo");
+    let n = s.project().current_pattern().notes[0];
+    assert_eq!(
+        (n.props.fine, n.props.color, n.props.muted, n.velocity),
+        (25, 2, true, 100)
+    );
+    // Transposing (set_all inverse) keeps them through undo too.
+    run(&mut s, "note.transpose 1 2");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().current_pattern().notes[0], n);
+    let json = s.project().to_json().unwrap();
+    assert!(json.contains("\"fine\": 25") && !json.contains("mod_x"));
+    assert_eq!(&Project::from_json(&json).unwrap(), s.project());
+    fails(&mut s, "note.set_prop 1 0 C4 fine 300");
+    fails(&mut s, "note.set_prop 1 0 C4 color 0");
+    fails(&mut s, "note.set_prop 1 0 C4 wobble 3");
 }

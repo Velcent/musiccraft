@@ -911,3 +911,51 @@ fn right_drag_deletes_every_note_it_passes() {
     assert_eq!(single.len(), 1);
     assert_eq!(h.session.project().current_pattern().notes.len(), 1);
 }
+
+#[test]
+fn note_kinds_from_the_piano_roll() {
+    use crate::piano_roll::{LaneMode, Tool};
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.piano_roll = true;
+    h.state.roll.porta = true;
+    h.state.roll.color = 3;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    let added = h.click(h.roll_point(2 * step + 5, 62), PointerButton::Primary);
+    assert_eq!(added.len(), 1);
+    assert!(added[0].starts_with("note.restore 1 "), "{added:?}");
+    let n = h.session.project().current_pattern().notes[0];
+    assert!(n.props.porta && n.props.color == 3);
+    h.state.roll.porta = false;
+    h.state.roll.color = 0;
+    h.settle();
+    h.click(h.roll_point(6 * step + 5, 62), PointerButton::Primary);
+    h.settle();
+
+    // The mute tool toggles every note it sweeps, in one step.
+    h.state.roll.tool = Tool::Mute;
+    let depth = h.session.undo_depth();
+    h.drag(
+        h.roll_point(2 * step + 5, 62),
+        h.roll_point(6 * step + 5, 62),
+    );
+    assert!(
+        h.session
+            .project()
+            .current_pattern()
+            .notes
+            .iter()
+            .all(|n| n.props.muted)
+    );
+    assert_eq!(h.session.undo_depth(), depth + 1);
+    h.state.roll.tool = Tool::Draw;
+
+    // The lane edits fine pitch.
+    h.state.roll.lane_mode = LaneMode::Fine;
+    h.settle();
+    let (grid, clip) = h.state.roll.last_view.unwrap();
+    let x = grid.x((2 * step) as f32) + 2.0;
+    h.drag(pos2(x, clip.bottom() - 40.0), pos2(x, clip.bottom() - 70.0));
+    let fine = h.session.project().current_pattern().notes[0].props.fine;
+    assert!(fine > 20, "fine raised: {fine}");
+}

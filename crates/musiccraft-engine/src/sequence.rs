@@ -15,6 +15,35 @@ pub struct NoteEvent {
     pub pan: f32,
     /// Glide the sounding note to this key instead of starting a new one.
     pub slide: bool,
+    /// Per-note shaping.
+    pub shape: NoteShape,
+}
+
+/// Per-note properties beyond pitch, velocity and pan.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NoteShape {
+    /// Fine tuning in semitones (−1..1).
+    pub fine: f32,
+    /// Multiplier on the release time.
+    pub release: f32,
+    /// Filter cutoff offset in octaves.
+    pub cutoff: f32,
+    /// Filter resonance offset (−0.5..0.5).
+    pub resonance: f32,
+    /// Glide from the channel's previous note, retriggering.
+    pub porta: bool,
+}
+
+impl Default for NoteShape {
+    fn default() -> Self {
+        Self {
+            fine: 0.0,
+            release: 1.0,
+            cutoff: 0.0,
+            resonance: 0.0,
+            porta: false,
+        }
+    }
 }
 
 /// A parameter an automation lane writes.
@@ -148,6 +177,7 @@ mod tests {
 
     fn note(start: u64) -> NoteEvent {
         NoteEvent {
+            shape: crate::NoteShape::default(),
             start,
             length: 10,
             channel: 0,

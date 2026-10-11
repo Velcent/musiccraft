@@ -45,6 +45,8 @@ pub(crate) struct VoiceStart {
     pub glide_from: Option<f32>,
     /// A slide note: move the sounding voice instead of starting one.
     pub slide: bool,
+    /// Per-note shaping.
+    pub shape: crate::NoteShape,
 }
 
 /// One sounding note.
@@ -59,6 +61,8 @@ pub(crate) struct Voice {
     delay: u32,
     gate: Option<u64>,
     one_shot: bool,
+    /// Per-note shaping of the note this voice plays.
+    shape: crate::NoteShape,
     /// For a sliced sample: where the slice ends, in sample frames.
     slice_end: Option<f64>,
     env: Adsr,
@@ -102,6 +106,7 @@ impl Voice {
             delay: 0,
             gate: None,
             one_shot: false,
+            shape: crate::NoteShape::default(),
             slice_end: None,
             env: Adsr::new(sample_rate),
             osc1: std::array::from_fn(|_| Oscillator::new()),
@@ -150,6 +155,7 @@ impl Voice {
     ) {
         self.active = true;
         self.live = start.live;
+        self.shape = start.shape;
         self.channel = start.channel;
         self.key = start.key;
         self.velocity = start.velocity.clamp(0.0, 1.0);
@@ -169,7 +175,7 @@ impl Voice {
             _ => {}
         }
         self.env.reset();
-        self.env.set_params(envelope_params(params));
+        self.env.set_params(self.envelope(params));
         self.env.gate_on();
         // Spread unison phases so stacked oscillators do not start in step.
         for (i, (a, b)) in self.osc1.iter_mut().zip(self.osc2.iter_mut()).enumerate() {
@@ -197,9 +203,16 @@ impl Voice {
             }
         }
         self.pan = pan_gains(start.pan);
-        let glide_time = param(params, inst::GLIDE);
+        // Portamento notes glide even without a glide time (0.1 s then).
+        let glide_time = if start.shape.porta {
+            param(params, inst::GLIDE).max(0.1)
+        } else {
+            param(params, inst::GLIDE)
+        };
+        let glides = matches!(instrument, Instrument::Synth)
+            || (start.shape.porta && matches!(instrument, Instrument::Sampler(_)));
         match start.glide_from {
-            Some(from) if glide_time > 0.0 && matches!(instrument, Instrument::Synth) => {
+            Some(from) if glide_time > 0.0 && glides => {
                 self.glide = from - f32::from(start.key);
                 self.glide_rate = self.glide.abs() / (glide_time * self.env_rate());
             }
@@ -208,6 +221,13 @@ impl Voice {
                 self.glide_rate = 0.0;
             }
         }
+    }
+
+    /// The channel's envelope with this note's release velocity applied.
+    fn envelope(&self, params: &ChannelParams) -> AdsrParams {
+        let mut env = envelope_params(params);
+        env.release *= self.shape.release;
+        env
     }
 
     fn env_rate(&self) -> f32 {
@@ -247,8 +267,8 @@ impl Voice {
         if !self.active {
             return;
         }
-        self.env.set_params(envelope_params(params));
-        let pitch = f32::from(self.key) + param(params, inst::PITCH);
+        self.env.set_params(self.envelope(params));
+        let pitch = f32::from(self.key) + param(params, inst::PITCH) + self.shape.fine;
         match instrument {
             Instrument::Sampler(buffer) => {
                 let root = param(params, inst::ROOT_KEY);
@@ -489,8 +509,9 @@ impl Voice {
         let mix = param(params, inst::OSC_MIX).clamp(0.0, 1.0);
         let detune = 2.0_f64.powf(f64::from(param(params, inst::DETUNE)) / 1200.0);
         let sr = f64::from(sample_rate);
-        let cutoff = param(params, inst::CUTOFF);
-        let resonance = param(params, inst::RESONANCE);
+        // Mod X and Y of the note offset the filter.
+        let cutoff = param(params, inst::CUTOFF) * 2.0_f32.powf(self.shape.cutoff);
+        let resonance = (param(params, inst::RESONANCE) + self.shape.resonance).clamp(0.0, 1.0);
         let env_amount = param(params, inst::ENV_AMOUNT);
         let unison = (param(params, inst::UNISON).round() as usize).clamp(1, MAX_UNISON);
         let spread = param(params, inst::SPREAD);
@@ -612,6 +633,7 @@ mod tests {
         let mut params = ChannelParams::default();
         params.instrument[inst::GLIDE] = 0.5;
         let start = VoiceStart {
+            shape: crate::NoteShape::default(),
             slide: false,
             channel: 0,
             key: 69,
@@ -645,6 +667,7 @@ mod tests {
 
     fn render_synth_note(params: &ChannelParams) -> (Vec<f32>, Vec<f32>) {
         let start = VoiceStart {
+            shape: crate::NoteShape::default(),
             slide: false,
             channel: 0,
             key: 57,
@@ -714,6 +737,7 @@ mod tests {
     fn no_glide_without_a_glide_time() {
         let params = ChannelParams::default();
         let start = VoiceStart {
+            shape: crate::NoteShape::default(),
             slide: false,
             channel: 0,
             key: 69,
@@ -742,6 +766,7 @@ mod instrument_tests {
         gate: Option<u64>,
     ) -> Vec<f32> {
         let start = VoiceStart {
+            shape: crate::NoteShape::default(),
             channel: 0,
             key,
             velocity: 1.0,

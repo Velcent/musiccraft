@@ -51,6 +51,8 @@ pub(crate) enum Tool {
     Delete,
     /// Drag selects notes; click empty space clears the selection.
     Select,
+    /// Click or drag over notes to mute or unmute them.
+    Mute,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +61,10 @@ pub struct RollState {
     pub(crate) tool: Tool,
     /// New notes are slide notes.
     pub(crate) slide: bool,
+    /// New notes are portamento notes.
+    pub(crate) porta: bool,
+    /// Colour group of new notes (0 = channel colour).
+    pub(crate) color: u8,
     /// Notes painted or marked for deletion in the stroke in progress.
     stroke: Vec<Note>,
     /// Notes swept by a right-button drag, deleted when it ends.
@@ -81,7 +87,7 @@ pub struct RollState {
     /// Note whose velocity is being dragged in the lane.
     lane_drag: Option<Note>,
     /// What the bottom lane edits.
-    lane_mode: LaneMode,
+    pub(crate) lane_mode: LaneMode,
     /// Selected notes of the shown channel and pattern, as (start, key).
     pub(crate) selection: BTreeSet<(u32, u8)>,
     /// (channel, pattern) the selection belongs to.
@@ -99,6 +105,8 @@ impl Default for RollState {
         Self {
             tool: Tool::Draw,
             slide: false,
+            porta: false,
+            color: 0,
             stroke: Vec::new(),
             right_erase: Vec::new(),
             px_per_step: 24.0,
@@ -197,22 +205,17 @@ fn move_notes(channel: usize, notes: &[Note], dt: i64, dk: i32) -> Option<Invoca
 
 /// Adds copies of `notes` shifted by `offset` ticks.
 fn add_notes(channel: usize, notes: &[Note], offset: u32) -> Option<Invocation> {
-    let ch = (channel + 1).to_string();
     batch(
         notes
             .iter()
             .map(|n| {
-                let mut args = vec![
-                    ch.clone(),
-                    ticks(n.start + offset),
-                    ticks(n.length),
-                    n.key.to_string(),
-                    n.velocity.to_string(),
-                ];
-                if n.slide {
-                    args.extend([n.pan.to_string(), "slide".to_owned()]);
-                }
-                Invocation::new("note.add", args)
+                create(
+                    channel,
+                    &Note {
+                        start: n.start + offset,
+                        ..*n
+                    },
+                )
             })
             .collect(),
     )
@@ -234,24 +237,76 @@ fn remove_notes(channel: usize, notes: &[Note]) -> Option<Invocation> {
 }
 
 /// Invocation that finishes a drag gesture.
-fn finish(drag: &NoteDrag, channel: usize, velocity: u8, slide: bool) -> Option<Invocation> {
+/// The command that creates `note` on `channel`: `note.add` for plain
+/// notes, `note.restore` when it carries other properties.
+fn create(channel: usize, note: &Note) -> Invocation {
+    let ch = (channel + 1).to_string();
+    if note.props == musiccraft_project::NoteProps::default() {
+        let mut args = vec![
+            ch,
+            ticks(note.start),
+            ticks(note.length),
+            note.key.to_string(),
+            note.velocity.to_string(),
+        ];
+        if note.slide {
+            args.extend([note.pan.to_string(), "slide".to_owned()]);
+        }
+        return Invocation::new("note.add", args);
+    }
+    let p = note.props;
+    let json = format!(
+        "{{\"start\":{},\"length\":{},\"key\":{},\"velocity\":{},\"pan\":{},\"slide\":{},\"release\":{},\"fine\":{},\"mod_x\":{},\"mod_y\":{},\"color\":{},\"porta\":{},\"muted\":{}}}",
+        note.start,
+        note.length,
+        note.key,
+        note.velocity,
+        note.pan,
+        note.slide,
+        p.release,
+        p.fine,
+        p.mod_x,
+        p.mod_y,
+        p.color,
+        p.porta,
+        p.muted
+    );
+    Invocation::new("note.restore", [ch, json])
+}
+
+/// Properties new notes get from the toolbar.
+fn new_props(state: &UiState) -> musiccraft_project::NoteProps {
+    musiccraft_project::NoteProps {
+        porta: state.roll.porta,
+        color: state.roll.color,
+        ..musiccraft_project::NoteProps::default()
+    }
+}
+
+fn finish(
+    drag: &NoteDrag,
+    channel: usize,
+    velocity: u8,
+    slide: bool,
+    props: musiccraft_project::NoteProps,
+) -> Option<Invocation> {
     let ch = (channel + 1).to_string();
     let t = |ticks: u32| format!("{ticks}t");
     let n = drag.original;
     match drag.kind {
-        DragKind::Create => {
-            let mut args = vec![
-                ch,
-                t(drag.start),
-                t(drag.length),
-                drag.key.to_string(),
-                velocity.to_string(),
-            ];
-            if slide {
-                args.extend(["0".to_owned(), "slide".to_owned()]);
-            }
-            Some(Invocation::new("note.add", args))
-        }
+        DragKind::Create => Some(create(
+            channel,
+            &Note {
+                channel: musiccraft_project::ChannelId(0),
+                start: drag.start,
+                length: drag.length,
+                key: drag.key,
+                velocity,
+                pan: 0,
+                slide,
+                props,
+            },
+        )),
         DragKind::Move if (drag.start, drag.key) != (n.start, n.key) => Some(Invocation::new(
             "note.move",
             [
@@ -337,6 +392,11 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                 Icon::Select,
                 "Select: drag a box around notes; click empty space to clear",
             ),
+            (
+                Tool::Mute,
+                Icon::Mute,
+                "Mute: click or drag over notes to mute or unmute them",
+            ),
         ] {
             if icons::button(ui, icon, state.roll.tool == tool, theme::ACCENT, hint).clicked() {
                 state.roll.tool = tool;
@@ -345,6 +405,26 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.toggle_value(&mut state.roll.slide, "Slide")
             .hint("New notes are slide notes: they glide the sounding note to their key");
+        ui.toggle_value(&mut state.roll.porta, "Porta").hint(
+            "New notes are portamento notes: they glide from the previous note and retrigger",
+        );
+        let label = if state.roll.color == 0 {
+            "Colour: channel".to_owned()
+        } else {
+            format!("Colour {}", state.roll.color + 1)
+        };
+        egui::ComboBox::from_id_salt("roll-color")
+            .width(96.0)
+            .selected_text(label)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut state.roll.color, 0, "Channel colour");
+                for c in 1..16u8 {
+                    let text = RichText::new(format!("Colour {}", c + 1)).color(note_color(c));
+                    ui.selectable_value(&mut state.roll.color, c, text);
+                }
+            })
+            .response
+            .hint("Colour group of new notes (also their MIDI channel for plugins)");
         ui.add_space(4.0);
         egui::ComboBox::from_id_salt("roll-channel")
             .width(130.0)
@@ -547,16 +627,46 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             {
                 continue;
             }
-            draw_note(
-                &painter,
-                &grid,
-                note.start,
-                note.length,
-                note.key,
-                note.velocity,
-                color,
-                false,
-            );
+            let tint = if note.props.color > 0 {
+                note_color(note.props.color)
+            } else {
+                color
+            };
+            let r = grid.span(row_of_key(note.key), note.start, note.length);
+            if note.props.muted {
+                // Muted notes are hollow.
+                painter.rect_filled(r.shrink(1.0), 3.0, tint.gamma_multiply(0.12));
+                painter.rect_stroke(
+                    r.shrink(1.0),
+                    3.0,
+                    Stroke::new(1.0, tint.gamma_multiply(0.7)),
+                    egui::StrokeKind::Inside,
+                );
+            } else {
+                draw_note(
+                    &painter,
+                    &grid,
+                    note.start,
+                    note.length,
+                    note.key,
+                    note.velocity,
+                    tint,
+                    false,
+                );
+            }
+            if note.props.porta {
+                // A small curve marks a portamento note.
+                let a = pos2(r.left() + 3.0, r.bottom() - 3.0);
+                let b = pos2(r.left() + 3.0 + r.height(), r.top() + 3.0);
+                painter.add(egui::Shape::QuadraticBezier(
+                    egui::epaint::QuadraticBezierShape::from_points_stroke(
+                        [a, pos2(a.x, b.y), b],
+                        false,
+                        Color32::TRANSPARENT,
+                        Stroke::new(1.5, Color32::from_white_alpha(170)),
+                    ),
+                ));
+            }
             if note.slide {
                 // A ramp at the start marks a slide note.
                 let r = grid
@@ -1000,6 +1110,12 @@ fn tools_menu(
     }
 }
 
+/// The colour of note group `index` (1–15; 0 uses the channel colour).
+pub(crate) fn note_color(index: u8) -> Color32 {
+    let hue = f32::from(index % 16) / 16.0;
+    egui::ecolor::Hsva::new(hue, 0.55, 0.85, 1.0).into()
+}
+
 /// Right button: click deletes the note under the pointer; dragging deletes
 /// every note the pointer passes over, as one undo step when released.
 fn right_erase(
@@ -1047,7 +1163,7 @@ fn tool_stroke(
     actions: &mut Vec<Action>,
 ) -> bool {
     let tool = state.roll.tool;
-    if !matches!(tool, Tool::Paint | Tool::Delete) {
+    if !matches!(tool, Tool::Paint | Tool::Delete | Tool::Mute) {
         return false;
     }
     let snap = state.roll.snap;
@@ -1057,6 +1173,42 @@ fn tool_stroke(
         Hit::Empty => None,
     };
     match tool {
+        Tool::Mute => {
+            if response.drag_started_by(PointerButton::Primary) {
+                state.roll.stroke.clear();
+            }
+            let pressed = response.dragged_by(PointerButton::Primary)
+                || response.clicked_by(PointerButton::Primary);
+            if let (true, Some(p)) = (pressed, pointer) {
+                if let Some(note) = under(p) {
+                    if !state.roll.stroke.contains(&note) {
+                        state.roll.stroke.push(note);
+                    }
+                }
+            }
+            if response.drag_stopped_by(PointerButton::Primary)
+                || response.clicked_by(PointerButton::Primary)
+            {
+                let ch = (channel + 1).to_string();
+                let toggles = std::mem::take(&mut state.roll.stroke)
+                    .iter()
+                    .map(|n| {
+                        Invocation::new(
+                            "note.set_prop",
+                            [
+                                ch.clone(),
+                                ticks(n.start),
+                                n.key.to_string(),
+                                "muted".to_owned(),
+                                if n.props.muted { "off" } else { "on" }.to_owned(),
+                            ],
+                        )
+                    })
+                    .collect();
+                actions.extend(batch(toggles).map(Action::Run));
+            }
+            true
+        }
         Tool::Delete => {
             if response.drag_started_by(PointerButton::Primary) {
                 state.roll.stroke.clear();
@@ -1112,6 +1264,7 @@ fn tool_stroke(
                         .is_none_or(|last| start >= last.start + last.length);
                     if free {
                         state.roll.stroke.push(Note {
+                            props: new_props(state),
                             slide: state.roll.slide,
                             channel: musiccraft_project::ChannelId(0),
                             start,
@@ -1201,6 +1354,7 @@ fn edit(
                         NoteDrag {
                             kind: DragKind::Create,
                             original: Note {
+                                props: musiccraft_project::NoteProps::default(),
                                 slide: false,
                                 channel: musiccraft_project::ChannelId(0),
                                 start,
@@ -1311,9 +1465,13 @@ fn edit(
                     }
                 }
                 _ => {
-                    if let Some(invocation) =
-                        finish(&drag, channel, state.roll.velocity, state.roll.slide)
-                    {
+                    if let Some(invocation) = finish(
+                        &drag,
+                        channel,
+                        state.roll.velocity,
+                        state.roll.slide,
+                        new_props(state),
+                    ) {
                         actions.push(Action::Run(invocation));
                     }
                     state.roll.selection = BTreeSet::from([(drag.start, drag.key)]);
@@ -1368,12 +1526,20 @@ fn edit(
                             ],
                         ),
                         None => {
-                            let mut args =
-                                vec![ch, ticks(start), length, key.to_string(), velocity];
-                            if state.roll.slide {
-                                args.extend(["0".to_owned(), "slide".to_owned()]);
-                            }
-                            Invocation::new("note.add", args)
+                            let _ = (ch, length, velocity);
+                            create(
+                                channel,
+                                &Note {
+                                    channel: musiccraft_project::ChannelId(0),
+                                    start,
+                                    length: state.roll.last_length,
+                                    key,
+                                    velocity: state.roll.velocity,
+                                    pan: 0,
+                                    slide: state.roll.slide,
+                                    props: new_props(state),
+                                },
+                            )
                         }
                     };
                     actions.push(Action::Run(invocation));
@@ -1498,39 +1664,89 @@ pub(crate) enum LaneMode {
     #[default]
     Velocity,
     Pan,
+    Release,
+    Fine,
+    ModX,
+    ModY,
 }
 
 impl LaneMode {
+    const ALL: [LaneMode; 6] = [
+        LaneMode::Velocity,
+        LaneMode::Pan,
+        LaneMode::Release,
+        LaneMode::Fine,
+        LaneMode::ModX,
+        LaneMode::ModY,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Velocity => "Velocity",
+            Self::Pan => "Pan",
+            Self::Release => "Release",
+            Self::Fine => "Fine pitch",
+            Self::ModX => "Mod X",
+            Self::ModY => "Mod Y",
+        }
+    }
+
+    /// Whether the lane's neutral value is in the middle.
+    fn centred(self) -> bool {
+        !matches!(self, Self::Velocity)
+    }
+
     fn value(self, note: &Note) -> f32 {
+        let p = note.props;
         match self {
             Self::Velocity => f32::from(note.velocity.max(1) - 1) / 126.0,
             Self::Pan => (f32::from(note.pan) + 100.0) / 200.0,
+            Self::Release => f32::from(p.release) / 127.0,
+            Self::Fine => (f32::from(p.fine) + 100.0) / 200.0,
+            Self::ModX => f32::from(p.mod_x) / 127.0,
+            Self::ModY => f32::from(p.mod_y) / 127.0,
         }
     }
 
     fn invocation(self, channel: usize, note: &Note, t: f32) -> Option<Invocation> {
-        let (name, value, current) = match self {
+        // Snap to the neutral value near the middle of centred lanes.
+        let snap = |v: i32, mid: i32, near: i32| if (v - mid).abs() <= near { mid } else { v };
+        let p = note.props;
+        let (name, prop, value, current) = match self {
             Self::Velocity => {
                 let v = (1.0 + t * 126.0).round() as i32;
-                ("note.set_velocity", v, i32::from(note.velocity))
+                ("note.set_velocity", None, v, i32::from(note.velocity))
             }
             Self::Pan => {
-                let p = (t * 200.0 - 100.0).round() as i32;
-                // Snap to centre near the middle.
-                let p = if p.abs() <= 3 { 0 } else { p };
-                ("note.set_pan", p, i32::from(note.pan))
+                let v = snap((t * 200.0 - 100.0).round() as i32, 0, 3);
+                ("note.set_pan", None, v, i32::from(note.pan))
+            }
+            Self::Release => {
+                let v = snap((t * 127.0).round() as i32, 64, 2);
+                ("note.set_prop", Some("release"), v, i32::from(p.release))
+            }
+            Self::Fine => {
+                let v = snap((t * 200.0 - 100.0).round() as i32, 0, 3);
+                ("note.set_prop", Some("fine"), v, i32::from(p.fine))
+            }
+            Self::ModX => {
+                let v = snap((t * 127.0).round() as i32, 64, 2);
+                ("note.set_prop", Some("mod_x"), v, i32::from(p.mod_x))
+            }
+            Self::ModY => {
+                let v = snap((t * 127.0).round() as i32, 64, 2);
+                ("note.set_prop", Some("mod_y"), v, i32::from(p.mod_y))
             }
         };
         (value != current).then(|| {
-            Invocation::new(
-                name,
-                [
-                    (channel + 1).to_string(),
-                    format!("{}t", note.start),
-                    note.key.to_string(),
-                    value.to_string(),
-                ],
-            )
+            let mut args = vec![
+                (channel + 1).to_string(),
+                format!("{}t", note.start),
+                note.key.to_string(),
+            ];
+            args.extend(prop.map(str::to_owned));
+            args.push(value.to_string());
+            Invocation::new(name, args)
         })
     }
 }
@@ -1561,30 +1777,26 @@ fn velocity_lane(
     let label_rect = Rect::from_min_max(strip.left_top(), pos2(lane.left(), strip.bottom()));
     let label = ui
         .interact(label_rect, ui.id().with("lane-mode"), Sense::click())
-        .hint("Click to switch between velocity and pan");
+        .hint("Click to choose what the lane edits: velocity, pan, release, fine pitch, Mod X or Mod Y");
     if label.clicked() {
-        state.roll.lane_mode = match mode {
-            LaneMode::Velocity => LaneMode::Pan,
-            LaneMode::Pan => LaneMode::Velocity,
-        };
+        let i = LaneMode::ALL.iter().position(|m| *m == mode).unwrap_or(0);
+        state.roll.lane_mode = LaneMode::ALL[(i + 1) % LaneMode::ALL.len()];
     }
-    for (i, (text, m)) in [("Velocity", LaneMode::Velocity), ("Pan", LaneMode::Pan)]
-        .into_iter()
-        .enumerate()
-    {
-        painter.text(
-            pos2(clip.left() + 6.0, lane.center().y - 8.0 + i as f32 * 16.0),
-            Align2::LEFT_CENTER,
-            text,
-            FontId::proportional(10.0),
-            if m == mode {
-                theme::ACCENT
-            } else {
-                theme::TEXT_DIM
-            },
-        );
-    }
-    if mode == LaneMode::Pan {
+    painter.text(
+        pos2(clip.left() + 6.0, lane.center().y - 7.0),
+        Align2::LEFT_CENTER,
+        mode.label(),
+        FontId::proportional(10.0),
+        theme::ACCENT,
+    );
+    painter.text(
+        pos2(clip.left() + 6.0, lane.center().y + 8.0),
+        Align2::LEFT_CENTER,
+        "click: next",
+        FontId::proportional(9.0),
+        theme::TEXT_DIM,
+    );
+    if mode.centred() {
         painter.line_segment(
             [
                 pos2(lane.left(), lane.center().y),
@@ -1623,9 +1835,10 @@ fn velocity_lane(
         if x < lane.left() || x > lane.right() {
             continue;
         }
-        let base = match mode {
-            LaneMode::Velocity => lane.bottom(),
-            LaneMode::Pan => lane.center().y,
+        let base = if mode.centred() {
+            lane.center().y
+        } else {
+            lane.bottom()
         };
         let tip = y_of(t);
         painter.line_segment([pos2(x, base), pos2(x, tip)], Stroke::new(2.0, color));
@@ -1743,6 +1956,7 @@ mod tests {
         NoteDrag {
             kind,
             original: Note {
+                props: musiccraft_project::NoteProps::default(),
                 slide: false,
                 channel: ChannelId(1),
                 start: 24,
@@ -1760,24 +1974,60 @@ mod tests {
 
     #[test]
     fn gestures_become_single_commands() {
-        let create = finish(&drag(DragKind::Create, 48, 62, 12), 0, 90, false).unwrap();
+        let create = finish(
+            &drag(DragKind::Create, 48, 62, 12),
+            0,
+            90,
+            false,
+            musiccraft_project::NoteProps::default(),
+        )
+        .unwrap();
         assert_eq!(create.to_string(), "note.add 1 48t 12t 62 90");
-        let moved = finish(&drag(DragKind::Move, 96, 64, 24), 2, 100, false).unwrap();
+        let moved = finish(
+            &drag(DragKind::Move, 96, 64, 24),
+            2,
+            100,
+            false,
+            musiccraft_project::NoteProps::default(),
+        )
+        .unwrap();
         assert_eq!(moved.to_string(), "note.move 3 24t 60 96t 64");
-        let resized = finish(&drag(DragKind::Resize, 24, 60, 72), 0, 100, false).unwrap();
+        let resized = finish(
+            &drag(DragKind::Resize, 24, 60, 72),
+            0,
+            100,
+            false,
+            musiccraft_project::NoteProps::default(),
+        )
+        .unwrap();
         assert_eq!(resized.to_string(), "note.resize 1 24t 60 72t");
         assert!(
-            finish(&drag(DragKind::Move, 24, 60, 24), 0, 100, false).is_none(),
+            finish(
+                &drag(DragKind::Move, 24, 60, 24),
+                0,
+                100,
+                false,
+                musiccraft_project::NoteProps::default()
+            )
+            .is_none(),
             "no-op move"
         );
         assert!(
-            finish(&drag(DragKind::Resize, 24, 60, 24), 0, 100, false).is_none(),
+            finish(
+                &drag(DragKind::Resize, 24, 60, 24),
+                0,
+                100,
+                false,
+                musiccraft_project::NoteProps::default()
+            )
+            .is_none(),
             "no-op resize"
         );
     }
 
     fn n(start: u32, key: u8) -> Note {
         Note {
+            props: musiccraft_project::NoteProps::default(),
             slide: false,
             channel: ChannelId(1),
             start,
