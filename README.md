@@ -61,7 +61,13 @@ channel_rack,piano_roll,playlist,mixer,browser`.
 Hover any control and the hint bar at the top says what it does.
 
 - **Tools**: the playlist and piano roll have draw, paint, delete and select
-  tools (pencil, brush, eraser, box) at the top left.
+  tools (pencil, brush, eraser, box) at the top left. The piano roll's Tools
+  menu strums, humanizes, makes legato, chops, glues, flips, snaps to a scale
+  and arpeggiates; slide notes glide from the note before. The rack's
+  right-click menu fills every 2/4/8 steps and shifts steps.
+- **Instruments**: synth (unison, sub, drive, filter types, LFO, presets),
+  drum synth (kick, snare, hat, tom, clap), plucked string, sampler with loop
+  slicing, and CLAP plugins. Every channel has an arpeggiator.
 - **Playlist** (main workspace): paint patterns, automation or audio clips;
   click, Shift+click or Ctrl+drag to select; drag to move or resize; Delete,
   Ctrl+B duplicate. Click the ruler to seek, Shift+drag it to set a loop,
@@ -76,8 +82,9 @@ Hover any control and the hint bar at the top says what it does.
   Ctrl+B and arrow keys; velocity/pan lane at the bottom; scale highlighting;
   other channels' notes show as ghost notes.
 - **Mixer** (F9, floating): faders with a dB curve, pan, on/solo, ten effect slots
-  (filter, EQ, delay, reverb, chorus, compressor with sidechain, limiter,
-  distortion), sends via the arrows under each strip. Click an effect to open
+  (filter, EQ, delay, reverb, chorus, phaser, flanger, compressor with
+  sidechain, limiter, tempo-synced trance gate and auto-pan, stereo tool,
+  distortion, bitcrusher), sends via the arrows under each strip. Click an effect to open
   its window: presets, and a graph you can drag (EQ and filter curves,
   compressor knee, delay echoes…).
 - **Automation**: right-click any knob or fader → Create automation clip;
