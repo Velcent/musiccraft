@@ -783,3 +783,77 @@ fn effect_windows_close_with_their_slot() {
     h.settle();
     assert!(h.state.effect_windows.is_empty());
 }
+
+#[test]
+fn piano_roll_paint_delete_and_select_tools() {
+    use crate::piano_roll::Tool;
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+
+    // Paint: one drag lays down a run of notes in one undo step.
+    h.state.roll.tool = Tool::Paint;
+    let depth = h.session.undo_depth();
+    let painted = h.drag(h.roll_point(step / 2, 62), h.roll_point(5 * step + 5, 62));
+    assert_eq!(painted.len(), 1, "{painted:?}");
+    assert!(painted[0].starts_with("edit.batch"), "{painted:?}");
+    let notes = &h.session.project().current_pattern().notes;
+    assert!(notes.len() >= 4, "painted {} notes", notes.len());
+    assert!(
+        notes
+            .windows(2)
+            .all(|w| w[1].start >= w[0].start + w[0].length)
+    );
+    assert_eq!(h.session.undo_depth(), depth + 1);
+    h.settle();
+
+    // Select: a box around the first two notes selects them.
+    h.state.roll.tool = Tool::Select;
+    let from = h.roll_point(0, 63) + vec2(2.0, 0.0);
+    let to = h.roll_point(2 * step - 2, 61);
+    assert!(h.drag(from, to).is_empty());
+    assert_eq!(h.state.roll.selection.len(), 2);
+    h.click(h.roll_point(14 * step, 70), PointerButton::Primary);
+    assert!(h.state.roll.selection.is_empty());
+
+    // Delete: dragging across notes removes all it touched, in one step.
+    h.state.roll.tool = Tool::Delete;
+    let before = h.session.project().current_pattern().notes.len();
+    let erased = h.drag(h.roll_point(5, 62), h.roll_point(3 * step + 5, 62));
+    assert_eq!(erased.len(), 1, "{erased:?}");
+    let after = h.session.project().current_pattern().notes.len();
+    assert!(after + 3 <= before, "{before} -> {after}");
+}
+
+#[test]
+fn playlist_paint_and_delete_tools_are_single_steps() {
+    use crate::piano_roll::Tool;
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C4"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    h.state.playlist.tool = Tool::Paint;
+    let depth = h.session.undo_depth();
+    let painted = h.drag(
+        h.playlist_point(bar / 4, 1),
+        h.playlist_point(4 * bar + bar / 4, 1),
+    );
+    assert_eq!(painted.len(), 1, "{painted:?}");
+    let clips = &h.session.project().playlist.clips;
+    assert!(clips.len() >= 4, "painted {} clips", clips.len());
+    assert!(clips.iter().all(|c| c.track == 1));
+    assert_eq!(h.session.undo_depth(), depth + 1);
+    h.settle();
+    h.state.playlist.tool = Tool::Delete;
+    let erased = h.drag(
+        h.playlist_point(bar / 2, 1),
+        h.playlist_point(2 * bar + bar / 2, 1),
+    );
+    assert_eq!(erased.len(), 1, "{erased:?}");
+    assert!(h.session.project().playlist.clips.len() + 3 <= clips_len(&painted));
+}
+
+fn clips_len(painted: &[String]) -> usize {
+    painted[0].matches("playlist.add_clip").count()
+}

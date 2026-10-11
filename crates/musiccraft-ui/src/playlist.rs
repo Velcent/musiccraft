@@ -12,6 +12,8 @@ use musiccraft_project::{AutomationId, Clip, ClipSource, PLAYLIST_TRACKS, PlayMo
 
 use crate::dialogs::Dialog;
 use crate::geometry::{Grid, Hit, Snap, hit_test};
+use crate::icons::{self, Icon};
+use crate::piano_roll::Tool;
 use crate::{Action, Frame, UiState, theme, widgets};
 
 const HEADER_WIDTH: f32 = 96.0;
@@ -51,6 +53,12 @@ pub struct PlaylistState {
     pub(crate) paint_automation: Option<AutomationId>,
     /// Loop range being drawn on the ruler.
     loop_drag: Option<(u32, u32)>,
+    /// The active tool.
+    pub(crate) tool: Tool,
+    /// Clips painted in the stroke in progress: (track, start, length).
+    painted: Vec<(u32, u32, u32)>,
+    /// Clips touched by the delete stroke in progress.
+    erased: Vec<Clip>,
 }
 
 impl Default for PlaylistState {
@@ -65,6 +73,9 @@ impl Default for PlaylistState {
             marquee: None,
             paint_automation: None,
             loop_drag: None,
+            tool: Tool::Draw,
+            painted: Vec::new(),
+            erased: Vec::new(),
         }
     }
 }
@@ -97,6 +108,35 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
         ui.label(RichText::new("Playlist").strong().size(15.0));
         ui.label(RichText::new("Arrangement").color(theme::TEXT_DIM));
         ui.separator();
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for (tool, icon, hint) in [
+            (
+                Tool::Draw,
+                Icon::Pencil,
+                "Draw: click places the selected pattern, drag moves, edge resizes",
+            ),
+            (
+                Tool::Paint,
+                Icon::Brush,
+                "Paint: drag to lay the selected pattern end to end",
+            ),
+            (
+                Tool::Delete,
+                Icon::Eraser,
+                "Delete: click or drag over clips to delete them",
+            ),
+            (
+                Tool::Select,
+                Icon::Select,
+                "Select: drag a box around clips; click empty space to clear",
+            ),
+        ] {
+            if icons::button(ui, icon, state.playlist.tool == tool, theme::ACCENT, hint).clicked() {
+                state.playlist.tool = tool;
+            }
+        }
+        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.separator();
         ui.label("Snap");
         egui::ComboBox::from_id_salt("playlist-snap")
             .width(70.0)
@@ -106,17 +146,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                     ui.selectable_value(&mut state.playlist.snap, snap, snap.label());
                 }
             });
-        if ui.small_button("−").hint("Zoom out (Ctrl+scroll)").clicked() {
+        if ui
+            .small_button("−")
+            .hint("Zoom out (Ctrl+scroll)")
+            .clicked()
+        {
             state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(16.0);
         }
         if ui.small_button("+").hint("Zoom in (Ctrl+scroll)").clicked() {
             state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
         }
-        ui.label(
-            RichText::new("Click to paint the selected pattern · drag to move · edge to resize · right-click deletes · click the ruler to seek")
-                .small()
-                .color(theme::TEXT_DIM),
-        );
     });
     ui.add_space(2.0);
     ui.horizontal_top(|ui| {
@@ -264,7 +303,8 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             let (dt, dtrack, dl) = drag_delta(state, &moving);
             for clip_item in clips {
                 let is_moving = moving.contains(clip_item);
-                if !is_moving {
+                let erasing = state.playlist.erased.contains(clip_item);
+                if !is_moving && !erasing {
                     draw_clip(
                         &painter,
                         &grid,
@@ -291,6 +331,19 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                         );
                     }
                 }
+            }
+            // Clips being painted, drawn as the current pattern.
+            let pattern_id = project.current_pattern().id;
+            for (track, start, length) in &state.playlist.painted {
+                let preview = Clip {
+                    source: ClipSource::Pattern(pattern_id),
+                    track: *track,
+                    start: *start,
+                    length: *length,
+                };
+                draw_clip(
+                    &painter, &grid, frame, &preview, *track, *start, *length, true,
+                );
             }
             for c in &moving {
                 let (track, start) = shifted(c, dt, dtrack);
@@ -918,6 +971,117 @@ fn move_clips(group: &[Clip], dt: i64, dtrack: i64) -> Option<Invocation> {
     )
 }
 
+/// Paint and delete strokes. Returns `true` when the tool handled the input.
+#[allow(clippy::too_many_arguments)]
+fn tool_stroke(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    grid: &Grid,
+    response: &egui::Response,
+    boxes: &[(usize, Rect)],
+    editable: &dyn Fn(Pos2) -> bool,
+    actions: &mut Vec<Action>,
+) -> bool {
+    let clips = &project.playlist.clips;
+    let under = |p: Pos2| match hit_test(boxes.iter().copied(), p) {
+        Hit::Body(i) | Hit::Edge(i) => clips.get(i).copied(),
+        Hit::Empty => None,
+    };
+    let pointer = response.interact_pointer_pos().filter(|p| editable(*p));
+    match state.playlist.tool {
+        Tool::Delete => {
+            if response.drag_started_by(PointerButton::Primary) {
+                state.playlist.erased.clear();
+            }
+            let pressed = response.dragged_by(PointerButton::Primary)
+                || response.clicked_by(PointerButton::Primary);
+            if let Some(c) = pointer.filter(|_| pressed).and_then(under) {
+                if !state.playlist.erased.contains(&c) {
+                    state.playlist.erased.push(c);
+                }
+            }
+            if response.drag_stopped_by(PointerButton::Primary)
+                || response.clicked_by(PointerButton::Primary)
+            {
+                let erased = std::mem::take(&mut state.playlist.erased);
+                for c in &erased {
+                    state.playlist.selection.remove(&(c.track, c.start));
+                }
+                let removals = erased
+                    .iter()
+                    .map(|c| {
+                        Invocation::new(
+                            "playlist.remove_clip",
+                            [(c.track + 1).to_string(), format!("{}t", c.start)],
+                        )
+                    })
+                    .collect();
+                actions.extend(batch(removals).map(Action::Run));
+            }
+            true
+        }
+        Tool::Paint => {
+            if state.playlist.drag.is_some() {
+                return false;
+            }
+            if response.drag_started_by(PointerButton::Primary) {
+                state.playlist.painted.clear();
+                let origin = ui.input(|i| i.pointer.press_origin());
+                if origin.and_then(under).is_some() {
+                    return false;
+                }
+            }
+            let painting = response.dragged_by(PointerButton::Primary)
+                || response.drag_stopped_by(PointerButton::Primary);
+            let origin = response
+                .drag_started_by(PointerButton::Primary)
+                .then(|| ui.input(|i| i.pointer.press_origin()))
+                .flatten()
+                .filter(|p| editable(*p));
+            let length = project.current_pattern().length_ticks().max(1);
+            for p in origin.into_iter().chain(pointer.filter(|_| painting)) {
+                let Some(track) = grid.row_at(p.y) else {
+                    continue;
+                };
+                let start = state.playlist.snap.floor(grid.tick_at(p.x));
+                let after_last = state
+                    .playlist
+                    .painted
+                    .last()
+                    .is_none_or(|(_, s, l)| start >= s + l);
+                let end = start + length;
+                let free = clips
+                    .iter()
+                    .all(|c| c.track != track || c.end() <= start || c.start >= end);
+                if after_last && free {
+                    state.playlist.painted.push((track, start, length));
+                }
+            }
+            if response.drag_stopped_by(PointerButton::Primary) {
+                let pattern = (project.current_pattern + 1).to_string();
+                let adds = std::mem::take(&mut state.playlist.painted)
+                    .into_iter()
+                    .map(|(track, start, _)| {
+                        Invocation::new(
+                            "playlist.add_clip",
+                            [
+                                pattern.clone(),
+                                (track + 1).to_string(),
+                                format!("{start}t"),
+                            ],
+                        )
+                    })
+                    .collect();
+                actions.extend(batch(adds).map(Action::Run));
+                return true;
+            }
+            !state.playlist.painted.is_empty()
+        }
+        Tool::Draw | Tool::Select => false,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn edit(
     ui: &egui::Ui,
@@ -933,6 +1097,12 @@ fn edit(
     let snap = state.playlist.snap;
     let clips = &project.playlist.clips;
     let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
+    if tool_stroke(
+        ui, state, project, grid, response, boxes, &editable, actions,
+    ) {
+        return;
+    }
+    let tool = state.playlist.tool;
 
     if response.drag_started_by(PointerButton::Primary) {
         if let Some(origin) = ui
@@ -941,7 +1111,7 @@ fn edit(
         {
             let tick = grid.tick_at(origin.x);
             let hit = hit_test(boxes.iter().copied(), origin);
-            if ctrl && hit == Hit::Empty {
+            if (ctrl || tool == Tool::Select) && hit == Hit::Empty {
                 state.playlist.marquee = Some((origin, origin));
             }
             state.playlist.drag = match hit {
@@ -1045,6 +1215,7 @@ fn edit(
                         }
                     }
                 }
+                (Hit::Empty, _) if tool == Tool::Select => state.playlist.selection.clear(),
                 (Hit::Empty, Some(row)) => {
                     let start = snap.floor(grid.tick_at(pos.x));
                     let painted = state

@@ -77,6 +77,10 @@
 
 ## Editor (UI)
 
+- **Tools** as in the piano roll: Draw, Paint (drag to lay the selected
+  pattern end to end, skipping places taken by other clips; one undo step),
+  Delete (click or drag over clips; one undo step) and Select (box select).
+
 - Left-click on an empty cell places the selected pattern at the snapped bar;
   dragging a clip moves it; dragging its right edge resizes it; right-click
   deletes. The pattern list next to the playlist selects the pattern to paint.

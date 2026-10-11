@@ -70,7 +70,13 @@
 
 ## Editor (UI)
 
-- Vertical keyboard on the left, time grid snapped to steps by default.
+- Vertical keyboard on the left (drawn as piano keys), time grid snapped to
+  steps by default. Notes of other channels in the pattern show faintly in
+  their channel colours (ghost notes).
+- **Tools** (toolbar, left): Draw (the default behavior below), Paint (drag to
+  lay notes end to end at the last length; one undo step), Delete (click or
+  drag over notes; one undo step) and Select (drag a box without Ctrl; click
+  empty space to clear). Starting a Paint drag on a note moves it as Draw would.
 - Left-click on empty grid adds a note with the last used length; dragging a note
   moves it; dragging its right edge resizes it; right-click deletes.
 - Each finished gesture is one undoable command.

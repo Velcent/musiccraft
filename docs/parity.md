@@ -75,6 +75,8 @@ of contents; see `docs/clean-room.md`.
 | Windows | Browser | `key:Alt+F8=view.toggle browser` |
 | Options | Settings window: audio device, rate, buffer, MIDI port, scale, folders, project info | `key:F10=ui.settings` `spec:settings.md` |
 | Interface | Hint bar showing what the hovered control does | `done` |
+| Editing | Draw, paint, delete and select tools in the piano roll and playlist | `spec:piano-roll.md` `spec:playlist.md` |
+| Piano roll | Ghost notes of other channels | `spec:piano-roll.md` |
 | Browser | Folders, search, click to preview, drag to rack or playlist | `done` |
 | Transport | Oscilloscope, CPU meter, master volume | `done` |
 | Project | New / open / save / save as | `cmd:project.new` `cmd:project.load` `cmd:project.save` `key:Ctrl+S=ui.save` `key:Ctrl+O=ui.open` `spec:project-file.md` |

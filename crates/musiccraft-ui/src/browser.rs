@@ -164,7 +164,7 @@ fn heading(text: &str) -> RichText {
 }
 
 fn plugin_button(ui: &mut egui::Ui, label: &str, hint: String) -> bool {
-    ui.add(egui::Button::new(label).frame(false))
+    ui.add(egui::Button::new(label).frame(false).truncate())
         .hint(hint)
         .clicked()
 }

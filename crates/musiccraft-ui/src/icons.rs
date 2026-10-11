@@ -21,6 +21,14 @@ pub enum Icon {
     PianoRoll,
     Mixer,
     Browser,
+    /// Draw tool (pencil).
+    Pencil,
+    /// Paint tool (brush).
+    Brush,
+    /// Delete tool (eraser).
+    Eraser,
+    /// Select tool (dashed box).
+    Select,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -35,6 +43,79 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
     let stroke = Stroke::new(1.6, color);
     let r = rect.shrink(rect.width().min(rect.height()) * 0.18);
     match icon {
+        Icon::Pencil => {
+            painter.add(Shape::convex_polygon(
+                vec![
+                    p(r, 0.75, 0.05),
+                    p(r, 0.95, 0.25),
+                    p(r, 0.3, 0.9),
+                    p(r, 0.1, 0.7),
+                ],
+                Color32::TRANSPARENT,
+                stroke,
+            ));
+            painter.add(Shape::convex_polygon(
+                vec![p(r, 0.1, 0.7), p(r, 0.3, 0.9), p(r, 0.02, 0.98)],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Brush => {
+            painter.line_segment(
+                [p(r, 0.95, 0.05), p(r, 0.45, 0.55)],
+                Stroke::new(2.2, color),
+            );
+            painter.add(Shape::convex_polygon(
+                vec![
+                    p(r, 0.35, 0.5),
+                    p(r, 0.55, 0.7),
+                    p(r, 0.3, 0.98),
+                    p(r, 0.02, 0.98),
+                    p(r, 0.12, 0.7),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Eraser => {
+            painter.add(Shape::convex_polygon(
+                vec![
+                    p(r, 0.55, 0.1),
+                    p(r, 0.95, 0.5),
+                    p(r, 0.55, 0.9),
+                    p(r, 0.15, 0.5),
+                ],
+                Color32::TRANSPARENT,
+                stroke,
+            ));
+            painter.add(Shape::convex_polygon(
+                vec![
+                    p(r, 0.35, 0.3),
+                    p(r, 0.75, 0.7),
+                    p(r, 0.55, 0.9),
+                    p(r, 0.15, 0.5),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+            painter.line_segment([p(r, 0.05, 0.98), p(r, 0.95, 0.98)], stroke);
+        }
+        Icon::Select => {
+            let corners = [
+                p(r, 0.05, 0.1),
+                p(r, 0.95, 0.1),
+                p(r, 0.95, 0.9),
+                p(r, 0.05, 0.9),
+            ];
+            for i in 0..4 {
+                painter.add(Shape::dashed_line(
+                    &[corners[i], corners[(i + 1) % 4]],
+                    stroke,
+                    3.0,
+                    2.5,
+                ));
+            }
+        }
         Icon::Play => {
             painter.add(Shape::convex_polygon(
                 vec![p(r, 0.2, 0.05), p(r, 0.95, 0.5), p(r, 0.2, 0.95)],

@@ -12,6 +12,7 @@ use musiccraft_project::params::{PPQ, TICKS_PER_BAR, TICKS_PER_STEP};
 use musiccraft_project::{Note, PlayMode, Project};
 
 use crate::geometry::{Grid, Hit, Snap, hit_test};
+use crate::icons::{self, Icon};
 use crate::{Action, Frame, UiState, theme};
 
 const KEYS_WIDTH: f32 = 52.0;
@@ -38,8 +39,26 @@ struct NoteDrag {
     length: u32,
 }
 
+/// What the left mouse button does in the note grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum Tool {
+    /// Click adds a note, drag moves or resizes (Ctrl-drag selects).
+    #[default]
+    Draw,
+    /// Drag lays down notes one after another.
+    Paint,
+    /// Click or drag over notes deletes them.
+    Delete,
+    /// Drag selects notes; click empty space clears the selection.
+    Select,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RollState {
+    /// The active tool.
+    pub(crate) tool: Tool,
+    /// Notes painted or marked for deletion in the stroke in progress.
+    stroke: Vec<Note>,
     px_per_step: f32,
     key_height: f32,
     snap: Snap,
@@ -74,6 +93,8 @@ pub struct RollState {
 impl Default for RollState {
     fn default() -> Self {
         Self {
+            tool: Tool::Draw,
+            stroke: Vec::new(),
             px_per_step: 24.0,
             key_height: 14.0,
             snap: Snap::Step,
@@ -284,6 +305,35 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
     let channel = state.selected_channel;
     let number = (channel + 1).to_string();
     ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for (tool, icon, hint) in [
+            (
+                Tool::Draw,
+                Icon::Pencil,
+                "Draw: click adds a note, drag moves or resizes, Ctrl+drag selects",
+            ),
+            (
+                Tool::Paint,
+                Icon::Brush,
+                "Paint: drag to lay down notes one after another",
+            ),
+            (
+                Tool::Delete,
+                Icon::Eraser,
+                "Delete: click or drag over notes to delete them",
+            ),
+            (
+                Tool::Select,
+                Icon::Select,
+                "Select: drag a box around notes; click empty space to clear",
+            ),
+        ] {
+            if icons::button(ui, icon, state.roll.tool == tool, theme::ACCENT, hint).clicked() {
+                state.roll.tool = tool;
+            }
+        }
+        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.add_space(4.0);
         egui::ComboBox::from_id_salt("roll-channel")
             .width(130.0)
             .selected_text(
@@ -436,10 +486,19 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             draw_scale(&painter, &grid, clip, rect, root, scale);
         }
 
-        // Other channels' notes, faded, for context.
+        // Ghost notes: other channels' notes, faded in their own colours.
         for note in pattern.notes.iter().filter(|n| n.channel != channel.id) {
             let r = grid.span(row_of_key(note.key), note.start, note.length);
-            painter.rect_filled(r.shrink(1.0), 2.0, Color32::from_white_alpha(18));
+            let ghost = project
+                .channel_position(note.channel)
+                .map_or(theme::TEXT_DIM, theme::palette);
+            painter.rect_filled(r.shrink(1.0), 2.0, ghost.gamma_multiply(0.18));
+            painter.rect_stroke(
+                r.shrink(1.0),
+                2.0,
+                Stroke::new(1.0, ghost.gamma_multiply(0.35)),
+                egui::StrokeKind::Inside,
+            );
         }
         let notes: Vec<&Note> = pattern.notes_of(channel.id).collect();
         let color = theme::palette(channel_index);
@@ -455,8 +514,9 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             }
             None => Vec::new(),
         };
+        let erasing = state.roll.tool == Tool::Delete;
         for note in &notes {
-            if moving.contains(note) {
+            if moving.contains(note) || (erasing && state.roll.stroke.contains(note)) {
                 continue;
             }
             draw_note(
@@ -478,6 +538,20 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     3.0,
                     Stroke::new(1.5, theme::TEXT),
                     egui::StrokeKind::Inside,
+                );
+            }
+        }
+        if state.roll.tool == Tool::Paint {
+            for note in &state.roll.stroke {
+                draw_note(
+                    &painter,
+                    &grid,
+                    note.start,
+                    note.length,
+                    note.key,
+                    note.velocity,
+                    color,
+                    true,
                 );
             }
         }
@@ -737,6 +811,107 @@ fn shifted(note: &Note, dt: i64, dk: i32) -> (u32, u8) {
     )
 }
 
+/// Paint and delete strokes. Returns `true` when the tool handled the input.
+#[allow(clippy::too_many_arguments)]
+fn tool_stroke(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    response: &egui::Response,
+    notes: &[&Note],
+    boxes: &[(usize, Rect)],
+    channel: usize,
+    at: &dyn Fn(Pos2) -> (f32, Option<u8>),
+    actions: &mut Vec<Action>,
+) -> bool {
+    let tool = state.roll.tool;
+    if !matches!(tool, Tool::Paint | Tool::Delete) {
+        return false;
+    }
+    let snap = state.roll.snap;
+    let pointer = response.interact_pointer_pos();
+    let under = |p: Pos2| match hit_test(boxes.iter().copied(), p) {
+        Hit::Body(i) | Hit::Edge(i) => notes.get(i).map(|n| **n),
+        Hit::Empty => None,
+    };
+    match tool {
+        Tool::Delete => {
+            if response.drag_started_by(PointerButton::Primary) {
+                state.roll.stroke.clear();
+            }
+            let pressed = response.dragged_by(PointerButton::Primary)
+                || response.clicked_by(PointerButton::Primary);
+            if let (true, Some(p)) = (pressed, pointer) {
+                if let Some(note) = under(p) {
+                    if !state.roll.stroke.contains(&note) {
+                        state.roll.stroke.push(note);
+                    }
+                }
+            }
+            if response.drag_stopped_by(PointerButton::Primary)
+                || response.clicked_by(PointerButton::Primary)
+            {
+                let erased = std::mem::take(&mut state.roll.stroke);
+                for n in &erased {
+                    state.roll.selection.remove(&(n.start, n.key));
+                }
+                actions.extend(remove_notes(channel, &erased).map(Action::Run));
+            }
+            true
+        }
+        Tool::Paint => {
+            if state.roll.drag.is_some() || state.roll.marquee.is_some() {
+                // A drag that started on a note moves it, as with the draw tool.
+                return false;
+            }
+            if response.drag_started_by(PointerButton::Primary) {
+                state.roll.stroke.clear();
+                let origin = ui.input(|i| i.pointer.press_origin());
+                if origin.and_then(under).is_some() {
+                    // Starting on a note: behave like the draw tool.
+                    return false;
+                }
+            }
+            let painting = response.dragged_by(PointerButton::Primary)
+                || response.drag_stopped_by(PointerButton::Primary);
+            // The stroke starts where the button went down.
+            let origin = response
+                .drag_started_by(PointerButton::Primary)
+                .then(|| ui.input(|i| i.pointer.press_origin()))
+                .flatten();
+            for p in origin.into_iter().chain(pointer.filter(|_| painting)) {
+                if let (tick, Some(key)) = at(p) {
+                    let start = snap.floor(tick);
+                    let length = state.roll.last_length.max(1);
+                    let free = state
+                        .roll
+                        .stroke
+                        .last()
+                        .is_none_or(|last| start >= last.start + last.length);
+                    if free {
+                        state.roll.stroke.push(Note {
+                            channel: musiccraft_project::ChannelId(0),
+                            start,
+                            length,
+                            key,
+                            velocity: state.roll.velocity,
+                            pan: 0,
+                        });
+                        actions.push(Action::PreviewShort { channel, key });
+                    }
+                }
+            }
+            if response.drag_stopped_by(PointerButton::Primary) {
+                let painted = std::mem::take(&mut state.roll.stroke);
+                actions.extend(add_notes(channel, &painted, 0).map(Action::Run));
+                return true;
+            }
+            // Painting is a drag; clicks and drags on notes fall through.
+            !state.roll.stroke.is_empty()
+        }
+        _ => false,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn edit(
     ui: &egui::Ui,
@@ -763,6 +938,10 @@ fn edit(
         .filter(|p| editable(*p))
         .map(|p| snap.floor(grid.tick_at(p.x)));
 
+    let tool = state.roll.tool;
+    if tool_stroke(ui, state, response, notes, boxes, channel, &at, actions) {
+        return;
+    }
     if response.drag_started_by(PointerButton::Primary) {
         let origin = ui
             .input(|i| i.pointer.press_origin())
@@ -770,7 +949,7 @@ fn edit(
         if let Some(origin) = origin {
             let (tick, key) = at(origin);
             let hit = hit_test(boxes.iter().copied(), origin);
-            if ctrl && hit == Hit::Empty {
+            if (ctrl || tool == Tool::Select) && hit == Hit::Empty {
                 state.roll.marquee = Some((origin, origin));
             } else {
                 state.roll.drag = match hit {
@@ -942,6 +1121,7 @@ fn edit(
                         });
                     }
                 }
+                (Hit::Empty, _) if tool == Tool::Select => state.roll.selection.clear(),
                 (Hit::Empty, (tick, Some(key))) => {
                     let start = snap.floor(tick);
                     let length = ticks(state.roll.last_length);
@@ -1252,6 +1432,10 @@ fn keyboard(
     let first = grid.row_at(keys_rect.top()).unwrap_or(0);
     let last = grid.row_at(keys_rect.bottom() - 1.0).unwrap_or(KEYS - 1);
     let held = state.roll.preview.map(|(_, k)| k);
+    let ivory = Color32::from_rgb(0xdf, 0xe3, 0xea);
+    let ebony = Color32::from_rgb(0x1e, 0x22, 0x29);
+    // White keys run the full width behind the black ones, like a piano.
+    painter.rect_filled(keys_rect, 0.0, ivory);
     for row in first..=last {
         let key = key_of_row(row);
         let y = grid.y(row);
@@ -1259,14 +1443,26 @@ fn keyboard(
             pos2(keys_rect.left(), y),
             pos2(keys_rect.right(), y + grid.row_height),
         );
-        let fill = if held == Some(key) {
-            theme::ACCENT
-        } else if is_black(key) {
-            Color32::from_rgb(0x24, 0x28, 0x30)
+        if is_black(key) {
+            let black = Rect::from_min_max(r.min, pos2(r.left() + r.width() * 0.62, r.bottom()));
+            let fill = if held == Some(key) {
+                theme::ACCENT
+            } else {
+                ebony
+            };
+            painter.rect_filled(black, 2.0, fill);
         } else {
-            Color32::from_rgb(0xd5, 0xd9, 0xe0)
-        };
-        painter.rect_filled(r.shrink2(vec2(0.0, 0.5)), 1.0, fill);
+            if held == Some(key) {
+                painter.rect_filled(r, 0.0, theme::ACCENT);
+            }
+            // A seam between neighbouring white keys (E/F and B/C).
+            if matches!(key % 12, 4 | 11) {
+                painter.line_segment(
+                    [r.left_top(), r.right_top()],
+                    Stroke::new(1.0, Color32::from_rgb(0x9a, 0xa0, 0xab)),
+                );
+            }
+        }
         if key % 12 == 0 {
             painter.text(
                 r.right_center() - vec2(3.0, 0.0),
