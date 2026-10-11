@@ -579,7 +579,28 @@ const TOOLS_SCRIPT: &[&str] = &[
     "step.fill 2 2",
     "step.fill 2 4 1",
     "step.shift 2 -3",
+    "channel.add_drum snare",
+    "channel.add_drum Boom",
+    "channel.add_pluck Harp",
+    "channel.set_param 3 drum_decay 0.3",
+    "channel.set_param 5 pluck_damping 0.6",
 ];
+
+#[test]
+fn drum_and_pluck_channels() {
+    let mut s = session();
+    run(&mut s, "channel.add_drum hat");
+    run(&mut s, "channel.add_pluck");
+    let p = s.project();
+    assert_eq!(p.channels[0].name, "Hat");
+    assert_eq!(p.channels[0].params.get(inst::DRUM_TYPE), 2.0);
+    assert_eq!(
+        p.channels[1].instrument,
+        musiccraft_project::Instrument::Pluck
+    );
+    let json = p.to_json().unwrap();
+    assert_eq!(&Project::from_json(&json).unwrap(), s.project());
+}
 
 #[test]
 fn note_tools_undo_and_redo_exactly() {

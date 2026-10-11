@@ -234,6 +234,119 @@ pub const SYNTH: &[Preset] = &[
     ),
 ];
 
+/// Drum synth presets. Types: 0 kick, 1 snare, 2 hat, 3 tom, 4 clap.
+pub const DRUM: &[Preset] = &[
+    preset(
+        "Punchy kick",
+        &[
+            ("drum_decay", 0.35),
+            ("drum_sweep", 30.0),
+            ("drum_click", 0.5),
+        ],
+    ),
+    preset(
+        "Deep kick",
+        &[
+            ("drum_decay", 0.9),
+            ("drum_sweep", 18.0),
+            ("drum_tune", -3.0),
+            ("drum_click", 0.1),
+        ],
+    ),
+    preset(
+        "Tight kick",
+        &[
+            ("drum_decay", 0.18),
+            ("drum_sweep", 36.0),
+            ("drum_click", 0.7),
+        ],
+    ),
+    preset(
+        "Snare",
+        &[("drum_type", 1.0), ("drum_decay", 0.25), ("drum_tone", 0.6)],
+    ),
+    preset(
+        "Crack snare",
+        &[
+            ("drum_type", 1.0),
+            ("drum_decay", 0.15),
+            ("drum_tone", 0.8),
+            ("drum_sweep", 12.0),
+        ],
+    ),
+    preset(
+        "Closed hat",
+        &[("drum_type", 2.0), ("drum_decay", 0.06), ("drum_tone", 0.6)],
+    ),
+    preset("Open hat", &[("drum_type", 2.0), ("drum_decay", 0.35)]),
+    preset(
+        "Low tom",
+        &[
+            ("drum_type", 3.0),
+            ("drum_decay", 0.5),
+            ("drum_sweep", 10.0),
+            ("drum_tune", -5.0),
+        ],
+    ),
+    preset(
+        "High tom",
+        &[
+            ("drum_type", 3.0),
+            ("drum_decay", 0.35),
+            ("drum_sweep", 10.0),
+            ("drum_tune", 5.0),
+        ],
+    ),
+    preset(
+        "Clap",
+        &[("drum_type", 4.0), ("drum_decay", 0.25), ("drum_tone", 0.4)],
+    ),
+];
+
+/// Pluck presets.
+pub const PLUCK: &[Preset] = &[
+    preset(
+        "Nylon guitar",
+        &[
+            ("pluck_decay", 2.5),
+            ("pluck_damping", 0.45),
+            ("pluck_tone", 0.55),
+        ],
+    ),
+    preset(
+        "Steel string",
+        &[
+            ("pluck_decay", 4.0),
+            ("pluck_damping", 0.15),
+            ("pluck_tone", 0.85),
+        ],
+    ),
+    preset(
+        "Harp",
+        &[
+            ("pluck_decay", 3.0),
+            ("pluck_damping", 0.3),
+            ("pluck_tone", 0.6),
+        ],
+    ),
+    preset(
+        "Pluck bass",
+        &[
+            ("pluck_decay", 1.5),
+            ("pluck_damping", 0.6),
+            ("pluck_tone", 0.4),
+        ],
+    ),
+    preset(
+        "Muted",
+        &[
+            ("pluck_decay", 0.3),
+            ("pluck_damping", 0.8),
+            ("pluck_tone", 0.5),
+        ],
+    ),
+];
+
 const FILTER: &[Preset] = &[
     preset("Default", &[]),
     preset(
@@ -544,7 +657,11 @@ mod tests {
 
     #[test]
     fn every_preset_names_real_parameters_in_range() {
-        let mut tables: Vec<(&[ParamSpec], &[Preset])> = vec![(INSTRUMENT_PARAMS, SYNTH)];
+        let mut tables: Vec<(&[ParamSpec], &[Preset])> = vec![
+            (INSTRUMENT_PARAMS, SYNTH),
+            (INSTRUMENT_PARAMS, DRUM),
+            (INSTRUMENT_PARAMS, PLUCK),
+        ];
         tables.extend(EFFECT_KINDS.iter().map(|k| (k.params(), effect(*k))));
         for (specs, presets) in tables {
             assert!(!presets.is_empty());

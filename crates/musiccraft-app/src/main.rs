@@ -664,6 +664,8 @@ impl App {
                         Some((id, sample.clone()))
                     }
                     musiccraft_project::Instrument::Synth
+                    | musiccraft_project::Instrument::DrumSynth
+                    | musiccraft_project::Instrument::Pluck
                     | musiccraft_project::Instrument::Plugin { .. } => None,
                 }
             })

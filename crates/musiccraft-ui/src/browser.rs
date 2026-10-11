@@ -189,6 +189,27 @@ fn plugin_database(
                     if matches(search, "synth") {
                         item(ui, "Synth", Dragged(None), actions);
                     }
+                    for kind in musiccraft_project::params::DRUM_TYPES {
+                        let label = format!("Drum synth: {kind}");
+                        if matches(search, &label)
+                            && plugin_button(
+                                ui,
+                                &format!("♪  {label}"),
+                                "Built-in drum synth — click to add a channel".to_owned(),
+                            )
+                        {
+                            actions.push(Action::Run(Invocation::new("channel.add_drum", [kind])));
+                        }
+                    }
+                    if matches(search, "pluck")
+                        && plugin_button(
+                            ui,
+                            "♪  Pluck",
+                            "Built-in plucked string — click to add a channel".to_owned(),
+                        )
+                    {
+                        actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
+                    }
                     for entry in plugins.of_kind(true).filter(|p| matches(search, &p.name)) {
                         let hint =
                             format!("{} · {} — click to add a channel", entry.vendor, entry.id);

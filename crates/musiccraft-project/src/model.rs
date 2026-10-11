@@ -180,6 +180,10 @@ pub enum Instrument {
     },
     /// Two-oscillator subtractive synthesizer.
     Synth,
+    /// Synthesized drums (kick, snare, hat, tom, clap).
+    DrumSynth,
+    /// Plucked string (Karplus-Strong).
+    Pluck,
     /// A hosted plugin instrument.
     Plugin {
         /// The plugin.
@@ -194,6 +198,8 @@ impl Instrument {
         match self {
             Self::Sampler { .. } => "sampler",
             Self::Synth => "synth",
+            Self::DrumSynth => "drum synth",
+            Self::Pluck => "pluck",
             Self::Plugin { .. } => "plugin",
         }
     }
@@ -238,7 +244,10 @@ impl Channel {
     pub fn new(id: ChannelId, name: impl Into<String>, instrument: Instrument) -> Self {
         let params = match instrument {
             Instrument::Sampler { .. } => InstrumentParams::sampler(),
-            Instrument::Synth | Instrument::Plugin { .. } => InstrumentParams::default(),
+            Instrument::Synth
+            | Instrument::DrumSynth
+            | Instrument::Pluck
+            | Instrument::Plugin { .. } => InstrumentParams::default(),
         };
         Self {
             id,

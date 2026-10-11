@@ -238,6 +238,14 @@ fn contents(
             sampler(ui, state, frame, index, channel, sample, actions)
         }
         Instrument::Synth => synth(ui, state, number, channel, actions),
+        Instrument::DrumSynth => {
+            drum(ui, state, number, channel, actions);
+            return;
+        }
+        Instrument::Pluck => {
+            pluck(ui, state, number, channel, actions);
+            return;
+        }
         Instrument::Plugin { plugin } => {
             // Plugins shape their own sound; the built-in sections do not apply.
             let target = crate::plugins::Target::Channel(number);
@@ -353,10 +361,16 @@ fn choice(
     }
 }
 
-/// Preset picker for the synth: applying one is a single undo step.
-fn synth_presets(ui: &mut egui::Ui, number: usize, channel: &Channel, actions: &mut Vec<Action>) {
-    use musiccraft_project::params::presets::SYNTH;
-    let current = SYNTH
+/// Preset picker for a built-in instrument: applying one is a single undo
+/// step.
+fn preset_bar(
+    ui: &mut egui::Ui,
+    number: usize,
+    channel: &Channel,
+    list: &'static [musiccraft_project::params::presets::Preset],
+    actions: &mut Vec<Action>,
+) {
+    let current = list
         .iter()
         .position(|p| p.matches(INSTRUMENT_PARAMS, &channel.params.0));
     let mut chosen = None;
@@ -367,15 +381,16 @@ fn synth_presets(ui: &mut egui::Ui, number: usize, channel: &Channel, actions: &
                 .strong()
                 .color(theme::TEXT_DIM),
         );
-        let n = SYNTH.len();
+        let n = list.len();
+        let salt = (number, list.as_ptr() as usize);
         if ui.small_button("◀").hint("Previous preset").clicked() {
             chosen = Some(current.map_or(n - 1, |c| (c + n - 1) % n));
         }
-        egui::ComboBox::from_id_salt("synth-preset")
+        egui::ComboBox::from_id_salt(("instrument-preset", salt))
             .width(180.0)
-            .selected_text(current.map_or("(custom)", |i| SYNTH[i].name))
+            .selected_text(current.map_or("(custom)", |i| list[i].name))
             .show_ui(ui, |ui| {
-                for (i, preset) in SYNTH.iter().enumerate() {
+                for (i, preset) in list.iter().enumerate() {
                     if ui
                         .selectable_label(current == Some(i), preset.name)
                         .clicked()
@@ -388,7 +403,7 @@ fn synth_presets(ui: &mut egui::Ui, number: usize, channel: &Channel, actions: &
             chosen = Some(current.map_or(0, |c| (c + 1) % n));
         }
     });
-    let Some(preset) = chosen.and_then(|i| SYNTH.get(i)) else {
+    let Some(preset) = chosen.and_then(|i| list.get(i)) else {
         return;
     };
     let changes: Vec<String> = preset
@@ -406,6 +421,114 @@ fn synth_presets(ui: &mut egui::Ui, number: usize, channel: &Channel, actions: &
             changes,
         )));
     }
+}
+
+fn drum(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    preset_bar(
+        ui,
+        number,
+        channel,
+        musiccraft_project::params::presets::DRUM,
+        actions,
+    );
+    ui.add_space(4.0);
+    section(ui, "DRUM", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::DRUM_TYPE,
+                &["Kick", "Snare", "Hat", "Tom", "Clap"],
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::DRUM_TUNE, "Tune", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::DRUM_DECAY,
+                "Decay",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::DRUM_SWEEP,
+                "Sweep",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::DRUM_TONE, "Tone", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::DRUM_CLICK,
+                "Click",
+                actions,
+            );
+        });
+    });
+}
+
+fn pluck(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    preset_bar(
+        ui,
+        number,
+        channel,
+        musiccraft_project::params::presets::PLUCK,
+        actions,
+    );
+    ui.add_space(4.0);
+    section(ui, "STRING", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::PLUCK_DECAY,
+                "Decay",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::PLUCK_DAMPING,
+                "Damping",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::PLUCK_TONE,
+                "Tone",
+                actions,
+            );
+        });
+    });
 }
 
 /// The synth filter's response at the current settings.
@@ -439,7 +562,13 @@ fn synth(
     channel: &Channel,
     actions: &mut Vec<Action>,
 ) {
-    synth_presets(ui, number, channel, actions);
+    preset_bar(
+        ui,
+        number,
+        channel,
+        musiccraft_project::params::presets::SYNTH,
+        actions,
+    );
     ui.add_space(4.0);
     section(ui, "OSCILLATORS", |ui| {
         for (label, param) in [("Osc 1", inst::WAVE1), ("Osc 2", inst::WAVE2)] {

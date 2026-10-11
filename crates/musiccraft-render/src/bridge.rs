@@ -20,6 +20,8 @@ enum Source {
     /// A resolved sample reference.
     Sample(String),
     Synth,
+    DrumSynth,
+    Pluck,
     /// A plugin in this engine slot (`None`: not running).
     Plugin(Option<u16>),
 }
@@ -170,6 +172,8 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                         Source::Sample(sample_key(sample, base))
                     }
                     musiccraft_project::Instrument::Synth => Source::Synth,
+                    musiccraft_project::Instrument::DrumSynth => Source::DrumSynth,
+                    musiccraft_project::Instrument::Pluck => Source::Pluck,
                     musiccraft_project::Instrument::Plugin { plugin } => {
                         Source::Plugin(slots.get(&plugin.instance).copied())
                     }
@@ -465,6 +469,8 @@ impl Bridge {
             let instrument = match source {
                 Source::Sample(key) => Instrument::Sampler(self.load(key, warnings)),
                 Source::Synth => Instrument::Synth,
+                Source::DrumSynth => Instrument::DrumSynth,
+                Source::Pluck => Instrument::Pluck,
                 // An out-of-range slot plays nothing.
                 Source::Plugin(slot) => Instrument::External(slot.unwrap_or(u16::MAX)),
             };

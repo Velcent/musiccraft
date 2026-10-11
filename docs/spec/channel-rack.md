@@ -41,6 +41,29 @@
   attack, full sustain and a short release so samples play unshaped.
 - Missing or undecodable files play silence and produce a warning.
 
+## Drum synth
+
+- `channel.add_drum [kick|snare|hat|tom|clap] [name]` adds a channel that
+  synthesizes a drum on every note (default kick). Parameters: `drum_type`
+  (0 kick, 1 snare, 2 hat, 3 tom, 4 clap), `drum_tune` (±24 semitones),
+  `drum_decay` (0.02–2 s), `drum_sweep` (pitch drop in semitones, 0–48),
+  `drum_tone` (noise against tone for snares; brightness for hats and claps),
+  `drum_click` (a short noise attack, 0–1).
+- Kicks and toms are a sine whose pitch falls by `drum_sweep` semitones in the
+  first ~40 ms; the note key sets the pitch (C5 plays the tuned default, two
+  octaves down for kicks and one for toms). Snares mix a tone with noise;
+  hats are high-passed noise; claps are three short noise bursts then a tail.
+  Every hit decays exponentially over `drum_decay` and ignores note length.
+- Presets: a set of kicks, snares, hats, toms and claps.
+
+## Pluck
+
+- `channel.add_pluck [name]` adds a plucked-string channel (Karplus–Strong:
+  a burst of noise circulating in a tuned, damped delay line). Parameters:
+  `pluck_decay` (time to fade by 60 dB, 0.1–10 s), `pluck_damping` (0
+  bright to 1 dark), `pluck_tone` (brightness of the initial burst). Ending
+  the note damps the string quickly. Presets: guitar, harp, bass, muted.
+
 ## Built-in sounds
 
 `kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`, `rim`, `crash`. Each is

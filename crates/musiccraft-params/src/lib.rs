@@ -21,7 +21,7 @@ pub const TICKS_PER_BAR: u32 = PPQ * BEATS_PER_BAR;
 /// Capacity of an effect parameter array.
 pub const MAX_EFFECT_PARAMS: usize = 8;
 /// Capacity of an instrument parameter array.
-pub const MAX_INSTRUMENT_PARAMS: usize = 32;
+pub const MAX_INSTRUMENT_PARAMS: usize = 48;
 /// Maximum number of effect slots on one mixer track.
 pub const MAX_EFFECT_SLOTS: usize = 10;
 /// Maximum number of mixer tracks, master included.
@@ -238,6 +238,15 @@ pub mod inst {
     pub const ARP_RATE: usize = 24;
     pub const ARP_RANGE: usize = 25;
     pub const ARP_GATE: usize = 26;
+    pub const DRUM_TYPE: usize = 27;
+    pub const DRUM_TUNE: usize = 28;
+    pub const DRUM_DECAY: usize = 29;
+    pub const DRUM_SWEEP: usize = 30;
+    pub const DRUM_TONE: usize = 31;
+    pub const DRUM_CLICK: usize = 32;
+    pub const PLUCK_DECAY: usize = 33;
+    pub const PLUCK_DAMPING: usize = 34;
+    pub const PLUCK_TONE: usize = 35;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -269,7 +278,19 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("arp_rate", 0.0, 4.0, 1.0),
     int_spec("arp_range", 1.0, 4.0, 1.0),
     spec("arp_gate", 0.05, 1.0, 0.8, ""),
+    int_spec("drum_type", 0.0, 4.0, 0.0),
+    spec("drum_tune", -24.0, 24.0, 0.0, "st"),
+    spec("drum_decay", 0.02, 2.0, 0.4, "s"),
+    spec("drum_sweep", 0.0, 48.0, 24.0, "st"),
+    spec("drum_tone", 0.0, 1.0, 0.5, ""),
+    spec("drum_click", 0.0, 1.0, 0.3, ""),
+    spec("pluck_decay", 0.1, 10.0, 2.0, "s"),
+    spec("pluck_damping", 0.0, 1.0, 0.3, ""),
+    spec("pluck_tone", 0.0, 1.0, 0.7, ""),
 ];
+
+/// Names of the drum synth's sounds, by `drum_type` value.
+pub const DRUM_TYPES: [&str; 5] = ["kick", "snare", "hat", "tom", "clap"];
 
 /// Names of the arpeggiator modes, by `arp_mode` value.
 pub const ARP_MODES: [&str; 5] = ["off", "up", "down", "up-down", "random"];

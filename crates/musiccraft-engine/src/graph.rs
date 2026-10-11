@@ -123,6 +123,10 @@ pub enum Instrument {
     Sampler(Arc<SampleBuffer>),
     /// Two-oscillator subtractive synthesizer.
     Synth,
+    /// Synthesized drums.
+    DrumSynth,
+    /// Plucked string.
+    Pluck,
     /// The external processor (plugin) in this engine slot; silent when the
     /// slot is empty.
     External(u16),

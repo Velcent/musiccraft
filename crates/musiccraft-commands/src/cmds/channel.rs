@@ -25,6 +25,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             add_synth,
         ),
         cmd(
+            "channel.add_drum",
+            "channel.add_drum [kick|snare|hat|tom|clap] [name]",
+            "Add a drum synth channel.",
+            add_drum,
+        ),
+        cmd(
+            "channel.add_pluck",
+            "channel.add_pluck [name]",
+            "Add a plucked-string channel.",
+            add_pluck,
+        ),
+        cmd(
             "channel.remove",
             "channel.remove <channel>",
             "Remove a channel and its notes in every pattern.",
@@ -179,6 +191,43 @@ fn add_synth(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     Ok(push_channel(
         project,
         Channel::new(id, name, Instrument::Synth),
+    ))
+}
+
+fn add_drum(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    use musiccraft_project::params::DRUM_TYPES;
+    let (kind, rest) = match args.opt(0) {
+        Some(word) => match DRUM_TYPES.iter().position(|t| *t == word) {
+            Some(i) => (i, 1),
+            None => (0, 0),
+        },
+        None => (0, 0),
+    };
+    let name = if args.len() > rest {
+        args.rest(rest)?
+    } else {
+        let mut label = DRUM_TYPES[kind].to_owned();
+        if let Some(first) = label.get_mut(0..1) {
+            first.make_ascii_uppercase();
+        }
+        label
+    };
+    let id = ChannelId(project.alloc_id());
+    let mut channel = Channel::new(id, name, Instrument::DrumSynth);
+    channel.params.0[musiccraft_project::params::inst::DRUM_TYPE] = kind as f32;
+    Ok(push_channel(project, channel))
+}
+
+fn add_pluck(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    let name = if args.len() > 0 {
+        args.rest(0)?
+    } else {
+        "Pluck".to_owned()
+    };
+    let id = ChannelId(project.alloc_id());
+    Ok(push_channel(
+        project,
+        Channel::new(id, name, Instrument::Pluck),
     ))
 }
 

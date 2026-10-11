@@ -607,3 +607,37 @@ fn arpeggiated_channels_play_their_chords_one_note_at_a_time() {
     // Other channels are untouched.
     assert_eq!(seq.events().iter().filter(|e| e.channel == 1).count(), 1);
 }
+
+#[test]
+fn drum_and_pluck_presets_play_without_clipping() {
+    use musiccraft_params::INSTRUMENT_PARAMS;
+    use musiccraft_params::presets::{DRUM, PLUCK};
+    for (add, notes, list) in [
+        ("channel.add_drum", "step.toggle 1 0\nstep.toggle 1 4", DRUM),
+        (
+            "channel.add_pluck",
+            "note.add_chord 1 0 8 C4 minor 110",
+            PLUCK,
+        ),
+    ] {
+        for preset in list {
+            let mut s = session();
+            run(&mut s, &format!("{add}\n{notes}"));
+            for (name, value) in preset.resolve(INSTRUMENT_PARAMS) {
+                run(&mut s, &format!("channel.set_param 1 {name} {value}"));
+            }
+            let options = RenderOptions {
+                sample_rate: 22_050,
+                loops: 1,
+                max_tail_seconds: 2.0,
+            };
+            let (left, right, _) = render(s.project(), options);
+            let peak = left
+                .iter()
+                .chain(&right)
+                .fold(0.0_f32, |p, x| p.max(x.abs()));
+            assert!(peak < 1.0, "{} clips: {peak}", preset.name);
+            assert!(peak > 0.05, "{} is too quiet: {peak}", preset.name);
+        }
+    }
+}

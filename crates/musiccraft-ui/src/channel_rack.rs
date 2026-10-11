@@ -218,6 +218,8 @@ fn row(
         let response = ui.add(name).hint(match &channel.instrument {
             Instrument::Sampler { sample } => format!("Sampler: {sample}"),
             Instrument::Synth => "Synth".to_owned(),
+            Instrument::DrumSynth => "Drum synth".to_owned(),
+            Instrument::Pluck => "Pluck".to_owned(),
             Instrument::Plugin { plugin } => format!("Plugin: {} ({})", plugin.name, plugin.id),
         });
         if response.clicked() {
@@ -461,6 +463,18 @@ fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Actio
             ui.separator();
             if ui.button("Synth").clicked() {
                 actions.push(Action::Run(Invocation::bare("channel.add_synth")));
+                ui.close();
+            }
+            ui.menu_button("Drum synth", |ui| {
+                for kind in musiccraft_project::params::DRUM_TYPES {
+                    if ui.button(kind).clicked() {
+                        actions.push(Action::Run(Invocation::new("channel.add_drum", [kind])));
+                        ui.close();
+                    }
+                }
+            });
+            if ui.button("Pluck").clicked() {
+                actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
                 ui.close();
             }
             ui.menu_button("Plugin instrument", |ui| {

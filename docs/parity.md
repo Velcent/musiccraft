@@ -71,6 +71,8 @@ of contents; see `docs/clean-room.md`.
 | Effects | Bitcrusher, stereo tool | `fx:bitcrusher` `fx:stereo` |
 | Effects | Tempo-synced trance gate (16 steps) and auto-pan | `fx:gate` `fx:autopan` |
 | Instruments | Subtractive synth with unison, sub, drive, filter types, LFO and presets | `cmd:channel.add_synth` `spec:piano-roll.md` |
+| Instruments | Drum synth (kick, snare, hat, tom, clap) with presets | `cmd:channel.add_drum` `spec:channel-rack.md` |
+| Instruments | Plucked string with presets | `cmd:channel.add_pluck` `spec:channel-rack.md` |
 | Effects | Effect windows with response graphs and presets | `spec:mixer.md` `done` |
 | Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |
 | Instruments | VST3 plugins | `todo` |

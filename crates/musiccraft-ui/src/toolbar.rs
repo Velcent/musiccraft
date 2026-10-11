@@ -112,6 +112,18 @@ fn add_menu(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
             run(actions, "channel.add_synth");
             ui.close();
         }
+        ui.menu_button("Drum synth", |ui| {
+            for kind in musiccraft_project::params::DRUM_TYPES {
+                if ui.button(kind).clicked() {
+                    run(actions, &format!("channel.add_drum {kind}"));
+                    ui.close();
+                }
+            }
+        });
+        if ui.button("Pluck").clicked() {
+            run(actions, "channel.add_pluck");
+            ui.close();
+        }
     });
     ui.menu_button("Plugin instrument", |ui| {
         crate::plugins::add_menu(ui, frame.plugins, true, actions, |p| {
