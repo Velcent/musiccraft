@@ -90,6 +90,7 @@ mod tests {
         let sample_rate = 1_000.0;
         let mut delay = Delay::new(sample_rate);
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate,
             tempo_bpm: 60.0,
         };
@@ -110,6 +111,7 @@ mod tests {
         let sample_rate = 100.0;
         let mut delay = Delay::new(sample_rate);
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate,
             tempo_bpm: 60.0,
         };
@@ -213,6 +215,7 @@ mod chorus_tests {
     #[test]
     fn chorus_delays_and_modulates() {
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate: 10_000.0,
             tempo_bpm: 120.0,
         };

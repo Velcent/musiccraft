@@ -158,6 +158,8 @@ pub struct Engine {
     click: Click,
     preview: Option<Box<crate::Preview>>,
     externals: Vec<Option<Box<dyn External>>>,
+    /// Beats elapsed on the free-running clock (used while stopped).
+    free_beats: f64,
 }
 
 impl Drop for Engine {
@@ -200,6 +202,7 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
         click: Click::default(),
         preview: None,
         externals: (0..MAX_EXTERNALS).map(|_| None).collect(),
+        free_beats: 0.0,
     };
     let handle = EngineHandle {
         messages: message_tx,
@@ -556,7 +559,16 @@ impl Engine {
             self.frames_played += frames as u64;
         }
         let sample_rate = self.sample_rate as f32;
+        // Tempo-synced effects follow the song while playing and a free
+        // clock at the same tempo while stopped.
+        let beats = if transport.playing {
+            transport.position_beats
+        } else {
+            self.free_beats
+        };
+        self.free_beats += frames as f64 * self.tempo_bpm / 60.0 / self.sample_rate;
         let ctx = ProcessContext {
+            beats,
             sample_rate,
             tempo_bpm: self.tempo_bpm,
         };

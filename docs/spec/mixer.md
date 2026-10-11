@@ -40,6 +40,16 @@
 | `compressor` | threshold dB, ratio, attack ms, release ms, makeup dB, sidechain (0 = off, else the insert whose post-fader output drives detection) |
 | `limiter` | input gain dB, ceiling dB, release ms (instant attack; output never exceeds the ceiling) |
 | `distortion` | drive dB, mix, output dB |
+| `phaser` | rate Hz, depth, feedback, stages (2–12 all-pass stages), mix |
+| `flanger` | rate Hz, depth ms, delay ms, feedback (−0.95–0.95), mix |
+| `bitcrusher` | bits (1–16), downsample (hold every 1–32 samples), mix, output dB |
+| `stereo` | width (0 mono – 2 extra wide, mid/side), balance, invert left, invert right |
+| `gate` | rate (1/32 note – 1 bar per step), duty (open share of a step), depth, smooth ms, steps (16-step on/off pattern as a number, bit 0 = first step) |
+| `autopan` | rate (1/32 note – 1 bar per cycle), depth, shape (sine, triangle, square) |
+
+The gate and auto-pan follow the song position while playing (so they stay in
+time with the beat) and a free-running clock at the project tempo while
+stopped. The gate's window shows the 16 steps; clicking one turns it on or off.
 
 Ranges and defaults are defined in `musiccraft-params`.
 

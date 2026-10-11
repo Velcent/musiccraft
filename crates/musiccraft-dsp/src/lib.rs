@@ -6,6 +6,7 @@ mod dynamics;
 mod effect;
 mod envelope;
 mod filter;
+pub mod modulation;
 mod osc;
 pub mod response;
 mod reverb;

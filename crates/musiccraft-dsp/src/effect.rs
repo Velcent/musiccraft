@@ -1,5 +1,6 @@
 use musiccraft_params::{EffectKind, MAX_EFFECT_PARAMS};
 
+use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
 use crate::{Biquad, Chorus, Compressor, Delay, Distortion, Limiter, Reverb, Svf, SvfMode};
 
 /// Information every effect may need while processing.
@@ -9,6 +10,9 @@ pub struct ProcessContext {
     pub sample_rate: f32,
     /// Current project tempo.
     pub tempo_bpm: f64,
+    /// Beat position at the start of the block: the song position while
+    /// playing, a free-running clock while stopped.
+    pub beats: f64,
 }
 
 /// Stereo state-variable filter effect.
@@ -90,6 +94,18 @@ pub enum Effect {
     Chorus(Chorus),
     /// See [`Limiter`].
     Limiter(Limiter),
+    /// See [`Phaser`].
+    Phaser(Phaser),
+    /// See [`Flanger`].
+    Flanger(Flanger),
+    /// See [`Bitcrusher`].
+    Bitcrusher(Bitcrusher),
+    /// See [`crate::modulation::stereo`].
+    Stereo,
+    /// See [`Gate`].
+    Gate(Gate),
+    /// See [`crate::modulation::autopan`].
+    Autopan,
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -109,6 +125,12 @@ impl Effect {
             EffectKind::Distortion => Self::Distortion,
             EffectKind::Chorus => Self::Chorus(Chorus::new(sample_rate)),
             EffectKind::Limiter => Self::Limiter(Limiter::default()),
+            EffectKind::Phaser => Self::Phaser(Phaser::default()),
+            EffectKind::Flanger => Self::Flanger(Flanger::new(sample_rate)),
+            EffectKind::Bitcrusher => Self::Bitcrusher(Bitcrusher::default()),
+            EffectKind::Stereo => Self::Stereo,
+            EffectKind::Gate => Self::Gate(Gate::default()),
+            EffectKind::Autopan => Self::Autopan,
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -125,6 +147,12 @@ impl Effect {
             Self::Distortion => EffectKind::Distortion,
             Self::Chorus(_) => EffectKind::Chorus,
             Self::Limiter(_) => EffectKind::Limiter,
+            Self::Phaser(_) => EffectKind::Phaser,
+            Self::Flanger(_) => EffectKind::Flanger,
+            Self::Bitcrusher(_) => EffectKind::Bitcrusher,
+            Self::Stereo => EffectKind::Stereo,
+            Self::Gate(_) => EffectKind::Gate,
+            Self::Autopan => EffectKind::Autopan,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -159,6 +187,12 @@ impl Effect {
             Self::Distortion => Distortion::process(left, right, params),
             Self::Chorus(fx) => fx.process(left, right, params, ctx),
             Self::Limiter(fx) => fx.process(left, right, params, ctx),
+            Self::Phaser(fx) => fx.process(left, right, params, ctx),
+            Self::Flanger(fx) => fx.process(left, right, params, ctx),
+            Self::Bitcrusher(fx) => fx.process(left, right, params),
+            Self::Stereo => crate::modulation::stereo(left, right, params),
+            Self::Gate(fx) => fx.process(left, right, params, ctx),
+            Self::Autopan => crate::modulation::autopan(left, right, params, ctx),
             Self::Passthrough => {}
         }
     }
@@ -171,7 +205,11 @@ impl Effect {
             Self::Delay(fx) => fx.reset(),
             Self::Reverb(fx) => fx.reset(),
             Self::Compressor(fx) => fx.reset(),
-            Self::Distortion | Self::Passthrough => {}
+            Self::Distortion | Self::Passthrough | Self::Stereo | Self::Autopan => {}
+            Self::Phaser(fx) => fx.reset(),
+            Self::Flanger(fx) => fx.reset(),
+            Self::Bitcrusher(fx) => fx.reset(),
+            Self::Gate(fx) => fx.reset(),
             Self::Chorus(fx) => fx.reset(),
             Self::Limiter(fx) => *fx = Limiter::default(),
         }
@@ -186,6 +224,7 @@ mod tests {
     #[test]
     fn every_effect_is_finite_with_default_params() {
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate: 48_000.0,
             tempo_bpm: 130.0,
         };
@@ -206,6 +245,7 @@ mod tests {
     #[test]
     fn flat_eq_is_transparent() {
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate: 44_100.0,
             tempo_bpm: 120.0,
         };

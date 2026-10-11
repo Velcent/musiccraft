@@ -247,6 +247,12 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::Distortion => "Distortion",
         K::Chorus => "Chorus",
         K::Limiter => "Limiter",
+        K::Phaser => "Phaser",
+        K::Flanger => "Flanger",
+        K::Bitcrusher => "Bitcrusher",
+        K::Stereo => "Stereo tool",
+        K::Gate => "Trance gate",
+        K::Autopan => "Auto-pan",
         K::Plugin => "Plugin",
     }
 }

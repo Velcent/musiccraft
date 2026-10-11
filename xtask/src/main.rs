@@ -229,7 +229,7 @@ mod tests {
         assert!(c.check("spec:transport.md").is_ok());
         assert!(c.check("spec:nope.md").is_err());
         assert!(c.check("fx:reverb").is_ok());
-        assert!(c.check("fx:phaser").is_err());
+        assert!(c.check("fx:vocoder").is_err());
         assert!(c.check("wat").is_err());
     }
 

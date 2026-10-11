@@ -4,6 +4,7 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
+use musiccraft_dsp::modulation::{SYNC_RATE_NAMES, autopan_shape, gate_step_on};
 use musiccraft_dsp::{SvfMode, response};
 use musiccraft_project::EffectSlot;
 use musiccraft_project::params::presets::{self, Preset};
@@ -227,14 +228,28 @@ fn knobs(
     ui.horizontal_wrapped(|ui| {
         for (p, spec) in effect.kind.params().iter().enumerate() {
             let value = effect.values[p];
-            let text = if spec.name == "sidechain" {
-                if value < 0.5 {
-                    "off".to_owned()
-                } else {
-                    format!("from {value:.0}")
+            if spec.name == "steps" {
+                // Edited by clicking the steps in the graph.
+                continue;
+            }
+            let synced = matches!(effect.kind, EffectKind::Gate | EffectKind::Autopan);
+            let text = match spec.name {
+                "sidechain" if value < 0.5 => "off".to_owned(),
+                "sidechain" => format!("from {value:.0}"),
+                "rate" if synced => SYNC_RATE_NAMES
+                    .get(value.round() as usize)
+                    .copied()
+                    .unwrap_or("?")
+                    .to_owned(),
+                "shape" => ["sine", "triangle", "square"]
+                    .get(value.round() as usize)
+                    .copied()
+                    .unwrap_or("?")
+                    .to_owned(),
+                "invert_left" | "invert_right" => {
+                    if value >= 0.5 { "on" } else { "off" }.to_owned()
                 }
-            } else {
-                crate::channel_settings::format_value(spec, value)
+                _ => crate::channel_settings::format_value(spec, value),
             };
             let label = pretty(spec.name);
             let out = widgets::labeled_knob(
@@ -554,7 +569,129 @@ fn graph(
             }
             hint = "Echoes over time (grid lines are beats); left and right alternate in ping-pong";
         }
-        EffectKind::Reverb | EffectKind::Chorus => {
+        EffectKind::Gate => {
+            let duty = value(effect, "duty");
+            let depth = value(effect, "depth");
+            let steps = value(effect, "steps");
+            let cell = rect.width() / 16.0;
+            for i in 0..16 {
+                let x = rect.left() + cell * i as f32;
+                let r = Rect::from_min_max(
+                    pos2(x + 1.0, rect.top() + 6.0),
+                    pos2(x + cell - 1.0, rect.bottom() - 6.0),
+                );
+                let beat = if i % 4 == 0 {
+                    theme::GRID_BAR
+                } else {
+                    theme::GRID_LINE
+                };
+                painter.rect_stroke(r, 2.0, Stroke::new(1.0, beat), egui::StrokeKind::Inside);
+                if gate_step_on(steps, i) {
+                    let open =
+                        Rect::from_min_max(r.min, pos2(r.left() + r.width() * duty, r.bottom()));
+                    painter.rect_filled(open, 2.0, color.gamma_multiply(0.8));
+                } else if depth < 1.0 {
+                    let floor = r.bottom() - r.height() * (1.0 - depth);
+                    painter.rect_filled(
+                        Rect::from_min_max(pos2(r.left(), floor), r.max),
+                        2.0,
+                        color.gamma_multiply(0.2),
+                    );
+                }
+            }
+            hint = "Click a step to turn it on or off; duty sets how much of each step is open";
+        }
+        EffectKind::Autopan => {
+            let shape = value(effect, "shape");
+            let depth = value(effect, "depth");
+            let mid = rect.center().y;
+            painter.line_segment(
+                [pos2(rect.left(), mid), pos2(rect.right(), mid)],
+                Stroke::new(1.0, theme::GRID_BEAT),
+            );
+            painter.text(
+                pos2(rect.left() + 4.0, rect.top() + 4.0),
+                egui::Align2::LEFT_TOP,
+                "R",
+                egui::FontId::proportional(10.0),
+                theme::TEXT_DIM,
+            );
+            painter.text(
+                pos2(rect.left() + 4.0, rect.bottom() - 4.0),
+                egui::Align2::LEFT_BOTTOM,
+                "L",
+                egui::FontId::proportional(10.0),
+                theme::TEXT_DIM,
+            );
+            let points: Vec<Pos2> = (0..=width)
+                .map(|i| {
+                    let phase = i as f64 / width as f64 * 2.0;
+                    let pan = autopan_shape(shape, phase) * depth;
+                    pos2(rect.left() + i as f32, mid - pan * rect.height() * 0.42)
+                })
+                .collect();
+            for pair in points.windows(2) {
+                painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
+            }
+            hint = "Where the sound sits over two cycles: up is right, down is left";
+        }
+        EffectKind::Bitcrusher => {
+            let bits = value(effect, "bits");
+            let hold = value(effect, "downsample").max(1.0);
+            let levels = 2.0_f32.powf(bits - 1.0);
+            let mid = rect.center().y;
+            let wave = |x: f32| (x / rect.width() * std::f32::consts::TAU * 2.0).sin();
+            let smooth: Vec<Pos2> = (0..=width)
+                .map(|i| {
+                    pos2(
+                        rect.left() + i as f32,
+                        mid - wave(i as f32) * rect.height() * 0.4,
+                    )
+                })
+                .collect();
+            for pair in smooth.windows(2) {
+                painter.line_segment([pair[0], pair[1]], Stroke::new(1.0, theme::TEXT_DIM));
+            }
+            let px_per_sample = 1.5;
+            let crushed: Vec<Pos2> = (0..=width)
+                .map(|i| {
+                    let held = ((i as f32 / px_per_sample / hold).floor() * hold * px_per_sample)
+                        .min(rect.width());
+                    let y = (wave(held) * levels).round() / levels;
+                    pos2(rect.left() + i as f32, mid - y * rect.height() * 0.4)
+                })
+                .collect();
+            for pair in crushed.windows(2) {
+                painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
+            }
+            hint = "A sine wave before (grey) and after crushing: fewer bits mean bigger steps";
+        }
+        EffectKind::Stereo => {
+            let width_v = value(effect, "width");
+            let balance = value(effect, "balance");
+            let center = rect.center();
+            let h = rect.height() * 0.42;
+            for (side, invert) in [(-1.0_f32, "invert_left"), (1.0, "invert_right")] {
+                let level = (1.0 + side * balance).min(1.0);
+                let spread = (width_v / 2.0).min(1.0) * 0.8 + 0.1;
+                let end = pos2(center.x + side * h * spread * 1.6, center.y - h * level);
+                let stroke = if value(effect, invert) >= 0.5 {
+                    Stroke::new(2.0, theme::DANGER)
+                } else {
+                    Stroke::new(2.0, color)
+                };
+                painter.line_segment([pos2(center.x, rect.bottom() - 6.0), end], stroke);
+                painter.text(
+                    end,
+                    egui::Align2::CENTER_BOTTOM,
+                    if side < 0.0 { "L" } else { "R" },
+                    egui::FontId::proportional(11.0),
+                    theme::TEXT,
+                );
+            }
+            hint = "Lines show how far apart left and right sit; red means phase inverted";
+        }
+        EffectKind::Reverb | EffectKind::Chorus | EffectKind::Phaser | EffectKind::Flanger => {
             let points: Vec<Pos2> = if effect.kind == EffectKind::Reverb {
                 let size = value(effect, "size");
                 let damping = value(effect, "damping");
@@ -572,7 +709,9 @@ fn graph(
                     .collect()
             } else {
                 let rate = value(effect, "rate");
-                let depth = value(effect, "depth") / 10.0;
+                let depth = value(effect, "depth")
+                    / spec(effect, "depth").map_or(10.0, |s| s.max.max(1e-3))
+                    * 0.9;
                 (0..=width)
                     .map(|i| {
                         let t = i as f32 / width as f32 * 2.0;
@@ -588,7 +727,7 @@ fn graph(
             hint = if effect.kind == EffectKind::Reverb {
                 "The tail over five seconds: size lengthens it, damping darkens and shortens it"
             } else {
-                "Delay modulation over two seconds: rate is speed, depth is height"
+                "The sweep over two seconds: rate is speed, depth is height"
             };
         }
         EffectKind::Plugin => {}
@@ -625,6 +764,14 @@ fn graph(
     }
     if response.drag_stopped() {
         state.effect_drag = None;
+    }
+    // Clicking a gate step turns it on or off.
+    if effect.kind == EffectKind::Gate && response.clicked() {
+        if let Some(pointer) = response.interact_pointer_pos() {
+            let index = (((pointer.x - rect.left()) / rect.width() * 16.0) as usize).min(15);
+            let steps = value(effect, "steps").round() as u32 ^ (1 << index);
+            actions.push(Action::Run(set_param(track, slot, "steps", steps as f32)));
+        }
     }
     if let (Some(drag), Some(pointer)) = (dragging, response.interact_pointer_pos()) {
         if response.dragged() {

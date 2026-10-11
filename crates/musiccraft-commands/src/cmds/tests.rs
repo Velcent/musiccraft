@@ -354,7 +354,7 @@ fn errors_leave_the_project_unchanged() {
         "pattern.set_length 1 0",
         "pattern.set_swing 1 101",
         "pattern.select 4",
-        "mixer.add_effect 1 phaser",
+        "mixer.add_effect 1 vocoder",
         "mixer.set_send 2 1 0.5",
         "mixer.set_send 0 1 0.5",
         "mixer.set_send 1 2 3",

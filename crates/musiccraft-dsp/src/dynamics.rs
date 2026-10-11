@@ -150,6 +150,7 @@ mod tests {
     fn loud_signal_is_reduced_by_ratio() {
         let mut comp = Compressor::new();
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate: 1_000.0,
             tempo_bpm: 120.0,
         };
@@ -166,6 +167,7 @@ mod tests {
     fn sidechain_key_ducks_the_input() {
         let mut comp = Compressor::new();
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate: 1_000.0,
             tempo_bpm: 120.0,
         };
@@ -191,6 +193,7 @@ mod tests {
     fn quiet_signal_passes_unchanged() {
         let mut comp = Compressor::new();
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate: 1_000.0,
             tempo_bpm: 120.0,
         };
@@ -204,6 +207,7 @@ mod tests {
     fn limiter_holds_the_ceiling_and_recovers() {
         let mut limiter = Limiter::default();
         let ctx = ProcessContext {
+            beats: 0.0,
             sample_rate: 1_000.0,
             tempo_bpm: 120.0,
         };

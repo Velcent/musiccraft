@@ -402,6 +402,113 @@ const LIMITER: &[Preset] = &[
     ),
 ];
 
+const PHASER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Slow swirl",
+        &[
+            ("rate", 0.2),
+            ("depth", 0.9),
+            ("feedback", 0.6),
+            ("stages", 8.0),
+        ],
+    ),
+    preset(
+        "Fast wobble",
+        &[
+            ("rate", 4.0),
+            ("depth", 0.5),
+            ("feedback", 0.3),
+            ("stages", 4.0),
+        ],
+    ),
+    preset(
+        "Deep",
+        &[
+            ("rate", 0.4),
+            ("depth", 1.0),
+            ("feedback", 0.85),
+            ("stages", 12.0),
+            ("mix", 0.6),
+        ],
+    ),
+];
+
+const FLANGER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Jet",
+        &[
+            ("rate", 0.1),
+            ("depth", 4.0),
+            ("delay", 1.0),
+            ("feedback", 0.85),
+        ],
+    ),
+    preset(
+        "Metallic",
+        &[
+            ("rate", 0.5),
+            ("depth", 1.0),
+            ("delay", 3.0),
+            ("feedback", -0.8),
+        ],
+    ),
+    preset(
+        "Gentle",
+        &[
+            ("rate", 0.2),
+            ("depth", 1.5),
+            ("feedback", 0.2),
+            ("mix", 0.35),
+        ],
+    ),
+];
+
+const BITCRUSHER: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Retro console", &[("bits", 6.0), ("downsample", 6.0)]),
+    preset(
+        "Light grit",
+        &[("bits", 12.0), ("downsample", 2.0), ("mix", 0.5)],
+    ),
+    preset(
+        "Destroyed",
+        &[("bits", 3.0), ("downsample", 16.0), ("output", -6.0)],
+    ),
+];
+
+const STEREO: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Mono", &[("width", 0.0)]),
+    preset("Wide", &[("width", 1.6)]),
+    preset("Extra wide", &[("width", 2.0)]),
+];
+
+const GATE: &[Preset] = &[
+    preset("All steps", &[]),
+    preset("Eighths", &[("rate", 2.0), ("duty", 0.6)]),
+    preset("Offbeat chop", &[("steps", 43_690.0), ("duty", 0.9)]),
+    preset(
+        "Trance stutter",
+        &[("steps", 56_797.0), ("duty", 0.7), ("smooth", 2.0)],
+    ),
+    preset("Half depth", &[("depth", 0.5), ("duty", 0.4)]),
+];
+
+const AUTOPAN: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Slow sweep", &[("rate", 5.0), ("depth", 0.8)]),
+    preset(
+        "Eighth bounce",
+        &[("rate", 2.0), ("depth", 0.6), ("shape", 1.0)],
+    ),
+    preset(
+        "Hard switch",
+        &[("rate", 3.0), ("depth", 1.0), ("shape", 2.0)],
+    ),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -414,6 +521,12 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::Distortion => DISTORTION,
         EffectKind::Chorus => CHORUS,
         EffectKind::Limiter => LIMITER,
+        EffectKind::Phaser => PHASER,
+        EffectKind::Flanger => FLANGER,
+        EffectKind::Bitcrusher => BITCRUSHER,
+        EffectKind::Stereo => STEREO,
+        EffectKind::Gate => GATE,
+        EffectKind::Autopan => AUTOPAN,
         EffectKind::Plugin => &[],
     }
 }

@@ -67,6 +67,9 @@ of contents; see `docs/clean-room.md`.
 | Effects | Filter, EQ, delay, reverb, compressor, distortion | `fx:filter` `fx:eq` `fx:delay` `fx:reverb` `fx:compressor` `fx:distortion` |
 | Effects | Chorus | `fx:chorus` |
 | Effects | Limiter | `fx:limiter` |
+| Effects | Phaser, flanger | `fx:phaser` `fx:flanger` |
+| Effects | Bitcrusher, stereo tool | `fx:bitcrusher` `fx:stereo` |
+| Effects | Tempo-synced trance gate (16 steps) and auto-pan | `fx:gate` `fx:autopan` |
 | Instruments | Subtractive synth with unison, sub, drive, filter types, LFO and presets | `cmd:channel.add_synth` `spec:piano-roll.md` |
 | Effects | Effect windows with response graphs and presets | `spec:mixer.md` `done` |
 | Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |

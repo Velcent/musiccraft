@@ -307,21 +307,83 @@ pub enum EffectKind {
     Chorus,
     /// Peak limiter.
     Limiter,
+    /// Swept all-pass phaser.
+    Phaser,
+    /// Short modulated delay with feedback.
+    Flanger,
+    /// Bit depth and sample-rate reduction.
+    Bitcrusher,
+    /// Width, balance and phase.
+    Stereo,
+    /// Tempo-synced 16-step volume gate.
+    Gate,
+    /// Tempo-synced auto-pan.
+    Autopan,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 8] = [
+pub const EFFECT_KINDS: [EffectKind; 14] = [
     EffectKind::Filter,
     EffectKind::Eq,
     EffectKind::Delay,
     EffectKind::Reverb,
     EffectKind::Chorus,
+    EffectKind::Phaser,
+    EffectKind::Flanger,
     EffectKind::Compressor,
     EffectKind::Limiter,
+    EffectKind::Gate,
+    EffectKind::Autopan,
+    EffectKind::Stereo,
     EffectKind::Distortion,
+    EffectKind::Bitcrusher,
+];
+
+const PHASER_PARAMS: &[ParamSpec] = &[
+    spec("rate", 0.05, 10.0, 0.5, "Hz"),
+    spec("depth", 0.0, 1.0, 0.7, ""),
+    spec("feedback", 0.0, 0.9, 0.5, ""),
+    int_spec("stages", 2.0, 12.0, 6.0),
+    spec("mix", 0.0, 1.0, 0.5, ""),
+];
+
+const FLANGER_PARAMS: &[ParamSpec] = &[
+    spec("rate", 0.05, 5.0, 0.25, "Hz"),
+    spec("depth", 0.1, 5.0, 2.0, "ms"),
+    spec("delay", 0.5, 10.0, 2.0, "ms"),
+    spec("feedback", -0.95, 0.95, 0.5, ""),
+    spec("mix", 0.0, 1.0, 0.5, ""),
+];
+
+const BITCRUSHER_PARAMS: &[ParamSpec] = &[
+    int_spec("bits", 1.0, 16.0, 8.0),
+    int_spec("downsample", 1.0, 32.0, 4.0),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const STEREO_PARAMS: &[ParamSpec] = &[
+    spec("width", 0.0, 2.0, 1.0, ""),
+    spec("balance", -1.0, 1.0, 0.0, ""),
+    int_spec("invert_left", 0.0, 1.0, 0.0),
+    int_spec("invert_right", 0.0, 1.0, 0.0),
+];
+
+const GATE_PARAMS: &[ParamSpec] = &[
+    int_spec("rate", 0.0, 5.0, 1.0),
+    spec("duty", 0.05, 1.0, 0.5, ""),
+    spec("depth", 0.0, 1.0, 1.0, ""),
+    spec("smooth", 0.0, 20.0, 3.0, "ms"),
+    int_spec("steps", 0.0, 65_535.0, 65_535.0),
+];
+
+const AUTOPAN_PARAMS: &[ParamSpec] = &[
+    int_spec("rate", 0.0, 5.0, 3.0),
+    spec("depth", 0.0, 1.0, 0.7, ""),
+    int_spec("shape", 0.0, 2.0, 0.0),
 ];
 
 const FILTER_PARAMS: &[ParamSpec] = &[
@@ -397,6 +459,12 @@ impl EffectKind {
             Self::Distortion => "distortion",
             Self::Chorus => "chorus",
             Self::Limiter => "limiter",
+            Self::Phaser => "phaser",
+            Self::Flanger => "flanger",
+            Self::Bitcrusher => "bitcrusher",
+            Self::Stereo => "stereo",
+            Self::Gate => "gate",
+            Self::Autopan => "autopan",
             Self::Plugin => "plugin",
         }
     }
@@ -419,6 +487,12 @@ impl EffectKind {
             Self::Distortion => DISTORTION_PARAMS,
             Self::Chorus => CHORUS_PARAMS,
             Self::Limiter => LIMITER_PARAMS,
+            Self::Phaser => PHASER_PARAMS,
+            Self::Flanger => FLANGER_PARAMS,
+            Self::Bitcrusher => BITCRUSHER_PARAMS,
+            Self::Stereo => STEREO_PARAMS,
+            Self::Gate => GATE_PARAMS,
+            Self::Autopan => AUTOPAN_PARAMS,
             Self::Plugin => &[],
         }
     }
@@ -474,7 +548,7 @@ mod tests {
         for kind in EFFECT_KINDS {
             assert_eq!(EffectKind::parse(kind.name()), Some(kind));
         }
-        assert_eq!(EffectKind::parse("phaser"), None);
+        assert_eq!(EffectKind::parse("vocoder"), None);
         assert_eq!(EffectKind::parse("plugin"), None);
     }
 
