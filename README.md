@@ -5,7 +5,7 @@ channel rack, piano roll, playlist and mixer, with familiar default shortcuts.
 Runs on Linux, macOS and Windows. Everything the app can do is a command, so it
 can be driven from the GUI, scripts, the CLI, or an AI agent over MCP.
 
-![Playlist arrangement with markers and automation, and the docked mixer](docs/screenshots/playlist-mixer.png)
+![Playlist arrangement with markers and automation, and the mixer window](docs/screenshots/playlist-mixer.png)
 
 <table>
   <tr>
@@ -15,6 +15,12 @@ can be driven from the GUI, scripts, the CLI, or an AI agent over MCP.
   <tr>
     <td align="center">Channel rack</td>
     <td align="center">Piano roll</td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/synth-and-eq.png" alt="Built-in synth editor with presets, and the equalizer window with its response curve"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">Synth editor and an effect window</td>
   </tr>
 </table>
 
@@ -50,23 +56,34 @@ channel_rack,piano_roll,playlist,mixer,browser`.
 | Ctrl+Z, Ctrl+Y | Undo / redo |
 | Ctrl+S, Ctrl+O, Ctrl+R | Save / open / export WAV |
 | Ctrl+M, Ctrl+E, Ctrl+T | Metronome / record / typing keyboard |
+| F10 | Settings (audio device, buffer, MIDI port, scale, folders) |
 
+Hover any control and the hint bar at the top says what it does.
+
+- **Tools**: the playlist and piano roll have draw, paint, delete and select
+  tools (pencil, brush, eraser, box) at the top left.
 - **Playlist** (main workspace): paint patterns, automation or audio clips;
   click, Shift+click or Ctrl+drag to select; drag to move or resize; Delete,
   Ctrl+B duplicate. Click the ruler to seek, Shift+drag it to set a loop,
   right-click it for markers.
 - **Channel rack**: click steps; knobs for pan and volume (double-click resets);
-  click a channel name for its settings (envelope, filter, glide, sample view);
-  melodic channels show a mini piano roll.
+  click a channel name for its settings. The synth has presets, two
+  oscillators with unison and spread, sub, drive, low/band/high-pass filter
+  with a live curve, an LFO and an envelope; melodic channels show a mini
+  piano roll.
 - **Piano roll**: click to draw (single notes or chords), drag to move, drag the
   right edge to resize, right-click to delete; selection with copy, paste,
-  Ctrl+B and arrow keys; velocity/pan lane at the bottom; scale highlighting.
+  Ctrl+B and arrow keys; velocity/pan lane at the bottom; scale highlighting;
+  other channels' notes show as ghost notes.
 - **Mixer** (F9, floating): faders with a dB curve, pan, on/solo, ten effect slots
   (filter, EQ, delay, reverb, chorus, compressor with sidechain, limiter,
-  distortion), sends via the arrows under each strip.
+  distortion), sends via the arrows under each strip. Click an effect to open
+  its window: presets, and a graph you can drag (EQ and filter curves,
+  compressor knee, delay echoes…).
 - **Automation**: right-click any knob or fader → Create automation clip;
   double-click the clip to edit its curve.
-- **Browser**: built-in sounds, your folders, search; click previews,
+- **Browser**: current project, plugin database (generators and effects),
+  packs and your folders, with search; click previews,
   double-click adds, drag onto the rack (new channel) or the playlist (audio
   clip).
 - **Recording**: REC + playing records a MIDI or typing keyboard into the
