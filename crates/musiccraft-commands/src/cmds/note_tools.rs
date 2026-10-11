@@ -11,7 +11,7 @@ use musiccraft_project::{Note, Project};
 use super::notes::{Target, rewrite};
 use crate::args::Args;
 use crate::command::cmd;
-use crate::{Command, CommandError, Outcome};
+use crate::{BATCH, Command, CommandError, Invocation, Outcome};
 
 pub(super) fn commands() -> Vec<Box<dyn Command>> {
     vec![
@@ -62,6 +62,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "note.arpeggiate <channel> <step> [up|down|updown|random] [seed] [@pattern]",
             "Turn chords into arpeggios.",
             arpeggiate,
+        ),
+        cmd(
+            "channel.slice",
+            "channel.slice <channel> <slices> [@pattern]",
+            "Cut a sampler's sample into slices and lay them out as notes.",
+            slice,
         ),
         cmd(
             "step.fill",
@@ -375,6 +381,60 @@ fn arpeggiate(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
         }
         out
     })
+}
+
+fn slice(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    use musiccraft_project::params::inst;
+    args.expect(2, 2)?;
+    let slices: u32 = args.parse(1, "slice count")?;
+    if !(1..=64).contains(&slices) {
+        return Err(args.invalid("slice into 1 to 64 pieces"));
+    }
+    let target = Target::resolve(project, args)?;
+    let channel = &mut project.channels[target.channel];
+    if !matches!(
+        channel.instrument,
+        musiccraft_project::Instrument::Sampler { .. }
+    ) {
+        return Err(args.invalid(format!("channel {} is not a sampler", target.channel + 1)));
+    }
+    let previous = channel.params.get(inst::SLICES);
+    channel.params.0[inst::SLICES] = slices as f32;
+    let root = channel.params.get(inst::ROOT_KEY).round() as u32;
+    let length = project.patterns[target.pattern].length_ticks();
+    let piece = (length / slices).max(1);
+    let (old, count) = rewrite(project, &target, |_| {
+        (0..slices)
+            .map(|i| Note {
+                channel: musiccraft_project::ChannelId(0),
+                start: i * piece,
+                length: piece,
+                key: u8::try_from((root + i).min(127)).unwrap_or(127),
+                velocity: musiccraft_project::DEFAULT_VELOCITY,
+                pan: 0,
+                slide: false,
+            })
+            .collect()
+    });
+    let restore = Invocation::new(
+        "channel.set_param",
+        [
+            (target.channel + 1).to_string(),
+            "slices".to_owned(),
+            format!("{previous}"),
+        ],
+    );
+    let inverse = Invocation::new(
+        BATCH,
+        [
+            restore.to_string(),
+            target.set_all_inverse(&old).to_string(),
+        ],
+    );
+    Ok(Outcome::undoable(
+        format!("sliced into {count} pieces"),
+        inverse,
+    ))
 }
 
 fn fill(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

@@ -300,7 +300,8 @@ fn sampler(
                 }
             });
         });
-        waveform(ui, frame.waveform, theme::palette(index));
+        let slices = channel.params.get(inst::SLICES).round().max(1.0) as u32;
+        waveform(ui, frame.waveform, theme::palette(index), slices);
         ui.horizontal(|ui| {
             let mut one_shot = channel.params.get(inst::ONE_SHOT) >= 0.5;
             if ui
@@ -331,6 +332,30 @@ fn sampler(
                 actions.push(Action::Run(Invocation::new(
                     "channel.set_param",
                     [number.to_string(), "root_key".to_owned(), key.to_string()],
+                )));
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Slices");
+            let mut count = slices;
+            let drag = ui
+                .add(egui::DragValue::new(&mut count).range(1..=64).speed(0.1))
+                .hint("Cut the sample into equal slices; key root + n plays slice n");
+            if drag.changed() && count != slices {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.set_param",
+                    [number.to_string(), "slices".to_owned(), count.to_string()],
+                )));
+            }
+            let target = if slices > 1 { slices } else { 8 };
+            if ui
+                .button(format!("Slice to pattern ({target})"))
+                .hint("Replace this channel's notes with one note per slice, in order")
+                .clicked()
+            {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.slice",
+                    [number.to_string(), target.to_string()],
                 )));
             }
         });
@@ -710,7 +735,7 @@ fn wave_button(ui: &mut egui::Ui, wave: usize, selected: bool) -> egui::Response
 }
 
 /// Min/max overview of the sample.
-fn waveform(ui: &mut egui::Ui, overview: Option<&[(f32, f32)]>, color: Color32) {
+fn waveform(ui: &mut egui::Ui, overview: Option<&[(f32, f32)]>, color: Color32, slices: u32) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 72.0), Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, theme::LCD_BG);
@@ -743,6 +768,27 @@ fn waveform(ui: &mut egui::Ui, overview: Option<&[(f32, f32)]>, color: Color32) 
             ],
             Stroke::new(step.max(1.0), color),
         );
+    }
+    // Slice boundaries, numbered.
+    if slices > 1 {
+        for i in 0..slices {
+            let x = rect.left() + rect.width() * i as f32 / slices as f32;
+            if i > 0 {
+                painter.line_segment(
+                    [pos2(x, rect.top()), pos2(x, rect.bottom())],
+                    Stroke::new(1.0, theme::HIGHLIGHT),
+                );
+            }
+            if slices <= 16 {
+                painter.text(
+                    pos2(x + 3.0, rect.top() + 2.0),
+                    egui::Align2::LEFT_TOP,
+                    (i + 1).to_string(),
+                    egui::FontId::proportional(9.0),
+                    theme::HIGHLIGHT,
+                );
+            }
+        }
     }
 }
 

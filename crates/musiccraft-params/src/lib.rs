@@ -247,6 +247,7 @@ pub mod inst {
     pub const PLUCK_DECAY: usize = 33;
     pub const PLUCK_DAMPING: usize = 34;
     pub const PLUCK_TONE: usize = 35;
+    pub const SLICES: usize = 36;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -287,6 +288,7 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     spec("pluck_decay", 0.1, 10.0, 2.0, "s"),
     spec("pluck_damping", 0.0, 1.0, 0.3, ""),
     spec("pluck_tone", 0.0, 1.0, 0.7, ""),
+    int_spec("slices", 1.0, 64.0, 1.0),
 ];
 
 /// Names of the drum synth's sounds, by `drum_type` value.

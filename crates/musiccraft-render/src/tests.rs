@@ -641,3 +641,55 @@ fn drum_and_pluck_presets_play_without_clipping() {
         }
     }
 }
+
+#[test]
+fn sliced_samples_play_back_slice_by_slice() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120\nchannel.add_sampler builtin:crash\nchannel.slice 1 4",
+    );
+    let notes = &s.project().current_pattern().notes;
+    assert_eq!(notes.len(), 4);
+    assert_eq!(notes[1].key, 61);
+    assert_eq!(notes[1].start, 96);
+    // A single slice plays only its quarter of the sample.
+    let mut one = session();
+    run(
+        &mut one,
+        "channel.add_sampler builtin:crash\nchannel.set_param 1 slices 4\nnote.add 1 0 16 C5",
+    );
+    let options = RenderOptions {
+        sample_rate: 22_050,
+        loops: 1,
+        max_tail_seconds: 4.0,
+    };
+    let (whole, _, _) = render(
+        &{
+            let mut w = session();
+            run(
+                &mut w,
+                "channel.add_sampler builtin:crash\nnote.add 1 0 16 C5",
+            );
+            w.project().clone()
+        },
+        options,
+    );
+    let (first, _, _) = render(one.project(), options);
+    let sounding = |d: &[f32]| d.iter().rposition(|x| x.abs() > 1e-3).unwrap_or(0);
+    assert!(
+        sounding(&first) * 2 < sounding(&whole),
+        "{} vs {}",
+        sounding(&first),
+        sounding(&whole)
+    );
+    // Undo restores the old notes and slice count.
+    run(&mut s, "edit.undo");
+    assert!(s.project().current_pattern().notes.is_empty());
+    assert_eq!(
+        s.project().channels[0]
+            .params
+            .get(musiccraft_params::inst::SLICES),
+        1.0
+    );
+}

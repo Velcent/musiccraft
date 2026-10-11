@@ -584,6 +584,7 @@ const TOOLS_SCRIPT: &[&str] = &[
     "channel.add_pluck Harp",
     "channel.set_param 3 drum_decay 0.3",
     "channel.set_param 5 pluck_damping 0.6",
+    "channel.slice 2 8",
 ];
 
 #[test]

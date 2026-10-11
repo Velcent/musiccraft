@@ -15,7 +15,8 @@ pub struct Preset {
 }
 
 /// Parameters presets never change (routing and sample settings).
-pub const KEEP: [&str; 8] = [
+pub const KEEP: [&str; 9] = [
+    "slices",
     "sidechain",
     "one_shot",
     "root_key",

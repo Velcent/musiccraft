@@ -59,6 +59,8 @@ pub(crate) struct Voice {
     delay: u32,
     gate: Option<u64>,
     one_shot: bool,
+    /// For a sliced sample: where the slice ends, in sample frames.
+    slice_end: Option<f64>,
     env: Adsr,
     osc1: [Oscillator; MAX_UNISON],
     osc2: [Oscillator; MAX_UNISON],
@@ -100,6 +102,7 @@ impl Voice {
             delay: 0,
             gate: None,
             one_shot: false,
+            slice_end: None,
             env: Adsr::new(sample_rate),
             osc1: std::array::from_fn(|_| Oscillator::new()),
             osc2: std::array::from_fn(|_| Oscillator::new()),
@@ -159,6 +162,7 @@ impl Voice {
             || matches!(instrument, Instrument::DrumSynth);
         self.elapsed = 0;
         self.drum_phase = 0.0;
+
         match instrument {
             Instrument::DrumSynth => self.start_drum(params),
             Instrument::Pluck => self.start_pluck(params, start.key),
@@ -179,6 +183,19 @@ impl Voice {
         self.filter_r.reset();
         self.filter_countdown = 0;
         self.sample_pos = 0.0;
+        self.slice_end = None;
+        if let Instrument::Sampler(buffer) = instrument {
+            let slices = param(params, inst::SLICES).round().max(1.0) as i32;
+            if slices > 1 {
+                // Key root + i plays slice i (wrapping), as a one-shot.
+                let root = param(params, inst::ROOT_KEY).round() as i32;
+                let index = (i32::from(start.key) - root).rem_euclid(slices);
+                let len = buffer.len() as f64;
+                self.sample_pos = len * f64::from(index) / f64::from(slices);
+                self.slice_end = Some(len * f64::from(index + 1) / f64::from(slices));
+                self.one_shot = !start.live;
+            }
+        }
         self.pan = pan_gains(start.pan);
         let glide_time = param(params, inst::GLIDE);
         match start.glide_from {
@@ -235,11 +252,20 @@ impl Voice {
         match instrument {
             Instrument::Sampler(buffer) => {
                 let root = param(params, inst::ROOT_KEY);
+                // Slices play at their own pitch: the key picks the slice.
+                let pitch = if self.slice_end.is_some() {
+                    root + param(params, inst::PITCH)
+                } else {
+                    pitch
+                };
                 let rate = buffer.sample_rate() / f64::from(sample_rate);
                 let step_for =
                     |glide: f32| rate * 2.0_f64.powf(f64::from(pitch + glide - root) / 12.0);
                 let mut step = step_for(self.glide);
-                let end = buffer.len() as f64;
+                let end = self
+                    .slice_end
+                    .unwrap_or(f64::INFINITY)
+                    .min(buffer.len() as f64);
                 for (l, r) in left.iter_mut().zip(right.iter_mut()) {
                     if !self.advance_gate() {
                         continue;

@@ -41,6 +41,17 @@
   attack, full sustain and a short release so samples play unshaped.
 - Missing or undecodable files play silence and produce a warning.
 
+## Slicing
+
+- The sampler's `slices` parameter (1–64, default 1) cuts the sample into
+  equal slices. With more than one, the key `root_key + i` plays slice `i`
+  (wrapping) at its original pitch, from the slice start to its end, as a
+  one-shot; `pitch` still transposes.
+- `channel.slice <channel> <slices> [@pattern]` sets `slices` and rewrites the
+  channel's notes in the pattern so slice `i` plays at `i` × (pattern length
+  ÷ slices): the loop plays back as it was, now editable note by note. One
+  undo step.
+
 ## Drum synth
 
 - `channel.add_drum [kick|snare|hat|tom|clap] [name]` adds a channel that
