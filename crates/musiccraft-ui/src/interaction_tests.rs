@@ -137,12 +137,16 @@ impl Harness {
     }
 
     fn drag(&mut self, from: Pos2, to: Pos2) -> Vec<String> {
-        let mut out = self.press(from, PointerButton::Primary);
+        self.drag_with(from, to, PointerButton::Primary)
+    }
+
+    fn drag_with(&mut self, from: Pos2, to: Pos2, button: PointerButton) -> Vec<String> {
+        let mut out = self.press(from, button);
         for i in 1..=6 {
             let t = i as f32 / 6.0;
             out.extend(self.frame(vec![Event::PointerMoved(from + (to - from) * t)]));
         }
-        out.extend(self.release(to, PointerButton::Primary));
+        out.extend(self.release(to, button));
         out
     }
 
@@ -870,4 +874,40 @@ fn slide_toggle_draws_slide_notes() {
     );
     assert_eq!(added, ["note.add 1 96t 24t 62 100 0 slide"]);
     assert!(h.session.project().current_pattern().notes[0].slide);
+}
+
+#[test]
+fn right_drag_deletes_every_note_it_passes() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 1 62",
+        "note.add 1 2 1 62",
+        "note.add 1 4 1 62",
+        "note.add 1 8 1 62",
+        "note.add 1 2 1 70",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    let depth = h.session.undo_depth();
+    let removed = h.drag_with(
+        h.roll_point(5, 62),
+        h.roll_point(4 * step + 5, 62),
+        PointerButton::Secondary,
+    );
+    assert_eq!(removed.len(), 1, "{removed:?}");
+    let left: Vec<(u32, u8)> = h
+        .session
+        .project()
+        .current_pattern()
+        .notes
+        .iter()
+        .map(|n| (n.start, n.key))
+        .collect();
+    assert_eq!(left, [(2 * step, 70), (8 * step, 62)]);
+    assert_eq!(h.session.undo_depth(), depth + 1);
+    h.settle();
+    let single = h.click(h.roll_point(8 * step + 5, 62), PointerButton::Secondary);
+    assert_eq!(single.len(), 1);
+    assert_eq!(h.session.project().current_pattern().notes.len(), 1);
 }

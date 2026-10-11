@@ -61,6 +61,8 @@ pub struct RollState {
     pub(crate) slide: bool,
     /// Notes painted or marked for deletion in the stroke in progress.
     stroke: Vec<Note>,
+    /// Notes swept by a right-button drag, deleted when it ends.
+    pub(crate) right_erase: Vec<Note>,
     px_per_step: f32,
     key_height: f32,
     snap: Snap,
@@ -98,6 +100,7 @@ impl Default for RollState {
             tool: Tool::Draw,
             slide: false,
             stroke: Vec::new(),
+            right_erase: Vec::new(),
             px_per_step: 24.0,
             key_height: 14.0,
             snap: Snap::Step,
@@ -538,7 +541,10 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         };
         let erasing = state.roll.tool == Tool::Delete;
         for note in &notes {
-            if moving.contains(note) || (erasing && state.roll.stroke.contains(note)) {
+            if moving.contains(note)
+                || (erasing && state.roll.stroke.contains(note))
+                || state.roll.right_erase.contains(note)
+            {
                 continue;
             }
             draw_note(
@@ -994,6 +1000,40 @@ fn tools_menu(
     }
 }
 
+/// Right button: click deletes the note under the pointer; dragging deletes
+/// every note the pointer passes over, as one undo step when released.
+fn right_erase(
+    state: &mut UiState,
+    response: &egui::Response,
+    notes: &[&Note],
+    boxes: &[(usize, Rect)],
+    channel: usize,
+    actions: &mut Vec<Action>,
+) {
+    let pressed = response.dragged_by(PointerButton::Secondary)
+        || response.secondary_clicked()
+        || response.drag_started_by(PointerButton::Secondary);
+    if response.drag_started_by(PointerButton::Secondary) {
+        state.roll.right_erase.clear();
+    }
+    if let (true, Some(pos)) = (pressed, response.interact_pointer_pos()) {
+        if let Hit::Body(i) | Hit::Edge(i) = hit_test(boxes.iter().copied(), pos) {
+            if let Some(note) = notes.get(i) {
+                if !state.roll.right_erase.contains(note) {
+                    state.roll.right_erase.push(**note);
+                }
+            }
+        }
+    }
+    if response.drag_stopped_by(PointerButton::Secondary) || response.secondary_clicked() {
+        let erased = std::mem::take(&mut state.roll.right_erase);
+        for n in &erased {
+            state.roll.selection.remove(&(n.start, n.key));
+        }
+        actions.extend(remove_notes(channel, &erased).map(Action::Run));
+    }
+}
+
 /// Paint and delete strokes. Returns `true` when the tool handled the input.
 #[allow(clippy::too_many_arguments)]
 fn tool_stroke(
@@ -1122,6 +1162,7 @@ fn edit(
         .filter(|p| editable(*p))
         .map(|p| snap.floor(grid.tick_at(p.x)));
 
+    right_erase(state, response, notes, boxes, channel, actions);
     let tool = state.roll.tool;
     if tool_stroke(ui, state, response, notes, boxes, channel, &at, actions) {
         return;
@@ -1340,16 +1381,6 @@ fn edit(
                     state.roll.selection.clear();
                 }
                 _ => {}
-            }
-        }
-    }
-    if response.secondary_clicked() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            if let Hit::Body(i) | Hit::Edge(i) = hit_test(boxes.iter().copied(), pos) {
-                if let Some(note) = notes.get(i) {
-                    state.roll.selection.remove(&(note.start, note.key));
-                    actions.extend(remove_notes(channel, &[**note]).map(Action::Run));
-                }
             }
         }
     }

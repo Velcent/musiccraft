@@ -139,6 +139,8 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   empty space to clear). Starting a Paint drag on a note moves it as Draw would.
 - Left-click on empty grid adds a note with the last used length; dragging a note
   moves it; dragging its right edge resizes it; right-click deletes.
+- Right-click deletes a note; right-drag deletes every note the pointer passes
+  over, as one undo step when the button is released (with any tool).
 - Each finished gesture is one undoable command.
 - Selection: click a note to select it, Shift+click toggles, Ctrl+drag on empty
   grid draws a selection rectangle (Shift adds to the selection). Dragging a
