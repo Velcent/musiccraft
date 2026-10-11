@@ -68,7 +68,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Chorus | `fx:chorus` |
 | Effects | Limiter | `fx:limiter` |
 | Instruments | Subtractive synth | `cmd:channel.add_synth` |
-| Instruments | CLAP plugins | `todo` |
+| Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |
 | Instruments | VST3 plugins | `todo` |
 | Windows | Playlist / rack / piano roll / mixer shortcuts | `key:F5=view.toggle playlist` `key:F6=view.toggle channel_rack` `key:F7=view.toggle piano_roll` `key:F9=view.toggle mixer` `spec:keymap.md` |
 | Windows | Browser | `key:Alt+F8=view.toggle browser` |

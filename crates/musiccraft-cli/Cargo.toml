@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 musiccraft-audio.workspace = true
+musiccraft-clap.workspace = true
 musiccraft-commands.workspace = true
 musiccraft-engine.workspace = true
 musiccraft-project.workspace = true

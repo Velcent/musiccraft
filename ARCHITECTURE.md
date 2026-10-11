@@ -31,6 +31,7 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects, sample buffers. Allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voices, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
+| `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **The only crate (with its test fixture `musiccraft-clap-testplugin`) allowed to use `unsafe`.** |
 | `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`; the safe plugin boundary (`PluginFactory`, `PluginInstance`) and plugin instance management. |
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
@@ -76,9 +77,22 @@ xtask ──► commands, render, ui (keymap) ───────────�
   number and installs its processor in one of the engine's fixed external
   slots (`SetExternal`), which survive graph rebuilds. Replaced processors come
   back as garbage, already stopped, and are destroyed on the main thread.
-- `musiccraft_cli::plugin_host()` is the single place a loader plugs in; it
-  returns `None` until the CLAP loader crate exists (see deferred decisions).
-  Without it, plugin channels are silent and plugin effects pass audio through.
+- `musiccraft_cli::plugin_host()` creates the one `ClapHost` per process
+  (shared by the app, CLI sessions and the MCP server); `MUSICCRAFT_NO_PLUGINS`
+  turns hosting off. Without a host, plugin channels are silent and plugin
+  effects pass audio through.
+
+### The `unsafe` exception
+
+Hosting a plugin means calling a shared library through the C ABI, so
+`musiccraft-clap` (and the test plugin it is tested against) opts out of the
+workspace's `unsafe_code = "forbid"`. The user approved this on 2026-10-10.
+Rules inside it: `unsafe_op_in_unsafe_fn` is denied and clippy's
+`undocumented_unsafe_blocks` requires a `SAFETY:` comment on every block;
+plugin function pointers are checked before use; main-thread CLAP functions are
+called only from the main thread and audio-thread functions only from the
+processor; the processor allocates nothing after construction. A crashing
+plugin still takes the app down (no sandboxing).
 
 ### Message rule (refines the CLAUDE.md audio-thread rule)
 
@@ -117,15 +131,18 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `hound` | WAV decoding for samples and WAV encoding for export. |
 | `eframe` (egui) | Cross-platform immediate-mode UI; kept swappable behind commands. |
 | `midir` | MIDI keyboard input in the app. |
+| `clap-sys` | Rust declarations of the CLAP plugin ABI (types and constants only). |
+| `libloading` | Opens `.clap` shared libraries and finds their entry point. |
+| `libc` | `poll(2)` for file descriptors plugin windows register (Unix only). |
+| `x11rb` | A pure-Rust X11 window for plugins that embed their editor (Linux only; already in the tree through the windowing stack). |
 
 ## Deferred decisions
 
 - Custom `wgpu` renderer if egui cannot reach the target look.
-- The CLAP loader. Everything around it is built (spec `docs/spec/plugins.md`),
-  but loading a plugin runs foreign code through `unsafe` FFI, which is
-  forbidden workspace-wide. The plan is one crate, `musiccraft-clap`, exempt
-  from the lint, using `clap-sys` (CLAP bindings) and `libloading` (opening the
-  shared library); it needs the user's explicit go-ahead first.
+- VST3 hosting (would extend the `unsafe` exception; needs the user's go-ahead).
+- Out-of-process plugin scanning/hosting, so a crashing plugin cannot take the
+  app down.
+- Honoring a plugin's restart request (latency or port changes) while running.
 - Decoding compressed samples (FLAC, Ogg, MP3), likely via `symphonia`; lossy
   export formats.
 - Time signatures other than 4/4, tempo automation, audio clips and recording.

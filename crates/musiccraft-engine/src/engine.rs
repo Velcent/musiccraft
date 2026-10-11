@@ -157,6 +157,16 @@ pub struct Engine {
     externals: Vec<Option<Box<dyn External>>>,
 }
 
+impl Drop for Engine {
+    fn drop(&mut self) {
+        // Let external processors end processing on the thread that ran them
+        // (or the one tearing the engine down, which is now the only one).
+        for external in self.externals.iter_mut().flatten() {
+            external.stop();
+        }
+    }
+}
+
 /// Creates an engine and the handle that controls it. Call on the main thread,
 /// then move the [`Engine`] into the audio callback.
 #[must_use]

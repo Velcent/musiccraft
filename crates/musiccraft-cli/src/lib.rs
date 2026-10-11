@@ -7,12 +7,20 @@ use musiccraft_commands::{Invocation, Registry, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
 use musiccraft_render::PluginHost;
 
-/// The plugin host of this build, shared by every session in the process.
-/// `None` while no plugin loader is built in (see `docs/spec/plugins.md`):
-/// plugin channels and effects then stay silent and say so.
+/// The CLAP plugin host, shared by every session in the process. Plugin
+/// folders are scanned on first use. Setting `MUSICCRAFT_NO_PLUGINS` turns
+/// hosting off (plugin channels then stay silent and say so).
 #[must_use]
 pub fn plugin_host() -> Option<PluginHost> {
-    None
+    static HOST: std::sync::OnceLock<Option<PluginHost>> = std::sync::OnceLock::new();
+    HOST.get_or_init(|| {
+        if std::env::var_os("MUSICCRAFT_NO_PLUGINS").is_some() {
+            return None;
+        }
+        let host: PluginHost = std::sync::Arc::new(musiccraft_clap::ClapHost::new());
+        Some(host)
+    })
+    .clone()
 }
 
 /// A registry with every command; exports run plugins from [`plugin_host`].

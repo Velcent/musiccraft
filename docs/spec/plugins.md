@@ -65,7 +65,28 @@
   plugins only through the safe `External` trait (engine) and the
   `PluginFactory` trait (render).
 - A crashing plugin can take the app down; there is no out-of-process
-  sandboxing yet.
+  sandboxing yet. Scanning loads every `.clap` file found (that runs its
+  code); files that fail to load are skipped and reported.
+
+## Plugin windows
+
+- Plugins that can open a floating window of their own get one. On Linux,
+  plugins that only embed are placed in an X11 window MusicCraft creates
+  (through XWayland on Wayland desktops), marked as a fixed-size dialog unless
+  the plugin can resize. Window resizes go through the plugin's
+  `adjust_size` before `set_size`.
+- While a window is open, the app polls the plugin's timers and file
+  descriptors (`timer-support`, `posix-fd-support`) every frame.
+- Closing the window with the title-bar button works like the panel's close
+  button.
+
+## Limits
+
+- Notes go to the plugin's first note port, as CLAP note events, or as MIDI
+  for plugins that only accept MIDI. Only the main audio port's first two
+  channels are used; other ports get silent buffers.
+- A plugin asking to be restarted (latency or port changes) keeps running
+  with its current setup.
 
 ## Sources
 

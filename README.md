@@ -65,10 +65,11 @@ channel_rack,piano_roll,playlist,mixer,browser`.
 - **Recording**: REC + playing records a MIDI or typing keyboard into the
   pattern; with File → Record audio input, song-mode takes become audio clips.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
-- **Plugins** (CLAP, in progress): plugin channels and mixer slots, stored
-  parameters and state, a generic parameter panel and the plugin's own window.
-  The loader itself is not built in yet, so plugins currently stay silent —
-  see `docs/spec/plugins.md`.
+- **Plugins (CLAP)**: instruments and effects from `~/.clap`, `/usr/lib/clap`
+  and `CLAP_PATH` show up in the browser, the rack's add menu and mixer slots.
+  Each gets a parameter panel and can open its own window; parameters and
+  state are saved in the project and exports render them. Tested with
+  Surge XT and LSP plugins.
 
 Built-in sounds (`builtin:kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`,
 `rim`, `crash`) are synthesized at start-up; WAV files can be loaded as samples.
