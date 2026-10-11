@@ -1,9 +1,9 @@
 //! MIDI keyboard input: notes go straight to the engine's live queue and play on
 //! the selected channel.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 use midir::{MidiInput, MidiInputConnection};
@@ -40,29 +40,50 @@ fn decode(message: &[u8], channel: u16) -> Option<LiveEvent> {
     }
 }
 
-/// Connects to the first MIDI input port, if any.
+/// Names of the MIDI input ports.
+pub fn port_names() -> Vec<String> {
+    let Ok(input) = MidiInput::new("MusicCraft") else {
+        return Vec::new();
+    };
+    input
+        .ports()
+        .iter()
+        .filter_map(|p| input.port_name(p).ok())
+        .collect()
+}
+
+/// Connects to the input port named `port`, or with `None` to the first real
+/// keyboard.
 ///
 /// # Errors
 ///
-/// Returns a description when there is no port or connecting fails.
+/// Returns a description when there is no such port or connecting fails.
 pub fn connect(
-    mut sender: LiveSender,
+    sender: Arc<Mutex<LiveSender>>,
     selected: Arc<AtomicUsize>,
     meters: Arc<Meters>,
     played: Sender<Played>,
     ctx: egui::Context,
+    port: Option<&str>,
 ) -> Result<MidiIn, String> {
     let input = MidiInput::new("MusicCraft").map_err(|e| e.to_string())?;
     let ports = input.ports();
-    // Prefer a real device over virtual loopback ports such as ALSA's "Midi Through".
-    let port = ports
-        .iter()
-        .find(|p| {
-            input
-                .port_name(p)
-                .is_ok_and(|name| !name.to_ascii_lowercase().contains("through"))
-        })
-        .ok_or("no MIDI keyboard found")?;
+    let port = match port {
+        Some(wanted) => ports
+            .iter()
+            .find(|p| input.port_name(p).is_ok_and(|name| name == wanted))
+            .ok_or_else(|| format!("MIDI port `{wanted}` not found"))?,
+        // Prefer a real device over virtual loopback ports such as ALSA's
+        // "Midi Through".
+        None => ports
+            .iter()
+            .find(|p| {
+                input
+                    .port_name(p)
+                    .is_ok_and(|name| !name.to_ascii_lowercase().contains("through"))
+            })
+            .ok_or("no MIDI keyboard found")?,
+    };
     let name = input
         .port_name(port)
         .unwrap_or_else(|_| "MIDI input".to_owned());
@@ -73,7 +94,10 @@ pub fn connect(
             move |_stamp, message, ()| {
                 let channel = u16::try_from(selected.load(Ordering::Relaxed)).unwrap_or(0);
                 if let Some(event) = decode(message, channel) {
-                    sender.send(event);
+                    // Only MIDI threads take this lock, never the audio thread.
+                    if let Ok(mut sender) = sender.lock() {
+                        sender.send(event);
+                    }
                     let position = meters.position_ticks();
                     let note = match event {
                         LiveEvent::NoteOn { key, velocity, .. } => {

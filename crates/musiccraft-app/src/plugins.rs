@@ -211,6 +211,22 @@ impl PluginGlue {
             .any(|(_, p)| bridge.plugin(p.instance).is_some_and(|l| l.editor_open()))
     }
 
+    /// Stores every running plugin's state in the project now.
+    pub fn store_all(&mut self, bridge: Option<&mut Bridge>, session: &mut Session) {
+        let Some(bridge) = bridge else {
+            return;
+        };
+        let all: Vec<u32> = session
+            .project()
+            .plugins()
+            .iter()
+            .map(|(_, p)| p.instance)
+            .collect();
+        store_states(bridge, session, &all);
+        self.dirty.clear();
+        self.dirty_since = None;
+    }
+
     /// Stores every running plugin's state when `invocation` is about to save
     /// or render the project.
     pub fn before(

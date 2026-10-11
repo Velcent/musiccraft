@@ -14,12 +14,14 @@ pub enum Purpose {
     Open,
     SaveAs,
     Export,
+    ExportStems,
     AddSample,
     SetSample(usize),
     RenameChannel(usize),
     RenamePattern(usize),
     RenameTrack(usize),
     AddFolder,
+    AddPluginFolder,
     RenameAutomation(usize),
     AddMarker(u32),
 }
@@ -71,6 +73,14 @@ impl Dialog {
         )
     }
 
+    pub fn export_stems(project: &Project) -> Self {
+        let name = project.name().replace(['/', '\\'], "-");
+        Self::new(
+            Purpose::ExportStems,
+            format!("{}{name} stems", project_dir(project)),
+        )
+    }
+
     pub fn add_sample(project: &Project) -> Self {
         Self::new(Purpose::AddSample, project_dir(project))
     }
@@ -102,6 +112,13 @@ impl Dialog {
         Self::new(Purpose::AddFolder, home)
     }
 
+    pub fn add_plugin_folder() -> Self {
+        let home = std::env::var("HOME")
+            .map(|h| format!("{h}/"))
+            .unwrap_or_default();
+        Self::new(Purpose::AddPluginFolder, home)
+    }
+
     pub fn rename_track(track: usize, current: &str) -> Self {
         Self::new(Purpose::RenameTrack(track), current.to_owned())
     }
@@ -111,12 +128,14 @@ impl Dialog {
             Purpose::Open => "Open project",
             Purpose::SaveAs => "Save project as",
             Purpose::Export => "Export audio",
+            Purpose::ExportStems => "Export stems to folder",
             Purpose::AddSample => "Add WAV sample",
             Purpose::SetSample(_) => "Change sample",
             Purpose::RenameChannel(_) => "Rename channel",
             Purpose::RenamePattern(_) => "Rename pattern",
             Purpose::RenameTrack(_) => "Rename mixer track",
             Purpose::AddFolder => "Add folder to the browser",
+            Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
             Purpose::AddMarker(_) => "Marker name",
         }
@@ -133,6 +152,7 @@ impl Dialog {
                 "flac24" => Invocation::new("project.export_flac", [text, "24".to_owned()]),
                 bits => Invocation::new("project.export_wav", [text, bits.to_owned()]),
             },
+            Purpose::ExportStems => Invocation::new("project.export_stems", [text]),
             Purpose::AddSample => Invocation::new("channel.add_sampler", [text]),
             Purpose::SetSample(channel) => {
                 Invocation::new("channel.set_sample", [(channel + 1).to_string(), text])
@@ -147,6 +167,7 @@ impl Dialog {
                 Invocation::new("mixer.rename", [track.to_string(), text])
             }
             Purpose::AddFolder => Invocation::new("ui.add_folder", [text]),
+            Purpose::AddPluginFolder => Invocation::new("ui.add_plugin_folder", [text]),
             Purpose::AddMarker(tick) => {
                 Invocation::new("playlist.add_marker", [format!("{tick}t"), text])
             }

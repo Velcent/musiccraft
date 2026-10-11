@@ -1,5 +1,6 @@
 //! The mixer: one strip per track plus the selected track's effect chain.
 
+use crate::hint::Hint;
 use egui::{RichText, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::params::{EFFECT_KINDS, MAX_EFFECT_SLOTS};
@@ -27,7 +28,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 ui.label(RichText::new("Mixer").strong().size(15.0));
                 if ui
                     .small_button("+ Insert")
-                    .on_hover_text("Add an insert track")
+                    .hint("Add an insert track")
                     .clicked()
                 {
                     run(actions, "mixer.add_track", []);
@@ -85,7 +86,7 @@ fn led(
             theme::TEXT_DIM
         },
     );
-    response.on_hover_text(hint)
+    response.hint(hint)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -134,7 +135,7 @@ fn strip(
                         .truncate()
                         .sense(egui::Sense::click()),
                 )
-                .on_hover_text(format!(
+                .hint(format!(
                     "{} — click to select, right-click for options",
                     track.name
                 ));
@@ -169,8 +170,7 @@ fn strip(
                     state.gesture(),
                 ));
             }
-            pan.response
-                .on_hover_text(format!("Pan {:+.0}", track.pan * 100.0));
+            pan.response.hint(format!("Pan {:+.0}", track.pan * 100.0));
             let fader_height = (ui.available_height() - 72.0).max(80.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
@@ -279,7 +279,7 @@ fn route_arrow(
     } else {
         "Click to route the selected insert here"
     };
-    if response.on_hover_text(hint).clicked() {
+    if response.hint(hint).clicked() {
         let invocation = if target == 0 {
             Invocation::new(
                 "mixer.route_to_master",
@@ -462,7 +462,7 @@ fn slot_row(
                             state.mixer_slot = slot;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("×").on_hover_text("Remove").clicked() {
+                            if ui.small_button("×").hint("Remove").clicked() {
                                 run(
                                     actions,
                                     "mixer.remove_effect",
@@ -472,7 +472,7 @@ fn slot_row(
                             if slot + 1 < track.effects.len()
                                 && ui
                                     .small_button(RichText::new("▼").monospace())
-                                    .on_hover_text("Move down")
+                                    .hint("Move down")
                                     .clicked()
                             {
                                 run(
@@ -484,7 +484,7 @@ fn slot_row(
                             if slot > 0
                                 && ui
                                     .small_button(RichText::new("▲").monospace())
-                                    .on_hover_text("Move up")
+                                    .hint("Move up")
                                     .clicked()
                             {
                                 run(
@@ -610,7 +610,7 @@ fn routing(
                     state.gesture(),
                 ));
             }
-            if ui.small_button("×").on_hover_text("Remove send").clicked() {
+            if ui.small_button("×").hint("Remove send").clicked() {
                 run(
                     actions,
                     "mixer.set_send",

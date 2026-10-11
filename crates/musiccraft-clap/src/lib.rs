@@ -97,6 +97,8 @@ struct Entry {
 #[derive(Default)]
 struct State {
     scanned: bool,
+    /// Folders searched besides the host's own.
+    extra: Vec<PathBuf>,
     /// Loaded libraries by file; kept for the life of the host.
     libraries: BTreeMap<PathBuf, Arc<Library>>,
     catalog: Vec<Entry>,
@@ -144,12 +146,6 @@ impl ClapHost {
         }
     }
 
-    /// Problems found by the last scan (files that failed to load).
-    #[must_use]
-    pub fn scan_errors(&self) -> Vec<String> {
-        self.lock().errors.clone()
-    }
-
     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -169,7 +165,7 @@ impl ClapHost {
             }
         }
         let mut files = Vec::new();
-        for folder in &self.folders {
+        for folder in self.folders.iter().chain(&state.extra.clone()) {
             find_plugins(folder, 4, &mut files);
         }
         files.sort();
@@ -237,6 +233,14 @@ impl PluginFactory for ClapHost {
     fn rescan(&self) {
         let mut state = self.lock();
         self.scan(&mut state);
+    }
+
+    fn set_extra_folders(&self, folders: Vec<PathBuf>) {
+        self.lock().extra = folders;
+    }
+
+    fn scan_errors(&self) -> Vec<String> {
+        self.lock().errors.clone()
     }
 
     fn instantiate(&self, request: &PluginRequest<'_>) -> Result<LivePlugin, String> {

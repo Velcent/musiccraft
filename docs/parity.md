@@ -72,6 +72,8 @@ of contents; see `docs/clean-room.md`.
 | Instruments | VST3 plugins | `todo` |
 | Windows | Playlist / rack / piano roll / mixer shortcuts | `key:F5=view.toggle playlist` `key:F6=view.toggle channel_rack` `key:F7=view.toggle piano_roll` `key:F9=view.toggle mixer` `spec:keymap.md` |
 | Windows | Browser | `key:Alt+F8=view.toggle browser` |
+| Options | Settings window: audio device, rate, buffer, MIDI port, scale, folders, project info | `key:F10=ui.settings` `spec:settings.md` |
+| Interface | Hint bar showing what the hovered control does | `done` |
 | Browser | Folders, search, click to preview, drag to rack or playlist | `done` |
 | Transport | Oscilloscope, CPU meter, master volume | `done` |
 | Project | New / open / save / save as | `cmd:project.new` `cmd:project.load` `cmd:project.save` `key:Ctrl+S=ui.save` `key:Ctrl+O=ui.open` `spec:project-file.md` |

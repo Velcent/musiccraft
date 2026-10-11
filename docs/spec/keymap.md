@@ -28,6 +28,7 @@
 | Ctrl+T | Typing keyboard plays notes |
 | F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer |
 | Alt+F8 | Browser |
+| F10 | Settings |
 | F4 | New pattern |
 | Plus / Minus | Next / previous pattern |
 | Ctrl+Z | Undo |

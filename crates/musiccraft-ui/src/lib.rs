@@ -10,11 +10,13 @@ mod channel_rack;
 mod channel_settings;
 mod dialogs;
 mod geometry;
+pub mod hint;
 mod icons;
 mod mixer;
 mod piano_roll;
 mod playlist;
 mod plugins;
+pub mod settings;
 mod theme;
 mod toolbar;
 mod widgets;
@@ -25,6 +27,7 @@ use musiccraft_project::Project;
 pub use geometry::Snap;
 pub use keymap::{Chord, DEFAULT_KEYMAP, Keymap};
 pub use plugins::{LivePluginView, PluginEntry, PluginParamView, Plugins};
+pub use settings::{MidiInput, Settings, SettingsInfo};
 pub use theme::apply as apply_theme;
 
 /// Something the user asked for, produced by one frame of UI.
@@ -86,6 +89,12 @@ pub enum Action {
     },
     /// Scan the plugin folders again.
     RescanPlugins,
+    /// Apply and save new settings.
+    Settings(Box<Settings>),
+    /// List audio devices and MIDI ports again.
+    RefreshDevices,
+    /// Close and reopen the audio device.
+    RestartAudio,
     /// Close the application.
     Quit,
 }
@@ -196,6 +205,14 @@ pub struct UiState {
     pub record_audio: bool,
     /// Text that filters the plugin parameter list.
     pub plugin_filter: String,
+    /// Hint of the control hovered last frame.
+    pub(crate) hint: Option<String>,
+    /// Open settings tab; `None` when the settings window is closed.
+    pub settings_tab: Option<settings::Tab>,
+    /// Project name being edited in settings.
+    pub(crate) project_name: String,
+    /// Interface scale while its slider is dragged, in percent.
+    pub(crate) scale_draft: Option<f32>,
     /// Where the plugin panel drew its controls last frame: the window
     /// button and (parameter id, slider) pairs.
     pub(crate) plugin_layout: (Option<egui::Rect>, Vec<(u32, egui::Rect)>),
@@ -233,9 +250,13 @@ impl UiState {
             record: false,
             record_audio: false,
             plugin_filter: String::new(),
+            hint: None,
+            settings_tab: None,
+            project_name: String::new(),
+            scale_draft: None,
             plugin_layout: (None, Vec::new()),
             gesture: 0,
-            browser: browser::BrowserState::with_default_folders(),
+            browser: browser::BrowserState::default(),
             roll: piano_roll::RollState::default(),
             playlist: playlist::PlaylistState::default(),
             dialog: None,
@@ -288,6 +309,10 @@ pub struct Frame<'a> {
     pub clip_durations: &'a [(musiccraft_project::ChannelId, u32)],
     /// Installed and running plugins.
     pub plugins: &'a Plugins,
+    /// User settings.
+    pub settings: &'a Settings,
+    /// Devices and status for the settings window.
+    pub settings_info: &'a SettingsInfo,
 }
 
 /// Draws the whole interface and returns what the user asked for.
@@ -303,8 +328,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
         state.selected_track = 0;
     }
 
+    state.hint = hint::begin_frame(ui.ctx(), frame.settings.show_hints);
     toolbar::show(ui, state, frame, &mut actions);
-    toolbar::status_bar(ui, state, frame);
     if state.windows.mixer {
         mixer::show(ui, state, frame, &mut actions);
     }
@@ -331,6 +356,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     automation::show(&ctx, state, frame, &mut actions);
     dialogs::show(&ctx, state, frame, &mut actions);
     dialogs::shortcuts(&ctx, state);
+    settings::show(&ctx, state, frame, &mut actions);
 
     if let Some(dragged) = egui::DragAndDrop::payload::<browser::Dragged>(&ctx) {
         if let Some(pos) = ctx.pointer_hover_pos() {
@@ -476,6 +502,7 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             },
             "ui.save_as" => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
+            "ui.export_stems" => state.dialog = Some(dialogs::Dialog::export_stems(frame.project)),
             "ui.quit" => out.push(Action::Quit),
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
             "ui.automate" => {
@@ -486,13 +513,29 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                     )));
                 }
             }
-            "ui.add_folder" => {
+            "ui.add_folder" | "ui.add_plugin_folder" => {
                 if let Some(path) = invocation.args.first() {
                     let path = std::path::PathBuf::from(path);
-                    if !state.browser.folders.contains(&path) {
-                        state.browser.folders.push(path);
+                    let mut next = frame.settings.clone();
+                    let list = if invocation.name == "ui.add_folder" {
+                        &mut next.browser_folders
+                    } else {
+                        &mut next.plugin_folders
+                    };
+                    if !list.contains(&path) {
+                        list.push(path);
+                        out.push(Action::Settings(Box::new(next)));
                     }
                 }
+            }
+            "ui.settings" => {
+                state.settings_tab = Some(
+                    invocation
+                        .args
+                        .first()
+                        .and_then(|t| settings::Tab::parse(t))
+                        .unwrap_or(settings::Tab::Audio),
+                );
             }
             "ui.toggle_record" => state.record = !state.record,
             _ => out.push(action),
@@ -525,6 +568,8 @@ mod tests {
             clip_waveforms: &[],
             clip_durations: &[],
             plugins: &Plugins::default(),
+            settings: &Settings::default(),
+            settings_info: &SettingsInfo::default(),
         };
         let mut state = UiState::default();
         assert!(!state.windows.mixer);
@@ -540,6 +585,44 @@ mod tests {
         assert!(state.windows.mixer);
         assert_eq!(out, [Action::Run(Invocation::bare("transport.toggle"))]);
         assert!(state.dialog.is_some(), "unsaved project asks for a path");
+    }
+
+    #[test]
+    fn settings_actions_open_tabs_and_add_folders() {
+        let project = Project::default();
+        let (engine, history) = frame_for(&project);
+        let settings = Settings::default();
+        let frame = Frame {
+            project: &project,
+            engine: &engine,
+            history: &history,
+            waveform: None,
+            clip_waveforms: &[],
+            clip_durations: &[],
+            plugins: &Plugins::default(),
+            settings: &settings,
+            settings_info: &SettingsInfo::default(),
+        };
+        let mut state = UiState::default();
+        let out = resolve_ui_actions(
+            &mut state,
+            &frame,
+            vec![
+                Action::Run(Invocation::parse("ui.settings midi").unwrap()),
+                Action::Run(Invocation::parse("ui.add_plugin_folder /opt/clap").unwrap()),
+            ],
+        );
+        assert_eq!(state.settings_tab, Some(settings::Tab::Midi));
+        let [Action::Settings(next)] = out.as_slice() else {
+            panic!("expected new settings, got {out:?}");
+        };
+        assert_eq!(next.plugin_folders, [std::path::PathBuf::from("/opt/clap")]);
+        resolve_ui_actions(
+            &mut state,
+            &frame,
+            vec![Action::Run(Invocation::parse("ui.settings").unwrap())],
+        );
+        assert_eq!(state.settings_tab, Some(settings::Tab::Audio));
     }
 
     #[test]

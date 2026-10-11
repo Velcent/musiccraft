@@ -2,6 +2,7 @@
 //! the project, and folders on disk. Click previews, double-click adds a
 //! channel, and items can be dragged onto the channel rack.
 
+use crate::hint::Hint;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -45,37 +46,31 @@ impl Dragged {
     }
 }
 
-/// Browser state: search text, folders and their cached listings.
+/// Browser state: search text and cached folder listings. The folders
+/// themselves are a setting.
 #[derive(Debug, Clone, Default)]
 pub struct BrowserState {
     search: String,
-    /// Folders shown under "Folders".
-    pub folders: Vec<PathBuf>,
     listings: BTreeMap<PathBuf, Vec<(String, PathBuf, bool)>>,
 }
 
-impl BrowserState {
-    /// Starts with the user's music and sample folders, when they exist.
-    #[must_use]
-    pub fn with_default_folders() -> Self {
-        let home = std::env::var_os("HOME")
-            .or_else(|| std::env::var_os("USERPROFILE"))
-            .map(PathBuf::from);
-        let folders = home
-            .map(|h| {
-                ["Music", "Samples", "Music/Samples"]
-                    .iter()
-                    .map(|d| h.join(d))
-                    .filter(|p| p.is_dir())
-                    .collect()
-            })
-            .unwrap_or_default();
-        Self {
-            folders,
-            ..Self::default()
-        }
-    }
+/// The user's music and sample folders, when they exist.
+#[must_use]
+pub fn default_folders() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
+    home.map(|h| {
+        ["Music", "Samples", "Music/Samples"]
+            .iter()
+            .map(|d| h.join(d))
+            .filter(|p| p.is_dir())
+            .collect()
+    })
+    .unwrap_or_default()
+}
 
+impl BrowserState {
     /// Subfolders and WAV files of `dir`, cached until refreshed.
     fn listing(&mut self, dir: &Path) -> &[(String, PathBuf, bool)] {
         self.listings.entry(dir.to_path_buf()).or_insert_with(|| {
@@ -115,7 +110,7 @@ fn item(ui: &mut egui::Ui, label: &str, dragged: Dragged, actions: &mut Vec<Acti
                 .frame(false)
                 .sense(Sense::click_and_drag()),
         )
-        .on_hover_text("Click to preview · double-click to add · drag onto the channel rack");
+        .hint("Click to preview · double-click to add · drag onto the channel rack");
     if response.drag_started() {
         response.dnd_set_drag_payload(dragged.clone());
     }
@@ -205,7 +200,7 @@ fn plugin_section(
             let button = egui::Button::new(format!("{icon}  {}", entry.name)).frame(false);
             if ui
                 .add(button)
-                .on_hover_text(format!("{} · {}\n{hint}", entry.vendor, entry.id))
+                .hint(format!("{} · {}\n{hint}", entry.vendor, entry.id))
                 .clicked()
             {
                 actions.push(Action::Run(invocation));
@@ -231,11 +226,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                         .color(theme::TEXT_DIM),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .small_button("⟳")
-                        .on_hover_text("Refresh folders")
-                        .clicked()
-                    {
+                    if ui.small_button("⟳").hint("Refresh folders").clicked() {
                         state.browser.listings.clear();
                     }
                 });
@@ -303,7 +294,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                     egui::CollapsingHeader::new(RichText::new("Folders").strong())
                         .default_open(true)
                         .show(ui, |ui| {
-                            for dir in state.browser.folders.clone() {
+                            for dir in frame.settings.browser_folders.clone() {
                                 let label = dir.file_name().map_or_else(
                                     || dir.display().to_string(),
                                     |n| n.to_string_lossy().into_owned(),
@@ -316,7 +307,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                                 }
                                 if ui
                                     .small_button("+ WAV file…")
-                                    .on_hover_text("Add a channel from a file path")
+                                    .hint("Add a channel from a file path")
                                     .clicked()
                                 {
                                     state.open_dialog(Dialog::add_sample(frame.project));

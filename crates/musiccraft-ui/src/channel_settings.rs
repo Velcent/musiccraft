@@ -1,5 +1,6 @@
 //! Channel settings: the instrument editor for the selected channel.
 
+use crate::hint::Hint;
 use egui::{Color32, Pos2, RichText, Sense, Shape, Stroke, pos2, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::music::key_name;
@@ -259,7 +260,7 @@ fn sampler(
             let mut one_shot = channel.params.get(inst::ONE_SHOT) >= 0.5;
             if ui
                 .checkbox(&mut one_shot, "One shot")
-                .on_hover_text("Play the whole sample regardless of note length")
+                .hint("Play the whole sample regardless of note length")
                 .changed()
             {
                 actions.push(Action::Run(Invocation::new(
@@ -307,9 +308,7 @@ fn synth(
                 );
                 let current = channel.params.get(param).round() as usize;
                 for (wave, name) in WAVEFORMS.iter().enumerate() {
-                    if wave_button(ui, wave, wave == current)
-                        .on_hover_text(*name)
-                        .clicked()
+                    if wave_button(ui, wave, wave == current).hint(*name).clicked()
                         && wave != current
                     {
                         actions.push(Action::Run(Invocation::new(

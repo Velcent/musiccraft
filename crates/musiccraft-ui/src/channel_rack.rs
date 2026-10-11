@@ -1,6 +1,7 @@
 //! The channel rack: one row per channel with mute, pan, volume, routing, name
 //! and step buttons for the selected pattern.
 
+use crate::hint::Hint;
 use egui::{RichText, Sense, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES, TICKS_PER_STEP};
@@ -132,7 +133,7 @@ fn row(
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         if widgets::dot(ui, !channel.mute, theme::ACCENT)
-            .on_hover_text("Mute")
+            .hint("Mute")
             .clicked()
         {
             run(actions, "channel.toggle_mute", [number.clone()]);
@@ -149,7 +150,7 @@ fn row(
             ));
         }
         pan.response
-            .on_hover_text(format!("Pan {:+.0}%", channel.pan * 100.0));
+            .hint(format!("Pan {:+.0}%", channel.pan * 100.0));
         let volume = widgets::knob(
             ui,
             channel.volume,
@@ -177,7 +178,7 @@ fn row(
         }
         volume
             .response
-            .on_hover_text(format!("Volume {:.0}%", channel.volume * 100.0));
+            .hint(format!("Volume {:.0}%", channel.volume * 100.0));
 
         let mut track = channel.mixer_track;
         let route = ui
@@ -193,7 +194,7 @@ fn row(
                         }
                     }),
             )
-            .on_hover_text("Mixer track (M = master)");
+            .hint("Mixer track (M = master)");
         if route.changed() && track != channel.mixer_track {
             run(
                 actions,
@@ -214,7 +215,7 @@ fn row(
             theme::RAISED
         })
         .min_size(vec2(120.0, STEP_SIZE.y));
-        let response = ui.add(name).on_hover_text(match &channel.instrument {
+        let response = ui.add(name).hint(match &channel.instrument {
             Instrument::Sampler { sample } => format!("Sampler: {sample}"),
             Instrument::Synth => "Synth".to_owned(),
             Instrument::Plugin { plugin } => format!("Plugin: {} ({})", plugin.name, plugin.id),
@@ -416,7 +417,7 @@ fn mini_roll(
         );
     }
     if response
-        .on_hover_text("Melodic pattern: click to open the piano roll")
+        .hint("Melodic pattern: click to open the piano roll")
         .clicked()
     {
         state.selected_channel = index;

@@ -48,7 +48,142 @@ pub struct OutputDevice {
     name: String,
 }
 
+/// Sample rates offered in settings, when the device supports them.
+pub const COMMON_SAMPLE_RATES: [u32; 6] = [44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
+
+fn device_name(device: &cpal::Device) -> String {
+    device
+        .description()
+        .map_or_else(|_| "unknown device".to_owned(), |d| d.name().to_owned())
+}
+
+/// Names of the output devices of the default host, default first.
+#[must_use]
+pub fn output_device_names() -> Vec<String> {
+    let host = cpal::default_host();
+    let default = host.default_output_device().map(|d| device_name(&d));
+    let mut names: Vec<String> = host
+        .output_devices()
+        .map(|devices| devices.map(|d| device_name(&d)).collect())
+        .unwrap_or_default();
+    names.dedup();
+    if let Some(default) = default {
+        names.retain(|n| *n != default);
+        names.insert(0, default);
+    }
+    names
+}
+
+/// What to open; `None` fields use the device's defaults.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OutputRequest {
+    /// Device name from [`output_device_names`].
+    pub device: Option<String>,
+    /// Sample rate in hertz.
+    pub sample_rate: Option<u32>,
+    /// Frames per device callback.
+    pub buffer_frames: Option<u32>,
+}
+
 impl OutputDevice {
+    /// Opens the requested device, falling back to the default device (and
+    /// its default rate) when the request cannot be met. The returned string
+    /// explains any fallback.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no output device can be opened at all.
+    pub fn open(request: &OutputRequest) -> Result<(Self, Option<String>), AudioError> {
+        let host = cpal::default_host();
+        let mut note = None;
+        let named = request.device.as_ref().and_then(|wanted| {
+            let found = host
+                .output_devices()
+                .ok()?
+                .find(|d| device_name(d) == *wanted);
+            if found.is_none() {
+                note = Some(format!("device `{wanted}` not found; using the default"));
+            }
+            found
+        });
+        let device = match named {
+            Some(device) => device,
+            None => host.default_output_device().ok_or(AudioError::NoDevice)?,
+        };
+        let default = device.default_output_config().map_err(device_error)?;
+        let mut supported = default;
+        if let Some(rate) = request.sample_rate {
+            let matching = device
+                .supported_output_configs()
+                .ok()
+                .and_then(|mut configs| {
+                    configs.find(|c| {
+                        c.channels() == supported.channels()
+                            && c.sample_format() == supported.sample_format()
+                            && c.min_sample_rate() <= rate
+                            && rate <= c.max_sample_rate()
+                    })
+                });
+            match matching {
+                Some(range) => supported = range.with_sample_rate(rate),
+                None => note = Some(format!("{rate} Hz is not supported; using the default")),
+            }
+        }
+        let mut config = supported.config();
+        if let Some(frames) = request.buffer_frames {
+            // Only ask for sizes the device reports it can do; a failed stream
+            // would lose the engine.
+            match *supported.buffer_size() {
+                cpal::SupportedBufferSize::Range { min, max } => {
+                    let fixed = frames.clamp(min.max(16), max.max(16));
+                    if fixed != frames {
+                        note = Some(format!("buffer of {frames} frames adjusted to {fixed}"));
+                    }
+                    config.buffer_size = cpal::BufferSize::Fixed(fixed);
+                }
+                cpal::SupportedBufferSize::Unknown => {
+                    note = Some("this device does not allow choosing the buffer size".to_owned());
+                }
+            }
+        }
+        Ok((
+            Self {
+                format: supported.sample_format(),
+                config,
+                name: device_name(&device),
+                device,
+            },
+            note,
+        ))
+    }
+
+    /// Sample rates this device supports from [`COMMON_SAMPLE_RATES`].
+    #[must_use]
+    pub fn supported_rates(&self) -> Vec<u32> {
+        let ranges: Vec<(u32, u32)> = self
+            .device
+            .supported_output_configs()
+            .map(|configs| {
+                configs
+                    .map(|c| (c.min_sample_rate(), c.max_sample_rate()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        COMMON_SAMPLE_RATES
+            .into_iter()
+            .filter(|r| ranges.iter().any(|(lo, hi)| lo <= r && r <= hi))
+            .collect()
+    }
+
+    /// Frames per callback, if a fixed size was requested.
+    #[must_use]
+    pub fn buffer_frames(&self) -> Option<u32> {
+        match self.config.buffer_size {
+            cpal::BufferSize::Fixed(frames) => Some(frames),
+            cpal::BufferSize::Default => None,
+        }
+    }
+
     /// The default output device of the default host.
     ///
     /// # Errors

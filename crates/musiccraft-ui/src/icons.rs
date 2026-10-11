@@ -1,6 +1,7 @@
 //! Icons drawn with vector shapes (our own artwork; no icon fonts), plus the
 //! toolbar's button and display widgets built on them.
 
+use crate::hint::Hint;
 use egui::{
     Color32, CornerRadius, Pos2, Rect, Response, RichText, Sense, Shape, Stroke, Ui, pos2, vec2,
 };
@@ -178,7 +179,7 @@ pub fn button(ui: &mut Ui, icon: Icon, active: bool, accent: Color32, hint: &str
         accent
     };
     paint(ui.painter(), rect, icon, color);
-    response.on_hover_text(hint)
+    response.hint(hint)
 }
 
 /// A quieter toggle for showing and hiding windows: an underline marks it on.
@@ -205,7 +206,7 @@ pub fn toggle(ui: &mut Ui, icon: Icon, on: bool, hint: &str) -> Response {
             Stroke::new(2.0, theme::ACCENT),
         );
     }
-    response.on_hover_text(hint)
+    response.hint(hint)
 }
 
 /// A dark "LCD" panel showing a large value and a small caption underneath.
@@ -260,7 +261,7 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], selected: usize, hint: &str) -> O
                         Color32::TRANSPARENT
                     })
                     .min_size(vec2(40.0, 22.0));
-                if ui.add(button).on_hover_text(hint).clicked() {
+                if ui.add(button).hint(hint).clicked() {
                     clicked = Some(i);
                 }
             }
@@ -333,5 +334,5 @@ pub fn load_bar(ui: &mut Ui, load: f32) -> Response {
         egui::FontId::proportional(8.0),
         theme::TEXT_DIM,
     );
-    response.on_hover_text("Share of each audio buffer's time spent processing")
+    response.hint("Share of each audio buffer's time spent processing")
 }

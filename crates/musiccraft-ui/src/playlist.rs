@@ -1,5 +1,6 @@
 //! The playlist: arrange patterns as clips on track rows.
 
+use crate::hint::Hint;
 use std::collections::BTreeSet;
 
 use egui::{
@@ -105,10 +106,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                     ui.selectable_value(&mut state.playlist.snap, snap, snap.label());
                 }
             });
-        if ui.small_button("−").on_hover_text("Zoom out (Ctrl+scroll)").clicked() {
+        if ui.small_button("−").hint("Zoom out (Ctrl+scroll)").clicked() {
             state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(16.0);
         }
-        if ui.small_button("+").on_hover_text("Zoom in (Ctrl+scroll)").clicked() {
+        if ui.small_button("+").hint("Zoom in (Ctrl+scroll)").clicked() {
             state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
         }
         ui.label(
@@ -201,7 +202,7 @@ fn pattern_list(
                 let text = RichText::new(format!("~ {}", automation.name)).color(theme::AUTOMATION);
                 let response = ui
                     .selectable_label(selected, text)
-                    .on_hover_text("Click to paint it on the playlist · double-click to edit");
+                    .hint("Click to paint it on the playlist · double-click to edit");
                 if response.clicked() {
                     state.playlist.paint_automation = Some(automation.id);
                 }
@@ -706,7 +707,7 @@ fn ruler(
             Sense::click_and_drag(),
         )
         .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text("Click to seek · Shift+drag to loop · right-click for markers");
+        .hint("Click to seek · Shift+drag to loop · right-click for markers");
     let shift = ui.input(|i| i.modifiers.shift);
     let tick_at = |x: f32| grid.tick_at(x);
     let marker_at = |x: f32| {
@@ -814,7 +815,7 @@ fn headers(
         let muted = project.playlist.muted_tracks.contains(&row);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(dot));
         if widgets::dot(&mut child, !muted, theme::ACCENT)
-            .on_hover_text("Mute track")
+            .hint("Mute track")
             .clicked()
         {
             actions.push(Action::Run(Invocation::new(

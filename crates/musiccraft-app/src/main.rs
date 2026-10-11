@@ -13,12 +13,13 @@ mod midi;
 mod plugins;
 mod recorder;
 mod screenshot;
+mod settings;
 mod take;
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, channel};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
@@ -27,7 +28,9 @@ use musiccraft_commands::{Invocation, Session};
 use musiccraft_engine::{EngineHandle, EngineMessage, engine_pair};
 use musiccraft_project::Project;
 use musiccraft_render::Bridge;
-use musiccraft_ui::{Action, EngineStatus, Frame, History, Keymap, UiState};
+use musiccraft_ui::{
+    Action, EngineStatus, Frame, History, Keymap, MidiInput, SettingsInfo, UiState,
+};
 
 /// How long a click-to-audition note sounds.
 const SHORT_PREVIEW: Duration = Duration::from_millis(220);
@@ -38,12 +41,13 @@ usage: musiccraft [project.mcproj] [--keymap <file>] [--empty] [--open <windows>
   --empty            start with an empty project instead of the drum starter kit
   --open <windows>   comma-separated windows to show at start:
                      channel_rack, piano_roll, playlist, mixer, browser,
-                     channel_settings, automation";
+                     channel_settings, automation, settings";
 
 /// Audio running on a device.
 struct Audio {
     _output: AudioOutput,
     handle: EngineHandle,
+    meters: Arc<musiccraft_engine::Meters>,
     bridge: Bridge,
 }
 
@@ -54,6 +58,11 @@ struct App {
     audio_label: String,
     midi: Option<midi::MidiIn>,
     midi_label: String,
+    /// The engine's live-note sender, shared with whichever MIDI input runs.
+    live: Option<Arc<Mutex<musiccraft_engine::LiveSender>>>,
+    played_tx: std::sync::mpsc::Sender<midi::Played>,
+    settings: musiccraft_ui::Settings,
+    settings_info: SettingsInfo,
     selected_channel: Arc<AtomicUsize>,
     synced_revision: Option<u64>,
     pending_offs: Vec<(Instant, u16, u8)>,
@@ -167,7 +176,12 @@ impl App {
             },
             None => Keymap::default_keymap(),
         };
-        let project = if options.empty {
+        let settings = settings::load();
+        ctx.set_zoom_factor(settings.scale());
+        if let Some(host) = musiccraft_cli::plugin_host() {
+            host.set_extra_folders(settings.plugin_folders.clone());
+        }
+        let project = if options.empty || settings.start_empty {
             Project::default()
         } else {
             starter_project()
@@ -182,49 +196,6 @@ impl App {
 
         let selected_channel = Arc::new(AtomicUsize::new(0));
         let (played_tx, played_rx) = channel();
-        let (audio, audio_label, midi, midi_label) = match OutputDevice::default_device() {
-            Ok(device) => {
-                let label = format!("{} · {} Hz", device.name(), device.sample_rate());
-                let rate = device.sample_rate();
-                let (engine, mut handle) = engine_pair(rate);
-                let live = handle.take_live_sender();
-                let meters = Arc::clone(handle.meters());
-                match device.start(engine) {
-                    Ok(output) => {
-                        let connected = live.map(|l| {
-                            midi::connect(
-                                l,
-                                Arc::clone(&selected_channel),
-                                meters,
-                                played_tx,
-                                ctx.clone(),
-                            )
-                        });
-                        let (midi, midi_label) = match connected {
-                            Some(Ok(midi)) => {
-                                let label = format!("MIDI: {}", midi.name);
-                                (Some(midi), label)
-                            }
-                            Some(Err(err)) => (None, format!("MIDI: {err}")),
-                            None => (None, "MIDI: unavailable".to_owned()),
-                        };
-                        (
-                            Some(Audio {
-                                _output: output,
-                                handle,
-                                bridge: Bridge::with_plugins(rate, musiccraft_cli::plugin_host()),
-                            }),
-                            label,
-                            midi,
-                            midi_label,
-                        )
-                    }
-                    Err(err) => (None, format!("no audio: {err}"), None, String::new()),
-                }
-            }
-            Err(err) => (None, format!("no audio: {err}"), None, String::new()),
-        };
-
         let revision = session.revision();
         let mut ui = UiState::new(keymap);
         ui.autosave_path = autosave::path()
@@ -238,6 +209,9 @@ impl App {
             w.mixer = windows.iter().any(|n| n == "mixer");
             w.browser = windows.iter().any(|n| n == "browser");
             w.channel_settings = windows.iter().any(|n| n == "channel_settings");
+            if windows.iter().any(|n| n == "settings") {
+                ui.settings_tab = Some(musiccraft_ui::settings::Tab::Audio);
+            }
             if windows.iter().any(|n| n == "automation") {
                 ui.automation_editor = session.project().automations.first().map(|a| a.id);
             }
@@ -247,13 +221,17 @@ impl App {
         } else {
             ui.set_status("Ready. Space plays, F5–F9 open windows.", false);
         }
-        Self {
+        let mut app = Self {
             session,
             ui,
-            audio,
-            audio_label,
-            midi,
-            midi_label,
+            audio: None,
+            audio_label: String::new(),
+            midi: None,
+            midi_label: String::new(),
+            live: None,
+            played_tx,
+            settings,
+            settings_info: SettingsInfo::default(),
             selected_channel,
             synced_revision: None,
             pending_offs: Vec::new(),
@@ -268,6 +246,132 @@ impl App {
             take: None,
             takes: 0,
             plugins: plugins::PluginGlue::new(musiccraft_cli::plugin_host()),
+        };
+        app.refresh_devices();
+        app.start_audio(ctx);
+        app
+    }
+
+    /// Lists output devices, sample rates, MIDI ports and plugin problems.
+    fn refresh_devices(&mut self) {
+        let info = &mut self.settings_info;
+        info.outputs = musiccraft_audio::output_device_names();
+        info.midi_ports = midi::port_names();
+        if let Some(host) = musiccraft_cli::plugin_host() {
+            info.plugin_count = host.catalog().len();
+            info.plugin_errors = host.scan_errors();
+        }
+    }
+
+    /// (Re)opens the audio device from the settings, then MIDI. Running
+    /// plugins store their state first, because they restart.
+    fn start_audio(&mut self, ctx: &egui::Context) {
+        if let Some(mut audio) = self.audio.take() {
+            self.plugins
+                .store_all(Some(&mut audio.bridge), &mut self.session);
+            let _ = self.session.run(&Invocation::bare("transport.stop"));
+            self.midi = None;
+            self.live = None;
+            drop(audio);
+        }
+        let request = musiccraft_audio::OutputRequest {
+            device: self.settings.audio_device.clone(),
+            sample_rate: self.settings.sample_rate,
+            buffer_frames: self.settings.buffer_frames,
+        };
+        let opened = OutputDevice::open(&request).and_then(|(device, note)| {
+            let rate = device.sample_rate();
+            let buffer = device
+                .buffer_frames()
+                .map_or_else(|| "default buffer".to_owned(), |f| format!("{f} frames"));
+            let label = format!("{} · {rate} Hz · {buffer}", device.name());
+            let rates = device.supported_rates();
+            let (engine, mut handle) = engine_pair(rate);
+            let live = handle.take_live_sender();
+            let output = device.start(engine)?;
+            Ok((output, handle, live, label, rates, rate, note))
+        });
+        match opened {
+            Ok((output, handle, live, label, rates, rate, note)) => {
+                self.audio_label = label;
+                self.settings_info.sample_rates = rates;
+                self.settings_info.running_rate = rate;
+                self.settings_info.audio_note = note;
+                self.live = live.map(|l| Arc::new(Mutex::new(l)));
+                self.audio = Some(Audio {
+                    _output: output,
+                    meters: Arc::clone(handle.meters()),
+                    handle,
+                    bridge: Bridge::with_plugins(rate, musiccraft_cli::plugin_host()),
+                });
+                self.synced_revision = None;
+                self.connect_midi(ctx);
+            }
+            Err(err) => {
+                self.audio_label = format!("no audio: {err}");
+                self.settings_info.audio_note = Some(err.to_string());
+                self.midi_label = String::new();
+            }
+        }
+    }
+
+    /// Connects MIDI input as the settings say.
+    fn connect_midi(&mut self, ctx: &egui::Context) {
+        self.midi = None;
+        let (Some(live), Some(audio)) = (&self.live, &self.audio) else {
+            self.midi_label = "MIDI: unavailable".to_owned();
+            return;
+        };
+        let port = match &self.settings.midi_input {
+            MidiInput::Off => {
+                self.midi_label = "MIDI: off".to_owned();
+                return;
+            }
+            MidiInput::Auto => None,
+            MidiInput::Port(name) => Some(name.as_str()),
+        };
+        match midi::connect(
+            Arc::clone(live),
+            Arc::clone(&self.selected_channel),
+            Arc::clone(&audio.meters),
+            self.played_tx.clone(),
+            ctx.clone(),
+            port,
+        ) {
+            Ok(midi) => {
+                self.midi_label = format!("MIDI: {}", midi.name);
+                self.midi = Some(midi);
+            }
+            Err(err) => self.midi_label = format!("MIDI: {err}"),
+        }
+    }
+
+    /// Applies new settings, saving them and restarting what changed.
+    fn apply_settings(&mut self, ctx: &egui::Context, next: musiccraft_ui::Settings) {
+        let previous = std::mem::replace(&mut self.settings, next);
+        if let Err(err) = settings::save(&self.settings) {
+            self.ui
+                .set_status(format!("cannot save settings: {err}"), true);
+        }
+        if (previous.scale() - self.settings.scale()).abs() > 1e-6 {
+            ctx.set_zoom_factor(self.settings.scale());
+        }
+        if previous.plugin_folders != self.settings.plugin_folders {
+            if let Some(host) = musiccraft_cli::plugin_host() {
+                host.set_extra_folders(self.settings.plugin_folders.clone());
+            }
+            let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
+            let message = self.plugins.rescan(bridge);
+            self.refresh_devices();
+            self.ui.set_status(message, false);
+        }
+        if previous.audio_differs(&self.settings) {
+            self.start_audio(ctx);
+            self.ui
+                .set_status(format!("audio: {}", self.audio_label), false);
+        } else if previous.midi_input != self.settings.midi_input {
+            self.connect_midi(ctx);
+            self.ui.set_status(self.midi_label.clone(), false);
         }
     }
 
@@ -421,6 +525,21 @@ impl App {
                 {
                     self.ui.set_status(format!("plugin window: {err}"), true);
                 }
+                return;
+            }
+            Action::Settings(next) => {
+                self.apply_settings(ctx, *next);
+                return;
+            }
+            Action::RefreshDevices => {
+                self.refresh_devices();
+                self.ui.set_status("devices refreshed", false);
+                return;
+            }
+            Action::RestartAudio => {
+                self.start_audio(ctx);
+                self.ui
+                    .set_status(format!("audio: {}", self.audio_label), false);
                 return;
             }
             Action::RescanPlugins => {
@@ -722,6 +841,8 @@ impl eframe::App for App {
                 clip_waveforms: &clip_waveforms,
                 clip_durations: &clip_durations,
                 plugins: &plugins,
+                settings: &self.settings,
+                settings_info: &self.settings_info,
             };
             musiccraft_ui::show(ui, &mut self.ui, &frame)
         };
@@ -739,10 +860,13 @@ impl eframe::App for App {
         self.sync();
         self.release_due_previews();
         self.update_title(&ctx);
-        match self
-            .autosave
-            .tick(self.session.project(), self.session.revision())
-        {
+        let autosaved = if self.settings.autosave {
+            self.autosave
+                .tick(self.session.project(), self.session.revision())
+        } else {
+            None
+        };
+        match autosaved {
             Some(Ok(message)) => {
                 if !self.ui.status.error {
                     self.ui.set_status(message, false);

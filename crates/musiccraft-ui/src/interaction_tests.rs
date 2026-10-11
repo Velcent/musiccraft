@@ -11,7 +11,7 @@ use musiccraft_project::params::{TICKS_PER_BAR, TICKS_PER_STEP};
 use crate::piano_roll::row_of_key;
 use crate::{
     Action, EngineStatus, Frame, History, LivePluginView, PluginEntry, PluginParamView, Plugins,
-    UiState, show,
+    Settings, SettingsInfo, UiState, show,
 };
 
 struct Harness {
@@ -78,6 +78,8 @@ impl Harness {
                 clip_waveforms: &[],
                 clip_durations: &[],
                 plugins,
+                settings: &Settings::default(),
+                settings_info: &SettingsInfo::default(),
             };
             let mut output = ctx.run_ui(input, |ui| actions = show(ui, state, &frame));
             // No renderer here: acknowledge texture uploads.
@@ -302,6 +304,8 @@ fn typing_keyboard_performs_notes_instead_of_shortcuts() {
         clip_waveforms: &[],
         clip_durations: &[],
         plugins: &Plugins::default(),
+        settings: &Settings::default(),
+        settings_info: &SettingsInfo::default(),
     };
     let mut actions = Vec::new();
     let mut out = h
@@ -561,6 +565,8 @@ fn automate_request_creates_and_places_a_clip() {
         clip_waveforms: &[],
         clip_durations: &[],
         plugins: &Plugins::default(),
+        settings: &Settings::default(),
+        settings_info: &SettingsInfo::default(),
     };
     let out = crate::resolve_ui_actions(
         &mut h.state,
@@ -628,6 +634,8 @@ fn ruler_sets_loop_and_jumps_to_markers() {
             clip_waveforms: &[],
             clip_durations: &[],
             plugins: &Plugins::default(),
+            settings: &Settings::default(),
+            settings_info: &SettingsInfo::default(),
         };
         let mut out = h
             .ctx
@@ -722,4 +730,24 @@ fn missing_plugins_explain_themselves_instead_of_showing_knobs() {
     h.settle();
     assert!(h.state.plugin_layout.1.is_empty());
     assert!(h.state.plugin_layout.0.is_none());
+}
+
+#[test]
+fn hints_show_in_the_bar_and_settings_open_from_f10() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    // Hover the play button: its hint reaches the hint bar next frame.
+    let play = pos2(130.0, 52.0);
+    h.frame(vec![Event::PointerMoved(play)]);
+    h.frame(vec![]);
+    let hint = h.state.hint.clone().unwrap_or_default();
+    assert!(hint.contains("Play"), "hint bar shows {hint:?}");
+    h.frame(vec![Event::Key {
+        key: egui::Key::F10,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(h.state.settings_tab, Some(crate::settings::Tab::Audio));
 }

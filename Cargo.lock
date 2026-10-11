@@ -1404,6 +1404,7 @@ dependencies = [
  "musiccraft-render",
  "musiccraft-samples",
  "musiccraft-ui",
+ "serde_json",
 ]
 
 [[package]]
@@ -1530,6 +1531,7 @@ dependencies = [
  "egui",
  "musiccraft-commands",
  "musiccraft-project",
+ "serde",
 ]
 
 [[package]]

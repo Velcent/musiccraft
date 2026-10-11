@@ -1,5 +1,6 @@
 //! The piano roll: edit the selected channel's notes in the selected pattern.
 
+use crate::hint::Hint;
 use std::collections::BTreeSet;
 
 use egui::{
@@ -315,7 +316,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                 }
             })
             .response
-            .on_hover_text("Click draws a single note or a chord");
+            .hint("Click draws a single note or a chord");
         let scale_label = match state.roll.scale {
             Some((root, i)) => format!(
                 "{} {}",
@@ -342,20 +343,20 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                 }
             })
             .response
-            .on_hover_text("Highlight the keys of a scale");
+            .hint("Highlight the keys of a scale");
         ui.label("Velocity");
         ui.add(egui::DragValue::new(&mut state.roll.velocity).range(1..=127));
         ui.separator();
-        if ui.button("−").on_hover_text("Zoom out").clicked() {
+        if ui.button("−").hint("Zoom out").clicked() {
             state.roll.px_per_step = (state.roll.px_per_step / 1.25).max(6.0);
         }
-        if ui.button("+").on_hover_text("Zoom in").clicked() {
+        if ui.button("+").hint("Zoom in").clicked() {
             state.roll.px_per_step = (state.roll.px_per_step * 1.25).min(120.0);
         }
         ui.separator();
         if ui
             .button("Quantize")
-            .on_hover_text("Snap note starts to the grid")
+            .hint("Snap note starts to the grid")
             .clicked()
         {
             actions.push(Action::Run(Invocation::new(
@@ -1158,7 +1159,7 @@ fn velocity_lane(
     let label_rect = Rect::from_min_max(strip.left_top(), pos2(lane.left(), strip.bottom()));
     let label = ui
         .interact(label_rect, ui.id().with("lane-mode"), Sense::click())
-        .on_hover_text("Click to switch between velocity and pan");
+        .hint("Click to switch between velocity and pan");
     if label.clicked() {
         state.roll.lane_mode = match mode {
             LaneMode::Velocity => LaneMode::Pan,

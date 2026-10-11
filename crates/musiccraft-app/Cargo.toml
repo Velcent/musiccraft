@@ -22,6 +22,7 @@ musiccraft-samples.workspace = true
 musiccraft-ui.workspace = true
 eframe.workspace = true
 midir.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

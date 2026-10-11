@@ -151,6 +151,15 @@ pub trait PluginFactory: Send + Sync {
     /// Scans the plugin folders again.
     fn rescan(&self);
 
+    /// Folders searched in addition to the standard ones; takes effect at the
+    /// next scan.
+    fn set_extra_folders(&self, _folders: Vec<PathBuf>) {}
+
+    /// Files that failed to load in the last scan.
+    fn scan_errors(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Creates, restores and activates a plugin. Stored parameter values are
     /// applied afterwards by the bridge.
     ///

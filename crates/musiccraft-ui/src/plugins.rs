@@ -1,5 +1,6 @@
 //! Plugin pickers and the generic plugin parameter panel.
 
+use crate::hint::Hint;
 use egui::RichText;
 use musiccraft_commands::Invocation;
 use musiccraft_project::PluginRef;
@@ -133,7 +134,7 @@ pub(crate) fn add_menu(
                 any = true;
                 if ui
                     .button(&entry.name)
-                    .on_hover_text(format!("{} · {}", entry.vendor, entry.id))
+                    .hint(format!("{} · {}", entry.vendor, entry.id))
                     .clicked()
                 {
                     actions.push(Action::Run(add(entry)));
@@ -245,7 +246,7 @@ fn param_row(
     let stored = plugin.params.contains_key(&param.id);
     let name = RichText::new(&param.name).color(if stored { theme::TEXT } else { theme::TEXT_DIM });
     ui.label(name)
-        .on_hover_text(format!("id {} {}", param.id, param.module));
+        .hint(format!("id {} {}", param.id, param.module));
     let mut value = param.value;
     let slider = egui::Slider::new(&mut value, param.min..=param.max.max(param.min))
         .show_value(false)

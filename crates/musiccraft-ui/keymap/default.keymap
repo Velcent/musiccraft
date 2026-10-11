@@ -18,6 +18,7 @@ F6           = view.toggle channel_rack
 F7           = view.toggle piano_roll
 F9           = view.toggle mixer
 Alt+F8       = view.toggle browser
+F10          = ui.settings
 
 # Patterns
 F4           = pattern.add
