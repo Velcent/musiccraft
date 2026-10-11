@@ -419,27 +419,209 @@ pub enum EffectKind {
     Gate,
     /// Tempo-synced auto-pan.
     Autopan,
+    /// Low shelf with saturation.
+    BassBoost,
+    /// Asymmetric saturation with a tone filter.
+    Overdrive,
+    /// Soft clipper with a knee.
+    SoftClipper,
+    /// Selectable transfer curves.
+    Waveshaper,
+    /// Removes DC offset.
+    DcBlock,
+    /// Multiplies the signal by a sine.
+    RingMod,
+    /// Shifts every frequency by the same number of hertz.
+    FreqShift,
+    /// Vowel (formant) filter.
+    Formant,
+    /// Filter swept by a tempo-synced LFO and the input level.
+    AutoFilter,
+    /// Silences the signal below a threshold.
+    NoiseGate,
+    /// Boosts or softens attacks and sustain.
+    Transient,
+    /// Four-tap tempo-synced delay.
+    MultiTap,
+    /// Seven-band graphic equalizer.
+    GraphicEq,
+    /// Seven-band parametric equalizer.
+    ParametricEq,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 14] = [
+pub const EFFECT_KINDS: [EffectKind; 28] = [
     EffectKind::Filter,
+    EffectKind::AutoFilter,
+    EffectKind::Formant,
     EffectKind::Eq,
+    EffectKind::GraphicEq,
+    EffectKind::ParametricEq,
     EffectKind::Delay,
+    EffectKind::MultiTap,
     EffectKind::Reverb,
     EffectKind::Chorus,
     EffectKind::Phaser,
     EffectKind::Flanger,
+    EffectKind::RingMod,
+    EffectKind::FreqShift,
     EffectKind::Compressor,
     EffectKind::Limiter,
+    EffectKind::NoiseGate,
+    EffectKind::Transient,
+    EffectKind::SoftClipper,
     EffectKind::Gate,
     EffectKind::Autopan,
     EffectKind::Stereo,
+    EffectKind::DcBlock,
     EffectKind::Distortion,
+    EffectKind::Overdrive,
+    EffectKind::Waveshaper,
+    EffectKind::BassBoost,
     EffectKind::Bitcrusher,
+];
+
+const BASS_BOOST_PARAMS: &[ParamSpec] = &[
+    spec("freq", 30.0, 300.0, 80.0, "Hz"),
+    spec("boost", 0.0, 18.0, 6.0, "dB"),
+    spec("drive", 0.0, 1.0, 0.2, ""),
+];
+
+const OVERDRIVE_PARAMS: &[ParamSpec] = &[
+    spec("drive", 0.0, 48.0, 18.0, "dB"),
+    spec("tone", 300.0, 16_000.0, 3_000.0, "Hz"),
+    spec("bias", 0.0, 0.5, 0.1, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+    spec("output", -24.0, 6.0, -6.0, "dB"),
+];
+
+const SOFT_CLIPPER_PARAMS: &[ParamSpec] = &[
+    spec("threshold", -24.0, 0.0, -3.0, "dB"),
+    spec("knee", 0.0, 1.0, 0.5, ""),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const WAVESHAPER_PARAMS: &[ParamSpec] = &[
+    int_spec("shape", 0.0, 5.0, 0.0),
+    spec("drive", 0.0, 36.0, 12.0, "dB"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+    spec("output", -24.0, 6.0, -6.0, "dB"),
+];
+
+const DC_BLOCK_PARAMS: &[ParamSpec] = &[spec("freq", 2.0, 40.0, 10.0, "Hz")];
+
+const RING_MOD_PARAMS: &[ParamSpec] = &[
+    spec("freq", 1.0, 5_000.0, 440.0, "Hz"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const FREQ_SHIFT_PARAMS: &[ParamSpec] = &[
+    spec("shift", -2_000.0, 2_000.0, 100.0, "Hz"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const FORMANT_PARAMS: &[ParamSpec] = &[
+    spec("vowel", 0.0, 4.0, 0.0, ""),
+    spec("shift", -12.0, 12.0, 0.0, "st"),
+    spec("resonance", 0.0, 1.0, 0.6, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const AUTO_FILTER_PARAMS: &[ParamSpec] = &[
+    int_spec("mode", 0.0, 2.0, 0.0),
+    spec("cutoff", 20.0, 20_000.0, 1_000.0, "Hz"),
+    spec("resonance", 0.0, 1.0, 0.5, ""),
+    int_spec("rate", 0.0, 5.0, 3.0),
+    spec("depth", 0.0, 4.0, 2.0, "oct"),
+    spec("envelope", -4.0, 4.0, 0.0, "oct"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const NOISE_GATE_PARAMS: &[ParamSpec] = &[
+    spec("threshold", -80.0, 0.0, -40.0, "dB"),
+    spec("attack", 0.01, 50.0, 1.0, "ms"),
+    spec("hold", 0.0, 500.0, 20.0, "ms"),
+    spec("release", 1.0, 2_000.0, 100.0, "ms"),
+    spec("range", -80.0, 0.0, -80.0, "dB"),
+];
+
+const TRANSIENT_PARAMS: &[ParamSpec] = &[
+    spec("attack", -1.0, 1.0, 0.0, ""),
+    spec("sustain", -1.0, 1.0, 0.0, ""),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const MULTI_TAP_PARAMS: &[ParamSpec] = &[
+    spec("tap1_time", 0.0625, 4.0, 0.5, "beats"),
+    spec("tap1_level", 0.0, 1.0, 0.6, ""),
+    spec("tap2_time", 0.0625, 4.0, 0.75, "beats"),
+    spec("tap2_level", 0.0, 1.0, 0.45, ""),
+    spec("tap3_time", 0.0625, 4.0, 1.0, "beats"),
+    spec("tap3_level", 0.0, 1.0, 0.3, ""),
+    spec("tap4_time", 0.0625, 4.0, 1.5, "beats"),
+    spec("tap4_level", 0.0, 1.0, 0.2, ""),
+    spec("feedback", 0.0, 0.9, 0.3, ""),
+    spec("mix", 0.0, 1.0, 0.35, ""),
+    spec("damping", 0.0, 0.95, 0.3, ""),
+];
+
+const GRAPHIC_EQ_PARAMS: &[ParamSpec] = &[
+    spec("band_63", -18.0, 18.0, 0.0, "dB"),
+    spec("band_160", -18.0, 18.0, 0.0, "dB"),
+    spec("band_400", -18.0, 18.0, 0.0, "dB"),
+    spec("band_1k", -18.0, 18.0, 0.0, "dB"),
+    spec("band_2k5", -18.0, 18.0, 0.0, "dB"),
+    spec("band_6k3", -18.0, 18.0, 0.0, "dB"),
+    spec("band_16k", -18.0, 18.0, 0.0, "dB"),
+    spec("output", -18.0, 6.0, 0.0, "dB"),
+];
+
+macro_rules! band {
+    ($n:literal, $freq:expr, $q:expr) => {
+        [
+            spec(concat!("band", $n, "_freq"), 20.0, 20_000.0, $freq, "Hz"),
+            spec(concat!("band", $n, "_gain"), -18.0, 18.0, 0.0, "dB"),
+            spec(concat!("band", $n, "_q"), 0.1, 10.0, $q, ""),
+        ]
+    };
+}
+
+const PARAMETRIC_BANDS: [[ParamSpec; 3]; 7] = [
+    band!("1", 60.0, 0.7),
+    band!("2", 150.0, 1.0),
+    band!("3", 400.0, 1.0),
+    band!("4", 1_000.0, 1.0),
+    band!("5", 2_500.0, 1.0),
+    band!("6", 6_000.0, 1.0),
+    band!("7", 12_000.0, 0.7),
+];
+
+const PARAMETRIC_EQ_PARAMS: &[ParamSpec] = &[
+    PARAMETRIC_BANDS[0][0],
+    PARAMETRIC_BANDS[0][1],
+    PARAMETRIC_BANDS[0][2],
+    PARAMETRIC_BANDS[1][0],
+    PARAMETRIC_BANDS[1][1],
+    PARAMETRIC_BANDS[1][2],
+    PARAMETRIC_BANDS[2][0],
+    PARAMETRIC_BANDS[2][1],
+    PARAMETRIC_BANDS[2][2],
+    PARAMETRIC_BANDS[3][0],
+    PARAMETRIC_BANDS[3][1],
+    PARAMETRIC_BANDS[3][2],
+    PARAMETRIC_BANDS[4][0],
+    PARAMETRIC_BANDS[4][1],
+    PARAMETRIC_BANDS[4][2],
+    PARAMETRIC_BANDS[5][0],
+    PARAMETRIC_BANDS[5][1],
+    PARAMETRIC_BANDS[5][2],
+    PARAMETRIC_BANDS[6][0],
+    PARAMETRIC_BANDS[6][1],
+    PARAMETRIC_BANDS[6][2],
+    spec("output", -18.0, 6.0, 0.0, "dB"),
 ];
 
 const PHASER_PARAMS: &[ParamSpec] = &[
@@ -565,6 +747,20 @@ impl EffectKind {
             Self::Stereo => "stereo",
             Self::Gate => "gate",
             Self::Autopan => "autopan",
+            Self::BassBoost => "bass_boost",
+            Self::Overdrive => "overdrive",
+            Self::SoftClipper => "soft_clipper",
+            Self::Waveshaper => "waveshaper",
+            Self::DcBlock => "dc_block",
+            Self::RingMod => "ring_mod",
+            Self::FreqShift => "freq_shift",
+            Self::Formant => "formant",
+            Self::AutoFilter => "auto_filter",
+            Self::NoiseGate => "noise_gate",
+            Self::Transient => "transient",
+            Self::MultiTap => "multi_tap",
+            Self::GraphicEq => "graphic_eq",
+            Self::ParametricEq => "parametric_eq",
             Self::Plugin => "plugin",
         }
     }
@@ -593,6 +789,20 @@ impl EffectKind {
             Self::Stereo => STEREO_PARAMS,
             Self::Gate => GATE_PARAMS,
             Self::Autopan => AUTOPAN_PARAMS,
+            Self::BassBoost => BASS_BOOST_PARAMS,
+            Self::Overdrive => OVERDRIVE_PARAMS,
+            Self::SoftClipper => SOFT_CLIPPER_PARAMS,
+            Self::Waveshaper => WAVESHAPER_PARAMS,
+            Self::DcBlock => DC_BLOCK_PARAMS,
+            Self::RingMod => RING_MOD_PARAMS,
+            Self::FreqShift => FREQ_SHIFT_PARAMS,
+            Self::Formant => FORMANT_PARAMS,
+            Self::AutoFilter => AUTO_FILTER_PARAMS,
+            Self::NoiseGate => NOISE_GATE_PARAMS,
+            Self::Transient => TRANSIENT_PARAMS,
+            Self::MultiTap => MULTI_TAP_PARAMS,
+            Self::GraphicEq => GRAPHIC_EQ_PARAMS,
+            Self::ParametricEq => PARAMETRIC_EQ_PARAMS,
             Self::Plugin => &[],
         }
     }

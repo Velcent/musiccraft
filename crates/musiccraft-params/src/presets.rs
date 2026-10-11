@@ -917,6 +917,231 @@ const AUTOPAN: &[Preset] = &[
     ),
 ];
 
+const BASS_BOOST: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Sub weight",
+        &[("freq", 50.0), ("boost", 9.0), ("drive", 0.1)],
+    ),
+    preset("Warm", &[("freq", 120.0), ("boost", 4.0), ("drive", 0.4)]),
+    preset("Pumped", &[("freq", 70.0), ("boost", 12.0), ("drive", 0.7)]),
+];
+
+const OVERDRIVE: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Crunch",
+        &[("drive", 24.0), ("tone", 4_000.0), ("bias", 0.2)],
+    ),
+    preset(
+        "Warm tube",
+        &[
+            ("drive", 10.0),
+            ("tone", 2_000.0),
+            ("bias", 0.3),
+            ("output", -3.0),
+        ],
+    ),
+    preset(
+        "Fuzz",
+        &[
+            ("drive", 40.0),
+            ("tone", 6_000.0),
+            ("bias", 0.4),
+            ("output", -12.0),
+        ],
+    ),
+];
+
+const SOFT_CLIPPER: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Gentle", &[("threshold", -1.0), ("knee", 0.8)]),
+    preset(
+        "Hard",
+        &[("threshold", -6.0), ("knee", 0.1), ("output", 3.0)],
+    ),
+];
+
+const WAVESHAPER: &[Preset] = &[
+    preset("Tanh", &[]),
+    preset(
+        "Hard clip",
+        &[("shape", 1.0), ("drive", 18.0), ("output", -9.0)],
+    ),
+    preset(
+        "Wavefolder",
+        &[("shape", 2.0), ("drive", 18.0), ("output", -6.0)],
+    ),
+    preset("Sine fold", &[("shape", 3.0), ("drive", 12.0)]),
+    preset("Asymmetric", &[("shape", 4.0), ("drive", 15.0)]),
+    preset("Rectifier", &[("shape", 5.0), ("drive", 6.0), ("mix", 0.5)]),
+];
+
+const DC_BLOCK: &[Preset] = &[preset("Default", &[]), preset("Steep", &[("freq", 30.0)])];
+
+const RING_MOD: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Robot", &[("freq", 60.0)]),
+    preset("Bell", &[("freq", 1_250.0), ("mix", 0.6)]),
+    preset("Tremolo", &[("freq", 6.0), ("mix", 0.5)]),
+];
+
+const FREQ_SHIFT: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Detune", &[("shift", 3.0), ("mix", 0.5)]),
+    preset("Down", &[("shift", -200.0)]),
+    preset("Metallic", &[("shift", 700.0), ("mix", 0.7)]),
+];
+
+const FORMANT: &[Preset] = &[
+    preset("A", &[]),
+    preset("E", &[("vowel", 1.0)]),
+    preset("I", &[("vowel", 2.0)]),
+    preset("O", &[("vowel", 3.0)]),
+    preset("U", &[("vowel", 4.0)]),
+    preset("Talking", &[("vowel", 1.5), ("resonance", 0.9)]),
+];
+
+const AUTO_FILTER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Slow sweep",
+        &[("rate", 5.0), ("depth", 3.0), ("cutoff", 600.0)],
+    ),
+    preset(
+        "Wobble",
+        &[
+            ("rate", 1.0),
+            ("depth", 2.5),
+            ("resonance", 0.7),
+            ("cutoff", 400.0),
+        ],
+    ),
+    preset(
+        "Envelope follower",
+        &[
+            ("depth", 0.0),
+            ("envelope", 3.0),
+            ("cutoff", 300.0),
+            ("resonance", 0.6),
+        ],
+    ),
+    preset(
+        "High-pass swell",
+        &[
+            ("mode", 2.0),
+            ("rate", 5.0),
+            ("depth", 2.0),
+            ("cutoff", 800.0),
+        ],
+    ),
+];
+
+const NOISE_GATE: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Tight drums",
+        &[("threshold", -30.0), ("hold", 5.0), ("release", 40.0)],
+    ),
+    preset(
+        "Soft",
+        &[("threshold", -50.0), ("release", 300.0), ("range", -20.0)],
+    ),
+];
+
+const TRANSIENT: &[Preset] = &[
+    preset("Neutral", &[]),
+    preset("Punch", &[("attack", 0.7), ("output", -4.0)]),
+    preset("Soften", &[("attack", -0.6)]),
+    preset("Tighten", &[("attack", 0.3), ("sustain", -0.7)]),
+    preset("Sustain", &[("sustain", 0.8), ("output", -3.0)]),
+];
+
+const MULTI_TAP: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Dotted",
+        &[
+            ("tap1_time", 0.75),
+            ("tap2_time", 1.5),
+            ("tap3_time", 2.25),
+            ("tap4_time", 3.0),
+        ],
+    ),
+    preset(
+        "Rhythmic",
+        &[
+            ("tap1_time", 0.25),
+            ("tap2_time", 0.75),
+            ("tap3_time", 1.25),
+            ("tap4_time", 2.0),
+            ("feedback", 0.1),
+        ],
+    ),
+    preset(
+        "Wash",
+        &[("feedback", 0.7), ("damping", 0.6), ("mix", 0.45)],
+    ),
+];
+
+const GRAPHIC_EQ: &[Preset] = &[
+    preset("Flat", &[]),
+    preset(
+        "Smile",
+        &[
+            ("band_63", 5.0),
+            ("band_160", 3.0),
+            ("band_1k", -2.0),
+            ("band_6k3", 3.0),
+            ("band_16k", 5.0),
+        ],
+    ),
+    preset(
+        "Telephone",
+        &[
+            ("band_63", -18.0),
+            ("band_160", -12.0),
+            ("band_1k", 8.0),
+            ("band_6k3", -12.0),
+            ("band_16k", -18.0),
+        ],
+    ),
+    preset(
+        "Warm",
+        &[
+            ("band_160", 3.0),
+            ("band_400", 2.0),
+            ("band_6k3", -2.0),
+            ("band_16k", -3.0),
+        ],
+    ),
+];
+
+const PARAMETRIC_EQ: &[Preset] = &[
+    preset("Flat", &[]),
+    preset(
+        "Vocal",
+        &[
+            ("band1_gain", -9.0),
+            ("band1_freq", 90.0),
+            ("band3_gain", -3.0),
+            ("band5_gain", 3.0),
+            ("band7_gain", 4.0),
+        ],
+    ),
+    preset(
+        "Kick",
+        &[
+            ("band1_gain", 4.0),
+            ("band3_gain", -6.0),
+            ("band3_freq", 350.0),
+            ("band5_gain", 4.0),
+            ("band5_freq", 3_500.0),
+        ],
+    ),
+    preset("Air", &[("band7_gain", 6.0), ("band7_freq", 10_000.0)]),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -935,6 +1160,20 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::Stereo => STEREO,
         EffectKind::Gate => GATE,
         EffectKind::Autopan => AUTOPAN,
+        EffectKind::BassBoost => BASS_BOOST,
+        EffectKind::Overdrive => OVERDRIVE,
+        EffectKind::SoftClipper => SOFT_CLIPPER,
+        EffectKind::Waveshaper => WAVESHAPER,
+        EffectKind::DcBlock => DC_BLOCK,
+        EffectKind::RingMod => RING_MOD,
+        EffectKind::FreqShift => FREQ_SHIFT,
+        EffectKind::Formant => FORMANT,
+        EffectKind::AutoFilter => AUTO_FILTER,
+        EffectKind::NoiseGate => NOISE_GATE,
+        EffectKind::Transient => TRANSIENT,
+        EffectKind::MultiTap => MULTI_TAP,
+        EffectKind::GraphicEq => GRAPHIC_EQ,
+        EffectKind::ParametricEq => PARAMETRIC_EQ,
         EffectKind::Plugin => &[],
     }
 }

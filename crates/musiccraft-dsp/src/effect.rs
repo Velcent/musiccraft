@@ -1,5 +1,9 @@
 use musiccraft_params::{EffectKind, MAX_EFFECT_PARAMS};
 
+use crate::character::{
+    AutoFilter, BassBoost, DcBlock, Formant, FreqShift, GraphicEq, MultiTap, NoiseGate, Overdrive,
+    ParametricEq, RingMod, Transient,
+};
 use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
 use crate::{Biquad, Chorus, Compressor, Delay, Distortion, Limiter, Reverb, Svf, SvfMode};
 
@@ -106,6 +110,34 @@ pub enum Effect {
     Gate(Gate),
     /// See [`crate::modulation::autopan`].
     Autopan,
+    /// See [`BassBoost`].
+    BassBoost(BassBoost),
+    /// See [`Overdrive`].
+    Overdrive(Overdrive),
+    /// See [`DcBlock`].
+    DcBlock(DcBlock),
+    /// See [`RingMod`].
+    RingMod(RingMod),
+    /// See [`FreqShift`].
+    FreqShift(FreqShift),
+    /// See [`Formant`].
+    Formant(Formant),
+    /// See [`AutoFilter`].
+    AutoFilter(AutoFilter),
+    /// See [`NoiseGate`].
+    NoiseGate(NoiseGate),
+    /// See [`Transient`].
+    Transient(Transient),
+    /// See [`GraphicEq`].
+    GraphicEq(GraphicEq),
+    /// See [`ParametricEq`].
+    ParametricEq(ParametricEq),
+    /// See [`MultiTap`].
+    MultiTap(MultiTap),
+    /// See [`crate::character::soft_clipper`].
+    SoftClipper,
+    /// See [`crate::character::waveshaper`].
+    Waveshaper,
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -131,6 +163,20 @@ impl Effect {
             EffectKind::Stereo => Self::Stereo,
             EffectKind::Gate => Self::Gate(Gate::default()),
             EffectKind::Autopan => Self::Autopan,
+            EffectKind::BassBoost => Self::BassBoost(BassBoost::default()),
+            EffectKind::Overdrive => Self::Overdrive(Overdrive::default()),
+            EffectKind::DcBlock => Self::DcBlock(DcBlock::default()),
+            EffectKind::RingMod => Self::RingMod(RingMod::default()),
+            EffectKind::FreqShift => Self::FreqShift(FreqShift::default()),
+            EffectKind::Formant => Self::Formant(Formant::default()),
+            EffectKind::AutoFilter => Self::AutoFilter(AutoFilter::default()),
+            EffectKind::NoiseGate => Self::NoiseGate(NoiseGate::default()),
+            EffectKind::Transient => Self::Transient(Transient::default()),
+            EffectKind::GraphicEq => Self::GraphicEq(GraphicEq::default()),
+            EffectKind::ParametricEq => Self::ParametricEq(ParametricEq::default()),
+            EffectKind::MultiTap => Self::MultiTap(MultiTap::new(sample_rate)),
+            EffectKind::SoftClipper => Self::SoftClipper,
+            EffectKind::Waveshaper => Self::Waveshaper,
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -153,6 +199,20 @@ impl Effect {
             Self::Stereo => EffectKind::Stereo,
             Self::Gate(_) => EffectKind::Gate,
             Self::Autopan => EffectKind::Autopan,
+            Self::BassBoost(_) => EffectKind::BassBoost,
+            Self::Overdrive(_) => EffectKind::Overdrive,
+            Self::DcBlock(_) => EffectKind::DcBlock,
+            Self::RingMod(_) => EffectKind::RingMod,
+            Self::FreqShift(_) => EffectKind::FreqShift,
+            Self::Formant(_) => EffectKind::Formant,
+            Self::AutoFilter(_) => EffectKind::AutoFilter,
+            Self::NoiseGate(_) => EffectKind::NoiseGate,
+            Self::Transient(_) => EffectKind::Transient,
+            Self::GraphicEq(_) => EffectKind::GraphicEq,
+            Self::ParametricEq(_) => EffectKind::ParametricEq,
+            Self::MultiTap(_) => EffectKind::MultiTap,
+            Self::SoftClipper => EffectKind::SoftClipper,
+            Self::Waveshaper => EffectKind::Waveshaper,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -193,6 +253,20 @@ impl Effect {
             Self::Stereo => crate::modulation::stereo(left, right, params),
             Self::Gate(fx) => fx.process(left, right, params, ctx),
             Self::Autopan => crate::modulation::autopan(left, right, params, ctx),
+            Self::BassBoost(fx) => fx.process(left, right, params, ctx),
+            Self::Overdrive(fx) => fx.process(left, right, params, ctx),
+            Self::DcBlock(fx) => fx.process(left, right, params, ctx),
+            Self::RingMod(fx) => fx.process(left, right, params, ctx),
+            Self::FreqShift(fx) => fx.process(left, right, params, ctx),
+            Self::Formant(fx) => fx.process(left, right, params, ctx),
+            Self::AutoFilter(fx) => fx.process(left, right, params, ctx),
+            Self::NoiseGate(fx) => fx.process(left, right, params, ctx),
+            Self::Transient(fx) => fx.process(left, right, params, ctx),
+            Self::GraphicEq(fx) => fx.process(left, right, params, ctx),
+            Self::ParametricEq(fx) => fx.process(left, right, params, ctx),
+            Self::MultiTap(fx) => fx.process(left, right, params, ctx),
+            Self::SoftClipper => crate::character::soft_clipper(left, right, params),
+            Self::Waveshaper => crate::character::waveshaper(left, right, params),
             Self::Passthrough => {}
         }
     }
@@ -205,7 +279,25 @@ impl Effect {
             Self::Delay(fx) => fx.reset(),
             Self::Reverb(fx) => fx.reset(),
             Self::Compressor(fx) => fx.reset(),
-            Self::Distortion | Self::Passthrough | Self::Stereo | Self::Autopan => {}
+            Self::Distortion
+            | Self::Passthrough
+            | Self::Stereo
+            | Self::Autopan
+            | Self::SoftClipper
+            | Self::Waveshaper => {}
+            Self::MultiTap(fx) => fx.reset(),
+            Self::BassBoost(fx) => *fx = BassBoost::default(),
+            Self::Overdrive(fx) => *fx = Overdrive::default(),
+            Self::DcBlock(fx) => *fx = DcBlock::default(),
+            Self::RingMod(fx) => *fx = RingMod::default(),
+            Self::FreqShift(fx) => *fx = FreqShift::default(),
+            Self::Formant(fx) => *fx = Formant::default(),
+            Self::AutoFilter(fx) => *fx = AutoFilter::default(),
+            Self::NoiseGate(fx) => *fx = NoiseGate::default(),
+            Self::Transient(fx) => *fx = Transient::default(),
+            Self::GraphicEq(fx) => *fx = GraphicEq::default(),
+            Self::ParametricEq(fx) => *fx = ParametricEq::default(),
+
             Self::Phaser(fx) => fx.reset(),
             Self::Flanger(fx) => fx.reset(),
             Self::Bitcrusher(fx) => fx.reset(),

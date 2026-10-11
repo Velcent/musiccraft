@@ -4,7 +4,13 @@
 
 use std::f32::consts::PI;
 
-use crate::{Biquad, SvfMode, db_to_gain, gain_to_db};
+use musiccraft_params::EffectKind;
+
+use crate::character::{
+    Transient, formants, graphic_eq_db, overdrive_curve, parametric_eq_db, shape_curve,
+    soft_clip_curve,
+};
+use crate::{Biquad, ProcessContext, SvfMode, db_to_gain, gain_to_db};
 
 /// Magnitude in dB of the state-variable filter at `freq`. The TPT filter is
 /// the bilinear transform of the analog prototype, so the prewarped analog
@@ -71,6 +77,125 @@ pub fn distortion_shape(params: &[f32], x: f32) -> f32 {
     let mix = param(1, 1.0).clamp(0.0, 1.0);
     let output = db_to_gain(param(2, -6.0));
     (x + ((x * drive).tanh() - x) * mix) * output
+}
+
+fn at(params: &[f32], i: usize, default: f32) -> f32 {
+    params.get(i).copied().unwrap_or(default)
+}
+
+/// Magnitude in dB at `freq` of the newer frequency-shaping effects
+/// (graphic and parametric EQ, bass boost, DC removal, formant and auto
+/// filter at rest); `None` for other kinds.
+#[must_use]
+pub fn effect_db(kind: EffectKind, params: &[f32], freq: f32, sample_rate: f32) -> Option<f32> {
+    let mixed = |wet: f32, mix: f32| gain_to_db((1.0 - mix) + wet * mix);
+    Some(match kind {
+        EffectKind::GraphicEq => graphic_eq_db(params, freq, sample_rate),
+        EffectKind::ParametricEq => parametric_eq_db(params, freq, sample_rate),
+        EffectKind::BassBoost => {
+            let mut shelf = Biquad::default();
+            shelf.set_low_shelf(at(params, 0, 80.0), at(params, 1, 6.0), sample_rate);
+            shelf.magnitude_db(freq, sample_rate)
+        }
+        EffectKind::DcBlock => {
+            // |1 - z^-1| / |1 - r z^-1|.
+            let r = (-2.0 * PI * at(params, 0, 10.0).max(1.0) / sample_rate.max(1.0)).exp();
+            let w = 2.0 * PI * freq / sample_rate.max(1.0);
+            let num = (2.0 - 2.0 * w.cos()).sqrt();
+            let den = (1.0 + r * r - 2.0 * r * w.cos()).sqrt().max(1e-9);
+            gain_to_db(num / den)
+        }
+        EffectKind::Formant => {
+            let resonance = 0.4 + at(params, 2, 0.6).clamp(0.0, 1.0) * 0.5;
+            let wet: f32 = formants(at(params, 0, 0.0), at(params, 1, 0.0))
+                .iter()
+                .zip([1.0, 0.7, 0.4])
+                .map(|(f, g)| {
+                    db_to_gain(svf_db(SvfMode::BandPass, *f, resonance, freq, sample_rate)) * g
+                })
+                .sum();
+            mixed(wet * 0.7, at(params, 3, 1.0).clamp(0.0, 1.0))
+        }
+        EffectKind::AutoFilter => {
+            let wet = db_to_gain(svf_db(
+                SvfMode::from_param(at(params, 0, 0.0)),
+                at(params, 1, 1_000.0),
+                at(params, 2, 0.5),
+                freq,
+                sample_rate,
+            ));
+            mixed(wet, at(params, 6, 1.0).clamp(0.0, 1.0))
+        }
+        _ => return None,
+    })
+}
+
+/// Output sample for an input sample of the waveshaping effects
+/// (distortion, overdrive before its tone filter, soft clipper,
+/// waveshaper); `None` for other kinds.
+#[must_use]
+pub fn shaper(kind: EffectKind, params: &[f32], x: f32) -> Option<f32> {
+    let blend = |wet: f32, mix: f32, out_db: f32| (x + (wet - x) * mix) * db_to_gain(out_db);
+    Some(match kind {
+        EffectKind::Distortion => distortion_shape(params, x),
+        EffectKind::Overdrive => blend(
+            overdrive_curve(at(params, 0, 18.0), at(params, 2, 0.1), x),
+            at(params, 3, 1.0),
+            at(params, 4, -6.0),
+        ),
+        EffectKind::SoftClipper => {
+            soft_clip_curve(at(params, 0, -3.0), at(params, 1, 0.5), x)
+                * db_to_gain(at(params, 2, 0.0))
+        }
+        EffectKind::Waveshaper => blend(
+            shape_curve(at(params, 0, 0.0), x * db_to_gain(at(params, 1, 12.0))),
+            at(params, 2, 1.0),
+            at(params, 3, -6.0),
+        ),
+        _ => return None,
+    })
+}
+
+/// Output level (dB) of the noise gate's static curve:
+/// `[threshold, attack, hold, release, range]`.
+#[must_use]
+pub fn noise_gate_db(params: &[f32], input_db: f32) -> f32 {
+    if input_db >= at(params, 0, -40.0) {
+        input_db
+    } else {
+        input_db + at(params, 4, -80.0)
+    }
+}
+
+/// A drum-like hit's level envelope before and after the transient shaper,
+/// `points` values each over 300 ms.
+#[must_use]
+pub fn transient_envelopes(params: &[f32], points: usize) -> (Vec<f32>, Vec<f32>) {
+    let sample_rate = 8_000.0;
+    let n = (sample_rate * 0.3) as usize;
+    let hit: Vec<f32> = (0..n)
+        .map(|i| {
+            let t = i as f32 / sample_rate - 0.02;
+            if t < 0.0 {
+                0.0
+            } else {
+                0.25 + 0.5 * (-t / 0.03).exp() - 0.25 * (-t / 0.002).exp()
+            }
+        })
+        .collect();
+    let (mut left, mut right) = (hit.clone(), hit.clone());
+    let ctx = ProcessContext {
+        sample_rate,
+        tempo_bpm: 120.0,
+        beats: 0.0,
+    };
+    Transient::default().process(&mut left, &mut right, params, ctx);
+    let pick = |v: &[f32]| -> Vec<f32> {
+        (0..points)
+            .map(|i| v.get(i * n / points.max(1)).copied().unwrap_or(0.0))
+            .collect()
+    };
+    (pick(&hit), pick(&left))
 }
 
 #[cfg(test)]

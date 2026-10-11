@@ -4,6 +4,7 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
+use musiccraft_dsp::character::GRAPHIC_BANDS;
 use musiccraft_dsp::modulation::{SYNC_RATE_NAMES, autopan_shape, gate_step_on};
 use musiccraft_dsp::{SvfMode, response};
 use musiccraft_project::EffectSlot;
@@ -12,6 +13,23 @@ use musiccraft_project::params::{EffectKind, ParamSpec, index_of};
 
 use crate::hint::Hint;
 use crate::{Action, Frame, UiState, theme, widgets};
+
+/// Beats shown on the multi-tap delay's graph.
+const TAP_SPAN: f32 = 4.0;
+
+/// Top and bottom (dB) of a frequency graph.
+fn db_range(kind: EffectKind) -> (f32, f32) {
+    match kind {
+        EffectKind::GraphicEq | EffectKind::ParametricEq => (18.0, -18.0),
+        EffectKind::BassBoost => (24.0, -12.0),
+        _ => (24.0, -48.0),
+    }
+}
+
+/// A multi-tap delay level for a pointer height.
+fn tap_level(rect: Rect, y: f32) -> f32 {
+    ((rect.bottom() - 6.0 - y) / (rect.height() - 12.0)).clamp(0.0, 1.0)
+}
 
 /// Size of the graph area.
 const GRAPH: egui::Vec2 = vec2(380.0, 150.0);
@@ -232,7 +250,17 @@ fn knobs(
                 // Edited by clicking the steps in the graph.
                 continue;
             }
-            let synced = matches!(effect.kind, EffectKind::Gate | EffectKind::Autopan);
+            let synced = matches!(
+                effect.kind,
+                EffectKind::Gate | EffectKind::Autopan | EffectKind::AutoFilter
+            );
+            let pick = |names: &[&str]| {
+                names
+                    .get(value.round() as usize)
+                    .copied()
+                    .unwrap_or("?")
+                    .to_owned()
+            };
             let text = match spec.name {
                 "sidechain" if value < 0.5 => "off".to_owned(),
                 "sidechain" => format!("from {value:.0}"),
@@ -241,11 +269,21 @@ fn knobs(
                     .copied()
                     .unwrap_or("?")
                     .to_owned(),
-                "shape" => ["sine", "triangle", "square"]
-                    .get(value.round() as usize)
-                    .copied()
-                    .unwrap_or("?")
-                    .to_owned(),
+                "shape" if effect.kind == EffectKind::Waveshaper => {
+                    pick(&["tanh", "hard clip", "fold", "sine", "asymmetric", "rectify"])
+                }
+                "shape" => pick(&["sine", "triangle", "square"]),
+                "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
+                "vowel" => {
+                    let i = (value.floor() as usize).min(4);
+                    let next = (i + 1).min(4);
+                    let letters = ["a", "e", "i", "o", "u"];
+                    if value.fract() < 0.05 || i == next {
+                        letters[i].to_owned()
+                    } else {
+                        format!("{}→{}", letters[i], letters[next])
+                    }
+                }
                 "invert_left" | "invert_right" => {
                     if value >= 0.5 { "on" } else { "off" }.to_owned()
                 }
@@ -456,7 +494,7 @@ fn graph(
                 hint = "Drag the point: left/right sets the cutoff, up/down the resonance";
             }
         }
-        EffectKind::Compressor | EffectKind::Limiter => {
+        EffectKind::Compressor | EffectKind::Limiter | EffectKind::NoiseGate => {
             let (top, bottom) = (6.0, -60.0);
             let map = |db_in: f32, db_out: f32| {
                 pos2(
@@ -483,6 +521,8 @@ fn graph(
             let transfer = |db: f32| {
                 if effect.kind == EffectKind::Compressor {
                     response::compressor_db(&effect.values, db)
+                } else if effect.kind == EffectKind::NoiseGate {
+                    response::noise_gate_db(&effect.values, db).max(bottom)
                 } else {
                     response::limiter_db(&effect.values, db)
                 }
@@ -494,7 +534,11 @@ fn graph(
                 })
                 .collect();
             curve(&painter, rect, color, points);
-            if effect.kind == EffectKind::Compressor {
+            if effect.kind == EffectKind::NoiseGate {
+                let threshold = value(effect, "threshold");
+                handles.push((map(threshold, threshold), Some("threshold"), None));
+                hint = "Input level across, output level up: below the threshold the gate closes";
+            } else if effect.kind == EffectKind::Compressor {
                 let threshold = value(effect, "threshold");
                 handles.push((map(threshold, transfer(threshold)), Some("threshold"), None));
                 hint = "Input level across, output level up. Drag the knee to set the threshold";
@@ -508,7 +552,10 @@ fn graph(
                 hint = "Input level across, output level up. Drag the point to set the ceiling";
             }
         }
-        EffectKind::Distortion => {
+        EffectKind::Distortion
+        | EffectKind::Overdrive
+        | EffectKind::SoftClipper
+        | EffectKind::Waveshaper => {
             let mid = rect.center();
             painter.line_segment(
                 [pos2(rect.left(), mid.y), pos2(rect.right(), mid.y)],
@@ -521,14 +568,25 @@ fn graph(
             let points: Vec<Pos2> = (0..=width)
                 .map(|i| {
                     let x = i as f32 / width as f32 * 2.0 - 1.0;
-                    let y = response::distortion_shape(&effect.values, x).clamp(-1.2, 1.2);
+                    let y = response::shaper(effect.kind, &effect.values, x)
+                        .unwrap_or(x)
+                        .clamp(-1.2, 1.2);
                     pos2(rect.left() + i as f32, mid.y - y * rect.height() * 0.4)
                 })
                 .collect();
             for pair in points.windows(2) {
                 painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
             }
-            hint = "Input across, output up: more drive bends the curve into clipping";
+            hint = match effect.kind {
+                EffectKind::SoftClipper => {
+                    "Input across, output up: straight below the threshold, bending smoothly into it"
+                }
+                EffectKind::Waveshaper => "Input across, output up: the shape picks the curve",
+                EffectKind::Overdrive => {
+                    "Input across, output up: bias makes the curve lopsided (before the tone filter)"
+                }
+                _ => "Input across, output up: more drive bends the curve into clipping",
+            };
         }
         EffectKind::Delay => {
             let time = value(effect, "time");
@@ -730,6 +788,176 @@ fn graph(
                 "The sweep over two seconds: rate is speed, depth is height"
             };
         }
+        EffectKind::GraphicEq
+        | EffectKind::ParametricEq
+        | EffectKind::BassBoost
+        | EffectKind::DcBlock
+        | EffectKind::Formant
+        | EffectKind::AutoFilter => {
+            frequency_grid(&painter, rect);
+            let (top, bottom) = db_range(effect.kind);
+            let zero = db_y(rect, 0.0, top, bottom);
+            painter.line_segment(
+                [pos2(rect.left(), zero), pos2(rect.right(), zero)],
+                Stroke::new(1.0, theme::GRID_BEAT),
+            );
+            let points = (0..=width)
+                .map(|i| {
+                    let x = rect.left() + i as f32;
+                    let db = response::effect_db(
+                        effect.kind,
+                        &effect.values,
+                        x_freq(rect, x),
+                        sample_rate,
+                    )
+                    .unwrap_or(0.0);
+                    pos2(x, db_y(rect, db, top, bottom))
+                })
+                .collect();
+            curve(&painter, rect, color, points);
+            let names = effect.kind.params();
+            let name = |i: usize| names.get(i).map(|s| s.name);
+            match effect.kind {
+                EffectKind::GraphicEq => {
+                    for (i, f) in GRAPHIC_BANDS.iter().enumerate() {
+                        if let Some(n) = name(i) {
+                            let at =
+                                pos2(freq_x(rect, *f), db_y(rect, value(effect, n), top, bottom));
+                            handles.push((at, None, Some(n)));
+                        }
+                    }
+                    hint = "Drag a band's point up or down to boost or cut it";
+                }
+                EffectKind::ParametricEq => {
+                    for band in 0..7 {
+                        if let (Some(f), Some(g)) = (name(band * 3), name(band * 3 + 1)) {
+                            let at = pos2(
+                                freq_x(rect, value(effect, f)),
+                                db_y(rect, value(effect, g), top, bottom),
+                            );
+                            handles.push((at, Some(f), Some(g)));
+                        }
+                    }
+                    hint = "Drag a point to set a band's frequency and gain; band 1 is a low shelf, band 7 a high shelf";
+                }
+                EffectKind::BassBoost => {
+                    let at = pos2(
+                        freq_x(rect, value(effect, "freq")),
+                        db_y(rect, value(effect, "boost") * 0.5, top, bottom),
+                    );
+                    handles.push((at, Some("freq"), Some("boost")));
+                    hint = "Drag the point: left/right sets the frequency, up/down the boost";
+                }
+                EffectKind::DcBlock => {
+                    let at = pos2(
+                        freq_x(rect, value(effect, "freq")),
+                        db_y(rect, -3.0, top, bottom),
+                    );
+                    handles.push((at, Some("freq"), None));
+                    hint = "Everything below the point is removed; drag it left or right";
+                }
+                EffectKind::AutoFilter => {
+                    let res = value(effect, "resonance");
+                    let at = pos2(
+                        freq_x(rect, value(effect, "cutoff")),
+                        rect.bottom() - rect.height() * (0.15 + 0.7 * res),
+                    );
+                    handles.push((at, Some("cutoff"), Some("resonance")));
+                    hint = "The filter at rest; the LFO and the input level sweep it from here. Drag to set cutoff and resonance";
+                }
+                _ => hint = "The vowel's three formant peaks; the vowel knob morphs a-e-i-o-u",
+            }
+        }
+        EffectKind::MultiTap => {
+            for beat in 0..=(TAP_SPAN as i32) {
+                let x = rect.left() + rect.width() * beat as f32 / TAP_SPAN;
+                painter.line_segment(
+                    [pos2(x, rect.top()), pos2(x, rect.bottom())],
+                    Stroke::new(1.0, theme::GRID_LINE),
+                );
+            }
+            painter.line_segment(
+                [
+                    pos2(rect.left() + 3.0, rect.bottom() - 6.0),
+                    pos2(rect.left() + 3.0, rect.top() + 6.0),
+                ],
+                Stroke::new(3.0, theme::TEXT),
+            );
+            for tap in 1..=4 {
+                let (time, level) = (format!("tap{tap}_time"), format!("tap{tap}_level"));
+                let x = rect.left() + rect.width() * value(effect, &time) / TAP_SPAN;
+                let y = rect.bottom() - 6.0 - (rect.height() - 12.0) * value(effect, &level);
+                painter.line_segment(
+                    [pos2(x, rect.bottom() - 6.0), pos2(x, y)],
+                    Stroke::new(3.0, color),
+                );
+                painter.text(
+                    pos2(x + 4.0, y),
+                    egui::Align2::LEFT_TOP,
+                    if tap % 2 == 1 { "L" } else { "R" },
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT_DIM,
+                );
+                let names = effect.kind.params();
+                let t = names.get((tap - 1) * 2).map(|s| s.name);
+                let l = names.get((tap - 1) * 2 + 1).map(|s| s.name);
+                handles.push((pos2(x, y), t, l));
+            }
+            hint = "Four echoes over four beats: drag a tap sideways for its time, up or down for its level";
+        }
+        EffectKind::RingMod | EffectKind::FreqShift => {
+            frequency_grid(&painter, rect);
+            let input = 440.0;
+            let mix = value(effect, "mix");
+            let outputs: Vec<f32> = if effect.kind == EffectKind::RingMod {
+                let f = value(effect, "freq");
+                vec![input + f, (input - f).abs()]
+            } else {
+                vec![(input + value(effect, "shift")).abs()]
+            };
+            let bar = |f: f32, height: f32, c: Color32| {
+                let x = freq_x(rect, f.clamp(F_LOW, F_HIGH));
+                painter.line_segment(
+                    [
+                        pos2(x, rect.bottom() - 4.0),
+                        pos2(x, rect.bottom() - 4.0 - height),
+                    ],
+                    Stroke::new(3.0, c),
+                );
+            };
+            let h = rect.height() * 0.8;
+            bar(input, h * (1.0 - mix).max(0.08), theme::TEXT_DIM);
+            for f in outputs {
+                bar(f, h * mix.max(0.08), color);
+            }
+            hint = if effect.kind == EffectKind::RingMod {
+                "A 440 Hz tone (grey) becomes the sum and difference of it and the carrier"
+            } else {
+                "A 440 Hz tone (grey) moves by the shift; harmonics move by the same hertz, so they stop being harmonic"
+            };
+        }
+        EffectKind::Transient => {
+            let (before, after) = response::transient_envelopes(&effect.values, width + 1);
+            let peak = 1.6;
+            let to_points = |v: &[f32]| -> Vec<Pos2> {
+                v.iter()
+                    .enumerate()
+                    .map(|(i, level)| {
+                        pos2(
+                            rect.left() + i as f32,
+                            rect.bottom() - 4.0 - (level / peak).min(1.0) * (rect.height() - 8.0),
+                        )
+                    })
+                    .collect()
+            };
+            for pair in to_points(&before).windows(2) {
+                painter.line_segment([pair[0], pair[1]], Stroke::new(1.0, theme::TEXT_DIM));
+            }
+            for pair in to_points(&after).windows(2) {
+                painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
+            }
+            hint = "A drum hit's level before (grey) and after: attack shapes the front, sustain the tail";
+        }
         EffectKind::Plugin => {}
     }
 
@@ -799,12 +1027,33 @@ fn graph(
                         let t = (rect.bottom() - pointer.y) / rect.height();
                         push("resonance", ((t - 0.15) / 0.7).clamp(0.0, 1.0));
                     }
-                    EffectKind::Compressor => {
+                    EffectKind::Compressor | EffectKind::NoiseGate => {
                         let db = -60.0 + 66.0 * (pointer.x - rect.left()) / rect.width();
                         push("threshold", db);
                     }
                     EffectKind::Limiter => push("ceiling", y_db(rect, pointer.y, 6.0, -60.0)),
-                    _ => {}
+                    EffectKind::MultiTap => {
+                        if let Some(name) = x_param {
+                            push(name, (pointer.x - rect.left()) / rect.width() * TAP_SPAN);
+                        }
+                        if let Some(name) = y_param {
+                            push(name, tap_level(rect, pointer.y));
+                        }
+                    }
+                    kind => {
+                        let (top, bottom) = db_range(kind);
+                        if let Some(name) = x_param {
+                            push(name, x_freq(rect, pointer.x));
+                        }
+                        match *y_param {
+                            Some("resonance") => {
+                                let t = (rect.bottom() - pointer.y) / rect.height();
+                                push("resonance", ((t - 0.15) / 0.7).clamp(0.0, 1.0));
+                            }
+                            Some(name) => push(name, y_db(rect, pointer.y, top, bottom)),
+                            None => {}
+                        }
+                    }
                 }
                 if let Some(invocation) = batch(changes) {
                     actions.push(Action::Coalesced(invocation, state.gesture()));

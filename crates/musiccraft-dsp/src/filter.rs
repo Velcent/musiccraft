@@ -191,6 +191,15 @@ impl Biquad {
         );
     }
 
+    /// Takes `other`'s coefficients, keeping this filter's memory.
+    pub fn copy_coefficients(&mut self, other: &Self) {
+        self.b0 = other.b0;
+        self.b1 = other.b1;
+        self.b2 = other.b2;
+        self.a1 = other.a1;
+        self.a2 = other.a2;
+    }
+
     /// Clears the filter memory.
     pub fn reset(&mut self) {
         self.z1 = 0.0;

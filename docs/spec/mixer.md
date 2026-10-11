@@ -46,8 +46,22 @@
 | `stereo` | width (0 mono – 2 extra wide, mid/side), balance, invert left, invert right |
 | `gate` | rate (1/32 note – 1 bar per step), duty (open share of a step), depth, smooth ms, steps (16-step on/off pattern as a number, bit 0 = first step) |
 | `autopan` | rate (1/32 note – 1 bar per cycle), depth, shape (sine, triangle, square) |
+| `graphic_eq` | seven peak bands at 63, 160, 400, 1k, 2.5k, 6.3k, 16k Hz (±18 dB each), output dB |
+| `parametric_eq` | seven bands of freq/gain/q (band 1 a low shelf, 7 a high shelf, 2–6 peaks), output dB; the window's points drag frequency and gain |
+| `bass_boost` | freq Hz, boost dB (low shelf), drive (gentle saturation after the shelf) |
+| `overdrive` | drive dB, tone Hz (low-pass after the clipper), bias (asymmetry, adds even harmonics), mix, output dB |
+| `soft_clipper` | threshold dB, knee (how early the curve bends), output dB; never exceeds the threshold |
+| `waveshaper` | shape (tanh, hard clip, fold, sine, asymmetric, rectify), drive dB, mix, output dB |
+| `dc_block` | freq Hz (one-pole high-pass that removes DC offset) |
+| `ring_mod` | freq Hz (sine carrier the signal is multiplied by), mix |
+| `freq_shift` | shift Hz (−2000–2000; every frequency moves by the same amount, via a Hilbert transformer), mix |
+| `formant` | vowel (0 a – 4 u, fractional values morph), shift semitones, resonance, mix |
+| `auto_filter` | mode, cutoff Hz, resonance, rate (tempo-synced LFO), depth octaves, envelope octaves (input level opens or closes the filter), mix |
+| `noise_gate` | threshold dB, attack ms, hold ms, release ms, range dB (attenuation while closed) |
+| `transient` | attack (−1 soften – 1 boost), sustain (−1–1), output dB; from the difference of a fast and a slow envelope |
+| `multi_tap` | four taps of time (beats) and level, alternating left/right, feedback, mix, damping |
 
-The gate and auto-pan follow the song position while playing (so they stay in
+The gate, auto-pan and auto filter follow the song position while playing (so they stay in
 time with the beat) and a free-running clock at the project tempo while
 stopped. The gate's window shows the 16 steps; clicking one turns it on or off.
 
@@ -94,6 +108,11 @@ Ranges and defaults are defined in `musiccraft-params`.
   section. Effects are our own implementations of textbook designs: RBJ "Audio EQ
   Cookbook" biquads, Freeverb-style reverb (public domain algorithm by Jezar),
   feed-forward compression, peak limiting, a modulated-delay chorus, tanh soft
-  clipping.
+  clipping. The frequency shifter uses Olli Niemitalo's public-domain
+  all-pass Hilbert transformer coefficients; vowel formant frequencies are
+  textbook averages (Peterson & Barney style tables). The range of effect types
+  (graphic and parametric EQ, gate, transient processing, multi-tap delay,
+  waveshaping, frequency shifting) mirrors the categories in the FL Studio
+  manual's effects list; the designs are ours.
 - Effect windows (preset bar, graph, knobs) follow the common layout of plugin
   windows in pattern-based DAWs; the graphs and factory presets are our own.
