@@ -23,8 +23,8 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         ),
         cmd(
             "note.add",
-            "note.add <channel> <start> <length> <key> [velocity] [pan] [@pattern]",
-            "Add a note; times in steps (or <n>t ticks), key as 60 or C5.",
+            "note.add <channel> <start> <length> <key> [velocity] [pan] [slide] [@pattern]",
+            "Add a note; times in steps (or <n>t ticks), key as 60 or C5; `slide` makes a slide note.",
             add,
         ),
         cmd(
@@ -38,6 +38,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "note.set_pan <channel> <start> <key> <-100..100> [@pattern]",
             "Change a note's pan.",
             set_pan,
+        ),
+        cmd(
+            "note.set_slide",
+            "note.set_slide <channel> <start> <key> <on|off> [@pattern]",
+            "Make a note a slide note (glides from the sounding note) or not.",
+            set_slide,
         ),
         cmd(
             "note.remove",
@@ -115,18 +121,19 @@ impl Target {
     }
 
     fn add_inverse(&self, note: &Note) -> Invocation {
-        Invocation::new(
-            "note.add",
-            [
-                self.number(),
-                ticks(note.start),
-                ticks(note.length),
-                note.key.to_string(),
-                note.velocity.to_string(),
-                note.pan.to_string(),
-                at_pattern(self.pattern),
-            ],
-        )
+        let mut args = vec![
+            self.number(),
+            ticks(note.start),
+            ticks(note.length),
+            note.key.to_string(),
+            note.velocity.to_string(),
+            note.pan.to_string(),
+        ];
+        if note.slide {
+            args.push("slide".to_owned());
+        }
+        args.push(at_pattern(self.pattern));
+        Invocation::new("note.add", args)
     }
 
     fn remove_inverse(&self, start: u32, key: u8) -> Invocation {
@@ -142,16 +149,20 @@ impl Target {
     }
 
     pub(super) fn set_all_inverse(&self, notes: &[Note]) -> Invocation {
-        let rows: Vec<[i64; 5]> = notes
+        let rows: Vec<Vec<i64>> = notes
             .iter()
             .map(|n| {
-                [
+                let mut row = vec![
                     i64::from(n.start),
                     i64::from(n.length),
                     i64::from(n.key),
                     i64::from(n.velocity),
                     i64::from(n.pan),
-                ]
+                ];
+                if n.slide {
+                    row.push(1);
+                }
+                row
             })
             .collect();
         let json = serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_owned());
@@ -192,6 +203,7 @@ fn set_step(project: &mut Project, target: &Target, tick: u32, on: bool) -> Opti
     match (on, existing.is_empty()) {
         (true, true) => {
             pattern.put_note(Note {
+                slide: false,
                 channel,
                 start: tick,
                 length: TICKS_PER_STEP,
@@ -253,13 +265,19 @@ fn step_set(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
 }
 
 fn add(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
-    args.expect(4, 6)?;
+    args.expect(4, 7)?;
     let target = Target::resolve(project, args)?;
     let pan = match args.opt(5) {
         Some(_) => pan_arg(args, 5)?,
         None => 0,
     };
+    let slide = match args.opt(6) {
+        None => false,
+        Some("slide") => true,
+        Some(other) => return Err(args.invalid(format!("`{other}` is not `slide`"))),
+    };
     let note = Note {
+        slide,
         channel: project.channels[target.channel].id,
         start: args.time(1, TICKS_PER_STEP)?,
         length: args.duration(2, TICKS_PER_STEP)?,
@@ -409,10 +427,15 @@ fn set_all(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErr
     let channel = project.channels[target.channel].id;
     let mut notes = Vec::with_capacity(rows.len());
     for row in rows {
-        let (start, length, key, velocity, pan) = match row.as_slice() {
-            [s, l, k, v] => (*s, *l, *k, *v, 0),
-            [s, l, k, v, p] => (*s, *l, *k, *v, *p),
-            _ => return Err(args.invalid("each note is [start, length, key, velocity, pan?]")),
+        let (start, length, key, velocity, pan, slide) = match row.as_slice() {
+            [s, l, k, v] => (*s, *l, *k, *v, 0, false),
+            [s, l, k, v, p] => (*s, *l, *k, *v, *p, false),
+            [s, l, k, v, p, slide] => (*s, *l, *k, *v, *p, *slide != 0),
+            _ => {
+                return Err(
+                    args.invalid("each note is [start, length, key, velocity, pan?, slide?]")
+                );
+            }
         };
         let parsed = (
             u32::try_from(start),
@@ -433,6 +456,7 @@ fn set_all(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErr
                 .invalid("each note needs length > 0, key 0-127, velocity 1-127, pan -100..100"));
         }
         notes.push(Note {
+            slide,
             channel,
             start,
             length,
@@ -512,6 +536,7 @@ fn import_midi(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
         .notes
         .iter()
         .map(|n| Note {
+            slide: false,
             channel,
             start: convert(n.start),
             length: convert(n.length).max(1),
@@ -557,6 +582,7 @@ fn add_chord(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     let added: Vec<Note> = intervals
         .iter()
         .map(|i| Note {
+            slide: false,
             channel,
             start,
             length,
@@ -582,6 +608,15 @@ fn pan_arg(args: &Args<'_>, i: usize) -> Result<i8, CommandError> {
     } else {
         Err(args.invalid("pan must be -100 to 100"))
     }
+}
+
+fn set_slide(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(4, 4)?;
+    let on = args.flag(3)?;
+    edit_note(project, args, |note| {
+        note.slide = on;
+        Ok(format!("slide {}", if on { "on" } else { "off" }))
+    })
 }
 
 fn set_pan(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

@@ -13,6 +13,8 @@ pub struct NoteEvent {
     pub velocity: f32,
     /// Note pan, -1..=1, applied on top of the channel pan.
     pub pan: f32,
+    /// Glide the sounding note to this key instead of starting a new one.
+    pub slide: bool,
 }
 
 /// A parameter an automation lane writes.
@@ -152,6 +154,7 @@ mod tests {
             key: 60,
             velocity: 1.0,
             pan: 0.0,
+            slide: false,
         }
     }
 

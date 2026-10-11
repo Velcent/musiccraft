@@ -526,3 +526,59 @@ fn every_effect_preset_keeps_audio_sane() {
         }
     }
 }
+
+/// Frequency of a pure tone by counting rising zero crossings.
+fn frequency(data: &[f32], sample_rate: f32) -> f32 {
+    let crossings = data
+        .windows(2)
+        .filter(|w| w[0] <= 0.0 && w[1] > 0.0)
+        .count();
+    crossings as f32 * sample_rate / data.len() as f32
+}
+
+#[test]
+fn slide_notes_glide_the_sounding_note_without_retriggering() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_synth
+         channel.set_param 1 wave1 0
+         channel.set_param 1 osc_mix 0
+         channel.set_param 1 sustain 1
+         note.add 1 0 8 C4
+         note.add 1 4 8 C5 100 0 slide",
+    );
+    let sr = 48_000.0;
+    let options = RenderOptions {
+        sample_rate: 48_000,
+        loops: 1,
+        max_tail_seconds: 0.0,
+    };
+    let (left, _, _) = render(s.project(), options);
+    // At 120 BPM a step is 1/8 s: the slide starts at 0.5 s, ends at 1.5 s.
+    let at = |from: f32, to: f32| frequency(&left[(from * sr) as usize..(to * sr) as usize], sr);
+    // The glide spans the slide note: key 48 + 12 semitones over 0.5–1.5 s.
+    let hz = |key: f32| 440.0 * 2f32.powf((key - 69.0) / 12.0);
+    let before = at(0.1, 0.45);
+    assert!((before - hz(48.0)).abs() < 3.0, "before slide {before}");
+    let middle = at(0.95, 1.05);
+    assert!(
+        (middle - hz(54.0)).abs() < 8.0,
+        "halfway {middle} vs {}",
+        hz(54.0)
+    );
+    let late = at(1.42, 1.49);
+    assert!(
+        late > hz(58.5) && late < hz(60.0) + 3.0,
+        "nearly there {late}"
+    );
+    // Still sounding until the slide note ends.
+    assert!(rms(&left[(1.4 * sr) as usize..(1.48 * sr) as usize]) > 0.05);
+
+    // A slide note with nothing sounding plays normally.
+    let mut s = session();
+    run(&mut s, "channel.add_synth\nnote.add 1 0 4 C4 100 0 slide");
+    let (left, _, _) = render(s.project(), options);
+    assert!(rms(&left[..4_800]) > 0.01);
+}

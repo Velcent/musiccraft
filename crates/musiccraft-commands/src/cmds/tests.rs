@@ -53,6 +53,8 @@ const SCRIPT: &[&str] = &[
     "note.resize 3 0 C4 4",
     "note.set_velocity 3 0 C4 127",
     "note.set_pan 3 0 C4 -40",
+    "note.set_slide 3 0 C4 on",
+    "note.add 3 10 1 C5 90 0 slide",
     "note.add 3 6 1 B4 80 25",
     "note.transpose 3 12",
     "note.quantize 3 2",

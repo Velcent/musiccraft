@@ -456,6 +456,7 @@ impl Engine {
 
     fn live_note_on(&mut self, channel: u16, key: u8, velocity: f32) {
         let start = VoiceStart {
+            slide: false,
             channel,
             key,
             velocity,
@@ -744,6 +745,7 @@ fn event_start(event: &NoteEvent, offset_frames: f64, tpf: f64) -> VoiceStart {
         live: false,
         pan: event.pan,
         glide_from: None,
+        slide: event.slide,
     }
 }
 
@@ -770,6 +772,19 @@ fn trigger(
             );
         }
         return;
+    }
+    // A slide note moves the sounding note of its channel instead of
+    // starting one.
+    if start.slide {
+        let held = voices
+            .iter_mut()
+            .filter(|v| v.channel == start.channel && v.held())
+            .max_by_key(|v| v.age);
+        if let Some(voice) = held {
+            let frames = start.gate.unwrap_or(1);
+            voice.slide_to(start.key, start.delay, frames, start.gate);
+            return;
+        }
     }
     // A held note on the same channel is where a glide starts from.
     start.glide_from = voices

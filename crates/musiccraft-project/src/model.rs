@@ -269,6 +269,10 @@ pub struct Note {
     /// Pan, -100 (left) to 100 (right).
     #[serde(default)]
     pub pan: i8,
+    /// A slide note glides the sounding note of its channel to its key
+    /// instead of starting a new one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slide: bool,
 }
 
 /// A pattern: notes for any number of channels.

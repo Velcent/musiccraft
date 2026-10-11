@@ -395,6 +395,7 @@ fn fill(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
             let start = step * TICKS_PER_STEP;
             if !notes.iter().any(|n| n.start == start) {
                 notes.push(Note {
+                    slide: false,
                     channel: musiccraft_project::ChannelId(0),
                     start,
                     length: TICKS_PER_STEP,

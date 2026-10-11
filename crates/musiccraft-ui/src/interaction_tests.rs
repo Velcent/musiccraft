@@ -857,3 +857,17 @@ fn playlist_paint_and_delete_tools_are_single_steps() {
 fn clips_len(painted: &[String]) -> usize {
     painted[0].matches("playlist.add_clip").count()
 }
+
+#[test]
+fn slide_toggle_draws_slide_notes() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.piano_roll = true;
+    h.state.roll.slide = true;
+    h.settle();
+    let added = h.click(
+        h.roll_point(4 * TICKS_PER_STEP + 5, 62),
+        PointerButton::Primary,
+    );
+    assert_eq!(added, ["note.add 1 96t 24t 62 100 0 slide"]);
+    assert!(h.session.project().current_pattern().notes[0].slide);
+}

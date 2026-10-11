@@ -38,6 +38,8 @@ pub(crate) struct VoiceStart {
     pub pan: f32,
     /// Pitch (in keys) of the note this one glides from, if any.
     pub glide_from: Option<f32>,
+    /// A slide note: move the sounding voice instead of starting one.
+    pub slide: bool,
 }
 
 /// One sounding note.
@@ -160,6 +162,18 @@ impl Voice {
         self.sample_rate
     }
 
+    /// Glides this voice to `key` over `frames` frames (a slide note), and
+    /// keeps it sounding for `delay + gate` frames from now.
+    pub fn slide_to(&mut self, key: u8, delay: u32, frames: u64, gate: Option<u64>) {
+        let from = self.current_key();
+        self.key = key;
+        self.glide = from - f32::from(key);
+        self.glide_rate = self.glide.abs() / (frames.max(1) as f32);
+        if let Some(gate) = gate {
+            self.gate = Some(u64::from(delay) + gate);
+        }
+    }
+
     /// Closes the gate (one-shot samples keep playing unless `force`).
     pub fn release(&mut self, force: bool) {
         if !self.one_shot || force {
@@ -186,12 +200,20 @@ impl Voice {
         match instrument {
             Instrument::Sampler(buffer) => {
                 let root = param(params, inst::ROOT_KEY);
-                let ratio = 2.0_f64.powf(f64::from(pitch - root) / 12.0);
-                let step = buffer.sample_rate() / f64::from(sample_rate) * ratio;
+                let rate = buffer.sample_rate() / f64::from(sample_rate);
+                let step_for =
+                    |glide: f32| rate * 2.0_f64.powf(f64::from(pitch + glide - root) / 12.0);
+                let mut step = step_for(self.glide);
                 let end = buffer.len() as f64;
                 for (l, r) in left.iter_mut().zip(right.iter_mut()) {
                     if !self.advance_gate() {
                         continue;
+                    }
+                    if self.glide != 0.0 {
+                        // A slide moves the pitch offset toward zero.
+                        let change = self.glide_rate.min(self.glide.abs());
+                        self.glide -= change * self.glide.signum();
+                        step = step_for(self.glide);
                     }
                     let level = self.env.next_level() * self.velocity;
                     let (sl, sr) = buffer.read(self.sample_pos);
@@ -349,6 +371,7 @@ mod tests {
         let mut params = ChannelParams::default();
         params.instrument[inst::GLIDE] = 0.5;
         let start = VoiceStart {
+            slide: false,
             channel: 0,
             key: 69,
             velocity: 1.0,
@@ -381,6 +404,7 @@ mod tests {
 
     fn render_synth_note(params: &ChannelParams) -> (Vec<f32>, Vec<f32>) {
         let start = VoiceStart {
+            slide: false,
             channel: 0,
             key: 57,
             velocity: 1.0,
@@ -449,6 +473,7 @@ mod tests {
     fn no_glide_without_a_glide_time() {
         let params = ChannelParams::default();
         let start = VoiceStart {
+            slide: false,
             channel: 0,
             key: 69,
             velocity: 1.0,

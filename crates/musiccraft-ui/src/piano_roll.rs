@@ -57,6 +57,8 @@ pub(crate) enum Tool {
 pub struct RollState {
     /// The active tool.
     pub(crate) tool: Tool,
+    /// New notes are slide notes.
+    pub(crate) slide: bool,
     /// Notes painted or marked for deletion in the stroke in progress.
     stroke: Vec<Note>,
     px_per_step: f32,
@@ -94,6 +96,7 @@ impl Default for RollState {
     fn default() -> Self {
         Self {
             tool: Tool::Draw,
+            slide: false,
             stroke: Vec::new(),
             px_per_step: 24.0,
             key_height: 14.0,
@@ -196,16 +199,17 @@ fn add_notes(channel: usize, notes: &[Note], offset: u32) -> Option<Invocation> 
         notes
             .iter()
             .map(|n| {
-                Invocation::new(
-                    "note.add",
-                    [
-                        ch.clone(),
-                        ticks(n.start + offset),
-                        ticks(n.length),
-                        n.key.to_string(),
-                        n.velocity.to_string(),
-                    ],
-                )
+                let mut args = vec![
+                    ch.clone(),
+                    ticks(n.start + offset),
+                    ticks(n.length),
+                    n.key.to_string(),
+                    n.velocity.to_string(),
+                ];
+                if n.slide {
+                    args.extend([n.pan.to_string(), "slide".to_owned()]);
+                }
+                Invocation::new("note.add", args)
             })
             .collect(),
     )
@@ -227,21 +231,24 @@ fn remove_notes(channel: usize, notes: &[Note]) -> Option<Invocation> {
 }
 
 /// Invocation that finishes a drag gesture.
-fn finish(drag: &NoteDrag, channel: usize, velocity: u8) -> Option<Invocation> {
+fn finish(drag: &NoteDrag, channel: usize, velocity: u8, slide: bool) -> Option<Invocation> {
     let ch = (channel + 1).to_string();
     let t = |ticks: u32| format!("{ticks}t");
     let n = drag.original;
     match drag.kind {
-        DragKind::Create => Some(Invocation::new(
-            "note.add",
-            [
+        DragKind::Create => {
+            let mut args = vec![
                 ch,
                 t(drag.start),
                 t(drag.length),
                 drag.key.to_string(),
                 velocity.to_string(),
-            ],
-        )),
+            ];
+            if slide {
+                args.extend(["0".to_owned(), "slide".to_owned()]);
+            }
+            Some(Invocation::new("note.add", args))
+        }
         DragKind::Move if (drag.start, drag.key) != (n.start, n.key) => Some(Invocation::new(
             "note.move",
             [
@@ -333,6 +340,8 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             }
         }
         ui.spacing_mut().item_spacing.x = 8.0;
+        ui.toggle_value(&mut state.roll.slide, "Slide")
+            .hint("New notes are slide notes: they glide the sounding note to their key");
         ui.add_space(4.0);
         egui::ComboBox::from_id_salt("roll-channel")
             .width(130.0)
@@ -414,7 +423,19 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                 [number.clone(), format!("{}t", state.roll.snap.ticks())],
             )));
         }
-        tools_menu(ui, state, &number, actions);
+        let selected: Vec<Note> = project
+            .channels
+            .get(channel)
+            .map(|c| {
+                project
+                    .current_pattern()
+                    .notes_of(c.id)
+                    .filter(|n| state.roll.selection.contains(&(n.start, n.key)))
+                    .copied()
+                    .collect()
+            })
+            .unwrap_or_default();
+        tools_menu(ui, state, &number, &selected, actions);
         if ui.button("Oct −").clicked() {
             actions.push(Action::Run(Invocation::new(
                 "note.transpose",
@@ -530,6 +551,22 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 color,
                 false,
             );
+            if note.slide {
+                // A ramp at the start marks a slide note.
+                let r = grid
+                    .span(row_of_key(note.key), note.start, note.length)
+                    .shrink2(vec2(1.0, 2.0));
+                let w = r.width().min(r.height() * 1.5);
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        r.left_bottom(),
+                        pos2(r.left() + w, r.top()),
+                        pos2(r.left() + w, r.bottom()),
+                    ],
+                    Color32::from_white_alpha(150),
+                    Stroke::NONE,
+                ));
+            }
             if state.roll.selection.contains(&(note.start, note.key)) {
                 let r = grid
                     .span(row_of_key(note.key), note.start, note.length)
@@ -813,7 +850,29 @@ fn shifted(note: &Note, dt: i64, dk: i32) -> (u32, u8) {
 }
 
 /// The piano roll's Tools menu: note transformations on the shown channel.
-fn tools_menu(ui: &mut egui::Ui, state: &mut UiState, number: &str, actions: &mut Vec<Action>) {
+fn tools_menu(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: &str,
+    selected: &[Note],
+    actions: &mut Vec<Action>,
+) {
+    let toggles: Vec<Invocation> = selected
+        .iter()
+        .map(|n| {
+            Invocation::new(
+                "note.set_slide",
+                [
+                    number.to_owned(),
+                    ticks(n.start),
+                    n.key.to_string(),
+                    if n.slide { "off" } else { "on" }.to_owned(),
+                ],
+            )
+        })
+        .collect();
+    let toggle_slide = batch(toggles);
+    let mut toggled = None;
     let grid = format!("{}t", state.roll.snap.ticks());
     let mut run = |args: Vec<String>, name: &str| {
         let mut all = vec![number.to_owned()];
@@ -904,6 +963,15 @@ fn tools_menu(ui: &mut egui::Ui, state: &mut UiState, number: &str, actions: &mu
                     .hint("Highlight a scale first");
             }
         }
+        let enabled = toggle_slide.is_some();
+        if ui
+            .add_enabled(enabled, egui::Button::new("Toggle slide"))
+            .hint("Make the selected notes slide notes, or normal again")
+            .clicked()
+        {
+            toggled = toggle_slide.clone();
+            ui.close();
+        }
         ui.menu_button("Arpeggiate", |ui| {
             for (label, mode) in [
                 ("Up", "up"),
@@ -921,6 +989,9 @@ fn tools_menu(ui: &mut egui::Ui, state: &mut UiState, number: &str, actions: &mu
             }
         });
     });
+    if let Some(invocation) = toggled {
+        actions.push(Action::Run(invocation));
+    }
 }
 
 /// Paint and delete strokes. Returns `true` when the tool handled the input.
@@ -1001,6 +1072,7 @@ fn tool_stroke(
                         .is_none_or(|last| start >= last.start + last.length);
                     if free {
                         state.roll.stroke.push(Note {
+                            slide: state.roll.slide,
                             channel: musiccraft_project::ChannelId(0),
                             start,
                             length,
@@ -1088,6 +1160,7 @@ fn edit(
                         NoteDrag {
                             kind: DragKind::Create,
                             original: Note {
+                                slide: false,
                                 channel: musiccraft_project::ChannelId(0),
                                 start,
                                 length: state.roll.last_length,
@@ -1197,7 +1270,9 @@ fn edit(
                     }
                 }
                 _ => {
-                    if let Some(invocation) = finish(&drag, channel, state.roll.velocity) {
+                    if let Some(invocation) =
+                        finish(&drag, channel, state.roll.velocity, state.roll.slide)
+                    {
                         actions.push(Action::Run(invocation));
                     }
                     state.roll.selection = BTreeSet::from([(drag.start, drag.key)]);
@@ -1251,10 +1326,14 @@ fn edit(
                                 velocity,
                             ],
                         ),
-                        None => Invocation::new(
-                            "note.add",
-                            [ch, ticks(start), length, key.to_string(), velocity],
-                        ),
+                        None => {
+                            let mut args =
+                                vec![ch, ticks(start), length, key.to_string(), velocity];
+                            if state.roll.slide {
+                                args.extend(["0".to_owned(), "slide".to_owned()]);
+                            }
+                            Invocation::new("note.add", args)
+                        }
                     };
                     actions.push(Action::Run(invocation));
                     actions.push(Action::PreviewShort { channel, key });
@@ -1633,6 +1712,7 @@ mod tests {
         NoteDrag {
             kind,
             original: Note {
+                slide: false,
                 channel: ChannelId(1),
                 start: 24,
                 length: 24,
@@ -1649,24 +1729,25 @@ mod tests {
 
     #[test]
     fn gestures_become_single_commands() {
-        let create = finish(&drag(DragKind::Create, 48, 62, 12), 0, 90).unwrap();
+        let create = finish(&drag(DragKind::Create, 48, 62, 12), 0, 90, false).unwrap();
         assert_eq!(create.to_string(), "note.add 1 48t 12t 62 90");
-        let moved = finish(&drag(DragKind::Move, 96, 64, 24), 2, 100).unwrap();
+        let moved = finish(&drag(DragKind::Move, 96, 64, 24), 2, 100, false).unwrap();
         assert_eq!(moved.to_string(), "note.move 3 24t 60 96t 64");
-        let resized = finish(&drag(DragKind::Resize, 24, 60, 72), 0, 100).unwrap();
+        let resized = finish(&drag(DragKind::Resize, 24, 60, 72), 0, 100, false).unwrap();
         assert_eq!(resized.to_string(), "note.resize 1 24t 60 72t");
         assert!(
-            finish(&drag(DragKind::Move, 24, 60, 24), 0, 100).is_none(),
+            finish(&drag(DragKind::Move, 24, 60, 24), 0, 100, false).is_none(),
             "no-op move"
         );
         assert!(
-            finish(&drag(DragKind::Resize, 24, 60, 24), 0, 100).is_none(),
+            finish(&drag(DragKind::Resize, 24, 60, 24), 0, 100, false).is_none(),
             "no-op resize"
         );
     }
 
     fn n(start: u32, key: u8) -> Note {
         Note {
+            slide: false,
             channel: ChannelId(1),
             start,
             length: 24,

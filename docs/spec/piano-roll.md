@@ -38,6 +38,19 @@
   in song mode). Each recorded note is one undo step. Notes held across the loop
   point keep their full length.
 
+## Slide notes
+
+- A note can be a **slide note** (`note.set_slide <channel> <start> <key>
+  <on|off>`, undoable; stored as `"slide": true`). When it starts while
+  another note of the same channel is sounding, it does not start a new
+  voice: the sounding note glides to the slide note's key over the slide
+  note's length and keeps sounding until the slide note ends. With nothing
+  sounding, a slide note plays like a normal note.
+- Works for the synth and the sampler; plugins get a normal note.
+- In the piano roll, the Slide toggle on the toolbar makes new notes slide
+  notes, and Tools → Toggle slide flips the selected notes. Slide notes are
+  drawn with a ramp mark.
+
 ## Note tools
 
 Each tool rewrites all notes of one channel in a pattern as one undo step

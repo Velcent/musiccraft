@@ -33,6 +33,7 @@ fn impulse_engine() -> (Engine, EngineHandle) {
 
 fn note(start_beats: u64, channel: u16) -> NoteEvent {
     NoteEvent {
+        slide: false,
         start: start_beats * u64::from(PPQ),
         length: u64::from(PPQ) / 4,
         channel,

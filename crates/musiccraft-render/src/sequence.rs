@@ -21,6 +21,7 @@ fn event(
 ) -> Option<NoteEvent> {
     let channel = u16::try_from(project.channel_position(note.channel)?).ok()?;
     Some(NoteEvent {
+        slide: note.slide,
         start: u64::from(start),
         length: u64::from(length.max(1)),
         channel,
@@ -63,6 +64,7 @@ fn song_events(project: &Project) -> Vec<NoteEvent> {
                     .get(musiccraft_params::inst::ROOT_KEY) as u8;
                 if let Ok(channel) = u16::try_from(index) {
                     events.push(NoteEvent {
+                        slide: false,
                         start: u64::from(clip.start),
                         length: u64::from(clip.length.max(1)),
                         channel,

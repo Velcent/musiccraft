@@ -78,6 +78,7 @@ fn pattern_length_grows_to_fit_notes() {
     let mut pattern = Pattern::new(PatternId(1), "P");
     assert_eq!(pattern.length_ticks(), 16 * TICKS_PER_STEP);
     pattern.put_note(Note {
+        slide: false,
         channel: ChannelId(1),
         start: TICKS_PER_BAR + 5,
         length: 10,
@@ -92,6 +93,7 @@ fn pattern_length_grows_to_fit_notes() {
 fn put_note_replaces_same_position_and_key() {
     let mut pattern = Pattern::new(PatternId(1), "P");
     let note = Note {
+        slide: false,
         channel: ChannelId(1),
         start: 0,
         length: 24,
@@ -127,6 +129,7 @@ fn rich_project() -> Project {
         .channels
         .push(Channel::new(lead, "Lead", Instrument::Synth));
     project.patterns[0].put_note(Note {
+        slide: false,
         channel: kick,
         start: 0,
         length: 24,
