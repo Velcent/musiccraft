@@ -110,9 +110,11 @@ impl PluginGlue {
         if ui.windows.channel_settings {
             shown.push(PluginSlot::Channel(ui.selected_channel));
         }
-        if ui.windows.mixer {
-            shown.push(PluginSlot::Effect(ui.selected_track, ui.mixer_slot));
-        }
+        shown.extend(
+            ui.effect_windows
+                .iter()
+                .map(|(track, slot)| PluginSlot::Effect(*track, *slot)),
+        );
         for slot in shown {
             let Some(instance) = project.plugin(slot).map(|p| p.instance) else {
                 continue;

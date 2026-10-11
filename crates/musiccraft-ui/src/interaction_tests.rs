@@ -751,3 +751,35 @@ fn hints_show_in_the_bar_and_settings_open_from_f10() {
     }]);
     assert_eq!(h.state.settings_tab, Some(crate::settings::Tab::Audio));
 }
+
+#[test]
+fn dragging_an_eq_point_is_one_undoable_change() {
+    let mut h = Harness::new(&["mixer.add_effect 0 eq"]);
+    h.state.effect_windows.push((0, 0));
+    h.settle();
+    let graph = h.state.effect_graph.expect("graph drawn");
+    let depth = h.session.undo_depth();
+    // The middle point starts at 1 kHz, 0 dB: near the graph's middle.
+    let x = graph.left() + graph.width() * (1_000.0_f32 / 20.0).ln() / 1_000.0_f32.ln();
+    let start = pos2(x, graph.center().y);
+    let commands = h.drag(start, start + vec2(40.0, -30.0));
+    assert!(!commands.is_empty());
+    assert!(
+        commands.iter().all(|c| c.starts_with("edit.batch")),
+        "{commands:?}"
+    );
+    let eq = &h.session.project().mixer[0].effects[0];
+    assert!(eq.values[2] > 3.0, "mid gain raised: {}", eq.values[2]);
+    assert!(eq.values[3] > 1_200.0, "mid freq raised: {}", eq.values[3]);
+    assert_eq!(h.session.undo_depth(), depth + 1);
+}
+
+#[test]
+fn effect_windows_close_with_their_slot() {
+    let mut h = Harness::new(&["mixer.add_effect 0 reverb"]);
+    h.state.effect_windows.push((0, 0));
+    h.settle();
+    h.session.run_line("mixer.remove_effect 0 1").unwrap();
+    h.settle();
+    assert!(h.state.effect_windows.is_empty());
+}

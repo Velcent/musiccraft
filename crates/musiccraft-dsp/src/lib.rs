@@ -7,6 +7,7 @@ mod effect;
 mod envelope;
 mod filter;
 mod osc;
+pub mod response;
 mod reverb;
 mod sample;
 mod time;

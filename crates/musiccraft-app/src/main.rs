@@ -41,7 +41,8 @@ usage: musiccraft [project.mcproj] [--keymap <file>] [--empty] [--open <windows>
   --empty            start with an empty project instead of the drum starter kit
   --open <windows>   comma-separated windows to show at start:
                      channel_rack, piano_roll, playlist, mixer, browser,
-                     channel_settings, automation, settings";
+                     channel_settings, automation, settings,
+                     effect:<track>:<slot>";
 
 /// Audio running on a device.
 struct Audio {
@@ -209,6 +210,13 @@ impl App {
             w.mixer = windows.iter().any(|n| n == "mixer");
             w.browser = windows.iter().any(|n| n == "browser");
             w.channel_settings = windows.iter().any(|n| n == "channel_settings");
+            for spec in windows.iter().filter_map(|n| n.strip_prefix("effect:")) {
+                if let Some((track, slot)) = spec.split_once(':') {
+                    if let (Ok(track), Ok(slot)) = (track.parse::<usize>(), slot.parse::<usize>()) {
+                        ui.effect_windows.push((track, slot.saturating_sub(1)));
+                    }
+                }
+            }
             if windows.iter().any(|n| n == "settings") {
                 ui.settings_tab = Some(musiccraft_ui::settings::Tab::Audio);
             }

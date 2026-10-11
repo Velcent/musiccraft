@@ -5,6 +5,8 @@
 
 use std::fmt;
 
+pub mod presets;
+
 use serde::{Deserialize, Serialize};
 
 /// Ticks per quarter note (one beat). A step (1/16 note) is [`TICKS_PER_STEP`].
@@ -19,7 +21,7 @@ pub const TICKS_PER_BAR: u32 = PPQ * BEATS_PER_BAR;
 /// Capacity of an effect parameter array.
 pub const MAX_EFFECT_PARAMS: usize = 8;
 /// Capacity of an instrument parameter array.
-pub const MAX_INSTRUMENT_PARAMS: usize = 16;
+pub const MAX_INSTRUMENT_PARAMS: usize = 32;
 /// Maximum number of effect slots on one mixer track.
 pub const MAX_EFFECT_SLOTS: usize = 10;
 /// Maximum number of mixer tracks, master included.
@@ -224,6 +226,14 @@ pub mod inst {
     pub const PITCH: usize = 13;
     /// Synth portamento: time to slide from a held note to a new one, seconds.
     pub const GLIDE: usize = 14;
+    pub const UNISON: usize = 15;
+    pub const SPREAD: usize = 16;
+    pub const SUB: usize = 17;
+    pub const LFO_RATE: usize = 18;
+    pub const LFO_DEPTH: usize = 19;
+    pub const LFO_TARGET: usize = 20;
+    pub const FILTER_TYPE: usize = 21;
+    pub const DRIVE: usize = 22;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -243,7 +253,20 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("root_key", 0.0, 127.0, 60.0),
     spec("pitch", -48.0, 48.0, 0.0, "st"),
     spec("glide", 0.0, 2.0, 0.0, "s"),
+    int_spec("unison", 1.0, 7.0, 1.0),
+    spec("spread", 0.0, 100.0, 15.0, "ct"),
+    spec("sub", 0.0, 1.0, 0.0, ""),
+    spec("lfo_rate", 0.05, 20.0, 5.0, "Hz"),
+    spec("lfo_depth", 0.0, 1.0, 0.0, ""),
+    int_spec("lfo_target", 0.0, 2.0, 0.0),
+    int_spec("filter_type", 0.0, 2.0, 0.0),
+    spec("drive", 0.0, 1.0, 0.0, ""),
 ];
+
+/// Names of the LFO targets, by `lfo_target` value.
+pub const LFO_TARGETS: [&str; 3] = ["pitch", "cutoff", "volume"];
+/// Names of the synth filter types, by `filter_type` value.
+pub const FILTER_TYPES: [&str; 3] = ["low-pass", "band-pass", "high-pass"];
 
 /// Built-in insert effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

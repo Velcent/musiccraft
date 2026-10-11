@@ -9,6 +9,7 @@ mod browser;
 mod channel_rack;
 mod channel_settings;
 mod dialogs;
+mod effect_window;
 mod geometry;
 pub mod hint;
 mod icons;
@@ -207,6 +208,11 @@ pub struct UiState {
     pub plugin_filter: String,
     /// Hint of the control hovered last frame.
     pub(crate) hint: Option<String>,
+    /// Open effect windows: (mixer track, slot index).
+    pub effect_windows: Vec<(usize, usize)>,
+    pub(crate) effect_drag: Option<effect_window::Drag>,
+    /// Where the last effect graph was drawn (tests).
+    pub(crate) effect_graph: Option<egui::Rect>,
     /// Open settings tab; `None` when the settings window is closed.
     pub settings_tab: Option<settings::Tab>,
     /// Project name being edited in settings.
@@ -251,6 +257,9 @@ impl UiState {
             record_audio: false,
             plugin_filter: String::new(),
             hint: None,
+            effect_windows: Vec::new(),
+            effect_drag: None,
+            effect_graph: None,
             settings_tab: None,
             project_name: String::new(),
             scale_draft: None,
@@ -356,6 +365,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     automation::show(&ctx, state, frame, &mut actions);
     dialogs::show(&ctx, state, frame, &mut actions);
     dialogs::shortcuts(&ctx, state);
+    effect_window::show_all(&ctx, state, frame, &mut actions);
     settings::show(&ctx, state, frame, &mut actions);
 
     if let Some(dragged) = egui::DragAndDrop::payload::<browser::Dragged>(&ctx) {

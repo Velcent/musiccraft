@@ -222,6 +222,8 @@ fn muted_channel_is_silent() {
         ..impulse_params()
     };
     engine.apply(EngineMessage::Channel { channel: 0, params });
+    // Mute fades over one block so it never clicks.
+    render_mono(&mut engine, MAX_BLOCK);
     engine.apply(EngineMessage::SetSequence(Box::new(Sequence::new(
         vec![note(0, 0)],
         384,
@@ -229,6 +231,35 @@ fn muted_channel_is_silent() {
     engine.apply(EngineMessage::Play);
     let out = render_mono(&mut engine, 1_000);
     assert!(nonzero_frames(&out).is_empty());
+}
+
+#[test]
+fn volume_changes_ramp_instead_of_jumping() {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    // A constant signal: a long, flat sample.
+    let flat = Arc::new(SampleBuffer::mono(vec![0.5; 48_000], f64::from(SR)));
+    graph.add_channel(Instrument::Sampler(flat), impulse_params());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 60,
+        velocity: 1.0,
+    });
+    let mut block = vec![0.0; MAX_BLOCK];
+    engine.process(&mut block, 1);
+    let params = ChannelParams {
+        volume: 0.0,
+        ..impulse_params()
+    };
+    engine.apply(EngineMessage::Channel { channel: 0, params });
+    engine.process(&mut block, 1);
+    let biggest_step = block
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(0.0, f32::max);
+    assert!(biggest_step < 0.01, "step {biggest_step}");
+    assert!(block[0] > 0.4 && block[MAX_BLOCK - 1].abs() < 1e-6);
 }
 
 #[test]

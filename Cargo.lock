@@ -1530,6 +1530,7 @@ version = "0.1.0"
 dependencies = [
  "egui",
  "musiccraft-commands",
+ "musiccraft-dsp",
  "musiccraft-project",
  "serde",
 ]

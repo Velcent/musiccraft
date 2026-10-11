@@ -36,7 +36,7 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
-| `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer) and the keymap. Emits invocations only. |
+| `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response` module only to draw filter, EQ and dynamics curves. |
 | `musiccraft-app` | Wires session, bridge, audio device, MIDI input and UI together. |
 | `xtask` | `cargo xtask parity`: checks the feature checklist against the registry and keymap. |
 

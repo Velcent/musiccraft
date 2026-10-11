@@ -460,3 +460,69 @@ fn flac_export_is_valid_and_smaller_than_wav() {
     assert!(s.run_line("project.export_flac x.flac 32").is_err());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn every_synth_preset_plays_without_clipping() {
+    use musiccraft_params::INSTRUMENT_PARAMS;
+    use musiccraft_params::presets::SYNTH;
+    for preset in SYNTH {
+        let mut s = session();
+        run(
+            &mut s,
+            "channel.add_synth\nnote.add_chord 1 0 8 C4 min7 110",
+        );
+        for (name, value) in preset.resolve(INSTRUMENT_PARAMS) {
+            run(&mut s, &format!("channel.set_param 1 {name} {value}"));
+        }
+        let options = RenderOptions {
+            sample_rate: 22_050,
+            loops: 1,
+            max_tail_seconds: 2.0,
+        };
+        let (left, right, _) = render(s.project(), options);
+        let peak = left
+            .iter()
+            .chain(&right)
+            .fold(0.0_f32, |p, x| p.max(x.abs()));
+        let level = rms(&left[..left.len() / 2]);
+        assert!(peak < 1.0, "{} clips: peak {peak}", preset.name);
+        assert!(level > 0.01, "{} is too quiet: rms {level}", preset.name);
+    }
+}
+
+#[test]
+fn every_effect_preset_keeps_audio_sane() {
+    use musiccraft_params::EFFECT_KINDS;
+    use musiccraft_params::presets;
+    for kind in EFFECT_KINDS {
+        for preset in presets::effect(kind) {
+            let mut s = session();
+            run(
+                &mut s,
+                &format!(
+                    "channel.add_synth\nnote.add_chord 1 0 8 C4 min7 110\nmixer.add_effect 0 {}",
+                    kind.name()
+                ),
+            );
+            for (name, value) in preset.resolve(kind.params()) {
+                run(
+                    &mut s,
+                    &format!("mixer.set_effect_param 0 1 {name} {value}"),
+                );
+            }
+            let options = RenderOptions {
+                sample_rate: 22_050,
+                loops: 1,
+                max_tail_seconds: 1.0,
+            };
+            let (left, _, _) = render(s.project(), options);
+            let peak = left.iter().fold(0.0_f32, |p, x| p.max(x.abs()));
+            assert!(left.iter().all(|x| x.is_finite()), "{kind} {}", preset.name);
+            assert!(
+                peak > 0.005 && peak < 1.5,
+                "{kind} {}: peak {peak}",
+                preset.name
+            );
+        }
+    }
+}

@@ -120,6 +120,21 @@ impl Biquad {
         self.a2 = a[2] / a0;
     }
 
+    /// Magnitude in dB of the current coefficients at `freq`.
+    #[must_use]
+    pub fn magnitude_db(&self, freq: f32, sample_rate: f32) -> f32 {
+        let w = 2.0 * PI * freq / sample_rate.max(1.0);
+        let (c1, s1, c2, s2) = (w.cos(), w.sin(), (2.0 * w).cos(), (2.0 * w).sin());
+        // H(e^jw) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2).
+        let num_re = self.b0 + self.b1 * c1 + self.b2 * c2;
+        let num_im = -(self.b1 * s1 + self.b2 * s2);
+        let den_re = 1.0 + self.a1 * c1 + self.a2 * c2;
+        let den_im = -(self.a1 * s1 + self.a2 * s2);
+        let num = (num_re * num_re + num_im * num_im).sqrt();
+        let den = (den_re * den_re + den_im * den_im).sqrt().max(1e-12);
+        20.0 * (num / den).max(1e-9).log10()
+    }
+
     fn omega(freq: f32, sample_rate: f32) -> (f32, f32) {
         let w = 2.0 * PI * freq.clamp(10.0, sample_rate * 0.49) / sample_rate.max(1.0);
         (w.cos(), w.sin())

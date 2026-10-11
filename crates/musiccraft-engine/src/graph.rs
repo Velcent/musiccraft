@@ -32,6 +32,30 @@ impl Default for ChannelParams {
     }
 }
 
+impl ChannelParams {
+    /// Left/right gains from volume, pan and mute.
+    #[must_use]
+    pub fn gains(&self) -> (f32, f32) {
+        if self.mute {
+            return (0.0, 0.0);
+        }
+        let (l, r) = musiccraft_dsp::pan_gains(self.pan);
+        (self.volume * l, self.volume * r)
+    }
+}
+
+impl TrackParams {
+    /// Left/right fader gains from volume, pan and mute.
+    #[must_use]
+    pub fn gains(&self) -> (f32, f32) {
+        if self.mute {
+            return (0.0, 0.0);
+        }
+        let (l, r) = musiccraft_dsp::pan_gains(self.pan);
+        (self.volume * l, self.volume * r)
+    }
+}
+
 /// Most sends one mixer track can have.
 pub const MAX_SENDS: usize = 8;
 
@@ -109,6 +133,9 @@ pub enum Instrument {
 pub struct ChannelNode {
     pub(crate) instrument: Instrument,
     pub(crate) params: ChannelParams,
+    /// Left/right gains applied at the end of the last block; the next block
+    /// ramps from these to the current settings.
+    pub(crate) gains: (f32, f32),
     pub(crate) left: Vec<f32>,
     pub(crate) right: Vec<f32>,
 }
@@ -125,6 +152,8 @@ pub(crate) struct EffectSlot {
 #[derive(Debug, Clone)]
 pub struct TrackNode {
     pub(crate) params: TrackParams,
+    /// Fader gains at the end of the last block (see [`ChannelNode`]).
+    pub(crate) gains: (f32, f32),
     pub(crate) effects: Vec<EffectSlot>,
     pub(crate) left: Vec<f32>,
     pub(crate) right: Vec<f32>,
@@ -160,6 +189,7 @@ impl Graph {
     pub fn add_channel(&mut self, instrument: Instrument, params: ChannelParams) -> usize {
         self.channels.push(ChannelNode {
             instrument,
+            gains: params.gains(),
             params,
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
@@ -175,6 +205,7 @@ impl Graph {
         effects: Vec<(Effect, EffectParams)>,
     ) -> usize {
         self.tracks.push(TrackNode {
+            gains: params.gains(),
             params,
             effects: effects
                 .into_iter()
@@ -193,6 +224,7 @@ impl Graph {
     /// Replaces the master track's settings and effects.
     pub fn set_master(&mut self, params: TrackParams, effects: Vec<(Effect, EffectParams)>) {
         if let Some(master) = self.tracks.first_mut() {
+            master.gains = params.gains();
             master.params = params;
             master.effects = effects
                 .into_iter()

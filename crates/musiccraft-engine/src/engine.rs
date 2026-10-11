@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use musiccraft_dsp::{ProcessContext, pan_gains};
+use musiccraft_dsp::ProcessContext;
 use musiccraft_params::{PPQ, TICKS_PER_BAR};
 use rtrb::{Consumer, Producer, RingBuffer};
 
@@ -82,6 +82,9 @@ impl EngineHandle {
     /// # Errors
     ///
     /// Returns the message back if the queue is full.
+    // Messages are fixed-size values stored inline in the queue; handing a
+    // rejected one back by value is the point, so its size is fine here.
+    #[allow(clippy::result_large_err)]
     pub fn send(&mut self, message: EngineMessage) -> Result<(), EngineMessage> {
         self.messages
             .push(message)
@@ -580,6 +583,7 @@ impl Engine {
                     params,
                     left,
                     right,
+                    ..
                 }) => {
                     let (l, r) = (prefix(left, frames), prefix(right, frames));
                     voice.render(instrument, params, l, r, sample_rate);
@@ -789,10 +793,13 @@ fn trigger(
     }
 }
 
-fn mix_channels(channels: &[ChannelNode], tracks: &mut [TrackNode], frames: usize) {
+fn mix_channels(channels: &mut [ChannelNode], tracks: &mut [TrackNode], frames: usize) {
     let track_count = tracks.len();
-    for node in channels {
-        if node.params.mute {
+    for node in channels.iter_mut() {
+        let from = node.gains;
+        let to = node.params.gains();
+        node.gains = to;
+        if from == (0.0, 0.0) && to == (0.0, 0.0) {
             continue;
         }
         let target = usize::from(node.params.track);
@@ -800,11 +807,33 @@ fn mix_channels(channels: &[ChannelNode], tracks: &mut [TrackNode], frames: usiz
         let Some(track) = tracks.get_mut(target) else {
             continue;
         };
-        let (pl, pr) = pan_gains(node.params.pan);
-        let gl = node.params.volume * pl;
-        let gr = node.params.volume * pr;
-        add_scaled(&mut track.left, &node.left, gl, frames);
-        add_scaled(&mut track.right, &node.right, gr, frames);
+        add_ramped(&mut track.left, &node.left, from.0, to.0, frames);
+        add_ramped(&mut track.right, &node.right, from.1, to.1, frames);
+    }
+}
+
+/// Adds `src * gain` into `dest`, the gain moving linearly from `from` to `to`
+/// across the block so changes never click.
+fn add_ramped(dest: &mut [f32], src: &[f32], from: f32, to: f32, frames: usize) {
+    if from == to {
+        add_scaled(dest, src, to, frames);
+        return;
+    }
+    let step = (to - from) / frames.max(1) as f32;
+    let mut gain = from;
+    for (d, s) in dest.iter_mut().zip(src).take(frames) {
+        gain += step;
+        *d += *s * gain;
+    }
+}
+
+/// Multiplies `buffer` by a gain ramping from `from` to `to`.
+fn scale_ramped(buffer: &mut [f32], from: f32, to: f32) {
+    let step = (to - from) / buffer.len().max(1) as f32;
+    let mut gain = from;
+    for s in buffer.iter_mut() {
+        gain += step;
+        *s *= gain;
     }
 }
 
@@ -869,6 +898,7 @@ fn process_track(
     } = fx;
     let TrackNode {
         params,
+        gains,
         effects,
         left,
         right,
@@ -903,14 +933,11 @@ fn process_track(
         slot.effect
             .process_keyed(l, r, &slot.params.values, ctx, key);
     }
-    let (pl, pr) = pan_gains(params.pan);
-    let volume = if params.mute { 0.0 } else { params.volume };
-    for s in l.iter_mut() {
-        *s *= volume * pl;
-    }
-    for s in r.iter_mut() {
-        *s *= volume * pr;
-    }
+    let from = *gains;
+    let to = params.gains();
+    *gains = to;
+    scale_ramped(l, from.0, to.0);
+    scale_ramped(r, from.1, to.1);
 }
 
 fn prefix(buffer: &mut [f32], frames: usize) -> &mut [f32] {

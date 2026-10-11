@@ -67,7 +67,8 @@ of contents; see `docs/clean-room.md`.
 | Effects | Filter, EQ, delay, reverb, compressor, distortion | `fx:filter` `fx:eq` `fx:delay` `fx:reverb` `fx:compressor` `fx:distortion` |
 | Effects | Chorus | `fx:chorus` |
 | Effects | Limiter | `fx:limiter` |
-| Instruments | Subtractive synth | `cmd:channel.add_synth` |
+| Instruments | Subtractive synth with unison, sub, drive, filter types, LFO and presets | `cmd:channel.add_synth` `spec:piano-roll.md` |
+| Effects | Effect windows with response graphs and presets | `spec:mixer.md` `done` |
 | Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |
 | Instruments | VST3 plugins | `todo` |
 | Windows | Playlist / rack / piano roll / mixer shortcuts | `key:F5=view.toggle playlist` `key:F6=view.toggle channel_rack` `key:F7=view.toggle piano_roll` `key:F9=view.toggle mixer` `spec:keymap.md` |

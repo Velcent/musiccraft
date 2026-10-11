@@ -99,6 +99,9 @@ pub fn show(
         .default_width(440.0)
         .resizable(false)
         .constrain_to(area)
+        .vscroll(true)
+        .min_height((area.height() - 60.0).clamp(300.0, 760.0))
+        .max_height((area.height() - 40.0).max(300.0))
         .show(ctx, |ui| {
             contents(ui, state, frame, index, channel, actions)
         });
@@ -292,6 +295,109 @@ fn sampler(
     });
 }
 
+/// A row of choice buttons bound to an integer instrument parameter.
+fn choice(
+    ui: &mut egui::Ui,
+    number: usize,
+    channel: &Channel,
+    param: usize,
+    labels: &[&str],
+    actions: &mut Vec<Action>,
+) {
+    let current = channel.params.get(param).round() as usize;
+    for (i, label) in labels.iter().enumerate() {
+        if ui.selectable_label(i == current, *label).clicked() && i != current {
+            actions.push(Action::Run(Invocation::new(
+                "channel.set_param",
+                [
+                    number.to_string(),
+                    INSTRUMENT_PARAMS[param].name.to_owned(),
+                    i.to_string(),
+                ],
+            )));
+        }
+    }
+}
+
+/// Preset picker for the synth: applying one is a single undo step.
+fn synth_presets(ui: &mut egui::Ui, number: usize, channel: &Channel, actions: &mut Vec<Action>) {
+    use musiccraft_project::params::presets::SYNTH;
+    let current = SYNTH
+        .iter()
+        .position(|p| p.matches(INSTRUMENT_PARAMS, &channel.params.0));
+    let mut chosen = None;
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new("PRESET")
+                .small()
+                .strong()
+                .color(theme::TEXT_DIM),
+        );
+        let n = SYNTH.len();
+        if ui.small_button("◀").hint("Previous preset").clicked() {
+            chosen = Some(current.map_or(n - 1, |c| (c + n - 1) % n));
+        }
+        egui::ComboBox::from_id_salt("synth-preset")
+            .width(180.0)
+            .selected_text(current.map_or("(custom)", |i| SYNTH[i].name))
+            .show_ui(ui, |ui| {
+                for (i, preset) in SYNTH.iter().enumerate() {
+                    if ui
+                        .selectable_label(current == Some(i), preset.name)
+                        .clicked()
+                    {
+                        chosen = Some(i);
+                    }
+                }
+            });
+        if ui.small_button("▶").hint("Next preset").clicked() {
+            chosen = Some(current.map_or(0, |c| (c + 1) % n));
+        }
+    });
+    let Some(preset) = chosen.and_then(|i| SYNTH.get(i)) else {
+        return;
+    };
+    let changes: Vec<String> = preset
+        .resolve(INSTRUMENT_PARAMS)
+        .into_iter()
+        .filter(|(name, value)| {
+            musiccraft_project::params::index_of(INSTRUMENT_PARAMS, name)
+                .is_some_and(|i| (channel.params.get(i) - value).abs() > 1e-6)
+        })
+        .map(|(name, value)| format!("channel.set_param {number} {name} {value}"))
+        .collect();
+    if !changes.is_empty() {
+        actions.push(Action::Run(Invocation::new(
+            musiccraft_commands::BATCH,
+            changes,
+        )));
+    }
+}
+
+/// The synth filter's response at the current settings.
+fn filter_graph(ui: &mut egui::Ui, channel: &Channel, color: Color32) {
+    use musiccraft_dsp::{SvfMode, response};
+    let (rect, _) = ui.allocate_exact_size(vec2(150.0, 54.0), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 4.0, theme::LCD_BG);
+    let mode = SvfMode::from_param(channel.params.get(inst::FILTER_TYPE));
+    let cutoff = channel.params.get(inst::CUTOFF);
+    let resonance = channel.params.get(inst::RESONANCE);
+    let width = rect.width() as usize;
+    let points: Vec<Pos2> = (0..=width)
+        .map(|i| {
+            let t = i as f32 / width as f32;
+            let f = 20.0 * 1_000.0_f32.powf(t);
+            let db = response::svf_db(mode, cutoff, resonance, f, 48_000.0).clamp(-40.0, 20.0);
+            pos2(
+                rect.left() + i as f32,
+                rect.top() + rect.height() * (20.0 - db) / 60.0,
+            )
+        })
+        .collect();
+    painter.add(Shape::line(points, Stroke::new(1.5, color)));
+}
+
 fn synth(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -299,6 +405,8 @@ fn synth(
     channel: &Channel,
     actions: &mut Vec<Action>,
 ) {
+    synth_presets(ui, number, channel, actions);
+    ui.add_space(4.0);
     section(ui, "OSCILLATORS", |ui| {
         for (label, param) in [("Osc 1", inst::WAVE1), ("Osc 2", inst::WAVE2)] {
             ui.horizontal(|ui| {
@@ -325,12 +433,26 @@ fn synth(
         }
         ui.horizontal(|ui| {
             param_knob(ui, state, number, channel, inst::DETUNE, "Detune", actions);
-            param_knob(ui, state, number, channel, inst::GLIDE, "Glide", actions);
             param_knob(ui, state, number, channel, inst::OSC_MIX, "Mix", actions);
+            param_knob(ui, state, number, channel, inst::SUB, "Sub", actions);
+            param_knob(ui, state, number, channel, inst::GLIDE, "Glide", actions);
+            param_knob(ui, state, number, channel, inst::UNISON, "Unison", actions);
+            param_knob(ui, state, number, channel, inst::SPREAD, "Spread", actions);
+            param_knob(ui, state, number, channel, inst::DRIVE, "Drive", actions);
         });
     });
     ui.add_space(6.0);
     section(ui, "FILTER", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::FILTER_TYPE,
+                &["Low-pass", "Band-pass", "High-pass"],
+                actions,
+            );
+        });
         ui.horizontal(|ui| {
             param_knob(ui, state, number, channel, inst::CUTOFF, "Cutoff", actions);
             param_knob(ui, state, number, channel, inst::RESONANCE, "Reso", actions);
@@ -341,6 +463,33 @@ fn synth(
                 channel,
                 inst::ENV_AMOUNT,
                 "Env amt",
+                actions,
+            );
+            filter_graph(ui, channel, theme::ACCENT);
+        });
+    });
+    ui.add_space(6.0);
+    section(ui, "LFO", |ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("To").small());
+            choice(
+                ui,
+                number,
+                channel,
+                inst::LFO_TARGET,
+                &["Pitch", "Cutoff", "Volume"],
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::LFO_RATE, "Rate", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::LFO_DEPTH,
+                "Depth",
                 actions,
             );
         });

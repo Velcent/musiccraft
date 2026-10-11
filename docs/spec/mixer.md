@@ -43,6 +43,26 @@
 
 Ranges and defaults are defined in `musiccraft-params`.
 
+## Effect windows and presets
+
+- Clicking an effect's name in a slot opens its window (again closes it).
+  Windows of removed slots close.
+- Each built-in effect window has a bypass button, a preset bar (previous,
+  list, next; "(custom)" when no preset matches) and a graph:
+  - filter and EQ: the frequency response; drag the filter's point for cutoff
+    (across) and resonance (up), drag an EQ band's point for its frequency and
+    gain, scroll on the middle band for its width;
+  - compressor and limiter: the static input/output curve; drag the knee for
+    the threshold, or the ceiling point;
+  - distortion: the waveshaping curve; delay: the echoes over time; reverb:
+    the decay; chorus: the delay modulation.
+  Drags and presets are each one undo step (`edit.batch` of
+  `mixer.set_effect_param`). Presets never change the sidechain source.
+- Hosted plugin slots open a window with the plugin's parameter panel and a
+  button for its own window.
+- Changes to channel and track volume, pan and mute ramp over one engine
+  block (at most 256 frames), so moving a fader never clicks.
+
 ## Sidechain
 
 - A compressor's `sidechain` parameter names an insert whose post-fader output
@@ -65,3 +85,5 @@ Ranges and defaults are defined in `musiccraft-params`.
   Cookbook" biquads, Freeverb-style reverb (public domain algorithm by Jezar),
   feed-forward compression, peak limiting, a modulated-delay chorus, tanh soft
   clipping.
+- Effect windows (preset bar, graph, knobs) follow the common layout of plugin
+  windows in pattern-based DAWs; the graphs and factory presets are our own.

@@ -349,83 +349,20 @@ fn effects(
                 for slot in 0..MAX_EFFECT_SLOTS {
                     slot_row(ui, state, track, &number, slot, plugins, actions);
                 }
-                if let Some(effect) = track.effects.get(state.mixer_slot) {
-                    ui.add_space(4.0);
-                    egui::Frame::new()
-                        .fill(theme::PANEL_DARK)
-                        .corner_radius(6.0)
-                        .inner_margin(6.0)
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            if let Some(plugin) = &effect.plugin {
-                                let target =
-                                    crate::plugins::Target::Effect(index, state.mixer_slot + 1);
-                                crate::plugins::panel(ui, state, plugins, plugin, target, actions);
-                                return;
-                            }
-                            ui.label(
-                                RichText::new(effect.kind.name().to_uppercase())
-                                    .small()
-                                    .strong()
-                                    .color(theme::ACCENT),
-                            );
-                            ui.horizontal_wrapped(|ui| {
-                                for (p, spec) in effect.kind.params().iter().enumerate() {
-                                    let value = effect.values[p];
-                                    let out = widgets::labeled_knob(
-                                        ui,
-                                        spec.name,
-                                        crate::channel_settings::to_unit(spec, value),
-                                        crate::channel_settings::to_unit(spec, spec.default),
-                                        spec.min < 0.0 && spec.max > 0.0,
-                                        &if spec.name == "sidechain" {
-                                            if value < 0.5 {
-                                                "off".to_owned()
-                                            } else {
-                                                format!("from {value:.0}")
-                                            }
-                                        } else {
-                                            crate::channel_settings::format_value(spec, value)
-                                        },
-                                    );
-                                    crate::automation::menu(
-                                        &out.response,
-                                        &format!(
-                                            "mixer:{index}:{}:{}",
-                                            state.mixer_slot + 1,
-                                            spec.name
-                                        ),
-                                        actions,
-                                    );
-                                    if out.started {
-                                        state.begin_gesture();
-                                    }
-                                    if let Some(t) = out.changed {
-                                        let new = crate::channel_settings::from_unit(spec, t);
-                                        if new != value {
-                                            actions.push(Action::Coalesced(
-                                                Invocation::new(
-                                                    "mixer.set_effect_param",
-                                                    [
-                                                        number.clone(),
-                                                        (state.mixer_slot + 1).to_string(),
-                                                        spec.name.to_owned(),
-                                                        format!("{new}"),
-                                                    ],
-                                                ),
-                                                state.gesture(),
-                                            ));
-                                        }
-                                    }
-                                }
-                            });
-                        });
-                }
+                ui.label(
+                    RichText::new("Click an effect's name to open its window")
+                        .small()
+                        .color(theme::TEXT_DIM),
+                );
                 if index > 0 {
                     routing(ui, state, project, index, track, actions);
                 }
             });
     });
+}
+
+fn track_index(number: &str) -> usize {
+    number.parse().unwrap_or(0)
 }
 
 fn slot_row(
@@ -473,9 +410,11 @@ fn slot_row(
                         });
                         if ui
                             .add(egui::Label::new(name).sense(egui::Sense::click()))
+                            .hint("Open or close this effect's window")
                             .clicked()
                         {
                             state.mixer_slot = slot;
+                            crate::effect_window::toggle(state, track_index(number), slot);
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("×").hint("Remove").clicked() {
@@ -523,6 +462,7 @@ fn slot_row(
                                             [number.to_owned(), kind.name().to_owned()],
                                         );
                                         state.mixer_slot = slot;
+                                        state.effect_windows.push((track_index(number), slot));
                                         ui.close();
                                     }
                                 }

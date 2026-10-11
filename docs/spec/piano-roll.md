@@ -48,8 +48,20 @@
 - Two oscillators (`wave1`, `wave2`: sine, saw, square, triangle, noise; saw and
   square are band-limited with PolyBLEP). Oscillator 2 is detuned by `detune`
   cents; `osc_mix` crossfades between them.
-- A resonant low-pass state-variable filter (`cutoff`, `resonance`) whose cutoff is
-  modulated by the amplitude envelope by `env_amount` octaves.
+- `unison` (1–7) stacks copies of both oscillators detuned across `spread`
+  cents and spread across the stereo field; the stack is normalized so more
+  voices are not louder. `sub` adds a sine one octave below.
+- `drive` saturates (tanh) before the filter.
+- A resonant state-variable filter per side (`filter_type`: low-, band- or
+  high-pass; `cutoff`, `resonance`) whose cutoff is modulated by the amplitude
+  envelope by `env_amount` octaves.
+- A sine LFO per voice (`lfo_rate` Hz, `lfo_depth` 0–1, `lfo_target`): pitch
+  (up to ±2 semitones), cutoff (up to ±3 octaves) or volume (tremolo).
+  Modulation, glide and filter coefficients update every 32 samples.
+- **Presets**: the synth editor offers factory presets (bass, lead, pad, pluck,
+  keys, brass, riser…). Applying one sets every synth parameter in one undo
+  step (`edit.batch` of `channel.set_param`); the sampler-only parameters are
+  left alone. The editor shows the matching preset or "(custom)".
 - Linear ADSR envelope (`attack`, `decay`, `sustain`, `release`); a minimum 1 ms
   release prevents clicks. `pitch` transposes in semitones.
 - `glide` (seconds, default 0) is portamento: a note that starts while another
