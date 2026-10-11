@@ -7,6 +7,7 @@
 //!
 //! [`render`] and [`export_wav`] run the same engine offline.
 
+mod arp;
 mod bridge;
 mod export;
 pub mod plugins;

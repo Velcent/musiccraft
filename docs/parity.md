@@ -79,6 +79,7 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Ghost notes of other channels | `spec:piano-roll.md` |
 | Piano roll | Strum, humanize, legato, chop, glue, flip, snap to scale, arpeggiate | `cmd:note.strum` `cmd:note.humanize` `cmd:note.legato` `cmd:note.chop` `cmd:note.glue` `cmd:note.flip` `cmd:note.to_scale` `cmd:note.arpeggiate` |
 | Channel rack | Fill every N steps, shift steps | `cmd:step.fill` `cmd:step.shift` |
+| Channel | Arpeggiator (up, down, up-down, random; rate, octaves, gate) | `spec:piano-roll.md` `done` |
 | Browser | Folders, search, click to preview, drag to rack or playlist | `done` |
 | Transport | Oscilloscope, CPU meter, master volume | `done` |
 | Project | New / open / save / save as | `cmd:project.new` `cmd:project.load` `cmd:project.save` `key:Ctrl+S=ui.save` `key:Ctrl+O=ui.open` `spec:project-file.md` |

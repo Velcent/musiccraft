@@ -225,13 +225,14 @@ pub fn build_full_sequence(project: &Project) -> Sequence {
         PlayMode::Pattern => {
             let pattern = project.current_pattern();
             Sequence::new(
-                pattern_events(project, pattern),
+                crate::arp::apply(project, pattern_events(project, pattern)),
                 u64::from(pattern.length_ticks()),
             )
         }
-        PlayMode::Song => {
-            Sequence::new(song_events(project), u64::from(project.song_length_ticks()))
-                .with_automation(song_automation(project))
-        }
+        PlayMode::Song => Sequence::new(
+            crate::arp::apply(project, song_events(project)),
+            u64::from(project.song_length_ticks()),
+        )
+        .with_automation(song_automation(project)),
     }
 }

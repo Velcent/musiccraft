@@ -51,6 +51,21 @@
   notes, and Tools → Toggle slide flips the selected notes. Slide notes are
   drawn with a ramp mark.
 
+## Arpeggiator
+
+- Every channel has an arpeggiator (channel settings → ARPEGGIATOR):
+  `arp_mode` (off, up, down, up-down, random), `arp_rate` (1/32, 1/16, 1/8,
+  1/4 or 1/2 note), `arp_range` (1–4 octaves) and `arp_gate` (length of each
+  arpeggio note as a share of the rate).
+- When on, the channel's sequenced notes become an arpeggio when the
+  sequence is built: on every rate step of the song grid, the keys held during
+  that step (spread over the octave range) play one at a time in the mode's
+  order, at the loudest held velocity. The order restarts when nothing is
+  held. Random order is the same every time it plays.
+- It applies to pattern and song playback and to export, for every kind of
+  instrument. Live MIDI notes are not arpeggiated.
+- Presets leave the arpeggiator settings alone.
+
 ## Note tools
 
 Each tool rewrites all notes of one channel in a pattern as one undo step

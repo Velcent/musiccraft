@@ -234,6 +234,10 @@ pub mod inst {
     pub const LFO_TARGET: usize = 20;
     pub const FILTER_TYPE: usize = 21;
     pub const DRIVE: usize = 22;
+    pub const ARP_MODE: usize = 23;
+    pub const ARP_RATE: usize = 24;
+    pub const ARP_RANGE: usize = 25;
+    pub const ARP_GATE: usize = 26;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -261,6 +265,21 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("lfo_target", 0.0, 2.0, 0.0),
     int_spec("filter_type", 0.0, 2.0, 0.0),
     spec("drive", 0.0, 1.0, 0.0, ""),
+    int_spec("arp_mode", 0.0, 4.0, 0.0),
+    int_spec("arp_rate", 0.0, 4.0, 1.0),
+    int_spec("arp_range", 1.0, 4.0, 1.0),
+    spec("arp_gate", 0.05, 1.0, 0.8, ""),
+];
+
+/// Names of the arpeggiator modes, by `arp_mode` value.
+pub const ARP_MODES: [&str; 5] = ["off", "up", "down", "up-down", "random"];
+/// Arpeggiator rates by `arp_rate` value: (label, ticks).
+pub const ARP_RATES: [(&str, u32); 5] = [
+    ("1/32", TICKS_PER_STEP / 2),
+    ("1/16", TICKS_PER_STEP),
+    ("1/8", TICKS_PER_STEP * 2),
+    ("1/4", TICKS_PER_STEP * 4),
+    ("1/2", TICKS_PER_STEP * 8),
 ];
 
 /// Names of the LFO targets, by `lfo_target` value.

@@ -15,7 +15,16 @@ pub struct Preset {
 }
 
 /// Parameters presets never change (routing and sample settings).
-pub const KEEP: [&str; 4] = ["sidechain", "one_shot", "root_key", "pitch"];
+pub const KEEP: [&str; 8] = [
+    "sidechain",
+    "one_shot",
+    "root_key",
+    "pitch",
+    "arp_mode",
+    "arp_rate",
+    "arp_range",
+    "arp_gate",
+];
 
 impl Preset {
     /// Every value of `specs` this preset sets, defaults filled in, without

@@ -199,6 +199,40 @@ fn contents(
         }
     });
     ui.add_space(6.0);
+    section(ui, "ARPEGGIATOR", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::ARP_MODE,
+                &["Off", "Up", "Down", "Up-down", "Random"],
+                actions,
+            );
+        });
+        if channel.params.get(inst::ARP_MODE) >= 0.5 {
+            ui.horizontal(|ui| {
+                let labels: Vec<&str> = musiccraft_project::params::ARP_RATES
+                    .iter()
+                    .map(|(l, _)| *l)
+                    .collect();
+                choice(ui, number, channel, inst::ARP_RATE, &labels, actions);
+            });
+            ui.horizontal(|ui| {
+                param_knob(
+                    ui,
+                    state,
+                    number,
+                    channel,
+                    inst::ARP_RANGE,
+                    "Octaves",
+                    actions,
+                );
+                param_knob(ui, state, number, channel, inst::ARP_GATE, "Gate", actions);
+            });
+        }
+    });
+    ui.add_space(6.0);
     match &channel.instrument {
         Instrument::Sampler { sample } => {
             sampler(ui, state, frame, index, channel, sample, actions)

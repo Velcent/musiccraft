@@ -582,3 +582,28 @@ fn slide_notes_glide_the_sounding_note_without_retriggering() {
     let (left, _, _) = render(s.project(), options);
     assert!(rms(&left[..4_800]) > 0.01);
 }
+
+#[test]
+fn arpeggiated_channels_play_their_chords_one_note_at_a_time() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         channel.add_sampler builtin:kick
+         note.add_chord 1 0 4 C4 major
+         step.toggle 2 0
+         channel.set_param 1 arp_mode 1
+         channel.set_param 1 arp_range 2",
+    );
+    let seq = build_sequence(s.project());
+    let synth: Vec<(u64, u8)> = seq
+        .events()
+        .iter()
+        .filter(|e| e.channel == 0)
+        .map(|e| (e.start, e.key))
+        .collect();
+    let step = u64::from(TICKS_PER_STEP);
+    assert_eq!(synth, [(0, 48), (step, 52), (2 * step, 55), (3 * step, 60)]);
+    // Other channels are untouched.
+    assert_eq!(seq.events().iter().filter(|e| e.channel == 1).count(), 1);
+}
