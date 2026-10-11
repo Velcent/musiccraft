@@ -97,13 +97,13 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
 }
 
 /// The pattern, channel index and channel number a note command applies to.
-struct Target {
-    pattern: usize,
-    channel: usize,
+pub(super) struct Target {
+    pub(super) pattern: usize,
+    pub(super) channel: usize,
 }
 
 impl Target {
-    fn resolve(project: &Project, args: &Args<'_>) -> Result<Self, CommandError> {
+    pub(super) fn resolve(project: &Project, args: &Args<'_>) -> Result<Self, CommandError> {
         Ok(Self {
             pattern: args.pattern_index(project)?,
             channel: channel_arg(project, args, 0)?,
@@ -141,7 +141,7 @@ impl Target {
         )
     }
 
-    fn set_all_inverse(&self, notes: &[Note]) -> Invocation {
+    pub(super) fn set_all_inverse(&self, notes: &[Note]) -> Invocation {
         let rows: Vec<[i64; 5]> = notes
             .iter()
             .map(|n| {
@@ -373,7 +373,7 @@ fn set_velocity(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
 }
 
 /// Replaces a channel's notes in the target pattern with the result of `f`.
-fn rewrite(
+pub(super) fn rewrite(
     project: &mut Project,
     target: &Target,
     f: impl FnOnce(Vec<Note>) -> Vec<Note>,

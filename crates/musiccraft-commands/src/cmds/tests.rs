@@ -559,3 +559,107 @@ fn sidechain_sources_are_validated_and_renumbered() {
     run(&mut s, "edit.undo");
     assert!((s.project().mixer[3].effects[0].values[5] - 2.0).abs() < f32::EPSILON);
 }
+
+const TOOLS_SCRIPT: &[&str] = &[
+    "channel.add_synth",
+    "note.add_chord 1 0 8 C4 maj7",
+    "note.add 1 8 2 E4",
+    "note.strum 1 6t",
+    "note.humanize 1 3t 10 42",
+    "note.legato 1",
+    "note.chop 1 2",
+    "note.glue 1",
+    "note.flip 1 time",
+    "note.flip 1 pitch",
+    "note.to_scale 1 D dorian",
+    "note.arpeggiate 1 1 updown",
+    "channel.add_sampler builtin:hat",
+    "step.fill 2 2",
+    "step.fill 2 4 1",
+    "step.shift 2 -3",
+];
+
+#[test]
+fn note_tools_undo_and_redo_exactly() {
+    assert_round_trip(TOOLS_SCRIPT);
+}
+
+fn notes_of(s: &Session, channel: usize) -> Vec<(u32, u32, u8, u8)> {
+    let p = s.project();
+    let id = p.channels[channel].id;
+    let mut v: Vec<_> = p
+        .current_pattern()
+        .notes_of(id)
+        .map(|n| (n.start, n.length, n.key, n.velocity))
+        .collect();
+    v.sort_unstable();
+    v
+}
+
+#[test]
+fn note_tools_produce_the_expected_notes() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add_chord 1 0 4 C4 major 100");
+    run(&mut s, "note.strum 1 3t");
+    assert_eq!(
+        notes_of(&s, 0),
+        [(0, 96, 48, 100), (3, 93, 52, 100), (6, 90, 55, 100)]
+    );
+
+    // Arpeggiate a chord into steps cycling up through its keys.
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add_chord 1 0 4 C4 major 100");
+    run(&mut s, "note.arpeggiate 1 1");
+    let keys: Vec<u8> = notes_of(&s, 0).iter().map(|n| n.2).collect();
+    assert_eq!(keys, [48, 52, 55, 48]);
+
+    // Legato, chop and glue.
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C4");
+    run(&mut s, "note.add 1 4 1 D4");
+    run(&mut s, "note.legato 1");
+    assert_eq!(notes_of(&s, 0), [(0, 96, 48, 100), (96, 24, 50, 100)]);
+    run(&mut s, "note.chop 1 2");
+    assert_eq!(notes_of(&s, 0).len(), 3);
+    run(&mut s, "note.glue 1");
+    assert_eq!(notes_of(&s, 0), [(0, 96, 48, 100), (96, 24, 50, 100)]);
+
+    // Flip in time within the one-bar pattern, and in pitch.
+    run(&mut s, "note.flip 1 time");
+    assert_eq!(notes_of(&s, 0), [(264, 24, 50, 100), (288, 96, 48, 100)]);
+    run(&mut s, "note.flip 1 pitch");
+    let keys: Vec<u8> = notes_of(&s, 0).iter().map(|n| n.2).collect();
+    assert_eq!(keys, [48, 50]);
+
+    // Snap to C major: D# goes down to D.
+    run(&mut s, "note.add 1 8 1 D#4");
+    run(&mut s, "note.to_scale 1 C major");
+    assert!(notes_of(&s, 0).iter().all(|n| n.2 != 51));
+    fails(&mut s, "note.to_scale 1 C bebop");
+
+    // Humanize is repeatable for a seed and stays in range.
+    let humanized = |seed: &str| {
+        let mut s = session();
+        run(&mut s, "channel.add_synth");
+        run(&mut s, "note.add 1 4 1 C4 120");
+        run(&mut s, "note.add 1 8 1 C4 10");
+        run(&mut s, &format!("note.humanize 1 6t 20 {seed}"));
+        notes_of(&s, 0)
+    };
+    assert_eq!(humanized("5"), humanized("5"));
+    assert!(humanized("5").iter().all(|n| (1..=127).contains(&n.3)));
+
+    // Fill every 4 steps and rotate by one.
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    run(&mut s, "step.fill 1 4");
+    let starts: Vec<u32> = notes_of(&s, 0).iter().map(|n| n.0).collect();
+    assert_eq!(starts, [0, 96, 192, 288]);
+    run(&mut s, "step.shift 1 -1");
+    let starts: Vec<u32> = notes_of(&s, 0).iter().map(|n| n.0).collect();
+    assert_eq!(starts, [72, 168, 264, 360]);
+    fails(&mut s, "step.fill 1 0");
+}

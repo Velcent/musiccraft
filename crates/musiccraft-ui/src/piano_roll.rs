@@ -414,6 +414,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                 [number.clone(), format!("{}t", state.roll.snap.ticks())],
             )));
         }
+        tools_menu(ui, state, &number, actions);
         if ui.button("Oct −").clicked() {
             actions.push(Action::Run(Invocation::new(
                 "note.transpose",
@@ -809,6 +810,117 @@ fn shifted(note: &Note, dt: i64, dk: i32) -> (u32, u8) {
         u32::try_from(i64::from(note.start) + dt).unwrap_or(0),
         u8::try_from(i32::from(note.key) + dk).unwrap_or(note.key),
     )
+}
+
+/// The piano roll's Tools menu: note transformations on the shown channel.
+fn tools_menu(ui: &mut egui::Ui, state: &mut UiState, number: &str, actions: &mut Vec<Action>) {
+    let grid = format!("{}t", state.roll.snap.ticks());
+    let mut run = |args: Vec<String>, name: &str| {
+        let mut all = vec![number.to_owned()];
+        all.extend(args);
+        actions.push(Action::Run(Invocation::new(name, all)));
+    };
+    ui.menu_button("Tools", |ui| {
+        let mut item =
+            |ui: &mut egui::Ui, label: &str, hint: &str, name: &str, args: Vec<String>| {
+                if ui.button(label).hint(hint.to_owned()).clicked() {
+                    run(args, name);
+                    ui.close();
+                }
+            };
+        item(
+            ui,
+            "Strum up",
+            "Stagger chord notes, lowest first",
+            "note.strum",
+            vec!["6t".into(), "up".into()],
+        );
+        item(
+            ui,
+            "Strum down",
+            "Stagger chord notes, highest first",
+            "note.strum",
+            vec!["6t".into(), "down".into()],
+        );
+        let seed = state.begin_gesture().to_string();
+        item(
+            ui,
+            "Humanize",
+            "Nudge timing and velocity a little, randomly",
+            "note.humanize",
+            vec!["4t".into(), "12".into(), seed],
+        );
+        item(
+            ui,
+            "Legato",
+            "Make every note last until the next one",
+            "note.legato",
+            vec![],
+        );
+        item(
+            ui,
+            "Chop to grid",
+            "Split notes into grid-length pieces",
+            "note.chop",
+            vec![grid.clone()],
+        );
+        item(
+            ui,
+            "Glue",
+            "Join touching notes of the same key",
+            "note.glue",
+            vec![],
+        );
+        item(
+            ui,
+            "Flip horizontally",
+            "Reverse the notes in time",
+            "note.flip",
+            vec!["time".into()],
+        );
+        item(
+            ui,
+            "Flip vertically",
+            "Turn the melody upside down",
+            "note.flip",
+            vec!["pitch".into()],
+        );
+        match state.roll.scale {
+            Some((root, scale)) => {
+                let name = musiccraft_project::music::SCALES
+                    .get(scale)
+                    .map_or("major", |(n, _)| n)
+                    .replace(' ', "_");
+                item(
+                    ui,
+                    "Snap to scale",
+                    "Move notes to the nearest key of the highlighted scale",
+                    "note.to_scale",
+                    vec![root.to_string(), name],
+                );
+            }
+            None => {
+                ui.add_enabled(false, egui::Button::new("Snap to scale"))
+                    .hint("Highlight a scale first");
+            }
+        }
+        ui.menu_button("Arpeggiate", |ui| {
+            for (label, mode) in [
+                ("Up", "up"),
+                ("Down", "down"),
+                ("Up and down", "updown"),
+                ("Random", "random"),
+            ] {
+                item(
+                    ui,
+                    label,
+                    "Turn chords into notes one at a time, one grid step each",
+                    "note.arpeggiate",
+                    vec![grid.clone(), mode.into()],
+                );
+            }
+        });
+    });
 }
 
 /// Paint and delete strokes. Returns `true` when the tool handled the input.

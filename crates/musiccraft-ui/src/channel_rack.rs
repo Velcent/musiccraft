@@ -265,6 +265,26 @@ fn context_menu(
         run(actions, "channel.solo", [number.clone()]);
         ui.close();
     }
+    ui.menu_button("Steps", |ui| {
+        for every in [2, 4, 8] {
+            if ui.button(format!("Fill every {every} steps")).clicked() {
+                run(actions, "step.fill", [number.clone(), every.to_string()]);
+                ui.close();
+            }
+        }
+        if ui.button("Shift left").clicked() {
+            run(actions, "step.shift", [number.clone(), "-1".to_owned()]);
+            ui.close();
+        }
+        if ui.button("Shift right").clicked() {
+            run(actions, "step.shift", [number.clone(), "1".to_owned()]);
+            ui.close();
+        }
+        if ui.button("Clear").clicked() {
+            run(actions, "note.clear", [number.clone()]);
+            ui.close();
+        }
+    });
     if ui.button("Clone").clicked() {
         run(actions, "channel.clone", [number.clone()]);
         ui.close();

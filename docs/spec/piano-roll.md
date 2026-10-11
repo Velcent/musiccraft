@@ -38,6 +38,38 @@
   in song mode). Each recorded note is one undo step. Notes held across the loop
   point keep their full length.
 
+## Note tools
+
+Each tool rewrites all notes of one channel in a pattern as one undo step
+(the inverse is `note.set_all`). Times are steps unless written `<n>t`.
+
+- `note.strum <channel> <spread> [up|down]`: notes that start together are
+  staggered by `spread` per note, lowest first (`up`, default) or highest
+  first; each keeps its end time (but stays at least 1 tick long).
+- `note.humanize <channel> <timing> <velocity> [seed]`: moves each start by up
+  to ±`timing` and each velocity by up to ±`velocity` (1–127). The same seed
+  (default 1) always gives the same result.
+- `note.legato <channel>`: every note lasts until the next later start; the
+  last notes keep their length.
+- `note.chop <channel> <length>`: splits notes into pieces of `length`; a
+  shorter remainder is kept.
+- `note.glue <channel>`: joins notes of the same key where one ends exactly
+  where the next begins, keeping the first one's velocity and pan.
+- `note.flip <channel> time|pitch`: mirrors the notes in time within the
+  pattern length, or upside down around the middle of their key range.
+- `note.to_scale <channel> <root> <scale>`: moves each note to the nearest
+  key of the scale (ties go down). Scales as in the piano roll's highlight.
+- `note.arpeggiate <channel> <step> [up|down|updown|random] [seed]`: every
+  group of notes starting together becomes one note at a time, `step` long,
+  cycling through the group's keys for the group's longest duration.
+- Step tools: `step.fill <channel> <every> [offset]` turns on every `every`th
+  step from `offset` (0-based) across the pattern, keeping existing notes;
+  `step.shift <channel> <steps>` rotates the channel's notes by whole steps,
+  wrapping at the pattern length.
+- Notes that end up on the same start and key keep only the first.
+- In the piano roll these live in the toolbar's Tools menu; in the channel
+  rack, in a channel's right-click menu.
+
 ## Pattern length
 
 - A pattern has a minimum length in steps (default 16). When notes start past it,
