@@ -22,6 +22,15 @@ enum Source {
     Synth,
     DrumSynth,
     Pluck,
+    Fm,
+    Keys,
+    Additive,
+    /// A resolved sample reference played as grains.
+    Granular(String),
+    /// Resolved pad sample references (empty for an empty pad).
+    Kit(Vec<String>),
+    /// Channel positions the layer plays.
+    Layer(Vec<u16>),
     /// A plugin in this engine slot (`None`: not running).
     Plugin(Option<u16>),
 }
@@ -174,6 +183,30 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     musiccraft_project::Instrument::Synth => Source::Synth,
                     musiccraft_project::Instrument::DrumSynth => Source::DrumSynth,
                     musiccraft_project::Instrument::Pluck => Source::Pluck,
+                    musiccraft_project::Instrument::Fm => Source::Fm,
+                    musiccraft_project::Instrument::Keys => Source::Keys,
+                    musiccraft_project::Instrument::Additive => Source::Additive,
+                    musiccraft_project::Instrument::Granular { sample } => {
+                        Source::Granular(sample_key(sample, base))
+                    }
+                    musiccraft_project::Instrument::Kit { pads } => Source::Kit(
+                        pads.iter()
+                            .map(|p| {
+                                if p.is_empty() {
+                                    String::new()
+                                } else {
+                                    sample_key(p, base)
+                                }
+                            })
+                            .collect(),
+                    ),
+                    musiccraft_project::Instrument::Layer { channels } => Source::Layer(
+                        channels
+                            .iter()
+                            .filter_map(|id| project.channel_position(*id))
+                            .filter_map(|i| u16::try_from(i).ok())
+                            .collect(),
+                    ),
                     musiccraft_project::Instrument::Plugin { plugin } => {
                         Source::Plugin(slots.get(&plugin.instance).copied())
                     }
@@ -471,6 +504,16 @@ impl Bridge {
                 Source::Synth => Instrument::Synth,
                 Source::DrumSynth => Instrument::DrumSynth,
                 Source::Pluck => Instrument::Pluck,
+                Source::Fm => Instrument::Fm,
+                Source::Keys => Instrument::Keys,
+                Source::Additive => Instrument::Additive,
+                Source::Granular(key) => Instrument::Granular(self.load(key, warnings)),
+                Source::Kit(keys) => Instrument::Kit(
+                    keys.iter()
+                        .map(|k| (!k.is_empty()).then(|| self.load(k, warnings)))
+                        .collect(),
+                ),
+                Source::Layer(children) => Instrument::Layer(children.clone()),
                 // An out-of-range slot plays nothing.
                 Source::Plugin(slot) => Instrument::External(slot.unwrap_or(u16::MAX)),
             };

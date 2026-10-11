@@ -741,3 +741,50 @@ fn note_properties_shape_the_sound() {
     };
     assert!(tail(127) > tail(0) + 4_800, "{} vs {}", tail(127), tail(0));
 }
+
+#[test]
+fn fm_keys_and_additive_presets_play_without_clipping() {
+    use musiccraft_params::INSTRUMENT_PARAMS;
+    use musiccraft_params::presets::{ADDITIVE, FM, KEYS};
+    for (add, list) in [
+        ("channel.add_fm", FM),
+        ("channel.add_keys", KEYS),
+        ("channel.add_additive", ADDITIVE),
+    ] {
+        for preset in list {
+            let mut s = session();
+            run(&mut s, &format!("{add}\nnote.add_chord 1 0 8 C4 minor 110"));
+            for (name, value) in preset.resolve(INSTRUMENT_PARAMS) {
+                run(&mut s, &format!("channel.set_param 1 {name} {value}"));
+            }
+            let options = RenderOptions {
+                sample_rate: 22_050,
+                loops: 1,
+                max_tail_seconds: 2.0,
+            };
+            let (left, right, _) = render(s.project(), options);
+            let peak = left
+                .iter()
+                .chain(&right)
+                .fold(0.0_f32, |p, x| p.max(x.abs()));
+            assert!(peak < 1.0, "{} clips: {peak}", preset.name);
+            assert!(peak > 0.05, "{} is too quiet: {peak}", preset.name);
+        }
+    }
+}
+
+#[test]
+fn layers_double_sequenced_notes_and_kits_play_pads() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_kit
+         channel.add_synth
+         channel.add_layer
+         channel.set_layer 3 1,2
+         note.add 3 0 4 C5",
+    );
+    let (left, _, warnings) = render(s.project(), RenderOptions::default());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(rms(&left[..4_410]) > 0.01);
+}

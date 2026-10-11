@@ -19,9 +19,9 @@ pub const BEATS_PER_BAR: u32 = 4;
 pub const TICKS_PER_BAR: u32 = PPQ * BEATS_PER_BAR;
 
 /// Capacity of an effect parameter array.
-pub const MAX_EFFECT_PARAMS: usize = 8;
+pub const MAX_EFFECT_PARAMS: usize = 24;
 /// Capacity of an instrument parameter array.
-pub const MAX_INSTRUMENT_PARAMS: usize = 48;
+pub const MAX_INSTRUMENT_PARAMS: usize = 96;
 /// Maximum number of effect slots on one mixer track.
 pub const MAX_EFFECT_SLOTS: usize = 10;
 /// Maximum number of mixer tracks, master included.
@@ -248,6 +248,43 @@ pub mod inst {
     pub const PLUCK_DAMPING: usize = 34;
     pub const PLUCK_TONE: usize = 35;
     pub const SLICES: usize = 36;
+    pub const WAVE3: usize = 37;
+    pub const OSC3_LEVEL: usize = 38;
+    pub const OSC3_COARSE: usize = 39;
+    pub const FM_ALGO: usize = 40;
+    pub const FM_FEEDBACK: usize = 41;
+    pub const OP1_RATIO: usize = 42;
+    pub const OP1_LEVEL: usize = 43;
+    pub const OP1_DECAY: usize = 44;
+    pub const OP1_SUSTAIN: usize = 45;
+    pub const OP2_RATIO: usize = 46;
+    pub const OP2_LEVEL: usize = 47;
+    pub const OP2_DECAY: usize = 48;
+    pub const OP2_SUSTAIN: usize = 49;
+    pub const OP3_RATIO: usize = 50;
+    pub const OP3_LEVEL: usize = 51;
+    pub const OP3_DECAY: usize = 52;
+    pub const OP3_SUSTAIN: usize = 53;
+    pub const OP4_RATIO: usize = 54;
+    pub const OP4_LEVEL: usize = 55;
+    pub const OP4_DECAY: usize = 56;
+    pub const OP4_SUSTAIN: usize = 57;
+    pub const KEYS_TYPE: usize = 58;
+    pub const KEYS_TONE: usize = 59;
+    pub const KEYS_DECAY: usize = 60;
+    pub const KEYS_TREMOLO: usize = 61;
+    pub const KEYS_HAMMER: usize = 62;
+    pub const ADD_PARTIALS: usize = 63;
+    pub const ADD_BRIGHT: usize = 64;
+    pub const ADD_EVEN: usize = 65;
+    pub const ADD_INHARM: usize = 66;
+    pub const ADD_DECAY: usize = 67;
+    pub const GRAN_SIZE: usize = 68;
+    pub const GRAN_DENSITY: usize = 69;
+    pub const GRAN_POSITION: usize = 70;
+    pub const GRAN_SPREAD: usize = 71;
+    pub const GRAN_PITCH_RAND: usize = 72;
+    pub const GRAN_SCAN: usize = 73;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -289,7 +326,47 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     spec("pluck_damping", 0.0, 1.0, 0.3, ""),
     spec("pluck_tone", 0.0, 1.0, 0.7, ""),
     int_spec("slices", 1.0, 64.0, 1.0),
+    int_spec("wave3", 0.0, 4.0, 2.0),
+    spec("osc3_level", 0.0, 1.0, 0.0, ""),
+    spec("osc3_coarse", -24.0, 24.0, -12.0, "st"),
+    int_spec("fm_algo", 0.0, 5.0, 0.0),
+    spec("fm_feedback", 0.0, 1.0, 0.0, ""),
+    spec("op1_ratio", 0.25, 16.0, 1.0, ""),
+    spec("op1_level", 0.0, 1.0, 1.0, ""),
+    spec("op1_decay", 0.01, 5.0, 1.0, "s"),
+    spec("op1_sustain", 0.0, 1.0, 0.8, ""),
+    spec("op2_ratio", 0.25, 16.0, 1.0, ""),
+    spec("op2_level", 0.0, 1.0, 0.5, ""),
+    spec("op2_decay", 0.01, 5.0, 0.6, "s"),
+    spec("op2_sustain", 0.0, 1.0, 0.2, ""),
+    spec("op3_ratio", 0.25, 16.0, 2.0, ""),
+    spec("op3_level", 0.0, 1.0, 0.0, ""),
+    spec("op3_decay", 0.01, 5.0, 0.4, "s"),
+    spec("op3_sustain", 0.0, 1.0, 0.0, ""),
+    spec("op4_ratio", 0.25, 16.0, 1.0, ""),
+    spec("op4_level", 0.0, 1.0, 0.0, ""),
+    spec("op4_decay", 0.01, 5.0, 0.3, "s"),
+    spec("op4_sustain", 0.0, 1.0, 0.0, ""),
+    int_spec("keys_type", 0.0, 2.0, 0.0),
+    spec("keys_tone", 0.0, 1.0, 0.5, ""),
+    spec("keys_decay", 0.2, 10.0, 3.0, "s"),
+    spec("keys_tremolo", 0.0, 1.0, 0.0, ""),
+    spec("keys_hammer", 0.0, 1.0, 0.3, ""),
+    int_spec("add_partials", 1.0, 32.0, 16.0),
+    spec("add_bright", 0.0, 1.0, 0.5, ""),
+    spec("add_even", 0.0, 1.0, 1.0, ""),
+    spec("add_inharm", 0.0, 1.0, 0.0, ""),
+    spec("add_decay", 0.0, 1.0, 0.0, ""),
+    spec("gran_size", 5.0, 500.0, 80.0, "ms"),
+    spec("gran_density", 1.0, 100.0, 20.0, "Hz"),
+    spec("gran_position", 0.0, 1.0, 0.2, ""),
+    spec("gran_spread", 0.0, 1.0, 0.1, ""),
+    spec("gran_pitch_rand", 0.0, 12.0, 0.0, "st"),
+    spec("gran_scan", -2.0, 2.0, 0.0, ""),
 ];
+
+/// Names of the keys instrument's types, by `keys_type` value.
+pub const KEYS_TYPES: [&str; 3] = ["piano", "epiano", "organ"];
 
 /// Names of the drum synth's sounds, by `drum_type` value.
 pub const DRUM_TYPES: [&str; 5] = ["kick", "snare", "hat", "tom", "clap"];
@@ -564,6 +641,22 @@ mod tests {
         assert_eq!(INSTRUMENT_PARAMS[inst::CUTOFF].name, "cutoff");
         assert_eq!(INSTRUMENT_PARAMS[inst::ROOT_KEY].name, "root_key");
         assert_eq!(INSTRUMENT_PARAMS[inst::PITCH].name, "pitch");
+        for (index, name) in [
+            (inst::GLIDE, "glide"),
+            (inst::DRIVE, "drive"),
+            (inst::ARP_GATE, "arp_gate"),
+            (inst::PLUCK_TONE, "pluck_tone"),
+            (inst::SLICES, "slices"),
+            (inst::WAVE3, "wave3"),
+            (inst::FM_FEEDBACK, "fm_feedback"),
+            (inst::OP1_RATIO, "op1_ratio"),
+            (inst::OP4_SUSTAIN, "op4_sustain"),
+            (inst::KEYS_HAMMER, "keys_hammer"),
+            (inst::ADD_DECAY, "add_decay"),
+            (inst::GRAN_SCAN, "gran_scan"),
+        ] {
+            assert_eq!(INSTRUMENT_PARAMS[index].name, name);
+        }
     }
 
     #[test]

@@ -17,6 +17,7 @@ pub enum Purpose {
     ExportStems,
     AddSample,
     SetSample(usize),
+    SetPad(usize, usize),
     RenameChannel(usize),
     RenamePattern(usize),
     RenameTrack(usize),
@@ -89,6 +90,10 @@ impl Dialog {
         Self::new(Purpose::SetSample(channel), current)
     }
 
+    pub fn set_pad(channel: usize, pad: usize, current: String) -> Self {
+        Self::new(Purpose::SetPad(channel, pad), current)
+    }
+
     pub fn rename_channel(channel: usize, current: &str) -> Self {
         Self::new(Purpose::RenameChannel(channel), current.to_owned())
     }
@@ -131,6 +136,7 @@ impl Dialog {
             Purpose::ExportStems => "Export stems to folder",
             Purpose::AddSample => "Add WAV sample",
             Purpose::SetSample(_) => "Change sample",
+            Purpose::SetPad(_, _) => "Pad sample (file path or builtin:<sound>; - clears)",
             Purpose::RenameChannel(_) => "Rename channel",
             Purpose::RenamePattern(_) => "Rename pattern",
             Purpose::RenameTrack(_) => "Rename mixer track",
@@ -154,6 +160,10 @@ impl Dialog {
             },
             Purpose::ExportStems => Invocation::new("project.export_stems", [text]),
             Purpose::AddSample => Invocation::new("channel.add_sampler", [text]),
+            Purpose::SetPad(channel, pad) => Invocation::new(
+                "channel.set_pad",
+                [(channel + 1).to_string(), (pad + 1).to_string(), text],
+            ),
             Purpose::SetSample(channel) => {
                 Invocation::new("channel.set_sample", [(channel + 1).to_string(), text])
             }

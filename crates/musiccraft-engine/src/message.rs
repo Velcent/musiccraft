@@ -5,6 +5,8 @@ use crate::{ChannelParams, EffectParams, External, Graph, Preview, Sequence, Tra
 /// All variants are fixed-size. The two payload variants carry boxes that were
 /// allocated on the main thread; the values they replace come back as [`Garbage`].
 #[derive(Debug)]
+// Settings travel inline: boxing them would make the audio thread free memory.
+#[allow(clippy::large_enum_variant)]
 pub enum EngineMessage {
     /// Start advancing the playhead from its current position.
     Play,

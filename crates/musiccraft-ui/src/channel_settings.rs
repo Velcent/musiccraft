@@ -246,6 +246,26 @@ fn contents(
             pluck(ui, state, number, channel, actions);
             return;
         }
+        Instrument::Fm => {
+            fm(ui, state, number, channel, actions);
+            return;
+        }
+        Instrument::Keys => {
+            keys(ui, state, number, channel, actions);
+            return;
+        }
+        Instrument::Additive => additive(ui, state, number, channel, actions),
+        Instrument::Granular { sample } => {
+            granular(ui, state, frame, index, channel, sample, actions);
+        }
+        Instrument::Kit { pads } => {
+            kit(ui, state, index, channel, pads, actions);
+            return;
+        }
+        Instrument::Layer { channels } => {
+            layer(ui, frame, index, channels, actions);
+            return;
+        }
         Instrument::Plugin { plugin } => {
             // Plugins shape their own sound; the built-in sections do not apply.
             let target = crate::plugins::Target::Channel(number);
@@ -254,6 +274,17 @@ fn contents(
         }
     }
     ui.add_space(6.0);
+    envelope_section(ui, state, number, channel, actions);
+}
+
+/// The amplitude envelope knobs and their graph.
+fn envelope_section(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
     section(ui, "ENVELOPE", |ui| {
         ui.horizontal(|ui| {
             param_knob(ui, state, number, channel, inst::ATTACK, "Attack", actions);
@@ -276,7 +307,7 @@ fn contents(
                 "Release",
                 actions,
             );
-            envelope_graph(ui, channel, theme::palette(index));
+            envelope_graph(ui, channel, theme::palette(number - 1));
         });
     });
 }
@@ -508,6 +539,383 @@ fn drum(
     });
 }
 
+fn fm(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    preset_bar(
+        ui,
+        number,
+        channel,
+        musiccraft_project::params::presets::FM,
+        actions,
+    );
+    ui.add_space(4.0);
+    section(ui, "ALGORITHM", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::FM_ALGO,
+                &[
+                    "4→3→2→1",
+                    "4→3, 3+2→1",
+                    "4→3 2→1",
+                    "4→1,2,3",
+                    "2→1 +3 +4",
+                    "1+2+3+4",
+                ],
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FM_FEEDBACK,
+                "Feedback 4",
+                actions,
+            );
+        });
+    });
+    for op in 0..4 {
+        ui.add_space(4.0);
+        section(ui, &format!("OPERATOR {}", op + 1), |ui| {
+            ui.horizontal(|ui| {
+                let base = inst::OP1_RATIO + op * 4;
+                param_knob(ui, state, number, channel, base, "Ratio", actions);
+                param_knob(ui, state, number, channel, base + 1, "Level", actions);
+                param_knob(ui, state, number, channel, base + 2, "Decay", actions);
+                param_knob(ui, state, number, channel, base + 3, "Sustain", actions);
+            });
+        });
+    }
+    ui.add_space(4.0);
+    envelope_section(ui, state, number, channel, actions);
+}
+
+fn keys(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    preset_bar(
+        ui,
+        number,
+        channel,
+        musiccraft_project::params::presets::KEYS,
+        actions,
+    );
+    ui.add_space(4.0);
+    section(ui, "KEYS", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::KEYS_TYPE,
+                &["Piano", "Electric piano", "Organ"],
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::KEYS_TONE, "Tone", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::KEYS_DECAY,
+                "Ring",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::KEYS_TREMOLO,
+                "Tremolo",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::KEYS_HAMMER,
+                "Hammer",
+                actions,
+            );
+        });
+    });
+    ui.add_space(4.0);
+    envelope_section(ui, state, number, channel, actions);
+}
+
+fn additive(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    preset_bar(
+        ui,
+        number,
+        channel,
+        musiccraft_project::params::presets::ADDITIVE,
+        actions,
+    );
+    ui.add_space(4.0);
+    section(ui, "HARMONICS", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_PARTIALS,
+                "Harmonics",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_BRIGHT,
+                "Bright",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::ADD_EVEN, "Even", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_INHARM,
+                "Stretch",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::ADD_DECAY, "Fade", actions);
+        });
+        harmonics_graph(ui, channel);
+    });
+}
+
+/// Bars for each harmonic's level.
+fn harmonics_graph(ui: &mut egui::Ui, channel: &Channel) {
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 50.0), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 4.0, theme::LCD_BG);
+    let count = channel.params.get(inst::ADD_PARTIALS).round().max(1.0) as usize;
+    let slope = 2.0 - 1.6 * channel.params.get(inst::ADD_BRIGHT);
+    let even = channel.params.get(inst::ADD_EVEN);
+    let w = rect.width() / 32.0;
+    for n in 1..=count {
+        let level = (n as f32).powf(-slope) * if n % 2 == 0 { even } else { 1.0 };
+        let x = rect.left() + (n - 1) as f32 * w;
+        let top = rect.bottom() - level.min(1.0) * (rect.height() - 4.0);
+        painter.rect_filled(
+            egui::Rect::from_min_max(pos2(x + 1.0, top), pos2(x + w - 1.0, rect.bottom())),
+            1.0,
+            theme::ACCENT,
+        );
+    }
+}
+
+fn granular(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    index: usize,
+    channel: &Channel,
+    sample: &str,
+    actions: &mut Vec<Action>,
+) {
+    let number = index + 1;
+    section(ui, "GRAINS", |ui| {
+        ui.horizontal(|ui| {
+            ui.add(egui::Label::new(RichText::new(sample).monospace().small()).truncate());
+            if ui.small_button("Change…").clicked() {
+                state.open_dialog(Dialog::set_sample(index, sample.to_owned()));
+            }
+        });
+        waveform(ui, frame.waveform, theme::palette(index), 1);
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::GRAN_POSITION,
+                "Position",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::GRAN_SPREAD,
+                "Spread",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::GRAN_SIZE, "Size", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::GRAN_DENSITY,
+                "Density",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::GRAN_PITCH_RAND,
+                "Detune",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::GRAN_SCAN, "Scan", actions);
+        });
+    });
+}
+
+fn kit(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    index: usize,
+    channel: &Channel,
+    pads: &[String],
+    actions: &mut Vec<Action>,
+) {
+    let root = channel.params.get(inst::ROOT_KEY).round() as u8;
+    section(ui, "PADS", |ui| {
+        ui.label(
+            RichText::new(
+                "Click a pad to hear it; right-click to load a sample. Pad 1 is the root key.",
+            )
+            .small()
+            .color(theme::TEXT_DIM),
+        );
+        egui::Grid::new(("kit-pads", index))
+            .spacing([4.0, 4.0])
+            .show(ui, |ui| {
+                // Pads 13–16 on top, like a pad controller.
+                for row in (0..4).rev() {
+                    for col in 0..4 {
+                        let pad = row * 4 + col;
+                        let name = pads
+                            .get(pad)
+                            .filter(|p| !p.is_empty())
+                            .map(|p| {
+                                p.strip_prefix(musiccraft_project::params::BUILTIN_PREFIX)
+                                    .map(str::to_owned)
+                                    .unwrap_or_else(|| {
+                                        std::path::Path::new(p).file_stem().map_or_else(
+                                            || p.clone(),
+                                            |s| s.to_string_lossy().into_owned(),
+                                        )
+                                    })
+                            })
+                            .unwrap_or_else(|| "—".to_owned());
+                        let button = egui::Button::new(
+                            RichText::new(format!("{}\n{name}", pad + 1)).small(),
+                        )
+                        .min_size(vec2(90.0, 40.0))
+                        .fill(if name == "—" {
+                            theme::PANEL_DARK
+                        } else {
+                            theme::RAISED
+                        });
+                        let response = ui.add(button).hint(format!(
+                            "Pad {} — key {}",
+                            pad + 1,
+                            key_name(root.saturating_add(pad as u8))
+                        ));
+                        if response.clicked() {
+                            actions.push(Action::PreviewShort {
+                                channel: index,
+                                key: root.saturating_add(pad as u8),
+                            });
+                        }
+                        if response.secondary_clicked() {
+                            state.open_dialog(Dialog::set_pad(
+                                index,
+                                pad,
+                                pads.get(pad).cloned().unwrap_or_default(),
+                            ));
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+    });
+}
+
+fn layer(
+    ui: &mut egui::Ui,
+    frame: &Frame<'_>,
+    index: usize,
+    children: &[musiccraft_project::ChannelId],
+    actions: &mut Vec<Action>,
+) {
+    section(ui, "LAYER", |ui| {
+        ui.label(
+            RichText::new("Notes on this channel play every ticked channel.")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+        for (i, other) in frame.project.channels.iter().enumerate() {
+            if i == index || matches!(other.instrument, Instrument::Layer { .. }) {
+                continue;
+            }
+            let mut on = children.contains(&other.id);
+            if ui.checkbox(&mut on, &other.name).changed() {
+                let mut next: Vec<usize> = frame
+                    .project
+                    .channels
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| children.contains(&c.id))
+                    .map(|(j, _)| j)
+                    .collect();
+                if on {
+                    next.push(i);
+                } else {
+                    next.retain(|j| *j != i);
+                }
+                next.sort_unstable();
+                let list = if next.is_empty() {
+                    "-".to_owned()
+                } else {
+                    next.iter()
+                        .map(|j| (j + 1).to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                };
+                actions.push(Action::Run(Invocation::new(
+                    "channel.set_layer",
+                    [(index + 1).to_string(), list],
+                )));
+            }
+        }
+    });
+}
+
 fn pluck(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -596,7 +1004,11 @@ fn synth(
     );
     ui.add_space(4.0);
     section(ui, "OSCILLATORS", |ui| {
-        for (label, param) in [("Osc 1", inst::WAVE1), ("Osc 2", inst::WAVE2)] {
+        for (label, param) in [
+            ("Osc 1", inst::WAVE1),
+            ("Osc 2", inst::WAVE2),
+            ("Osc 3", inst::WAVE3),
+        ] {
             ui.horizontal(|ui| {
                 ui.add_sized(
                     vec2(44.0, 20.0),
@@ -627,6 +1039,26 @@ fn synth(
             param_knob(ui, state, number, channel, inst::UNISON, "Unison", actions);
             param_knob(ui, state, number, channel, inst::SPREAD, "Spread", actions);
             param_knob(ui, state, number, channel, inst::DRIVE, "Drive", actions);
+        });
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::OSC3_LEVEL,
+                "Osc 3",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::OSC3_COARSE,
+                "Osc 3 pitch",
+                actions,
+            );
         });
     });
     ui.add_space(6.0);

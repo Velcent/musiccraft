@@ -325,6 +325,19 @@ impl Server {
                 musiccraft_project::Instrument::Synth => "synth".to_owned(),
                 musiccraft_project::Instrument::DrumSynth => "drum synth".to_owned(),
                 musiccraft_project::Instrument::Pluck => "pluck".to_owned(),
+                musiccraft_project::Instrument::Fm => "fm synth".to_owned(),
+                musiccraft_project::Instrument::Keys => "keys".to_owned(),
+                musiccraft_project::Instrument::Additive => "additive".to_owned(),
+                musiccraft_project::Instrument::Granular { sample } => format!("granular {sample}"),
+                musiccraft_project::Instrument::Kit { pads } => {
+                    format!(
+                        "kit ({} pads)",
+                        pads.iter().filter(|p| !p.is_empty()).count()
+                    )
+                }
+                musiccraft_project::Instrument::Layer { channels } => {
+                    format!("layer of {} channels", channels.len())
+                }
                 musiccraft_project::Instrument::Plugin { plugin } => {
                     format!("plugin {} [{}]", plugin.name, plugin.id)
                 }

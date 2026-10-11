@@ -592,6 +592,16 @@ const TOOLS_SCRIPT: &[&str] = &[
     "channel.set_param 3 drum_decay 0.3",
     "channel.set_param 5 pluck_damping 0.6",
     "channel.slice 2 8",
+    "channel.add_fm",
+    "channel.add_keys organ",
+    "channel.add_additive Pad",
+    "channel.add_granular builtin:crash",
+    "channel.add_kit",
+    "channel.set_pad 10 9 builtin:rim",
+    "channel.set_pad 10 1 -",
+    "channel.add_layer",
+    "channel.set_layer 11 1,6",
+    "channel.set_sample 9 builtin:tom",
 ];
 
 #[test]

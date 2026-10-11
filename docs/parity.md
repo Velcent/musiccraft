@@ -77,6 +77,13 @@ of contents; see `docs/clean-room.md`.
 | Instruments | Drum synth (kick, snare, hat, tom, clap) with presets | `cmd:channel.add_drum` `spec:channel-rack.md` |
 | Instruments | Plucked string with presets | `cmd:channel.add_pluck` `spec:channel-rack.md` |
 | Sampler | Loop slicing to keys and to the pattern | `cmd:channel.slice` `spec:channel-rack.md` |
+| Instruments | Four-operator FM synth with presets | `cmd:channel.add_fm` `spec:channel-rack.md` |
+| Instruments | Keys: piano, electric piano, organ | `cmd:channel.add_keys` `spec:channel-rack.md` |
+| Instruments | Additive synth | `cmd:channel.add_additive` `spec:channel-rack.md` |
+| Instruments | Granular sampler | `cmd:channel.add_granular` `spec:channel-rack.md` |
+| Instruments | 16-pad drum kit | `cmd:channel.add_kit` `cmd:channel.set_pad` `spec:channel-rack.md` |
+| Instruments | Layer channel playing several channels | `cmd:channel.add_layer` `cmd:channel.set_layer` `spec:channel-rack.md` |
+| Instruments | Third synth oscillator | `spec:channel-rack.md` `done` |
 | Effects | Effect windows with response graphs and presets | `spec:mixer.md` `done` |
 | Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |
 | Instruments | VST3 plugins | `todo` |

@@ -127,6 +127,18 @@ pub enum Instrument {
     DrumSynth,
     /// Plucked string.
     Pluck,
+    /// Four-operator FM synth.
+    Fm,
+    /// Piano, electric piano or organ.
+    Keys,
+    /// Additive synth.
+    Additive,
+    /// A sample played as grains.
+    Granular(Arc<SampleBuffer>),
+    /// Sixteen sample pads (`None` for an empty pad).
+    Kit(Vec<Option<Arc<SampleBuffer>>>),
+    /// Forwards notes to these channel indices.
+    Layer(Vec<u16>),
     /// The external processor (plugin) in this engine slot; silent when the
     /// slot is empty.
     External(u16),

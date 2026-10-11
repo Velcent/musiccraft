@@ -486,12 +486,30 @@ impl Engine {
     }
 
     fn live_note_off(&mut self, channel: u16, key: u8) {
-        if let Some(external) = self.channel_external(channel) {
-            external.note_off(0, key);
+        // A layer releases the notes it started on its channels.
+        let mut targets = [channel; MAX_LAYER + 1];
+        let mut count = 1;
+        if let Some(Instrument::Layer(children)) = self
+            .graph
+            .as_deref()
+            .and_then(|g| g.channels.get(usize::from(channel)))
+            .map(|n| &n.instrument)
+        {
+            for child in children.iter().take(MAX_LAYER) {
+                if let Some(slot) = targets.get_mut(count) {
+                    *slot = *child;
+                    count += 1;
+                }
+            }
         }
-        for voice in &mut self.voices {
-            if voice.active && voice.live && voice.channel == channel && voice.key == key {
-                voice.release(true);
+        for target in targets.iter().take(count).copied() {
+            if let Some(external) = self.channel_external(target) {
+                external.note_off(0, key);
+            }
+            for voice in &mut self.voices {
+                if voice.active && voice.live && voice.channel == target && voice.key == key {
+                    voice.release(true);
+                }
             }
         }
     }
@@ -771,6 +789,9 @@ fn event_start(event: &NoteEvent, offset_frames: f64, tpf: f64) -> VoiceStart {
 /// Most channels whose last note is remembered for portamento.
 const PORTA_CHANNELS: usize = 512;
 
+/// Most channels one layer plays.
+const MAX_LAYER: usize = 16;
+
 fn trigger(
     voices: &mut [Voice],
     counter: &mut u64,
@@ -779,6 +800,25 @@ fn trigger(
     last_keys: &mut [Option<f32>],
     mut start: VoiceStart,
 ) {
+    // A layer passes the note on to its channels (layers do not nest).
+    if let Some(ChannelNode {
+        instrument: Instrument::Layer(children),
+        ..
+    }) = channels.get(usize::from(start.channel))
+    {
+        for child in children.iter().take(MAX_LAYER) {
+            let nested = matches!(
+                channels.get(usize::from(*child)).map(|n| &n.instrument),
+                Some(Instrument::Layer(_))
+            );
+            if !nested {
+                let mut forwarded = start;
+                forwarded.channel = *child;
+                trigger(voices, counter, channels, externals, last_keys, forwarded);
+            }
+        }
+        return;
+    }
     if let Some(ChannelNode {
         instrument: Instrument::External(slot),
         ..

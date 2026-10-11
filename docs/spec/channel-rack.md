@@ -75,6 +75,59 @@
   bright to 1 dark), `pluck_tone` (brightness of the initial burst). Ending
   the note damps the string quickly. Presets: guitar, harp, bass, muted.
 
+## FM synth
+
+- `channel.add_fm [name]`: four sine operators. `fm_algo` picks how they
+  connect (0: 4→3→2→1; 1: 4→3, 3 and 2 → 1; 2: two stacks 4→3 and 2→1;
+  3: 4 modulates 1, 2 and 3; 4: 2→1 plus 3 and 4 as tones; 5: all four as
+  tones). Each operator has `opN_ratio` (0.25–16 × the note), `opN_level`,
+  `opN_decay` (s) and `opN_sustain`; operator 4 has `fm_feedback`. Tones
+  follow the channel envelope; modulators shape the timbre over time.
+  Presets: e-piano, bell, bass, brass, organ, pluck, metallic.
+
+## Keys
+
+- `channel.add_keys [piano|epiano|organ] [name]`: `keys_type`, `keys_tone`
+  (brightness), `keys_decay` (how long a held note rings), `keys_tremolo`
+  and `keys_hammer` (attack noise; organ: percussion). The piano sums slightly
+  stretched partials whose upper ones fade faster; the e-piano is a decaying
+  FM tine with a bell overtone; the organ mixes nine drawbar-like harmonics.
+  Release follows the channel envelope.
+
+## Additive
+
+- `channel.add_additive [name]`: up to 32 harmonics (`add_partials`) with
+  `add_bright` (spectral slope), `add_even` (level of even harmonics),
+  `add_inharm` (stretch) and `add_decay` (upper harmonics fade faster).
+
+## Third oscillator
+
+- The synth has a third oscillator: `wave3`, `osc3_level` (0 = off) and
+  `osc3_coarse` (±24 semitones), mixed after the first two.
+
+## Granular sampler
+
+- `channel.add_granular <sample> [name]` plays a sample as overlapping
+  windowed grains: `gran_size` (5–500 ms), `gran_density` (grains per
+  second), `gran_position` (0–1 in the sample), `gran_spread` (random
+  position range), `gran_pitch_rand` (random detune, semitones) and
+  `gran_scan` (how fast the position moves while held, −2…2 × real time).
+  Pitch follows the key around `root_key`.
+
+## Drum kit
+
+- `channel.add_kit [name]` adds a 16-pad sample kit; key `root_key + n`
+  plays pad `n + 1` (one-shot). `channel.set_pad <channel> <pad> <sample>`
+  loads a pad (`-` clears it). A new kit loads the built-in sounds on pads
+  1–8.
+
+## Layer
+
+- `channel.add_layer [name]` adds a channel that plays nothing itself but
+  passes every note (sequenced and live) to the channels set with
+  `channel.set_layer <channel> <channel,channel,…>` (`-` for none). Layers
+  do not nest.
+
 ## Built-in sounds
 
 `kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`, `rim`, `crash`. Each is

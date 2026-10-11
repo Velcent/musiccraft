@@ -14,6 +14,19 @@ const STRING_LEN: usize = 4096;
 /// Output level of the drum synth and pluck at full velocity.
 const DRUM_GAIN: f32 = 0.8;
 const PLUCK_GAIN: f32 = 0.35;
+/// Most partials (and phases) a voice keeps for additive instruments.
+const PARTIALS: usize = 32;
+/// Most grains sounding at once in one granular voice.
+const GRAINS: usize = 24;
+
+/// One grain of the granular sampler; `length == 0` means unused.
+#[derive(Debug, Clone, Copy, Default)]
+struct Grain {
+    position: f64,
+    step: f64,
+    age: u32,
+    length: u32,
+}
 
 fn param(params: &ChannelParams, index: usize) -> f32 {
     params.instrument.get(index).copied().unwrap_or(0.0)
@@ -69,6 +82,7 @@ pub(crate) struct Voice {
     osc1: [Oscillator; MAX_UNISON],
     osc2: [Oscillator; MAX_UNISON],
     sub: Oscillator,
+    osc3: Oscillator,
     lfo_phase: f32,
     filter_l: Svf,
     filter_r: Svf,
@@ -92,6 +106,15 @@ pub(crate) struct Voice {
     glide: f32,
     glide_rate: f32,
     sample_rate: f32,
+    /// Oscillator phases for FM, keys and additive.
+    phases: [f64; PARTIALS],
+    /// Operator 4's last output, for feedback.
+    fm_prev: f32,
+    /// The kit pad this voice plays.
+    pad: usize,
+    grains: [Grain; GRAINS],
+    /// Frames until the next grain.
+    grain_timer: f32,
 }
 
 impl Voice {
@@ -112,6 +135,7 @@ impl Voice {
             osc1: std::array::from_fn(|_| Oscillator::new()),
             osc2: std::array::from_fn(|_| Oscillator::new()),
             sub: Oscillator::new(),
+            osc3: Oscillator::new(),
             lfo_phase: 0.0,
             filter_l: Svf::new(),
             filter_r: Svf::new(),
@@ -124,6 +148,11 @@ impl Voice {
             string_last: 0.0,
             string_peak: 0.0,
             string_count: 0,
+            phases: [0.0; PARTIALS],
+            fm_prev: 0.0,
+            pad: 0,
+            grains: [Grain::default(); GRAINS],
+            grain_timer: 0.0,
             filter_countdown: 0,
             sample_pos: 0.0,
             pan: (1.0, 1.0),
@@ -169,9 +198,20 @@ impl Voice {
         self.elapsed = 0;
         self.drum_phase = 0.0;
 
+        self.phases = [0.0; PARTIALS];
+        self.fm_prev = 0.0;
         match instrument {
             Instrument::DrumSynth => self.start_drum(params),
             Instrument::Pluck => self.start_pluck(params, start.key),
+            Instrument::Kit(_) => {
+                let root = param(params, inst::ROOT_KEY).round() as i32;
+                self.pad = (i32::from(start.key) - root).rem_euclid(16) as usize;
+                self.one_shot = !start.live;
+            }
+            Instrument::Granular(_) => {
+                self.grains = [Grain::default(); GRAINS];
+                self.grain_timer = 0.0;
+            }
             _ => {}
         }
         self.env.reset();
@@ -189,6 +229,10 @@ impl Voice {
         self.filter_r.reset();
         self.filter_countdown = 0;
         self.sample_pos = 0.0;
+        if let Instrument::Granular(buffer) = instrument {
+            self.sample_pos =
+                f64::from(param(params, inst::GRAN_POSITION).clamp(0.0, 1.0)) * buffer.len() as f64;
+        }
         self.slice_end = None;
         if let Instrument::Sampler(buffer) = instrument {
             let slices = param(params, inst::SLICES).round().max(1.0) as i32;
@@ -271,47 +315,361 @@ impl Voice {
         let pitch = f32::from(self.key) + param(params, inst::PITCH) + self.shape.fine;
         match instrument {
             Instrument::Sampler(buffer) => {
-                let root = param(params, inst::ROOT_KEY);
                 // Slices play at their own pitch: the key picks the slice.
                 let pitch = if self.slice_end.is_some() {
-                    root + param(params, inst::PITCH)
+                    param(params, inst::ROOT_KEY) + param(params, inst::PITCH)
                 } else {
                     pitch
                 };
-                let rate = buffer.sample_rate() / f64::from(sample_rate);
-                let step_for =
-                    |glide: f32| rate * 2.0_f64.powf(f64::from(pitch + glide - root) / 12.0);
-                let mut step = step_for(self.glide);
-                let end = self
-                    .slice_end
-                    .unwrap_or(f64::INFINITY)
-                    .min(buffer.len() as f64);
-                for (l, r) in left.iter_mut().zip(right.iter_mut()) {
-                    if !self.advance_gate() {
-                        continue;
+                self.render_sample(buffer, params, pitch, left, right, sample_rate);
+            }
+            Instrument::Kit(pads) => {
+                // Pads play at their own pitch.
+                let pitch = param(params, inst::ROOT_KEY) + param(params, inst::PITCH);
+                match pads.get(self.pad) {
+                    Some(Some(buffer)) => {
+                        self.render_sample(buffer, params, pitch, left, right, sample_rate);
                     }
-                    if self.glide != 0.0 {
-                        // A slide moves the pitch offset toward zero.
-                        let change = self.glide_rate.min(self.glide.abs());
-                        self.glide -= change * self.glide.signum();
-                        step = step_for(self.glide);
-                    }
-                    let level = self.env.next_level() * self.velocity;
-                    let (sl, sr) = buffer.read(self.sample_pos);
-                    *l += sl * level * self.pan.0;
-                    *r += sr * level * self.pan.1;
-                    self.sample_pos += step;
-                    if self.sample_pos >= end || self.env.is_idle() {
-                        self.active = false;
-                        break;
-                    }
+                    _ => self.active = false,
                 }
             }
+            Instrument::Granular(buffer) => {
+                self.render_granular(buffer, params, pitch, left, right, sample_rate);
+            }
+            Instrument::Fm => self.render_fm(params, pitch, left, right),
+            Instrument::Keys => self.render_keys(params, pitch, left, right),
+            Instrument::Additive => self.render_additive(params, pitch, left, right),
+            // Layers forward notes; they never sound themselves.
+            Instrument::Layer(_) => self.active = false,
             // External instruments never get voices; see `engine::trigger`.
             Instrument::External(_) => self.active = false,
             Instrument::Synth => self.render_synth(params, pitch, left, right, sample_rate),
             Instrument::DrumSynth => self.render_drum(params, left, right),
             Instrument::Pluck => self.render_pluck(params, left, right),
+        }
+    }
+
+    /// Plays `buffer` from the current position at `pitch` relative to the
+    /// root key (sampler, slices and kit pads).
+    fn render_sample(
+        &mut self,
+        buffer: &musiccraft_dsp::SampleBuffer,
+        params: &ChannelParams,
+        pitch: f32,
+        left: &mut [f32],
+        right: &mut [f32],
+        sample_rate: f32,
+    ) {
+        let root = param(params, inst::ROOT_KEY);
+        let rate = buffer.sample_rate() / f64::from(sample_rate);
+        let step_for = |glide: f32| rate * 2.0_f64.powf(f64::from(pitch + glide - root) / 12.0);
+        let mut step = step_for(self.glide);
+        let end = self
+            .slice_end
+            .unwrap_or(f64::INFINITY)
+            .min(buffer.len() as f64);
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if !self.advance_gate() {
+                continue;
+            }
+            if self.glide != 0.0 {
+                // A slide moves the pitch offset toward zero.
+                let change = self.glide_rate.min(self.glide.abs());
+                self.glide -= change * self.glide.signum();
+                step = step_for(self.glide);
+            }
+            let level = self.env.next_level() * self.velocity;
+            let (sl, sr) = buffer.read(self.sample_pos);
+            *l += sl * level * self.pan.0;
+            *r += sr * level * self.pan.1;
+            self.sample_pos += step;
+            if self.sample_pos >= end || self.env.is_idle() {
+                self.active = false;
+                break;
+            }
+        }
+    }
+
+    /// Writes one mono sample to both sides, with the note's pan.
+    fn emit(&self, l: &mut f32, r: &mut f32, sample: f32) {
+        *l += sample * self.pan.0;
+        *r += sample * self.pan.1;
+    }
+
+    /// Four-operator FM.
+    fn render_fm(
+        &mut self,
+        params: &ChannelParams,
+        pitch: f32,
+        left: &mut [f32],
+        right: &mut [f32],
+    ) {
+        let algo = param(params, inst::FM_ALGO).round() as i32;
+        let feedback = param(params, inst::FM_FEEDBACK).clamp(0.0, 1.0);
+        let op = |n: usize, field: usize| param(params, inst::OP1_RATIO + (n - 1) * 4 + field);
+        let ratio = [op(1, 0), op(2, 0), op(3, 0), op(4, 0)];
+        let level = [op(1, 1), op(2, 1), op(3, 1), op(4, 1)];
+        let decay = [op(1, 2), op(2, 2), op(3, 2), op(4, 2)].map(|d| d.max(0.005));
+        let sustain = [op(1, 3), op(2, 3), op(3, 3), op(4, 3)];
+        let sr = self.sample_rate;
+        let hz = key_to_hz(pitch + self.glide);
+        let tau = std::f32::consts::TAU;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if !self.advance_gate() {
+                continue;
+            }
+            let t = self.elapsed as f32 / sr;
+            self.elapsed = self.elapsed.saturating_add(1);
+            let amp = self.env.next_level() * self.velocity;
+            let mut out_of = [0.0_f32; 4];
+            let env = |i: usize| sustain[i] + (1.0 - sustain[i]) * (-t / decay[i]).exp();
+            // Operators run 4 down to 1 so modulators are ready first.
+            for i in (0..4).rev() {
+                let phase = self.phases[i];
+                self.phases[i] = (phase + f64::from(hz * ratio[i] / sr)).fract();
+                let modulation = match (algo, i) {
+                    (0, 0) => out_of[1],
+                    (0, 1) | (1, 2) | (2, 2) => out_of[i + 1],
+                    (0, 2) => out_of[3],
+                    (1, 0) => out_of[1] + out_of[2],
+                    (2, 0) | (4, 0) => out_of[1],
+                    (3, 0..=2) => out_of[3],
+                    (_, 3) => self.fm_prev * feedback,
+                    _ => 0.0,
+                };
+                let value = (phase as f32 * tau + modulation * 4.0).sin() * level[i] * env(i);
+                if i == 3 {
+                    self.fm_prev = value;
+                }
+                out_of[i] = value;
+            }
+            let carriers: &[usize] = match algo {
+                2 => &[0, 2],
+                3 => &[0, 1, 2],
+                4 => &[0, 2, 3],
+                5 => &[0, 1, 2, 3],
+                _ => &[0],
+            };
+            let mix: f32 = carriers.iter().map(|c| out_of[*c]).sum::<f32>() / carriers.len() as f32;
+            let sample = mix * amp * SYNTH_GAIN * 1.6;
+            self.emit(l, r, sample);
+            if self.env.is_idle() {
+                self.active = false;
+                break;
+            }
+        }
+    }
+
+    /// Piano, electric piano or organ.
+    fn render_keys(
+        &mut self,
+        params: &ChannelParams,
+        pitch: f32,
+        left: &mut [f32],
+        right: &mut [f32],
+    ) {
+        let kind = param(params, inst::KEYS_TYPE).round() as i32;
+        let tone = param(params, inst::KEYS_TONE).clamp(0.0, 1.0);
+        let ring = param(params, inst::KEYS_DECAY).max(0.05);
+        let tremolo = param(params, inst::KEYS_TREMOLO).clamp(0.0, 1.0);
+        let hammer = param(params, inst::KEYS_HAMMER).clamp(0.0, 1.0);
+        let sr = self.sample_rate;
+        let hz = key_to_hz(pitch + self.glide);
+        let tau = std::f32::consts::TAU;
+        let nyquist = sr * 0.45;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if !self.advance_gate() {
+                continue;
+            }
+            let t = self.elapsed as f32 / sr;
+            self.elapsed = self.elapsed.saturating_add(1);
+            let amp = self.env.next_level() * self.velocity;
+            let noise = self.next_noise();
+            let trem = 1.0 - tremolo * 0.5 * (1.0 + (t * 5.5 * tau).sin());
+            let sample = match kind {
+                // Electric piano: a decaying FM tine with a bell overtone.
+                1 => {
+                    let index = (0.6 + tone * 3.0) * self.velocity * (-t / 0.5).exp();
+                    let m = self.phases[1];
+                    self.phases[1] = (m + f64::from(hz / sr)).fract();
+                    let c = self.phases[0];
+                    self.phases[0] = (c + f64::from(hz / sr)).fract();
+                    let b = self.phases[2];
+                    self.phases[2] = (b + f64::from((hz * 14.0).min(nyquist) / sr)).fract();
+                    let tine = (c as f32 * tau + (m as f32 * tau).sin() * index).sin();
+                    let bell = (b as f32 * tau).sin() * 0.08 * hammer * (-t / 0.04).exp();
+                    (tine + bell) * (-t / ring).exp() * trem
+                }
+                // Organ: drawbar-like harmonics, a percussion blip, no decay.
+                2 => {
+                    const DRAWBARS: [f32; 9] = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0];
+                    let mut sum = 0.0;
+                    for (i, harmonic) in DRAWBARS.iter().enumerate() {
+                        let f = hz * harmonic;
+                        if f > nyquist {
+                            break;
+                        }
+                        let weight = if i < 3 {
+                            1.0
+                        } else {
+                            tone * 0.8 / (i as f32 - 1.0)
+                        };
+                        let phase = self.phases[i];
+                        self.phases[i] = (phase + f64::from(f / sr)).fract();
+                        sum += (phase as f32 * tau).sin() * weight;
+                    }
+                    let percussion =
+                        (self.phases[4] as f32 * tau).sin() * hammer * (-t / 0.2).exp();
+                    (sum * 0.3 + percussion * 0.5) * trem
+                }
+                // Piano: slightly stretched partials, upper ones fading faster.
+                _ => {
+                    let mut sum = 0.0;
+                    for n in 1..=12 {
+                        let nf = n as f32;
+                        let f = hz * nf * (1.0 + 0.0004 * nf * nf).sqrt();
+                        if f > nyquist {
+                            break;
+                        }
+                        let i = n - 1;
+                        let phase = self.phases[i];
+                        self.phases[i] = (phase + f64::from(f / sr)).fract();
+                        let brightness = 1.5 - tone * 0.8 - self.velocity * 0.3;
+                        let weight = nf.powf(-brightness.max(0.3));
+                        let fade = (-t * (1.0 + 0.5 * (nf - 1.0)) / ring).exp();
+                        sum += (phase as f32 * tau).sin() * weight * fade;
+                    }
+                    let strike = if t < 0.015 {
+                        noise * hammer * (1.0 - t / 0.015) * 0.6
+                    } else {
+                        0.0
+                    };
+                    (sum * 0.45 + strike) * trem
+                }
+            };
+            self.emit(l, r, sample * amp * SYNTH_GAIN * 1.6);
+            if self.env.is_idle() {
+                self.active = false;
+                break;
+            }
+        }
+    }
+
+    /// Additive synth: a sum of harmonics shaped by brightness, even level,
+    /// stretch and per-harmonic decay.
+    fn render_additive(
+        &mut self,
+        params: &ChannelParams,
+        pitch: f32,
+        left: &mut [f32],
+        right: &mut [f32],
+    ) {
+        let count = (param(params, inst::ADD_PARTIALS).round() as usize).clamp(1, PARTIALS);
+        let bright = param(params, inst::ADD_BRIGHT).clamp(0.0, 1.0);
+        let even = param(params, inst::ADD_EVEN).clamp(0.0, 1.0);
+        let inharm = param(params, inst::ADD_INHARM).clamp(0.0, 1.0);
+        let fade = param(params, inst::ADD_DECAY).clamp(0.0, 1.0);
+        let sr = self.sample_rate;
+        let hz = key_to_hz(pitch + self.glide);
+        let slope = 2.0 - 1.6 * bright;
+        let norm: f32 = (1..=count)
+            .map(|n| (n as f32).powf(-slope) * if n % 2 == 0 { even } else { 1.0 })
+            .sum::<f32>()
+            .max(1e-3);
+        let tau = std::f32::consts::TAU;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if !self.advance_gate() {
+                continue;
+            }
+            let t = self.elapsed as f32 / sr;
+            self.elapsed = self.elapsed.saturating_add(1);
+            let amp = self.env.next_level() * self.velocity;
+            let mut sum = 0.0;
+            for n in 1..=count {
+                let nf = n as f32;
+                let f = hz * nf * (1.0 + inharm * 0.02 * (nf - 1.0));
+                if f > sr * 0.45 {
+                    break;
+                }
+                let i = n - 1;
+                let phase = self.phases[i];
+                self.phases[i] = (phase + f64::from(f / sr)).fract();
+                let weight = nf.powf(-slope) * if n % 2 == 0 { even } else { 1.0 };
+                let decay = (-t * fade * nf * 1.5).exp();
+                sum += (phase as f32 * tau).sin() * weight * decay;
+            }
+            self.emit(l, r, sum / norm * amp * SYNTH_GAIN * 1.6);
+            if self.env.is_idle() {
+                self.active = false;
+                break;
+            }
+        }
+    }
+
+    /// Granular sampler: windowed grains from around a scanning position.
+    fn render_granular(
+        &mut self,
+        buffer: &musiccraft_dsp::SampleBuffer,
+        params: &ChannelParams,
+        pitch: f32,
+        left: &mut [f32],
+        right: &mut [f32],
+        sample_rate: f32,
+    ) {
+        let len = buffer.len() as f64;
+        if len < 2.0 {
+            self.active = false;
+            return;
+        }
+        let root = param(params, inst::ROOT_KEY);
+        let size = (param(params, inst::GRAN_SIZE).max(1.0) * 0.001 * sample_rate) as u32;
+        let interval = sample_rate / param(params, inst::GRAN_DENSITY).max(0.1);
+        let spread = f64::from(param(params, inst::GRAN_SPREAD).clamp(0.0, 1.0));
+        let jitter = param(params, inst::GRAN_PITCH_RAND).max(0.0);
+        let scan = f64::from(param(params, inst::GRAN_SCAN));
+        let rate = buffer.sample_rate() / f64::from(sample_rate);
+        let base_step = rate * 2.0_f64.powf(f64::from(pitch - root) / 12.0);
+        // Overlapping grains are normalized by how many overlap on average.
+        let overlap = (size as f32 / interval).max(1.0);
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if !self.advance_gate() {
+                continue;
+            }
+            self.grain_timer -= 1.0;
+            if self.grain_timer <= 0.0 {
+                self.grain_timer += interval;
+                let offset = f64::from(self.next_noise()) * spread * len * 0.5;
+                let detune = f64::from(self.next_noise() * jitter);
+                if let Some(grain) = self.grains.iter_mut().find(|g| g.length == 0) {
+                    *grain = Grain {
+                        position: (self.sample_pos + offset).rem_euclid(len),
+                        step: base_step * 2.0_f64.powf(detune / 12.0),
+                        age: 0,
+                        length: size.max(2),
+                    };
+                }
+            }
+            self.sample_pos = (self.sample_pos + scan * rate).rem_euclid(len);
+            let level = self.env.next_level() * self.velocity / overlap.sqrt();
+            let (mut sum_l, mut sum_r) = (0.0, 0.0);
+            for grain in self.grains.iter_mut().filter(|g| g.length > 0) {
+                let x = grain.age as f32 / grain.length as f32;
+                let window = 0.5 - 0.5 * (x * std::f32::consts::TAU).cos();
+                let (gl, gr) = buffer.read(grain.position.rem_euclid(len));
+                sum_l += gl * window;
+                sum_r += gr * window;
+                grain.position += grain.step;
+                grain.age += 1;
+                if grain.age >= grain.length {
+                    grain.length = 0;
+                }
+            }
+            *l += sum_l * level * self.pan.0;
+            *r += sum_r * level * self.pan.1;
+            if self.env.is_idle() {
+                self.active = false;
+                break;
+            }
         }
     }
 
@@ -516,6 +874,9 @@ impl Voice {
         let unison = (param(params, inst::UNISON).round() as usize).clamp(1, MAX_UNISON);
         let spread = param(params, inst::SPREAD);
         let sub_level = param(params, inst::SUB).clamp(0.0, 1.0);
+        let wave3 = Waveform::from_param(param(params, inst::WAVE3));
+        let osc3_level = param(params, inst::OSC3_LEVEL).clamp(0.0, 1.0);
+        let osc3_ratio = 2.0_f64.powf(f64::from(param(params, inst::OSC3_COARSE)) / 12.0);
         let lfo_step = param(params, inst::LFO_RATE).max(0.0) / sample_rate.max(1.0);
         let lfo_depth = param(params, inst::LFO_DEPTH).clamp(0.0, 1.0);
         let lfo_target = param(params, inst::LFO_TARGET).round() as i32;
@@ -562,6 +923,7 @@ impl Voice {
                     }
                 }
                 self.sub.set_frequency(base * 0.5, sr);
+                self.osc3.set_frequency(base * osc3_ratio, sr);
                 let lfo_octaves = if lfo_target == 1 { lfo * 3.0 } else { 0.0 };
                 let modulated = cutoff * 2.0_f32.powf(env_amount * level + lfo_octaves);
                 self.filter_l.set(modulated, resonance, sample_rate);
@@ -583,7 +945,12 @@ impl Voice {
                 sum_r += sample * (1.0 + p);
             }
             let sub = self.sub.next_sample(Waveform::Sine) * sub_level;
-            let (mut raw_l, mut raw_r) = (sum_l + sub, sum_r + sub);
+            let third = if osc3_level > 0.0 {
+                self.osc3.next_sample(wave3) * osc3_level
+            } else {
+                0.0
+            };
+            let (mut raw_l, mut raw_r) = (sum_l + sub + third, sum_r + sub + third);
             if drive > 0.001 {
                 raw_l = (raw_l * drive_gain).tanh() * drive_norm;
                 raw_r = (raw_r * drive_gain).tanh() * drive_norm;
@@ -850,5 +1217,118 @@ mod instrument_tests {
         // Ending the note damps it fast.
         let short = render(&Instrument::Pluck, &params, 69, 24_000, Some(4_800));
         assert!(peak(&short[14_400..]) < 1e-3);
+    }
+}
+
+#[cfg(test)]
+mod more_instrument_tests {
+    use std::sync::Arc;
+
+    use musiccraft_dsp::SampleBuffer;
+
+    use super::*;
+
+    fn render(
+        instrument: &Instrument,
+        params: &ChannelParams,
+        key: u8,
+        frames: usize,
+        gate: Option<u64>,
+    ) -> Vec<f32> {
+        let start = VoiceStart {
+            channel: 0,
+            key,
+            velocity: 1.0,
+            delay: 0,
+            gate,
+            live: false,
+            pan: 0.0,
+            glide_from: None,
+            slide: false,
+            shape: crate::NoteShape::default(),
+        };
+        let mut voice = Voice::new(48_000.0);
+        voice.start(start, instrument, params, 1);
+        let mut l = vec![0.0; frames];
+        let mut r = vec![0.0; frames];
+        for (bl, br) in l.chunks_mut(256).zip(r.chunks_mut(256)) {
+            voice.render(instrument, params, bl, br, 48_000.0);
+        }
+        l
+    }
+
+    fn peak(data: &[f32]) -> f32 {
+        data.iter().fold(0.0, |p, s| p.max(s.abs()))
+    }
+
+    fn pitch_hz(data: &[f32]) -> f32 {
+        let score = |lag: usize| -> f32 { data.iter().zip(&data[lag..]).map(|(a, b)| a * b).sum() };
+        let lag = (40..1_200)
+            .max_by(|a, b| score(*a).total_cmp(&score(*b)))
+            .unwrap_or(1);
+        48_000.0 / lag as f32
+    }
+
+    #[test]
+    fn fm_keys_and_additive_sound_in_tune_and_release() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::SUSTAIN] = 1.0;
+        params.instrument[inst::RELEASE] = 0.05;
+        for (name, instrument, setup) in [
+            ("fm", Instrument::Fm, vec![]),
+            ("piano", Instrument::Keys, vec![(inst::KEYS_TYPE, 0.0)]),
+            ("epiano", Instrument::Keys, vec![(inst::KEYS_TYPE, 1.0)]),
+            ("organ", Instrument::Keys, vec![(inst::KEYS_TYPE, 2.0)]),
+            ("additive", Instrument::Additive, vec![]),
+        ] {
+            let mut p = params;
+            for (i, v) in setup {
+                p.instrument[i] = v;
+            }
+            // Key 57 is A4 (220 Hz) in MusicCraft's naming.
+            let out = render(&instrument, &p, 57, 24_000, Some(12_000));
+            let level = peak(&out[..12_000]);
+            assert!(level > 0.05 && level < 1.0, "{name} level {level}");
+            assert!(out.iter().all(|s| s.is_finite()), "{name} finite");
+            if name != "organ" {
+                let hz = pitch_hz(&out[2_400..9_600]);
+                assert!((hz - 220.0).abs() < 6.0, "{name} at {hz} Hz");
+            }
+            assert!(peak(&out[18_000..]) < 1e-3, "{name} releases");
+        }
+    }
+
+    #[test]
+    fn kit_pads_and_grains_play_their_samples() {
+        let ramp: Vec<f32> = (0..4_800)
+            .map(|i| ((i as f32) * 0.05).sin() * 0.5)
+            .collect();
+        let buffer = Arc::new(SampleBuffer::mono(ramp, 48_000.0));
+        let kit = Instrument::Kit(vec![None, Some(Arc::clone(&buffer))]);
+        let mut params = ChannelParams::default();
+        params.instrument[inst::SUSTAIN] = 1.0;
+        let root = params.instrument[inst::ROOT_KEY] as u8;
+        assert!(
+            peak(&render(&kit, &params, root + 1, 2_000, Some(10))) > 0.4,
+            "pad 2 plays"
+        );
+        assert!(
+            peak(&render(&kit, &params, root, 2_000, Some(10))) < 1e-6,
+            "pad 1 is empty"
+        );
+        let granular = Instrument::Granular(buffer);
+        let out = render(&granular, &params, root, 24_000, None);
+        assert!(peak(&out[4_800..]) > 0.05, "grains sound");
+        assert!(out.iter().all(|s| s.is_finite() && s.abs() < 2.0));
+    }
+
+    #[test]
+    fn third_oscillator_adds_to_the_synth() {
+        let mut params = ChannelParams::default();
+        let base = render(&Instrument::Synth, &params, 57, 4_800, None);
+        params.instrument[inst::OSC3_LEVEL] = 1.0;
+        let with = render(&Instrument::Synth, &params, 57, 4_800, None);
+        let diff: f32 = base.iter().zip(&with).map(|(a, b)| (a - b).abs()).sum();
+        assert!(diff > 1.0);
     }
 }

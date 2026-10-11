@@ -184,6 +184,27 @@ pub enum Instrument {
     DrumSynth,
     /// Plucked string (Karplus-Strong).
     Pluck,
+    /// Four-operator FM synth.
+    Fm,
+    /// Piano, electric piano or organ.
+    Keys,
+    /// Additive (harmonic) synth.
+    Additive,
+    /// A sample played as grains.
+    Granular {
+        /// File path or built-in name, as for the sampler.
+        sample: String,
+    },
+    /// Sixteen sample pads.
+    Kit {
+        /// Pad samples, empty for an empty pad.
+        pads: Vec<String>,
+    },
+    /// Plays nothing itself; forwards notes to other channels.
+    Layer {
+        /// Channels that receive the notes.
+        channels: Vec<ChannelId>,
+    },
     /// A hosted plugin instrument.
     Plugin {
         /// The plugin.
@@ -200,6 +221,12 @@ impl Instrument {
             Self::Synth => "synth",
             Self::DrumSynth => "drum synth",
             Self::Pluck => "pluck",
+            Self::Fm => "fm",
+            Self::Keys => "keys",
+            Self::Additive => "additive",
+            Self::Granular { .. } => "granular",
+            Self::Kit { .. } => "kit",
+            Self::Layer { .. } => "layer",
             Self::Plugin { .. } => "plugin",
         }
     }
@@ -244,10 +271,8 @@ impl Channel {
     pub fn new(id: ChannelId, name: impl Into<String>, instrument: Instrument) -> Self {
         let params = match instrument {
             Instrument::Sampler { .. } => InstrumentParams::sampler(),
-            Instrument::Synth
-            | Instrument::DrumSynth
-            | Instrument::Pluck
-            | Instrument::Plugin { .. } => InstrumentParams::default(),
+            Instrument::Kit { .. } => InstrumentParams::sampler(),
+            _ => InstrumentParams::default(),
         };
         Self {
             id,

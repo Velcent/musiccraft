@@ -111,9 +111,24 @@ fn item(ui: &mut egui::Ui, label: &str, dragged: Dragged, actions: &mut Vec<Acti
                 .frame(false)
                 .sense(Sense::click_and_drag()),
         )
-        .hint("Click to preview · double-click to add · drag onto the channel rack");
+        .hint("Click to preview · double-click to add · drag onto the channel rack · right-click for more");
     if response.drag_started() {
         response.dnd_set_drag_payload(dragged.clone());
+    }
+    if let Some(sample) = dragged.0.clone() {
+        response.context_menu(|ui| {
+            if ui.button("Add as sampler").clicked() {
+                actions.push(Action::Run(dragged.add_channel()));
+                ui.close();
+            }
+            if ui.button("Add as granular instrument").clicked() {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.add_granular",
+                    [sample.clone()],
+                )));
+                ui.close();
+            }
+        });
     }
     if response.double_clicked() {
         actions.push(Action::Run(dragged.add_channel()));
@@ -209,6 +224,54 @@ fn plugin_database(
                         )
                     {
                         actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
+                    }
+                    let more: [(&str, &str, Invocation); 7] = [
+                        (
+                            "FM synth",
+                            "Four-operator FM synth",
+                            Invocation::bare("channel.add_fm"),
+                        ),
+                        (
+                            "Keys: piano",
+                            "Piano",
+                            Invocation::new("channel.add_keys", ["piano"]),
+                        ),
+                        (
+                            "Keys: electric piano",
+                            "Electric piano",
+                            Invocation::new("channel.add_keys", ["epiano"]),
+                        ),
+                        (
+                            "Keys: organ",
+                            "Organ",
+                            Invocation::new("channel.add_keys", ["organ"]),
+                        ),
+                        (
+                            "Additive",
+                            "Additive (harmonic) synth",
+                            Invocation::bare("channel.add_additive"),
+                        ),
+                        (
+                            "Drum kit",
+                            "16-pad sample kit",
+                            Invocation::bare("channel.add_kit"),
+                        ),
+                        (
+                            "Layer",
+                            "Plays several channels at once",
+                            Invocation::bare("channel.add_layer"),
+                        ),
+                    ];
+                    for (label, hint, invocation) in more {
+                        if matches(search, label)
+                            && plugin_button(
+                                ui,
+                                &format!("♪  {label}"),
+                                format!("{hint} — click to add a channel"),
+                            )
+                        {
+                            actions.push(Action::Run(invocation));
+                        }
                     }
                     for entry in plugins.of_kind(true).filter(|p| matches(search, &p.name)) {
                         let hint =

@@ -626,7 +626,10 @@ impl App {
             .get(self.ui.selected_channel)
             .map(|c| &c.instrument)
         {
-            Some(musiccraft_project::Instrument::Sampler { sample }) => sample.clone(),
+            Some(
+                musiccraft_project::Instrument::Sampler { sample }
+                | musiccraft_project::Instrument::Granular { sample },
+            ) => sample.clone(),
             _ => {
                 self.overview = None;
                 return;
@@ -663,10 +666,7 @@ impl App {
                     musiccraft_project::Instrument::Sampler { sample } => {
                         Some((id, sample.clone()))
                     }
-                    musiccraft_project::Instrument::Synth
-                    | musiccraft_project::Instrument::DrumSynth
-                    | musiccraft_project::Instrument::Pluck
-                    | musiccraft_project::Instrument::Plugin { .. } => None,
+                    _ => None,
                 }
             })
             .collect();

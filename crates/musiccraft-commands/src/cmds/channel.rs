@@ -37,6 +37,54 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             add_pluck,
         ),
         cmd(
+            "channel.add_fm",
+            "channel.add_fm [name]",
+            "Add a four-operator FM synth channel.",
+            add_fm,
+        ),
+        cmd(
+            "channel.add_keys",
+            "channel.add_keys [piano|epiano|organ] [name]",
+            "Add a keys channel (piano, electric piano or organ).",
+            add_keys,
+        ),
+        cmd(
+            "channel.add_additive",
+            "channel.add_additive [name]",
+            "Add an additive (harmonic) synth channel.",
+            add_additive,
+        ),
+        cmd(
+            "channel.add_granular",
+            "channel.add_granular <sample> [name]",
+            "Add a channel that plays a sample as grains.",
+            add_granular,
+        ),
+        cmd(
+            "channel.add_kit",
+            "channel.add_kit [name]",
+            "Add a 16-pad drum kit (pads 1-8 start with the built-in sounds).",
+            add_kit,
+        ),
+        cmd(
+            "channel.set_pad",
+            "channel.set_pad <channel> <pad 1-16> <sample|->",
+            "Load a sample onto a kit pad (- clears it).",
+            set_pad,
+        ),
+        cmd(
+            "channel.add_layer",
+            "channel.add_layer [name]",
+            "Add a layer channel that plays other channels.",
+            add_layer,
+        ),
+        cmd(
+            "channel.set_layer",
+            "channel.set_layer <channel> <channel,channel,...|->",
+            "Set the channels a layer plays.",
+            set_layer,
+        ),
+        cmd(
             "channel.remove",
             "channel.remove <channel>",
             "Remove a channel and its notes in every pattern.",
@@ -228,6 +276,195 @@ fn add_pluck(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     Ok(push_channel(
         project,
         Channel::new(id, name, Instrument::Pluck),
+    ))
+}
+
+fn name_or(args: &Args<'_>, from: usize, default: &str) -> Result<String, CommandError> {
+    if args.len() > from {
+        args.rest(from)
+    } else {
+        Ok(default.to_owned())
+    }
+}
+
+fn add_simple(
+    project: &mut Project,
+    args: &Args<'_>,
+    instrument: Instrument,
+    default: &str,
+) -> Result<Outcome, CommandError> {
+    let name = name_or(args, 0, default)?;
+    let id = ChannelId(project.alloc_id());
+    Ok(push_channel(project, Channel::new(id, name, instrument)))
+}
+
+fn add_fm(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    add_simple(project, args, Instrument::Fm, "FM")
+}
+
+fn add_additive(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    add_simple(project, args, Instrument::Additive, "Additive")
+}
+
+fn add_layer(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    add_simple(
+        project,
+        args,
+        Instrument::Layer {
+            channels: Vec::new(),
+        },
+        "Layer",
+    )
+}
+
+fn add_keys(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    use musiccraft_project::params::KEYS_TYPES;
+    let kind = args
+        .opt(0)
+        .and_then(|w| KEYS_TYPES.iter().position(|t| *t == w));
+    let from = usize::from(kind.is_some());
+    let kind = kind.unwrap_or(0);
+    let default = ["Piano", "E-piano", "Organ"][kind];
+    let name = name_or(args, from, default)?;
+    let id = ChannelId(project.alloc_id());
+    let mut channel = Channel::new(id, name, Instrument::Keys);
+    channel.params.0[musiccraft_project::params::inst::KEYS_TYPE] = kind as f32;
+    if kind == 2 {
+        // Organs hold at full level while the key is down.
+        channel.params.0[musiccraft_project::params::inst::SUSTAIN] = 1.0;
+        channel.params.0[musiccraft_project::params::inst::RELEASE] = 0.05;
+    }
+    Ok(push_channel(project, channel))
+}
+
+fn add_granular(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, usize::MAX)?;
+    let sample = args.str(0)?;
+    let default_name = check_sample(project, args, sample)?;
+    let name = name_or(args, 1, &format!("{default_name} grains"))?;
+    let id = ChannelId(project.alloc_id());
+    let mut channel = Channel::new(
+        id,
+        name,
+        Instrument::Granular {
+            sample: sample.to_owned(),
+        },
+    );
+    channel.params.0[musiccraft_project::params::inst::ATTACK] = 0.05;
+    channel.params.0[musiccraft_project::params::inst::SUSTAIN] = 1.0;
+    channel.params.0[musiccraft_project::params::inst::RELEASE] = 0.3;
+    Ok(push_channel(project, channel))
+}
+
+fn add_kit(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    let name = name_or(args, 0, "Kit")?;
+    let mut pads: Vec<String> = BUILTIN_SAMPLES
+        .iter()
+        .map(|s| format!("{BUILTIN_PREFIX}{s}"))
+        .collect();
+    pads.resize(16, String::new());
+    let id = ChannelId(project.alloc_id());
+    Ok(push_channel(
+        project,
+        Channel::new(id, name, Instrument::Kit { pads }),
+    ))
+}
+
+fn set_pad(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = channel_arg(project, args, 0)?;
+    let pad: usize = args.number(1, "pad")?;
+    if !(1..=16).contains(&pad) {
+        return Err(args.invalid("pads are numbered 1 to 16"));
+    }
+    let sample = args.str(2)?;
+    let sample = if sample == "-" {
+        String::new()
+    } else {
+        check_sample(project, args, sample)?;
+        sample.to_owned()
+    };
+    let Instrument::Kit { pads } = &mut project.channels[index].instrument else {
+        return Err(args.invalid(format!("channel {} is not a kit", index + 1)));
+    };
+    pads.resize(16, String::new());
+    let previous = std::mem::replace(&mut pads[pad - 1], sample.clone());
+    let shown = if sample.is_empty() {
+        "nothing"
+    } else {
+        &sample
+    };
+    Ok(Outcome::undoable(
+        format!("pad {pad} plays {shown}"),
+        Invocation::new(
+            args.name(),
+            [
+                (index + 1).to_string(),
+                pad.to_string(),
+                if previous.is_empty() {
+                    "-".to_owned()
+                } else {
+                    previous
+                },
+            ],
+        ),
+    ))
+}
+
+fn set_layer(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = channel_arg(project, args, 0)?;
+    let list = args.str(1)?;
+    let mut children = Vec::new();
+    if list != "-" {
+        for part in list.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+            let number: usize = part
+                .parse()
+                .map_err(|_| args.invalid(format!("`{part}` is not a channel number")))?;
+            let child = project.channel_index(number)?;
+            if child == index {
+                return Err(args.invalid("a layer cannot play itself"));
+            }
+            if matches!(project.channels[child].instrument, Instrument::Layer { .. }) {
+                return Err(args.invalid("layers cannot play other layers"));
+            }
+            children.push(project.channels[child].id);
+        }
+    }
+    let positions: Vec<String> = children
+        .iter()
+        .filter_map(|id| project.channel_position(*id))
+        .map(|i| (i + 1).to_string())
+        .collect();
+    let Instrument::Layer { channels } = &mut project.channels[index].instrument else {
+        return Err(args.invalid(format!("channel {} is not a layer", index + 1)));
+    };
+    let previous = std::mem::replace(channels, children);
+    let previous: Vec<String> = previous
+        .iter()
+        .filter_map(|id| project.channel_position(*id))
+        .map(|i| (i + 1).to_string())
+        .collect();
+    Ok(Outcome::undoable(
+        format!(
+            "layer plays channels {}",
+            if positions.is_empty() {
+                "none".to_owned()
+            } else {
+                positions.join(", ")
+            }
+        ),
+        Invocation::new(
+            args.name(),
+            [
+                (index + 1).to_string(),
+                if previous.is_empty() {
+                    "-".to_owned()
+                } else {
+                    previous.join(",")
+                },
+            ],
+        ),
     ))
 }
 
@@ -482,8 +719,9 @@ fn set_sample(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     let index = channel_arg(project, args, 0)?;
     let sample = args.str(1)?;
     check_sample(project, args, sample)?;
-    let Instrument::Sampler { sample: current } = &mut project.channels[index].instrument else {
-        return Err(args.invalid(format!("channel {} is not a sampler", index + 1)));
+    let current = match &mut project.channels[index].instrument {
+        Instrument::Sampler { sample } | Instrument::Granular { sample } => sample,
+        _ => return Err(args.invalid(format!("channel {} does not play a sample", index + 1))),
     };
     let previous = std::mem::replace(current, sample.to_owned());
     Ok(Outcome::undoable(

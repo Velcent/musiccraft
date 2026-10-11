@@ -220,6 +220,12 @@ fn row(
             Instrument::Synth => "Synth".to_owned(),
             Instrument::DrumSynth => "Drum synth".to_owned(),
             Instrument::Pluck => "Pluck".to_owned(),
+            Instrument::Fm => "FM synth".to_owned(),
+            Instrument::Keys => "Keys".to_owned(),
+            Instrument::Additive => "Additive synth".to_owned(),
+            Instrument::Granular { sample } => format!("Granular: {sample}"),
+            Instrument::Kit { .. } => "Drum kit (16 pads)".to_owned(),
+            Instrument::Layer { channels } => format!("Layer of {} channels", channels.len()),
             Instrument::Plugin { plugin } => format!("Plugin: {} ({})", plugin.name, plugin.id),
         });
         if response.clicked() {
@@ -477,6 +483,24 @@ fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Actio
                 actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
                 ui.close();
             }
+            ui.menu_button("More instruments", |ui| {
+                for (label, line) in [
+                    ("FM synth", "channel.add_fm"),
+                    ("Piano", "channel.add_keys piano"),
+                    ("Electric piano", "channel.add_keys epiano"),
+                    ("Organ", "channel.add_keys organ"),
+                    ("Additive", "channel.add_additive"),
+                    ("Drum kit (16 pads)", "channel.add_kit"),
+                    ("Layer", "channel.add_layer"),
+                ] {
+                    if ui.button(label).clicked() {
+                        if let Ok(invocation) = Invocation::parse(line) {
+                            actions.push(Action::Run(invocation));
+                        }
+                        ui.close();
+                    }
+                }
+            });
             ui.menu_button("Plugin instrument", |ui| {
                 crate::plugins::add_menu(ui, plugins, true, actions, |p| {
                     Invocation::new("channel.add_plugin", [p.id.clone(), p.name.clone()])

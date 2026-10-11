@@ -777,3 +777,26 @@ fn replaced_plugins_are_stopped_and_returned_while_graph_swaps_keep_them() {
     });
     assert!(render_mono(&mut engine, 64).iter().all(|s| *s == 0.0));
 }
+
+#[test]
+fn layers_play_their_channels() {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    let impulse = Arc::new(SampleBuffer::mono(vec![1.0], f64::from(SR)));
+    graph.add_channel(Instrument::Sampler(Arc::clone(&impulse)), impulse_params());
+    graph.add_channel(Instrument::Sampler(impulse), impulse_params());
+    graph.add_channel(Instrument::Layer(vec![0, 1]), impulse_params());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::NoteOn {
+        channel: 2,
+        key: 60,
+        velocity: 1.0,
+    });
+    assert_eq!(engine.active_voices(), 2, "one voice per layered channel");
+    let out = render_mono(&mut engine, 64);
+    assert!((out[0] - 2.0).abs() < 1e-3, "both play: {}", out[0]);
+    engine.apply(EngineMessage::NoteOff {
+        channel: 2,
+        key: 60,
+    });
+}

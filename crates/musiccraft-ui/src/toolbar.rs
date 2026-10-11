@@ -124,6 +124,24 @@ fn add_menu(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
             run(actions, "channel.add_pluck");
             ui.close();
         }
+        ui.menu_button("More instruments", |ui| {
+            for (label, line) in [
+                ("FM synth", "channel.add_fm"),
+                ("Piano", "channel.add_keys piano"),
+                ("Electric piano", "channel.add_keys epiano"),
+                ("Organ", "channel.add_keys organ"),
+                ("Additive", "channel.add_additive"),
+                ("Drum kit (16 pads)", "channel.add_kit"),
+                ("Layer", "channel.add_layer"),
+            ] {
+                if ui.button(label).clicked() {
+                    if let Ok(invocation) = Invocation::parse(line) {
+                        actions.push(Action::Run(invocation));
+                    }
+                    ui.close();
+                }
+            }
+        });
     });
     ui.menu_button("Plugin instrument", |ui| {
         crate::plugins::add_menu(ui, frame.plugins, true, actions, |p| {
