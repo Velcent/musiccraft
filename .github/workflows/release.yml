@@ -1,28 +1,47 @@
 name: Release
 
-# Pushing a tag like v0.2.0 builds every package and publishes a GitHub release.
-# The tag must match the workspace version in Cargo.toml.
+# To make a release: Actions > Release > Run workflow, type a version (for example 0.2.0),
+# and press the button. Nothing else to do:
 #
-# The build jobs also run on pull requests that touch packaging (and on manual runs)
-# so packaging changes are tested without publishing anything.
+#   1. checks the version is well formed and not already released,
+#   2. builds every package with that version applied (Cargo.toml and Cargo.lock are bumped
+#      inside each build, so the binaries and installers carry the right number),
+#   3. installs and uninstalls the .msi and mounts the .dmg to check them,
+#   4. only if everything passed: commits the version bump to the branch, tags it
+#      v<version>, and publishes the GitHub release with checksums.
+#
+# Nothing is committed or tagged if any build fails. Untick "publish" for a dry run.
+# The build jobs also run on pull requests that touch packaging (no bump, no publishing).
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.2.0 or 0.2.0-beta.1 (a suffix makes it a pre-release)"
+        required: true
+        type: string
+      publish:
+        description: "Commit the bump, tag and publish (untick for a dry run: build and test only)"
+        type: boolean
+        default: true
   pull_request:
     paths:
       - "packaging/**"
       - ".github/workflows/release.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
 
 jobs:
-  meta:
+  prepare:
+    name: Check the version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
@@ -31,34 +50,46 @@ jobs:
       - uses: actions/checkout@v4
       - id: v
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
-          if [[ -z "$cargo_version" ]]; then
-            echo "::error::could not read the workspace version from Cargo.toml"
+          set -euo pipefail
+          current=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"$/\1/p}' Cargo.toml | head -n1)
+          version=${INPUT_VERSION:-$current}
+          version=${version#v}
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error title=Version::'$version' is not a version like 1.2.3 or 1.2.3-beta.1"
             exit 1
           fi
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            tag_version=${GITHUB_REF_NAME#v}
-            if [[ "$tag_version" != "$cargo_version" ]]; then
-              echo "::error::tag $GITHUB_REF_NAME does not match version $cargo_version in Cargo.toml"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$GITHUB_REF_TYPE" != "branch" ]]; then
+              echo "::error title=Branch::Run this workflow from a branch (usually main), not from a tag."
+              exit 1
+            fi
+            if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+              echo "::error title=Version::v$version has already been released. Pick a new version number."
               exit 1
             fi
           fi
-          echo "version=$cargo_version" >> "$GITHUB_OUTPUT"
-          if [[ "$cargo_version" == *-* ]]; then
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
+          echo "Releasing MusicCraft $version (current Cargo.toml: $current)" >> "$GITHUB_STEP_SUMMARY"
 
   windows:
-    needs: meta
+    needs: prepare
     runs-on: windows-latest
     env:
-      VERSION: ${{ needs.meta.outputs.version }}
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+      - name: Apply version
+        shell: bash
+        run: bash packaging/set-version.sh "$VERSION"
       - name: Build
         run: cargo build --release --locked -p musiccraft-app
       - name: Install WiX
@@ -76,6 +107,32 @@ jobs:
             -o "dist\MusicCraft-$env:VERSION-windows-x64.msi" `
             packaging\windows\musiccraft.wxs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # Upgrade an older install in place, check everything landed, uninstall, check it is gone.
+      - name: Test the MSI
+        shell: pwsh
+        run: |
+          function Fail($msg) { Write-Output "::error title=MSI test::$msg"; exit 1 }
+          $msiVersion = $env:VERSION.Split('-')[0]
+          $msi = (Resolve-Path dist\*.msi).Path
+          $old = "$env:RUNNER_TEMP\old.msi"
+          wix build -arch x64 -d Version=0.0.1 -d Exe=target\release\musiccraft.exe -d Icon=packaging\icons\musiccraft.ico -o $old packaging\windows\musiccraft.wxs
+          if ($LASTEXITCODE -ne 0) { Fail "could not build the old test package" }
+          $p = Start-Process msiexec -ArgumentList "/i `"$old`" /qn /norestart" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Fail "installing the old version exited $($p.ExitCode)" }
+          $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /qn /norestart /l*v install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { $tail = (Get-Content install.log -Tail 40) -join '%0A'; Fail "install exited $($p.ExitCode)%0A$tail" }
+          $entries = @(Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object DisplayName -eq 'MusicCraft')
+          if ($entries.Count -ne 1) { Fail "upgrade left $($entries.Count) MusicCraft entries in Apps & features" }
+          if ($entries[0].DisplayVersion -ne $msiVersion) { Fail "installed version is $($entries[0].DisplayVersion), expected $msiVersion" }
+          $dir = "$env:ProgramFiles\MusicCraft"
+          if (-not (Test-Path "$dir\musiccraft.exe")) { Fail "musiccraft.exe missing from $dir" }
+          $lnk = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\MusicCraft.lnk"
+          if (-not (Test-Path $lnk)) { Fail "Start menu shortcut missing" }
+          $p = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /norestart /l*v uninstall.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Fail "uninstall exited $($p.ExitCode)" }
+          if (Test-Path "$dir\musiccraft.exe") { Fail "program files left behind after uninstall" }
+          if (Test-Path $lnk) { Fail "shortcut left behind after uninstall" }
+          Write-Output "::notice title=MSI::upgrades in place, installs, and uninstalls cleanly"
       - name: Portable zip
         shell: pwsh
         run: |
@@ -91,16 +148,18 @@ jobs:
           if-no-files-found: error
 
   macos:
-    needs: meta
+    needs: prepare
     runs-on: macos-14
     env:
-      VERSION: ${{ needs.meta.outputs.version }}
+      VERSION: ${{ needs.prepare.outputs.version }}
       MACOSX_DEPLOYMENT_TARGET: "11.0"
     steps:
       - uses: actions/checkout@v4
       - name: Add Rust targets
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
+      - name: Apply version
+        run: bash packaging/set-version.sh "$VERSION"
       - name: Build both architectures
         run: |
           cargo build --release --locked -p musiccraft-app --target aarch64-apple-darwin
@@ -116,6 +175,28 @@ jobs:
           bash packaging/macos/build-dmg.sh "$VERSION" build/musiccraft \
             packaging/icons/musiccraft-1024.png \
             "dist/MusicCraft-$VERSION-macos-universal.dmg"
+      # Mount it, check the app, the icon, the Applications shortcut, the signature and both
+      # architectures, install by copying, detach.
+      - name: Test the DMG
+        run: |
+          set -uo pipefail
+          fail() { echo "::error title=DMG test::$1"; exit 1; }
+          dmg=$(ls dist/*.dmg)
+          mnt=$(mktemp -d)
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt" >/dev/null || fail "hdiutil attach failed"
+          app="$mnt/MusicCraft.app"
+          [ -x "$app/Contents/MacOS/musiccraft" ] || fail "app executable missing"
+          [ -f "$app/Contents/Resources/MusicCraft.icns" ] || fail "app icon missing"
+          [ "$(readlink "$mnt/Applications")" = "/Applications" ] || fail "Applications shortcut missing"
+          out=$(codesign --verify --deep --strict "$app" 2>&1) || fail "signature does not verify: $out"
+          archs=$(lipo -archs "$app/Contents/MacOS/musiccraft")
+          case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) fail "not a universal binary ($archs)";; esac
+          plist_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Contents/Info.plist")
+          [ "$plist_version" = "$VERSION" ] || fail "bundle version is $plist_version, expected $VERSION"
+          cp -R "$app" /Applications/ || fail "copying to /Applications failed"
+          hdiutil detach "$mnt" >/dev/null || fail "hdiutil detach failed"
+          rm -rf /Applications/MusicCraft.app
+          echo "::notice title=DMG::mounts, installs by drag and drop, signature verifies, universal ($archs)"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-macos
@@ -124,10 +205,10 @@ jobs:
 
   # Built on the oldest supported Ubuntu runner so the binary runs on older distros.
   linux:
-    needs: meta
+    needs: prepare
     runs-on: ubuntu-22.04
     env:
-      VERSION: ${{ needs.meta.outputs.version }}
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
@@ -137,6 +218,8 @@ jobs:
             pkg-config libasound2-dev libxkbcommon-dev libwayland-dev \
             libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
       - uses: Swatinem/rust-cache@v2
+      - name: Apply version
+        run: bash packaging/set-version.sh "$VERSION"
       - name: Build
         run: cargo build --release --locked -p musiccraft-app
       - name: Portable tarball
@@ -163,10 +246,10 @@ jobs:
           if-no-files-found: error
 
   flatpak:
-    needs: [meta, linux]
+    needs: [prepare, linux]
     runs-on: ubuntu-24.04
     env:
-      VERSION: ${{ needs.meta.outputs.version }}
+      VERSION: ${{ needs.prepare.outputs.version }}
       APP_ID: io.github.bhimio1.MusicCraft
     steps:
       - uses: actions/checkout@v4
@@ -210,17 +293,21 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  publish:
-    if: github.ref_type == 'tag'
-    needs: [meta, windows, macos, linux, flatpak]
+  # Runs only when every build and test above passed.
+  release:
+    name: Commit, tag and publish
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: [prepare, windows, macos, linux, flatpak]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
-      VERSION: ${{ needs.meta.outputs.version }}
-      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      BRANCH: ${{ github.ref_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: dist-*
@@ -231,14 +318,32 @@ jobs:
           cd dist
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
-      - name: Create release
+      - name: Commit the version bump
+        id: bump
+        run: |
+          set -euo pipefail
+          bash packaging/set-version.sh "$VERSION"
+          if git diff --quiet; then
+            echo "Cargo.toml was already at $VERSION; nothing to commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -am "Release v$VERSION"
+            if ! git push origin "HEAD:refs/heads/$BRANCH"; then
+              echo "::error title=Push::Could not push the version bump to '$BRANCH'. Either the branch moved while the release was building (run the release again), or the branch is protected and does not allow the Actions bot to push (see docs/releasing.md)."
+              exit 1
+            fi
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Create the release
         run: |
           flags=()
           if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          gh release create "v$VERSION" dist/* \
             --repo "$GITHUB_REPOSITORY" \
+            --target "${{ steps.bump.outputs.sha }}" \
             --title "MusicCraft $VERSION" \
-            --verify-tag \
             --generate-notes \
             --notes "These builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper will warn on first launch. Verify downloads against SHA256SUMS.txt." \
             "${flags[@]}"
+          echo "Published https://github.com/$GITHUB_REPOSITORY/releases/tag/v$VERSION" >> "$GITHUB_STEP_SUMMARY"
