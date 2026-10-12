@@ -5,7 +5,8 @@
 #
 #   bash packaging/set-version.sh 0.2.0
 #
-# Requires perl (present on every GitHub runner and in Git Bash) and cargo.
+# Requires perl (present on every GitHub runner and in Git Bash) and cargo. Deliberately
+# avoids sed/awk range tricks, which differ between GNU (Linux, Git Bash) and BSD (macOS).
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
@@ -24,7 +25,7 @@ cd "$(dirname "$0")/.."
 VERSION="$version" perl -0pi -e \
   's/(\[workspace\.package\][^\[]*?\nversion = ")[^"]*(")/$1$ENV{VERSION}$2/' Cargo.toml
 
-actual=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"$/\1/p}' Cargo.toml | head -n1)
+actual=$(perl -ne 'if (/^\[workspace\.package\]/) { $f = 1; next } if (/^\[/) { $f = 0 } if ($f && /^version = "([^"]*)"/) { print "$1\n"; exit }' Cargo.toml)
 if [ "$actual" != "$version" ]; then
   echo "error: could not set [workspace.package] version in Cargo.toml (found '$actual')" >&2
   exit 1
