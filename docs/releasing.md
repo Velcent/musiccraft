@@ -1,25 +1,39 @@
 # Releasing MusicCraft
 
-Releases are built and published by `.github/workflows/release.yml` when you push a
-version tag. Nothing needs to be built by hand.
+Releases are made by one GitHub Action. You type a version number; it does the rest.
 
 ## Cut a release
 
-1. Set the new version in the workspace `Cargo.toml` (`[workspace.package] version`)
-   and commit it, with `Cargo.lock` updated (`cargo check`).
-2. Tag that commit and push the tag. The tag must be `v` plus the Cargo version, or
-   the workflow fails on purpose:
+1. On GitHub open **Actions → Release → Run workflow** (this works from a phone
+   browser too).
+2. Leave the branch on `main`, type the version (for example `0.2.0`) and press
+   **Run workflow**.
 
-   ```sh
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
+That is all. The workflow:
 
-3. Wait for the **Release** workflow. It builds every package, writes
-   `SHA256SUMS.txt`, and creates a GitHub release with generated notes.
+1. checks the version is well formed (`1.2.3` or `1.2.3-beta.1`) and that `v<version>`
+   has not been released before;
+2. builds every package with that version applied (`packaging/set-version.sh` bumps
+   `Cargo.toml` and `Cargo.lock` inside each build, so the binaries and installers carry
+   the right number);
+3. installs, upgrades and uninstalls the `.msi`, and mounts the `.dmg` to check it;
+4. only if all of that passed, commits `Release v<version>` (the version bump) to the
+   branch, tags that commit `v<version>`, and publishes the GitHub release with
+   `SHA256SUMS.txt`.
 
-A version with a suffix (`0.2.0-beta.1`) is published as a pre-release. The MSI
-always uses the numeric part (`0.2.0`), because MSI versions cannot carry suffixes.
+If any build or test fails, nothing is committed, tagged or published; fix the problem
+and run it again with the same version. A suffix (`0.2.0-beta.1`) publishes a
+pre-release. The MSI always uses the numeric part (`0.2.0`), because MSI versions cannot
+carry suffixes.
+
+Untick **publish** for a dry run: everything is built and tested and the packages are
+attached to the run, but nothing is committed or released.
+
+The bump commit is pushed by the Actions bot. If `main` is protected so that only pull
+requests may change it, that push is refused and the release stops before tagging; allow
+the bot to bypass the rule, or bump the version yourself in a pull request
+(`bash packaging/set-version.sh 0.2.0`) and run the workflow with that same version
+(it then has nothing to commit and just tags).
 
 ## What gets published
 
@@ -37,9 +51,10 @@ Install the Flatpak with `flatpak install --user ./MusicCraft-<v>-linux-x86_64.f
 
 ## Testing packaging without releasing
 
-The build jobs also run on pull requests that touch `packaging/**` or the workflow,
-and from the **Run workflow** button (Actions → Release). Neither publishes anything:
-the packages are attached to the run as artifacts. Do this before the first real tag.
+The build and test jobs also run on pull requests that touch `packaging/**` or the
+workflow (using the version already in `Cargo.toml`), and as a dry run from the **Run
+workflow** button. Neither commits, tags or publishes anything: the packages are attached
+to the run as artifacts.
 
 ## Known limitations
 
