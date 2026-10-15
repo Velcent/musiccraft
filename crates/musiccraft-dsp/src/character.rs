@@ -6,7 +6,7 @@
 use std::f32::consts::{PI, TAU};
 
 use crate::modulation::SYNC_RATES;
-use crate::{Biquad, ProcessContext, Svf, SvfMode, db_to_gain};
+use crate::{Biquad, ProcessContext, Svf, SvfMode, db_to_gain, flush_denormal};
 
 fn param(p: &[f32], i: usize, default: f32) -> f32 {
     p.get(i).copied().unwrap_or(default)
@@ -258,7 +258,7 @@ pub const VOWELS: [[f32; 3]; 5] = [
 /// Formant frequencies for a vowel position 0..4 (blending neighbours).
 #[must_use]
 pub fn formants(vowel: f32, shift_semitones: f32) -> [f32; 3] {
-    let v = vowel.clamp(0.0, 2.0);
+    let v = vowel.clamp(0.0, 4.0);
     let i = (v.floor() as usize).min(3);
     let t = v - i as f32;
     let scale = 2.0_f32.powf(shift_semitones / 12.0);
@@ -476,10 +476,15 @@ impl MultiTap {
                 }
             }
             for (ch, (input, w)) in [*l, *r].into_iter().zip(wet).enumerate() {
-                self.damp[ch] += (w - self.damp[ch]) * (1.0 - damping);
+                self.damp[ch] =
+                    flush_denormal(self.damp[ch] + (w - self.damp[ch]) * (1.0 - damping));
                 let fed = input + self.damp[ch] * feedback;
                 if let Some(slot) = self.lines[ch].get_mut(self.write) {
-                    *slot = if fed.is_finite() { fed } else { 0.0 };
+                    *slot = if fed.is_finite() {
+                        flush_denormal(fed)
+                    } else {
+                        0.0
+                    };
                 }
             }
             *l += wet[0] * mix;
@@ -595,6 +600,21 @@ pub fn parametric_eq_db(p: &[f32], freq: f32, sample_rate: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_vowel_from_a_to_u_is_reachable() {
+        for (i, vowel) in VOWELS.iter().enumerate() {
+            let got = formants(i as f32, 0.0);
+            for (g, w) in got.iter().zip(vowel) {
+                assert!((g - w).abs() < 1e-3, "vowel {i}: {got:?} vs {vowel:?}");
+            }
+        }
+        // Halfway between o and u blends the two.
+        let mid = formants(3.5, 0.0);
+        assert!((mid[0] - (VOWELS[3][0] + VOWELS[4][0]) / 2.0).abs() < 1e-3);
+        // Out-of-range values stay at the ends.
+        assert!((formants(9.0, 0.0)[0] - VOWELS[4][0]).abs() < 1e-3);
+    }
 
     fn ctx() -> ProcessContext {
         ProcessContext {

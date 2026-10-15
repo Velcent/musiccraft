@@ -81,6 +81,38 @@ struct App {
     take: Option<take::Take>,
     takes: u32,
     plugins: plugins::PluginGlue,
+    /// The project as last saved, loaded or created; anything else is unsaved.
+    saved_json: Option<String>,
+    /// An action waiting for the "unsaved changes" question to be answered.
+    pending: Option<Pending>,
+    /// Set once the window may close without asking again.
+    closing: bool,
+}
+
+/// What happens after the user deals with unsaved changes.
+enum Pending {
+    /// Close the window.
+    Close,
+    /// Run a command that replaces the project (new, open, recover).
+    Run(Invocation),
+}
+
+/// The answer to "save changes first?".
+#[derive(Clone, Copy)]
+enum UnsavedChoice {
+    Save,
+    Discard,
+    Cancel,
+}
+
+/// Commands that replace the open project, losing unsaved changes.
+fn replaces_project(name: &str) -> bool {
+    matches!(name, "project.new" | "project.load" | "project.recover")
+}
+
+/// Commands after which the project matches a file (or a fresh start).
+fn marks_saved(name: &str) -> bool {
+    matches!(name, "project.new" | "project.load" | "project.save")
 }
 
 /// Display data for a sample that audio clips play.
@@ -198,10 +230,11 @@ impl App {
         let selected_channel = Arc::new(AtomicUsize::new(0));
         let (played_tx, played_rx) = channel();
         let revision = session.revision();
+        let saved_json = session.project().to_json().ok();
         let mut ui = UiState::new(keymap);
-        ui.autosave_path = autosave::path()
-            .filter(|p| p.is_file())
-            .map(|p| p.display().to_string());
+        // An autosave left behind means the last session did not close
+        // properly; keep it safe from this session's autosaves.
+        ui.autosave_path = autosave::take_crash_backup().map(|p| p.display().to_string());
         if let Some(windows) = &options.open {
             let w = &mut ui.windows;
             w.channel_rack = windows.iter().any(|n| n == "channel_rack");
@@ -227,6 +260,11 @@ impl App {
         }
         if let Some(text) = status {
             ui.set_status(text, true);
+        } else if ui.autosave_path.is_some() {
+            ui.set_status(
+                "MusicCraft did not close properly last time. File → Recover unsaved work restores it.",
+                true,
+            );
         } else {
             ui.set_status("Ready. Space plays, F5–F9 open windows.", false);
         }
@@ -255,6 +293,9 @@ impl App {
             take: None,
             takes: 0,
             plugins: plugins::PluginGlue::new(musiccraft_cli::plugin_host()),
+            saved_json,
+            pending: None,
+            closing: false,
         };
         app.refresh_devices();
         app.start_audio(ctx);
@@ -417,9 +458,11 @@ impl App {
     fn apply(&mut self, ctx: &egui::Context, action: Action) {
         let result = match action {
             Action::Run(invocation) => {
-                let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
-                self.plugins.before(&invocation, bridge, &mut self.session);
-                self.session.run(&invocation)
+                if replaces_project(&invocation.name) && self.has_unsaved_changes() {
+                    self.pending = Some(Pending::Run(invocation));
+                    return;
+                }
+                self.run_invocation(&invocation)
             }
             Action::Coalesced(invocation, key) => self.session.run_coalesced(&invocation, key),
             Action::Preview { channel, key, on } => {
@@ -808,6 +851,112 @@ impl App {
         }
     }
 
+    /// Runs a command from the interface, keeping track of whether the project
+    /// still matches what was last saved.
+    fn run_invocation(
+        &mut self,
+        invocation: &Invocation,
+    ) -> Result<musiccraft_commands::Outcome, musiccraft_commands::CommandError> {
+        let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
+        self.plugins.before(invocation, bridge, &mut self.session);
+        let result = self.session.run(invocation);
+        if result.is_ok() && marks_saved(&invocation.name) {
+            self.saved_json = self.session.project().to_json().ok();
+        }
+        result
+    }
+
+    /// Whether the project differs from what was last saved, loaded or created.
+    fn has_unsaved_changes(&self) -> bool {
+        self.session.project().to_json().ok() != self.saved_json
+    }
+
+    /// Asks before the window closes on unsaved changes; on a clean close the
+    /// autosave is no longer needed.
+    fn handle_close_request(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|i| i.viewport().close_requested()) {
+            return;
+        }
+        if self.closing || !self.has_unsaved_changes() {
+            self.closing = true;
+            autosave::discard();
+            return;
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        self.pending = Some(Pending::Close);
+    }
+
+    /// The "save changes first?" window, while an action is waiting on it.
+    fn show_unsaved_dialog(&mut self, ctx: &egui::Context) {
+        let Some(pending) = &self.pending else {
+            return;
+        };
+        let before = match pending {
+            Pending::Close => "closing",
+            Pending::Run(_) => "continuing",
+        };
+        let name = self.session.project().name().to_owned();
+        let mut choice = None;
+        egui::Window::new("Unsaved changes")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Save the changes to \u{201c}{name}\u{201d} before {before}?"
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        choice = Some(UnsavedChoice::Save);
+                    }
+                    if ui.button("Don't save").clicked() {
+                        choice = Some(UnsavedChoice::Discard);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        choice = Some(UnsavedChoice::Cancel);
+                    }
+                });
+            });
+        let Some(choice) = choice else {
+            return;
+        };
+        let Some(pending) = self.pending.take() else {
+            return;
+        };
+        match choice {
+            UnsavedChoice::Cancel => {}
+            UnsavedChoice::Discard => self.proceed(ctx, pending),
+            UnsavedChoice::Save => {
+                if self.session.project().path().is_none() {
+                    // Never saved: ask where; the user repeats the action after.
+                    self.ui.open_save_as(self.session.project());
+                    return;
+                }
+                match self.run_invocation(&Invocation::bare("project.save")) {
+                    Ok(outcome) => {
+                        self.ui.set_status(outcome.message, false);
+                        self.proceed(ctx, pending);
+                    }
+                    Err(err) => self.ui.set_status(err.to_string(), true),
+                }
+            }
+        }
+    }
+
+    /// Carries out an action once unsaved changes are saved or discarded.
+    fn proceed(&mut self, ctx: &egui::Context, pending: Pending) {
+        match pending {
+            Pending::Close => {
+                self.closing = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Pending::Run(invocation) => match self.run_invocation(&invocation) {
+                Ok(outcome) => self.ui.set_status(outcome.message, false),
+                Err(err) => self.ui.set_status(err.to_string(), true),
+            },
+        }
+    }
+
     fn update_title(&mut self, ctx: &egui::Context) {
         let project = self.session.project();
         let title = format!("MusicCraft — {}", project.name());
@@ -821,6 +970,8 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.handle_close_request(&ctx);
+        self.show_unsaved_dialog(&ctx);
         let engine = self.engine_status();
         let history = History {
             undo: self.session.undo_label().map(ToString::to_string),
@@ -883,7 +1034,6 @@ impl eframe::App for App {
                 if !self.ui.status.error {
                     self.ui.set_status(message, false);
                 }
-                self.ui.autosave_path = autosave::path().map(|p| p.display().to_string());
             }
             Some(Err(err)) => self.ui.set_status(format!("autosave failed: {err}"), true),
             None => {}
