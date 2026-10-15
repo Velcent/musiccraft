@@ -15,4 +15,5 @@ jobs:
       - run: |
           cargo clippy --workspace --all-targets --locked --message-format=short -- -D warnings 2>&1 | grep -E ': (error|warning)|^error' | head -40 | while IFS= read -r l; do echo "::warning::$l"; done
           cargo test --workspace --locked --no-fail-fast 2>&1 | grep -E "panicked|FAILED|^error|left:|right:" | head -40 | while IFS= read -r l; do echo "::warning::$l"; done
+          cargo xtask parity 2>&1 | grep -E '\[!\]|\[ \]|parity:|^        ' | while IFS= read -r l; do echo "::warning::$l"; done
           echo "::warning::diag done"
