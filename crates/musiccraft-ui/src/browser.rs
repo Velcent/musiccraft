@@ -356,6 +356,8 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::PitchShift => "Pitch shifter",
         K::Stutter => "Stutter",
         K::Convolution => "Convolution reverb",
+        K::PitchCorrect => "Pitch corrector",
+        K::Tuner => "Tuner",
         K::Plugin => "Plugin",
     }
 }

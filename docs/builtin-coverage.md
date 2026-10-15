@@ -74,14 +74,14 @@ Status:
 | Fruity Vocoder, Vocodex | `vocoder` (sidechain modulator) | covered | 16 fixed bands |
 | Frequency Shifter | `freq_shift` | covered | Ring-mod mode is the separate `ring_mod` |
 | Pitch Shifter | `pitch_shift` | covered | |
-| Pitcher, Newtone | — | todo | Pitch detection and correction |
+| Pitcher, Newtone | `pitch_correct` | partial | Real-time correction to a key and scale; no MIDI-controlled target notes, harmonies or offline note editing |
 | Gross Beat | `gate`, `stutter` | partial | No drawn time/volume envelopes |
 | Fruity Scratcher | — | not planned | Turntable simulation |
 | Frequency Splitter | — | not planned | Splitting into separate mixer tracks; `multiband` covers band processing |
 | Fruity Send, Fruity Mute 2 | Mixer sends and mute | covered | |
 | Fruity Spectroman, Wave Candy | Spectrum analyzer, toolbar oscilloscope | covered | |
 | Fruity dB Meter | Mixer meters | covered | |
-| Tuner | — | todo | |
+| Tuner | `tuner` | covered | |
 | Edison | Sampler slicing, recording to audio clips | not planned | A full audio editor is out of scope |
 | Newtime | — | not planned | Time-stretch editor |
 | Fruity Big Clock, Notebook, HTML Notebook, Control Surface | — | not planned | Not audio processing |

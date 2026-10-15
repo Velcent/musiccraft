@@ -84,7 +84,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Pitch shifter | `fx:pitch_shift` |
 | Effects | Convolution reverb with impulse files or generated rooms | `fx:convolution` `cmd:mixer.set_effect_file` |
 | Effects | Spectrum analyzer | `done` |
-| Effects | Pitch correction and tuner | `todo` |
+| Effects | Pitch correction and tuner | `fx:pitch_correct` `fx:tuner` `spec:mixer.md` |
 | Generators | MIDI out to external gear | `todo` |
 | Instruments | Subtractive synth with unison, sub, drive, filter types, LFO and presets | `cmd:channel.add_synth` `spec:piano-roll.md` |
 | Instruments | Drum synth (kick, snare, hat, tom, clap) with presets | `cmd:channel.add_drum` `spec:channel-rack.md` |

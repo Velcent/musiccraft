@@ -461,13 +461,17 @@ pub enum EffectKind {
     Stutter,
     /// Convolution reverb with a loaded or generated impulse response.
     Convolution,
+    /// Detects the pitch and pulls it to the nearest note of a scale.
+    PitchCorrect,
+    /// Shows the detected pitch; leaves audio untouched.
+    Tuner,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 33] = [
+pub const EFFECT_KINDS: [EffectKind; 35] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -485,6 +489,8 @@ pub const EFFECT_KINDS: [EffectKind; 33] = [
     EffectKind::RingMod,
     EffectKind::FreqShift,
     EffectKind::PitchShift,
+    EffectKind::PitchCorrect,
+    EffectKind::Tuner,
     EffectKind::Vocoder,
     EffectKind::Compressor,
     EffectKind::Multiband,
@@ -678,6 +684,43 @@ const PITCH_SHIFT_PARAMS: &[ParamSpec] = &[
     spec("mix", 0.0, 1.0, 1.0, ""),
 ];
 
+const PITCH_CORRECT_PARAMS: &[ParamSpec] = &[
+    int_spec("key", 0.0, 11.0, 0.0),
+    int_spec("scale", 0.0, 5.0, 0.0),
+    spec("speed", 0.0, 400.0, 20.0, "ms"),
+    spec("amount", 0.0, 1.0, 1.0, ""),
+    spec("reference", 415.0, 466.0, 440.0, "Hz"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const TUNER_PARAMS: &[ParamSpec] = &[spec("reference", 415.0, 466.0, 440.0, "Hz")];
+
+/// Pitch-class names, starting at C.
+pub const NOTE_NAMES: [&str; 12] = [
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+];
+
+const fn scale_mask(degrees: &[u8]) -> u16 {
+    let mut mask = 0_u16;
+    let mut i = 0;
+    while i < degrees.len() {
+        mask |= 1 << (degrees[i] % 12);
+        i += 1;
+    }
+    mask
+}
+
+/// Scales of the pitch corrector's `scale` parameter: (name, bit `n` set when
+/// the note `n` semitones above the key belongs to the scale).
+pub const CORRECTION_SCALES: [(&str, u16); 6] = [
+    ("chromatic", 0x0FFF),
+    ("major", scale_mask(&[0, 2, 4, 5, 7, 9, 11])),
+    ("minor", scale_mask(&[0, 2, 3, 5, 7, 8, 10])),
+    ("harmonic minor", scale_mask(&[0, 2, 3, 5, 7, 8, 11])),
+    ("major pentatonic", scale_mask(&[0, 2, 4, 7, 9])),
+    ("minor pentatonic", scale_mask(&[0, 3, 5, 7, 10])),
+];
+
 const STUTTER_PARAMS: &[ParamSpec] = &[
     int_spec("slice", 0.0, 5.0, 1.0),
     int_spec("every", 0.0, 5.0, 5.0),
@@ -836,6 +879,8 @@ impl EffectKind {
             Self::PitchShift => "pitch_shift",
             Self::Stutter => "stutter",
             Self::Convolution => "convolution",
+            Self::PitchCorrect => "pitch_correct",
+            Self::Tuner => "tuner",
             Self::Plugin => "plugin",
         }
     }
@@ -883,6 +928,8 @@ impl EffectKind {
             Self::PitchShift => PITCH_SHIFT_PARAMS,
             Self::Stutter => STUTTER_PARAMS,
             Self::Convolution => CONVOLUTION_PARAMS,
+            Self::PitchCorrect => PITCH_CORRECT_PARAMS,
+            Self::Tuner => TUNER_PARAMS,
             Self::Plugin => &[],
         }
     }
@@ -953,6 +1000,15 @@ mod tests {
             (inst::GRAN_SCAN, "gran_scan"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
+        }
+    }
+
+    #[test]
+    fn correction_scales_match_their_degrees() {
+        assert_eq!(CORRECTION_SCALES[1].1, 0b1010_1011_0101, "major");
+        assert_eq!(CORRECTION_SCALES[5].1, 0b0100_1010_1001, "minor pentatonic");
+        for (_, mask) in CORRECTION_SCALES {
+            assert!(mask & 1 == 1, "every scale holds its key");
         }
     }
 

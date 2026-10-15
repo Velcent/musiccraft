@@ -800,3 +800,47 @@ fn layers_play_their_channels() {
         key: 60,
     });
 }
+
+#[test]
+fn tuner_publishes_the_pitch_it_hears() {
+    let (mut engine, handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    let tone: Vec<f32> = (0..SR as usize)
+        .map(|i| (i as f32 * 220.0 * std::f32::consts::TAU / SR as f32).sin() * 0.5)
+        .collect();
+    let params = impulse_params();
+    let root = params.instrument[inst::ROOT_KEY].round() as u8;
+    graph.add_channel(
+        Instrument::Sampler(Arc::new(SampleBuffer::mono(tone, f64::from(SR)))),
+        params,
+    );
+    let slot = |kind: EffectKind, enabled: bool| {
+        (
+            Effect::new(kind, SR as f32),
+            EffectParams {
+                enabled,
+                values: kind.defaults(),
+            },
+        )
+    };
+    graph.set_master(
+        TrackParams::default(),
+        vec![
+            slot(EffectKind::Eq, true),
+            slot(EffectKind::Tuner, true),
+            slot(EffectKind::Tuner, false),
+        ],
+    );
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: root,
+        velocity: 1.0,
+    });
+    render_mono(&mut engine, 9_600);
+    let meters = handle.meters();
+    let hz = meters.pitch(0, 1).unwrap_or(0.0);
+    assert!((hz - 220.0).abs() < 2.0, "tuner heard {hz}");
+    assert_eq!(meters.pitch(0, 0), None, "an EQ detects nothing");
+    assert_eq!(meters.pitch(0, 2), None, "a bypassed tuner reports nothing");
+}

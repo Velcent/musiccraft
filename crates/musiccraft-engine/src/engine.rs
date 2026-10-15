@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use musiccraft_dsp::ProcessContext;
-use musiccraft_params::{PPQ, TICKS_PER_BAR};
+use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::graph::{ChannelNode, Instrument, TrackNode};
@@ -957,6 +957,7 @@ fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals
         // Inserts below this one are finished and can key its compressors.
         process_track(track, fx, externals, before, 0);
         meters.record_peak(i, peak(&track.left, frames), peak(&track.right, frames));
+        publish_pitches(i, track, meters);
         if track.params.to_master {
             if let Some(master) = before.first_mut() {
                 add_scaled(&mut master.left, &track.left, 1.0, frames);
@@ -975,6 +976,25 @@ fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals
     if let Some((master, inserts)) = tracks.split_first_mut() {
         process_track(master, fx, externals, inserts, 1);
         meters.record_peak(0, peak(&master.left, frames), peak(&master.right, frames));
+        publish_pitches(0, master, meters);
+    }
+}
+
+/// Publishes what the track's pitch detecting effects (corrector, tuner)
+/// hear; bypassed ones report nothing.
+fn publish_pitches(index: usize, track: &TrackNode, meters: &Meters) {
+    for (slot, effect) in track.effects.iter().enumerate() {
+        if matches!(
+            effect.effect.kind(),
+            EffectKind::PitchCorrect | EffectKind::Tuner
+        ) {
+            let hz = effect
+                .params
+                .enabled
+                .then(|| effect.effect.detected_pitch())
+                .flatten();
+            meters.record_pitch(index, slot, hz);
+        }
     }
 }
 

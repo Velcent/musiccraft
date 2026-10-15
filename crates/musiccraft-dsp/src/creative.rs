@@ -253,13 +253,30 @@ impl PitchShifter {
 
     /// Processes a block in place.
     pub fn process(&mut self, left: &mut [f32], right: &mut [f32], p: &[f32], ctx: ProcessContext) {
+        let ratio = 2.0_f32.powf((param(p, 0, 0.0) + param(p, 1, 0.0) / 100.0) / 12.0);
+        let window = param(p, 2, 50.0) * 0.001 * ctx.sample_rate;
+        let mix = param(p, 3, 1.0).clamp(0.0, 1.0);
+        self.shift(left, right, ratio, window, mix);
+    }
+
+    /// Shifts a block by a frequency `ratio`, with read heads sweeping
+    /// `window` samples (clamped to what the delay holds), mixed with the dry
+    /// signal by `mix`.
+    pub fn shift(
+        &mut self,
+        left: &mut [f32],
+        right: &mut [f32],
+        ratio: f32,
+        window: f32,
+        mix: f32,
+    ) {
         let len = self.lines[0].len();
         if len < 4 {
             return;
         }
-        let ratio = 2.0_f32.powf((param(p, 0, 0.0) + param(p, 1, 0.0) / 100.0) / 12.0);
-        let window = (param(p, 2, 50.0) * 0.001 * ctx.sample_rate).clamp(8.0, (len - 3) as f32);
-        let mix = param(p, 3, 1.0).clamp(0.0, 1.0);
+        let window = if window.is_finite() { window } else { 8.0 };
+        let window = window.clamp(8.0, (len - 3) as f32);
+        let ratio = if ratio.is_finite() { ratio } else { 1.0 };
         // The delay shrinks by (ratio − 1) samples per sample.
         let step = (1.0 - ratio) / window;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {

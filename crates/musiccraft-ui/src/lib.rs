@@ -21,6 +21,7 @@ pub mod settings;
 mod spectrum;
 mod theme;
 mod toolbar;
+mod tuner;
 mod widgets;
 
 use musiccraft_commands::Invocation;
@@ -116,6 +117,9 @@ pub struct EngineStatus {
     pub scope: Vec<f32>,
     /// Audio processing load, 0..1 of the real-time budget.
     pub load: f32,
+    /// Pitch (Hz) heard by each pitch corrector and tuner, as
+    /// (mixer track, effect slot, hertz); missing when there is no clear pitch.
+    pub pitches: Vec<(usize, usize, f32)>,
     /// Audio device description or error.
     pub audio: String,
     /// MIDI input description.

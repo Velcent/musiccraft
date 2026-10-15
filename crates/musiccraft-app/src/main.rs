@@ -93,6 +93,27 @@ struct ClipAudio {
 }
 
 /// Min/max pairs summarizing a sample for display.
+/// What every pitch corrector and tuner in the project currently hears.
+fn pitch_readings(
+    project: &Project,
+    meters: &musiccraft_engine::Meters,
+) -> Vec<(usize, usize, f32)> {
+    use musiccraft_project::params::EffectKind;
+    project
+        .mixer
+        .iter()
+        .enumerate()
+        .flat_map(|(t, track)| {
+            track
+                .effects
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| matches!(e.kind, EffectKind::PitchCorrect | EffectKind::Tuner))
+                .filter_map(move |(s, _)| meters.pitch(t, s).map(|hz| (t, s, hz)))
+        })
+        .collect()
+}
+
 fn overview(buffer: &musiccraft_dsp::SampleBuffer, points: usize) -> Vec<(f32, f32)> {
     let len = buffer.len();
     if len == 0 {
@@ -398,6 +419,7 @@ impl App {
             status.voices = meters.active_voices();
             status.peaks = (0..tracks).map(|t| meters.take_peak(t)).collect();
             status.load = meters.load();
+            status.pitches = pitch_readings(self.session.project(), meters);
             // Enough for the spectrum analyzer; the toolbar scope uses the end.
             let mut scope = vec![0.0; 2048];
             meters.scope(&mut scope);

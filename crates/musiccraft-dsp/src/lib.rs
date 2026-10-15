@@ -12,6 +12,7 @@ pub mod fft;
 mod filter;
 pub mod modulation;
 mod osc;
+pub mod pitch;
 pub mod response;
 mod reverb;
 mod sample;

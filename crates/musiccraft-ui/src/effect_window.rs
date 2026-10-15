@@ -173,7 +173,17 @@ fn contents(
     if effect.kind == EffectKind::Convolution {
         impulse_picker(ui, state, track, slot, effect, actions);
     }
-    graph(ui, state, track, slot, effect, sample_rate, actions);
+    if matches!(effect.kind, EffectKind::PitchCorrect | EffectKind::Tuner) {
+        let detected = frame
+            .engine
+            .pitches
+            .iter()
+            .find(|(t, s, _)| *t == track && *s == slot)
+            .map(|(_, _, hz)| *hz);
+        crate::tuner::show(ui, effect, detected, GRAPH);
+    } else {
+        graph(ui, state, track, slot, effect, sample_rate, actions);
+    }
     ui.add_space(4.0);
     knobs(ui, state, track, slot, effect, actions);
 }
@@ -329,6 +339,14 @@ fn knobs(
                 }
                 "shape" => pick(&["sine", "triangle", "square"]),
                 "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
+                "key" => pick(&musiccraft_project::params::NOTE_NAMES),
+                "scale" => {
+                    let names: Vec<&str> = musiccraft_project::params::CORRECTION_SCALES
+                        .iter()
+                        .map(|(name, _)| *name)
+                        .collect();
+                    pick(&names)
+                }
                 "vowel" => {
                     let i = (value.floor() as usize).min(4);
                     let next = (i + 1).min(4);
@@ -1188,7 +1206,8 @@ fn graph(
             }
             hint = "The tail over five seconds (a sketch for files): pick a room above or load a recorded impulse response";
         }
-        EffectKind::Plugin => {}
+        // Drawn by `crate::tuner` instead.
+        EffectKind::Plugin | EffectKind::PitchCorrect | EffectKind::Tuner => {}
     }
 
     let dragging = state

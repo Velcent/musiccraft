@@ -7,6 +7,7 @@ use crate::character::{
 use crate::convolution::Convolver;
 use crate::creative::{MultibandCompressor, PitchShifter, Stutter, Vocoder};
 use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
+use crate::pitch::{PitchCorrector, Tuner};
 use crate::{Biquad, Chorus, Compressor, Delay, Distortion, Limiter, Reverb, Svf, SvfMode};
 
 /// Information every effect may need while processing.
@@ -153,6 +154,10 @@ pub enum Effect {
     Stutter(Stutter),
     /// See [`Convolver`].
     Convolution(Convolver),
+    /// See [`PitchCorrector`].
+    PitchCorrect(PitchCorrector),
+    /// See [`Tuner`].
+    Tuner(Tuner),
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -197,6 +202,8 @@ impl Effect {
             EffectKind::PitchShift => Self::PitchShift(PitchShifter::new(sample_rate)),
             EffectKind::Stutter => Self::Stutter(Stutter::new(sample_rate)),
             EffectKind::Convolution => Self::Convolution(Convolver::builtin("hall", sample_rate)),
+            EffectKind::PitchCorrect => Self::PitchCorrect(PitchCorrector::new(sample_rate)),
+            EffectKind::Tuner => Self::Tuner(Tuner::new(sample_rate)),
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -238,6 +245,8 @@ impl Effect {
             Self::PitchShift(_) => EffectKind::PitchShift,
             Self::Stutter(_) => EffectKind::Stutter,
             Self::Convolution(_) => EffectKind::Convolution,
+            Self::PitchCorrect(_) => EffectKind::PitchCorrect,
+            Self::Tuner(_) => EffectKind::Tuner,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -297,7 +306,20 @@ impl Effect {
             Self::PitchShift(fx) => fx.process(left, right, params, ctx),
             Self::Stutter(fx) => fx.process(left, right, params, ctx),
             Self::Convolution(fx) => fx.process(left, right, params, ctx),
+            Self::PitchCorrect(fx) => fx.process(left, right, params, ctx),
+            Self::Tuner(fx) => fx.process(left, right),
             Self::Passthrough => {}
+        }
+    }
+
+    /// The pitch a detecting effect (pitch corrector, tuner) last heard, in
+    /// hertz; `None` for other effects and when there is no clear pitch.
+    #[must_use]
+    pub fn detected_pitch(&self) -> Option<f32> {
+        match self {
+            Self::PitchCorrect(fx) => fx.detected(),
+            Self::Tuner(fx) => fx.detected(),
+            _ => None,
         }
     }
 
@@ -321,6 +343,8 @@ impl Effect {
             Self::PitchShift(fx) => fx.reset(),
             Self::Stutter(fx) => fx.reset(),
             Self::Convolution(fx) => fx.reset(),
+            Self::PitchCorrect(fx) => fx.reset(),
+            Self::Tuner(fx) => fx.reset(),
             Self::BassBoost(fx) => *fx = BassBoost::default(),
             Self::Overdrive(fx) => *fx = Overdrive::default(),
             Self::DcBlock(fx) => *fx = DcBlock::default(),
@@ -367,6 +391,26 @@ mod tests {
             );
             fx.reset();
         }
+    }
+
+    #[test]
+    fn detecting_effects_report_pitch() {
+        let ctx = ProcessContext {
+            beats: 0.0,
+            sample_rate: 48_000.0,
+            tempo_bpm: 120.0,
+        };
+        for kind in [EffectKind::Tuner, EffectKind::PitchCorrect] {
+            let mut fx = Effect::new(kind, ctx.sample_rate);
+            let mut l: Vec<f32> = (0..9_600)
+                .map(|i| (i as f32 * 220.0 * std::f32::consts::TAU / 48_000.0).sin() * 0.5)
+                .collect();
+            let mut r = l.clone();
+            fx.process(&mut l, &mut r, &kind.defaults(), ctx);
+            let hz = fx.detected_pitch().unwrap_or(0.0);
+            assert!((hz - 220.0).abs() < 2.0, "{kind}: {hz}");
+        }
+        assert_eq!(Effect::new(EffectKind::Eq, 48_000.0).detected_pitch(), None);
     }
 
     #[test]
