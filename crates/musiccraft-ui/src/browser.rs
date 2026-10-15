@@ -225,7 +225,7 @@ fn plugin_database(
                     {
                         actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
                     }
-                    let more: [(&str, &str, Invocation); 7] = [
+                    let more: [(&str, &str, Invocation); 8] = [
                         (
                             "FM synth",
                             "Four-operator FM synth",
