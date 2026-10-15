@@ -622,7 +622,47 @@ const TOOLS_SCRIPT: &[&str] = &[
     "channel.add_layer",
     "channel.set_layer 11 1,6",
     "channel.set_sample 9 builtin:tom",
+    "channel.add_midi_out 10 Synth rig",
+    "channel.set_midi_channel 12 3",
+    "channel.add_midi_out",
 ];
+
+#[test]
+fn midi_out_channels() {
+    use musiccraft_project::Instrument;
+    let mut s = session();
+    run(&mut s, "channel.add_midi_out");
+    run(&mut s, "channel.add_midi_out 10");
+    run(&mut s, "channel.add_midi_out 16 Rack synth");
+    run(&mut s, "channel.add_midi_out Poly box");
+    let p = s.project();
+    let names: Vec<&str> = p.channels.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["MIDI Out 1", "MIDI Out 10", "Rack synth", "Poly box"]
+    );
+    assert_eq!(
+        p.channels[2].instrument,
+        Instrument::MidiOut { midi_channel: 16 }
+    );
+    fails(&mut s, "channel.add_midi_out 17");
+    fails(&mut s, "channel.add_midi_out 0");
+    fails(&mut s, "channel.set_midi_channel 1 0");
+    run(&mut s, "channel.add_synth");
+    fails(&mut s, "channel.set_midi_channel 5 2");
+    run(&mut s, "channel.set_midi_channel 1 7");
+    assert_eq!(
+        s.project().channels[0].instrument,
+        Instrument::MidiOut { midi_channel: 7 }
+    );
+    run(&mut s, "edit.undo");
+    assert_eq!(
+        s.project().channels[0].instrument,
+        Instrument::MidiOut { midi_channel: 1 }
+    );
+    let json = s.project().to_json().unwrap();
+    assert_eq!(&Project::from_json(&json).unwrap(), s.project());
+}
 
 #[test]
 fn drum_and_pluck_channels() {

@@ -110,6 +110,8 @@ Hover any control and the hint bar at the top says what it does.
 - **Recording**: REC + playing records a MIDI or typing keyboard into the
   pattern; with File → Record audio input, song-mode takes become audio clips.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
+- **MIDI Out channels** (rack → More instruments) send their notes to
+  external gear on a MIDI channel; pick the output port in Settings → MIDI.
 - **Plugins (CLAP)**: instruments and effects from `~/.clap`, `/usr/lib/clap`
   and `CLAP_PATH` show up in the browser, the rack's add menu and mixer slots.
   Each gets a parameter panel and can open its own window; parameters and

@@ -140,6 +140,11 @@ fn contents(
         });
     });
     ui.add_space(4.0);
+    if let Instrument::MidiOut { midi_channel } = &channel.instrument {
+        // Sound settings do not apply to external gear.
+        midi_out(ui, frame, number, channel, *midi_channel, actions);
+        return;
+    }
     ui.horizontal(|ui| {
         let volume = widgets::labeled_knob(
             ui,
@@ -266,6 +271,8 @@ fn contents(
             layer(ui, frame, index, channels, actions);
             return;
         }
+        // Handled before the sound sections.
+        Instrument::MidiOut { .. } => return,
         Instrument::Plugin { plugin } => {
             // Plugins shape their own sound; the built-in sections do not apply.
             let target = crate::plugins::Target::Channel(number);
@@ -863,6 +870,59 @@ fn kit(
                     ui.end_row();
                 }
             });
+    });
+}
+
+/// MIDI channel and mute of a MIDI Out channel, and where it sends.
+fn midi_out(
+    ui: &mut egui::Ui,
+    frame: &Frame<'_>,
+    number: usize,
+    channel: &Channel,
+    midi_channel: u8,
+    actions: &mut Vec<Action>,
+) {
+    section(ui, "MIDI OUT", |ui| {
+        ui.horizontal(|ui| {
+            ui.label("MIDI channel");
+            egui::ComboBox::from_id_salt(("midi-out-channel", number))
+                .selected_text(midi_channel.to_string())
+                .show_ui(ui, |ui| {
+                    for n in 1..=16_u8 {
+                        if ui
+                            .selectable_label(n == midi_channel, n.to_string())
+                            .clicked()
+                            && n != midi_channel
+                        {
+                            actions.push(Action::Run(Invocation::new(
+                                "channel.set_midi_channel",
+                                [number.to_string(), n.to_string()],
+                            )));
+                        }
+                    }
+                })
+                .response
+                .hint("The MIDI channel (1–16) this channel's notes are sent on");
+            let mut mute = channel.mute;
+            if ui.checkbox(&mut mute, "Mute").changed() {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.toggle_mute",
+                    [number.to_string()],
+                )));
+            }
+        });
+        let port = frame
+            .settings
+            .midi_output
+            .as_deref()
+            .map_or_else(|| "no port chosen".to_owned(), |p| format!("port {p}"));
+        ui.label(
+            RichText::new(format!(
+                "Notes go to external gear ({port}); choose the port in Settings → MIDI."
+            ))
+            .small()
+            .color(theme::TEXT_DIM),
+        );
     });
 }
 

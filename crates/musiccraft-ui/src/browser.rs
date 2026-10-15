@@ -261,6 +261,11 @@ fn plugin_database(
                             "Plays several channels at once",
                             Invocation::bare("channel.add_layer"),
                         ),
+                        (
+                            "MIDI Out",
+                            "Sends notes to external MIDI gear",
+                            Invocation::bare("channel.add_midi_out"),
+                        ),
                     ];
                     for (label, hint, invocation) in more {
                         if matches(search, label)

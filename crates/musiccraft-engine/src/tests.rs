@@ -844,3 +844,93 @@ fn tuner_publishes_the_pitch_it_hears() {
     assert_eq!(meters.pitch(0, 0), None, "an EQ detects nothing");
     assert_eq!(meters.pitch(0, 2), None, "a bypassed tuner reports nothing");
 }
+
+fn midi_bytes(rx: &mut crate::MidiOutReceiver) -> Vec<[u8; 3]> {
+    std::iter::from_fn(|| rx.pop()).map(|e| e.bytes).collect()
+}
+
+#[test]
+fn midi_out_channels_send_sequenced_notes() {
+    let (mut engine, mut handle) = engine_pair(SR);
+    let mut rx = handle.take_midi_out().unwrap();
+    assert!(handle.take_midi_out().is_none());
+    let mut graph = Graph::new();
+    graph.add_channel(Instrument::MidiOut(9), ChannelParams::default());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    engine.apply(EngineMessage::SetSequence(Box::new(Sequence::new(
+        vec![note(1, 0)],
+        384,
+    ))));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, BEAT - 100);
+    assert!(out.iter().all(|s| *s == 0.0), "MIDI Out makes no sound");
+    assert!(midi_bytes(&mut rx).is_empty(), "nothing before beat 1");
+    // Beat 1 starts the note; a sixteenth (6000 frames) later it ends.
+    render_mono(&mut engine, 100 + BEAT / 8);
+    assert_eq!(midi_bytes(&mut rx), vec![[0x99, 60, 127]]);
+    render_mono(&mut engine, BEAT / 4);
+    assert_eq!(midi_bytes(&mut rx), vec![[0x89, 60, 0]]);
+}
+
+#[test]
+fn midi_out_live_notes_mute_and_stop() {
+    let (mut engine, mut handle) = engine_pair(SR);
+    let mut rx = handle.take_midi_out().unwrap();
+    let mut graph = Graph::new();
+    graph.add_channel(Instrument::MidiOut(0), ChannelParams::default());
+    let muted = ChannelParams {
+        mute: true,
+        ..ChannelParams::default()
+    };
+    graph.add_channel(Instrument::MidiOut(1), muted);
+    graph.add_channel(Instrument::Layer(vec![0]), ChannelParams::default());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    for channel in [1, 2] {
+        engine.apply(EngineMessage::NoteOn {
+            channel,
+            key: 64,
+            velocity: 0.5,
+        });
+    }
+    render_mono(&mut engine, 512);
+    assert_eq!(
+        midi_bytes(&mut rx),
+        vec![[0x90, 64, 64]],
+        "muted sends nothing; the layer plays channel 1"
+    );
+    engine.apply(EngineMessage::NoteOff {
+        channel: 2,
+        key: 64,
+    });
+    assert_eq!(midi_bytes(&mut rx), vec![[0x80, 64, 0]]);
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 67,
+        velocity: 1.0,
+    });
+    engine.apply(EngineMessage::Stop);
+    assert_eq!(midi_bytes(&mut rx), vec![[0x90, 67, 127], [0x80, 67, 0]]);
+}
+
+#[test]
+fn rebuilding_keeps_only_matching_midi_notes() {
+    let (mut engine, mut handle) = engine_pair(SR);
+    let mut rx = handle.take_midi_out().unwrap();
+    let build = |midi: u8| {
+        let mut graph = Graph::new();
+        graph.add_channel(Instrument::MidiOut(midi), ChannelParams::default());
+        Box::new(graph)
+    };
+    engine.apply(EngineMessage::SetGraph(build(0)));
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 60,
+        velocity: 1.0,
+    });
+    engine.apply(EngineMessage::SetGraph(build(0)));
+    assert_eq!(midi_bytes(&mut rx), vec![[0x90, 60, 127]], "still held");
+    engine.apply(EngineMessage::SetGraph(build(3)));
+    assert_eq!(midi_bytes(&mut rx), vec![[0x80, 60, 0]], "channel changed");
+    handle.collect_garbage();
+}

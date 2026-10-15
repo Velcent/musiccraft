@@ -124,6 +124,8 @@ pub struct EngineStatus {
     pub audio: String,
     /// MIDI input description.
     pub midi: String,
+    /// MIDI output description.
+    pub midi_out: String,
 }
 
 /// Undo history information for menus.

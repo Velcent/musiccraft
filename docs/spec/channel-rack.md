@@ -128,6 +128,26 @@
   `channel.set_layer <channel> <channel,channel,…>` (`-` for none). Layers
   do not nest.
 
+## MIDI Out
+
+- `channel.add_midi_out [1-16] [name]` adds a channel that makes no sound but
+  sends its notes to external MIDI gear on a MIDI channel (default 1).
+  `channel.set_midi_channel <channel> <1-16>` changes it (undoable).
+- Sequenced notes send note on (velocity 1–127 from the note's velocity)
+  at their start and note off after their length; live notes (MIDI keyboard,
+  typing keyboard, rack audition) send note on and off as they are played.
+  Layers can play MIDI Out channels like any other.
+- A muted MIDI Out channel sends nothing new; notes already sounding still
+  get their note off. Stop, pausing and rebuilding the channels send note off
+  for every held note. Volume, pan, mixer routing and instrument parameters
+  do not apply.
+- The engine queues the messages on the audio thread (fixed-size queue, a
+  full queue drops messages) with their offset into the block; the app sends
+  them from a separate thread to the **MIDI output port** chosen in
+  Settings → MIDI (none by default). Timing is accurate to about one audio
+  buffer. Offline renders and exports leave MIDI Out channels silent and
+  send nothing.
+
 ## Built-in sounds
 
 `kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`, `rim`, `crash`. Each is
@@ -140,5 +160,8 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   and mixer routing) follows the general workflow described in the FL Studio
   online manual, "Channel Rack" section. Command names, value ranges and defaults
   are our own.
+- MIDI Out: note on/off messages per the MIDI 1.0 specification (MIDI
+  Association); the channel kind mirrors the "send notes to external gear"
+  generator listed in the FL Studio online manual's plugin list. Design ours.
 - Built-in sounds: own design; no third-party audio is used.
 - WAV decoding: the RIFF/WAVE format via the `hound` crate.

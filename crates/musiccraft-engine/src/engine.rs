@@ -5,6 +5,7 @@ use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::graph::{ChannelNode, Instrument, TrackNode};
+use crate::midi_out::{MidiOut, MidiOutReceiver, midi_out_pair};
 use crate::voice::{Voice, VoiceStart};
 use crate::{
     EngineMessage, External, ExternalTransport, GARBAGE_CAPACITY, Garbage, Graph, LIVE_CAPACITY,
@@ -72,6 +73,7 @@ pub struct EngineHandle {
     messages: Producer<EngineMessage>,
     garbage: Consumer<Garbage>,
     live: Option<LiveSender>,
+    midi_out: Option<MidiOutReceiver>,
     meters: Arc<Meters>,
     sample_rate: u32,
 }
@@ -124,6 +126,12 @@ impl EngineHandle {
     pub fn take_live_sender(&mut self) -> Option<LiveSender> {
         self.live.take()
     }
+
+    /// Takes the receiver of MIDI Out channels' messages (for a MIDI output
+    /// thread). Returns `None` after the first call.
+    pub fn take_midi_out(&mut self) -> Option<MidiOutReceiver> {
+        self.midi_out.take()
+    }
 }
 
 /// Sends live notes straight to the engine from any one thread.
@@ -162,6 +170,8 @@ pub struct Engine {
     free_beats: f64,
     /// Pitch of each channel's last note, for portamento notes.
     last_keys: Vec<Option<f32>>,
+    /// Messages of MIDI Out channels.
+    midi_out: MidiOut,
 }
 
 impl Drop for Engine {
@@ -183,6 +193,7 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
     let (garbage_tx, garbage_rx) = RingBuffer::new(GARBAGE_CAPACITY);
     let (live_tx, live_rx) = RingBuffer::new(LIVE_CAPACITY);
     let meters = Arc::new(Meters::new());
+    let (midi_out, midi_out_rx) = midi_out_pair();
     let engine = Engine {
         messages: message_rx,
         garbage: garbage_tx,
@@ -206,11 +217,13 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
         externals: (0..MAX_EXTERNALS).map(|_| None).collect(),
         free_beats: 0.0,
         last_keys: vec![None; PORTA_CHANNELS],
+        midi_out,
     };
     let handle = EngineHandle {
         messages: message_tx,
         garbage: garbage_rx,
         live: Some(LiveSender { producer: live_tx }),
+        midi_out: Some(midi_out_rx),
         meters,
         sample_rate,
     };
@@ -301,6 +314,7 @@ impl Engine {
         for external in self.externals.iter_mut().flatten() {
             external.all_notes_off();
         }
+        self.midi_out.all_off();
     }
 
     /// Whether external slot `slot` holds a processor.
@@ -422,6 +436,15 @@ impl Engine {
                 for external in self.externals.iter_mut().flatten() {
                     external.all_notes_off();
                 }
+                // Held MIDI notes survive a rebuild only when their channel
+                // still sends on the same MIDI channel.
+                let channels = &graph.channels;
+                self.midi_out.release_unless(|channel, midi| {
+                    matches!(
+                        channels.get(usize::from(channel)).map(|n| &n.instrument),
+                        Some(Instrument::MidiOut(m)) if *m == midi
+                    )
+                });
                 if let Some(old) = self.graph.replace(graph) {
                     self.discard(Garbage::Graph(old));
                 }
@@ -479,6 +502,7 @@ impl Engine {
                 &mut self.voice_counter,
                 &graph.channels,
                 &mut self.externals,
+                &mut self.midi_out,
                 &mut self.last_keys,
                 start,
             );
@@ -506,6 +530,7 @@ impl Engine {
             if let Some(external) = self.channel_external(target) {
                 external.note_off(0, key);
             }
+            self.midi_out.note_off(target, key);
             for voice in &mut self.voices {
                 if voice.active && voice.live && voice.channel == target && voice.key == key {
                     voice.release(true);
@@ -581,6 +606,7 @@ impl Engine {
             self.schedule(frames);
             self.frames_played += frames as u64;
         }
+        self.midi_out.advance(frames);
         let sample_rate = self.sample_rate as f32;
         // Tempo-synced effects follow the song while playing and a free
         // clock at the same tempo while stopped.
@@ -694,6 +720,7 @@ impl Engine {
                             &mut self.voice_counter,
                             &graph.channels,
                             &mut self.externals,
+                            &mut self.midi_out,
                             &mut self.last_keys,
                             start,
                         );
@@ -797,6 +824,7 @@ fn trigger(
     counter: &mut u64,
     channels: &[ChannelNode],
     externals: &mut Externals,
+    midi_out: &mut MidiOut,
     last_keys: &mut [Option<f32>],
     mut start: VoiceStart,
 ) {
@@ -814,8 +842,29 @@ fn trigger(
             if !nested {
                 let mut forwarded = start;
                 forwarded.channel = *child;
-                trigger(voices, counter, channels, externals, last_keys, forwarded);
+                trigger(
+                    voices, counter, channels, externals, midi_out, last_keys, forwarded,
+                );
             }
+        }
+        return;
+    }
+    if let Some(ChannelNode {
+        instrument: Instrument::MidiOut(midi_channel),
+        params,
+        ..
+    }) = channels.get(usize::from(start.channel))
+    {
+        // A muted channel sends nothing new.
+        if !params.mute {
+            midi_out.note_on(
+                start.channel,
+                *midi_channel,
+                start.key,
+                start.velocity,
+                start.delay,
+                start.gate,
+            );
         }
         return;
     }

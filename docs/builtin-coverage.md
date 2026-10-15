@@ -36,7 +36,7 @@ Status:
 | Layer | Layer channel | covered | |
 | Fruity Wrapper | CLAP plugin hosting | partial | CLAP only; VST2/VST3/AU hosting not planned (licensing and `unsafe` scope) |
 | FLEX, Autogun, BeepMap | — | not planned | Preset-player or image-to-sound tools; no equivalent design planned |
-| MIDI Out | — | todo | Sending notes to external MIDI gear |
+| MIDI Out | MIDI Out channel (`channel.add_midi_out`) | partial | Notes on a MIDI channel to one output port; no controller knobs, program changes or MIDI clock |
 | Patcher | — | not planned | Modular plugin graphs; mixer routing and sends cover the common cases |
 | Fruity Envelope / Keyboard / X-Y controllers, Formula Controller, Peak Controller | Automation clips, synth LFO | partial | No audio-driven (peak) or formula controllers |
 | Dashboard, Fruity Video Player, ZGameEditor Visualizer | — | not planned | Video and custom-panel tools are outside an audio workstation's core |

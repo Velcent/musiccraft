@@ -10,6 +10,7 @@
 
 mod autosave;
 mod midi;
+mod midi_out;
 mod plugins;
 mod recorder;
 mod screenshot;
@@ -59,6 +60,11 @@ struct App {
     audio_label: String,
     midi: Option<midi::MidiIn>,
     midi_label: String,
+    /// The engine's outgoing MIDI (MIDI Out channels), shared with the
+    /// output thread.
+    midi_out_rx: Option<Arc<Mutex<musiccraft_engine::MidiOutReceiver>>>,
+    midi_out: Option<midi_out::MidiOut>,
+    midi_out_label: String,
     /// The engine's live-note sender, shared with whichever MIDI input runs.
     live: Option<Arc<Mutex<musiccraft_engine::LiveSender>>>,
     played_tx: std::sync::mpsc::Sender<midi::Played>,
@@ -258,6 +264,9 @@ impl App {
             audio_label: String::new(),
             midi: None,
             midi_label: String::new(),
+            midi_out_rx: None,
+            midi_out: None,
+            midi_out_label: String::new(),
             live: None,
             played_tx,
             settings,
@@ -287,6 +296,7 @@ impl App {
         let info = &mut self.settings_info;
         info.outputs = musiccraft_audio::output_device_names();
         info.midi_ports = midi::port_names();
+        info.midi_out_ports = midi_out::port_names();
         if let Some(host) = musiccraft_cli::plugin_host() {
             info.plugin_count = host.catalog().len();
             info.plugin_errors = host.scan_errors();
@@ -301,6 +311,8 @@ impl App {
                 .store_all(Some(&mut audio.bridge), &mut self.session);
             let _ = self.session.run(&Invocation::bare("transport.stop"));
             self.midi = None;
+            self.midi_out = None;
+            self.midi_out_rx = None;
             self.live = None;
             drop(audio);
         }
@@ -318,16 +330,18 @@ impl App {
             let rates = device.supported_rates();
             let (engine, mut handle) = engine_pair(rate);
             let live = handle.take_live_sender();
+            let midi_out = handle.take_midi_out();
             let output = device.start(engine)?;
-            Ok((output, handle, live, label, rates, rate, note))
+            Ok((output, handle, (live, midi_out), label, rates, rate, note))
         });
         match opened {
-            Ok((output, handle, live, label, rates, rate, note)) => {
+            Ok((output, handle, (live, midi_out), label, rates, rate, note)) => {
                 self.audio_label = label;
                 self.settings_info.sample_rates = rates;
                 self.settings_info.running_rate = rate;
                 self.settings_info.audio_note = note;
                 self.live = live.map(|l| Arc::new(Mutex::new(l)));
+                self.midi_out_rx = midi_out.map(|m| Arc::new(Mutex::new(m)));
                 self.audio = Some(Audio {
                     _output: output,
                     meters: Arc::clone(handle.meters()),
@@ -336,6 +350,7 @@ impl App {
                 });
                 self.synced_revision = None;
                 self.connect_midi(ctx);
+                self.connect_midi_out();
             }
             Err(err) => {
                 self.audio_label = format!("no audio: {err}");
@@ -376,6 +391,26 @@ impl App {
         }
     }
 
+    /// Opens the MIDI output port the settings name, for MIDI Out channels.
+    fn connect_midi_out(&mut self) {
+        self.midi_out = None;
+        let Some(port) = self.settings.midi_output.clone() else {
+            self.midi_out_label = "MIDI out: off".to_owned();
+            return;
+        };
+        let Some(receiver) = &self.midi_out_rx else {
+            self.midi_out_label = "MIDI out: unavailable".to_owned();
+            return;
+        };
+        match midi_out::start(Arc::clone(receiver), &port) {
+            Ok(out) => {
+                self.midi_out_label = format!("MIDI out: {}", out.name);
+                self.midi_out = Some(out);
+            }
+            Err(err) => self.midi_out_label = format!("MIDI out: {err}"),
+        }
+    }
+
     /// Applies new settings, saving them and restarting what changed.
     fn apply_settings(&mut self, ctx: &egui::Context, next: musiccraft_ui::Settings) {
         let previous = std::mem::replace(&mut self.settings, next);
@@ -399,9 +434,15 @@ impl App {
             self.start_audio(ctx);
             self.ui
                 .set_status(format!("audio: {}", self.audio_label), false);
-        } else if previous.midi_input != self.settings.midi_input {
-            self.connect_midi(ctx);
-            self.ui.set_status(self.midi_label.clone(), false);
+        } else {
+            if previous.midi_input != self.settings.midi_input {
+                self.connect_midi(ctx);
+                self.ui.set_status(self.midi_label.clone(), false);
+            }
+            if previous.midi_output != self.settings.midi_output {
+                self.connect_midi_out();
+                self.ui.set_status(self.midi_out_label.clone(), false);
+            }
         }
     }
 
@@ -410,6 +451,7 @@ impl App {
         let mut status = EngineStatus {
             audio: self.audio_label.clone(),
             midi: self.midi_label.clone(),
+            midi_out: self.midi_out_label.clone(),
             ..EngineStatus::default()
         };
         if let Some(audio) = &self.audio {

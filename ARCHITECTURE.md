@@ -65,6 +65,10 @@ xtask ──► commands, render, ui (keymap) ───────────�
   run, the bridge diffs the project against what the engine last received and
   pushes messages through a lock-free SPSC queue (`rtrb`).
 - **MIDI thread** (optional): sends live note events through a second SPSC queue.
+- **MIDI output thread** (optional): drains a third SPSC queue, filled by the
+  engine with the note messages of MIDI Out channels (fixed-size `Copy`
+  events; a full queue drops them), and sends them to the chosen port. It
+  polls every millisecond, so timing is accurate to about one audio buffer.
 - The engine never reads `Project`. Data the engine needs (sample buffers, note
   sequences, effect state) is prepared on the main thread.
 
@@ -130,7 +134,7 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `serde`, `serde_json` | Project file format and JSON payloads in undo inverses and MCP. |
 | `hound` | WAV decoding for samples and WAV encoding for export. |
 | `eframe` (egui) | Cross-platform immediate-mode UI; kept swappable behind commands. |
-| `midir` | MIDI keyboard input in the app. |
+| `midir` | MIDI keyboard input and MIDI Out channels' output port in the app. |
 | `clap-sys` | Rust declarations of the CLAP plugin ABI (types and constants only). |
 | `libloading` | Opens `.clap` shared libraries and finds their entry point. |
 | `libc` | `poll(2)` for file descriptors plugin windows register (Unix only). |

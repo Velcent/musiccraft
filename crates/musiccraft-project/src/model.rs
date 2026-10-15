@@ -210,6 +210,11 @@ pub enum Instrument {
         /// The plugin.
         plugin: PluginRef,
     },
+    /// Makes no sound; sends its notes to external MIDI gear.
+    MidiOut {
+        /// MIDI channel, 1–16.
+        midi_channel: u8,
+    },
 }
 
 impl Instrument {
@@ -228,6 +233,7 @@ impl Instrument {
             Self::Kit { .. } => "kit",
             Self::Layer { .. } => "layer",
             Self::Plugin { .. } => "plugin",
+            Self::MidiOut { .. } => "midi out",
         }
     }
 

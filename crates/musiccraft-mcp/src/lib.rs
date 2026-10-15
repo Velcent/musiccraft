@@ -341,6 +341,9 @@ impl Server {
                 musiccraft_project::Instrument::Plugin { plugin } => {
                     format!("plugin {} [{}]", plugin.name, plugin.id)
                 }
+                musiccraft_project::Instrument::MidiOut { midi_channel } => {
+                    format!("MIDI out on channel {midi_channel}")
+                }
             };
             out.push(format!(
                 "  {} {} ({source}) vol {:.2} pan {:+.2}{} → mixer {}",
