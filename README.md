@@ -80,7 +80,9 @@ Hover any control and the hint bar at the top says what it does.
   right-click it for markers. Songs loop by default; right-click the ruler →
   Add pause marker here at the end to stop there instead, or make a marker the
   Song loop point to return to it.
-- **Channel rack**: click steps; knobs for pan and volume (double-click resets;
+- **Channel rack**: click steps, drag to paint them, right-click or right-drag
+  to erase; knobs for pan and volume (middle-click or double-click resets any
+  knob or fader;
   pan follows the project's circular or triangular pan law);
   click a channel name for its settings. The synth has presets, two
   oscillators with unison and spread, sub, drive, low/band/high-pass filter
@@ -114,9 +116,9 @@ Hover any control and the hint bar at the top says what it does.
 - **Automation**: right-click any knob or fader → Create automation clip;
   double-click the clip to edit its curve.
 - **Browser**: current project, plugin database (generators and effects),
-  packs and your folders, with search; click previews,
-  double-click adds, drag onto the rack (new channel) or the playlist (audio
-  clip).
+  packs and your folders, with search; click previews a sound (or selects a
+  plugin), double-click adds, drag onto the rack (new channel) or the
+  playlist (audio clip).
 - **Recording**: REC + playing records a MIDI or typing keyboard into the
   pattern; with File → Record audio input, song-mode takes become audio clips.
   Right-click REC for count-in (Ctrl+P), wait for input (Ctrl+I), loop

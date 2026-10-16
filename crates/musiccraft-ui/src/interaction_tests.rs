@@ -1114,3 +1114,60 @@ fn note_kinds_from_the_piano_roll() {
     let fine = h.session.project().current_pattern().notes[0].props.fine;
     assert!(fine > 20, "fine raised: {fine}");
 }
+
+/// Steps lit on channel `n` (1-based) of the current pattern.
+fn lit_steps(h: &Harness, n: usize) -> Vec<u32> {
+    let project = h.session.project();
+    let id = project.channels[n - 1].id;
+    let mut steps: Vec<u32> = project
+        .current_pattern()
+        .notes_of(id)
+        .map(|note| note.start / TICKS_PER_STEP)
+        .collect();
+    steps.sort_unstable();
+    steps
+}
+
+#[test]
+fn step_buttons_paint_with_the_left_button_and_erase_with_the_right() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick", "step.toggle 1 2"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rects: Vec<Rect> = h
+        .state
+        .step_layout
+        .iter()
+        .filter(|(channel, _)| *channel == 0)
+        .map(|(_, rect)| *rect)
+        .collect();
+    let [first, second] = rects[..] else {
+        panic!("steps drawn: {rects:?}");
+    };
+    let pitch = second.center() - first.center();
+    let step = |n: usize| first.center() + pitch * n as f32;
+
+    // A click toggles one step.
+    h.click(step(0), PointerButton::Primary);
+    assert_eq!(lit_steps(&h, 1), [0, 2]);
+    // Right-click turns a lit step off and leaves an unlit one alone.
+    h.click(step(0), PointerButton::Secondary);
+    h.click(step(1), PointerButton::Secondary);
+    assert_eq!(lit_steps(&h, 1), [2]);
+
+    // A left drag from an unlit step paints every step it passes, as one
+    // undo step.
+    let depth = h.session.undo_depth();
+    h.drag(step(4), step(7));
+    assert_eq!(lit_steps(&h, 1), [2, 4, 5, 6, 7]);
+    assert_eq!(h.session.undo_depth(), depth + 1);
+
+    // A right drag erases.
+    h.drag_with(step(3), step(5), PointerButton::Secondary);
+    assert_eq!(lit_steps(&h, 1), [2, 6, 7]);
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(lit_steps(&h, 1), [2, 4, 5, 6, 7]);
+
+    // A left drag from a lit step clears the steps it passes.
+    h.drag(step(6), step(7));
+    assert_eq!(lit_steps(&h, 1), [2, 4, 5]);
+}

@@ -140,6 +140,9 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Fill every N steps, shift steps | `cmd:step.fill` `cmd:step.shift` |
 | Channel | Arpeggiator (up, down, up-down, random; rate, octaves, gate) | `spec:piano-roll.md` `done` |
 | Browser | Folders, search, click to preview, drag to rack or playlist | `done` |
+| Browser | Plugin database: click selects, double-click or drag adds | `spec:channel-rack.md` `done` |
+| Channel rack | Step buttons: right-click erases, left/right drag paints or erases | `spec:channel-rack.md` `done` |
+| Controls | Middle-click or double-click resets any knob, fader or slider | `spec:controls.md` `done` |
 | Transport | Oscilloscope, CPU meter, master volume | `done` |
 | Project | New / open / save / save as | `cmd:project.new` `cmd:project.load` `cmd:project.save` `cmd:project.save_new_version` `key:Ctrl+S=ui.save` `key:Ctrl+N=ui.save_new_version` `key:Ctrl+O=ui.open` `spec:project-file.md` |
 | Project | Undo / redo | `key:Ctrl+Z=edit.undo` `key:Ctrl+Y=edit.redo` `spec:commands.md` |

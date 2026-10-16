@@ -228,6 +228,11 @@ pub struct UiState {
     pub(crate) graph_drag: Option<musiccraft_project::Note>,
     /// Where the graph strip was last drawn and its step count (for tests).
     pub(crate) graph_view: Option<(egui::Rect, u32)>,
+    /// A drag across step buttons in progress.
+    pub(crate) step_paint: Option<channel_rack::StepStroke>,
+    /// Where each visible channel's first two step buttons were drawn, for
+    /// tests.
+    pub(crate) step_layout: Vec<(usize, egui::Rect)>,
     /// While recording in song mode, also capture the audio input.
     pub record_audio: bool,
     /// Text that filters the plugin parameter list.
@@ -298,6 +303,8 @@ impl UiState {
             graph: None,
             graph_drag: None,
             graph_view: None,
+            step_paint: None,
+            step_layout: Vec::new(),
             record_audio: false,
             plugin_filter: String::new(),
             hint: None,
