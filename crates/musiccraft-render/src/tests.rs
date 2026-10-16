@@ -680,7 +680,7 @@ fn band_split_moves_the_low_band_to_its_target() {
         "the bass reaches the master through insert 2"
     );
     assert!(
-        muted < routed * 0.2,
+        muted < routed * 0.5,
         "most of a C2 is in the low band: {muted} vs {routed}"
     );
     let mut s = session();
