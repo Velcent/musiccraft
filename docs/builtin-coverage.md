@@ -66,9 +66,9 @@ Status:
 | Fruity Delay Bank, Multiband Delay | `multi_tap` (per-tap pan, low cut and high cut) | covered | Four taps |
 | Fruity Reeverb 2, Luxeverb | `reverb` | covered | |
 | Fruity Convolver | `convolution` (files or generated rooms) | covered | |
-| Fruity Chorus, Vintage Chorus | `chorus` | covered | |
+| Fruity Chorus, Vintage Chorus | `chorus` (up to three voices, darkening tone) | covered | |
 | Fruity Flanger, Flangus | `flanger` | covered | |
-| Fruity Phaser, Vintage Phaser | `phaser` | covered | |
+| Fruity Phaser, Vintage Phaser | `phaser` (with warm feedback saturation) | covered | |
 | Fruity Pan O Matic | `autopan` | covered | |
 | Fruity Stereo Enhancer, Balance, Center, Phase Inverter | `stereo`, `dc_block` | covered | |
 | Fruity Stereo Shaper | `stereo_shaper` (left/right mixing matrix, inter-channel delay) | covered | |

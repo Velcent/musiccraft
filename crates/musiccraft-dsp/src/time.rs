@@ -133,13 +133,14 @@ const MAX_CHORUS_SECONDS: f32 = 0.05;
 /// Stereo chorus: a short delay per channel modulated by sine LFOs a quarter
 /// cycle apart, mixed with the dry signal.
 ///
-/// Parameters: `[rate Hz, depth ms, delay ms, mix]`.
+/// Parameters: `[rate Hz, depth ms, delay ms, mix, voices, tone Hz]`.
 #[derive(Debug, Clone)]
 pub struct Chorus {
     left: Vec<f32>,
     right: Vec<f32>,
     write: usize,
     phase: f32,
+    tone: [f32; 2],
 }
 
 impl Chorus {
@@ -152,6 +153,7 @@ impl Chorus {
             right: vec![0.0; len],
             write: 0,
             phase: 0.0,
+            tone: [0.0; 2],
         }
     }
 
@@ -159,6 +161,7 @@ impl Chorus {
     pub fn reset(&mut self) {
         self.left.fill(0.0);
         self.right.fill(0.0);
+        self.tone = [0.0; 2];
     }
 
     fn read(buffer: &[f32], write: usize, delay: f32) -> f32 {
@@ -189,6 +192,10 @@ impl Chorus {
         let depth = param(1, 3.0).max(0.0) * 0.001 * sr;
         let base = param(2, 12.0).max(0.0) * 0.001 * sr;
         let mix = param(3, 0.4).clamp(0.0, 1.0);
+        let voices = (param(4, 1.0).round() as usize).clamp(1, 3);
+        let tone_hz = param(5, 20_000.0);
+        let tone =
+            (tone_hz < 20_000.0).then(|| 1.0 - (-std::f32::consts::TAU * tone_hz / sr).exp());
         let step = rate / sr;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if let Some(slot) = self.left.get_mut(self.write) {
@@ -197,10 +204,23 @@ impl Chorus {
             if let Some(slot) = self.right.get_mut(self.write) {
                 *slot = *r;
             }
-            let lfo_l = (self.phase * std::f32::consts::TAU).sin();
-            let lfo_r = ((self.phase + 0.25) * std::f32::consts::TAU).sin();
-            let wet_l = Self::read(&self.left, self.write, base + depth * (0.5 + 0.5 * lfo_l));
-            let wet_r = Self::read(&self.right, self.write, base + depth * (0.5 + 0.5 * lfo_r));
+            let mut wet = [0.0_f32; 2];
+            for v in 0..voices {
+                let phase = self.phase + v as f32 / voices as f32;
+                for (ch, (w, line)) in wet.iter_mut().zip([&self.left, &self.right]).enumerate() {
+                    let offset = if ch == 0 { 0.0 } else { 0.25 };
+                    let lfo = ((phase + offset) * std::f32::consts::TAU).sin();
+                    *w += Self::read(line, self.write, base + depth * (0.5 + 0.5 * lfo));
+                }
+            }
+            for (w, state) in wet.iter_mut().zip(&mut self.tone) {
+                *w /= voices as f32;
+                if let Some(a) = tone {
+                    *state = crate::flush_denormal(*state + (*w - *state) * a);
+                    *w = *state;
+                }
+            }
+            let [wet_l, wet_r] = wet;
             *l += (wet_l - *l) * mix;
             *r += (wet_r - *r) * mix;
             self.write = (self.write + 1) % len;
@@ -234,5 +254,29 @@ mod chorus_tests {
         let mut r = l.clone();
         chorus.process(&mut l, &mut r, &[5.0, 10.0, 30.0, 0.5], ctx);
         assert!(l.iter().chain(&r).all(|s| s.is_finite() && s.abs() <= 1.01));
+    }
+
+    #[test]
+    fn chorus_voices_average_and_tone_darkens() {
+        let ctx = ProcessContext {
+            beats: 0.0,
+            sample_rate: 10_000.0,
+            tempo_bpm: 120.0,
+        };
+        // Three voices with no modulation are three identical copies: the
+        // average is the same 10 ms delay.
+        let mut chorus = Chorus::new(ctx.sample_rate);
+        let mut l = vec![0.0; 300];
+        let mut r = vec![0.0; 300];
+        l[0] = 1.0;
+        chorus.process(&mut l, &mut r, &[0.0, 0.0, 10.0, 1.0, 3.0, 20_000.0], ctx);
+        assert!((l[100] - 1.0).abs() < 1e-4, "got {}", l[100]);
+        // A low tone smears the echo's click into a gentler bump.
+        let mut chorus = Chorus::new(ctx.sample_rate);
+        let mut l = vec![0.0; 300];
+        let mut r = vec![0.0; 300];
+        l[0] = 1.0;
+        chorus.process(&mut l, &mut r, &[0.0, 0.0, 10.0, 1.0, 1.0, 500.0], ctx);
+        assert!(l[100] < 0.5 && l[101] > 0.05, "{} {}", l[100], l[101]);
     }
 }

@@ -56,11 +56,11 @@
 | `eq` | low gain/freq (shelf), mid gain/freq/q (peak), high gain/freq (shelf) |
 | `delay` | time in beats (tempo-synced), feedback, mix, ping_pong, damping |
 | `reverb` | size, damping, width, mix |
-| `chorus` | rate Hz, depth ms, delay ms, mix |
+| `chorus` | rate Hz, depth ms, delay ms, mix, voices (1–3 delayed copies per side, their LFOs evenly spaced through the cycle and averaged), tone Hz (one-pole low-pass on the wet signal for a darker, vintage sound; off at its 20 kHz maximum) |
 | `compressor` | threshold dB, ratio, attack ms, release ms, makeup dB, sidechain (0 = off, else the insert whose post-fader output drives detection) |
 | `limiter` | input gain dB, ceiling dB, release ms (instant attack; output never exceeds the ceiling) |
 | `distortion` | drive dB, mix, output dB, mode (0 soft: tanh; 1 hard: the driven signal is clipped flat at the threshold, then scaled back to full level), threshold dB (hard mode only, −24–0) |
-| `phaser` | rate Hz, depth, feedback, stages (2–12 all-pass stages), mix |
+| `phaser` | rate Hz, depth, feedback, stages (2–12 all-pass stages), mix, warm (0–1: tanh saturation in the feedback loop, which rounds off the resonant peaks; 0 is off) |
 | `flanger` | rate Hz, depth ms, delay ms, feedback (−0.95–0.95), mix |
 | `bitcrusher` | bits (1–16), downsample (hold every 1–32 samples), mix, output dB, squeeze (0–1: before quantizing, each held sample's level is raised to the power 1 − 0.9 × squeeze, which pushes quiet detail up toward full level for a gritty, squashed sound; 0 is off) |
 | `stereo` | width (0 mono – 2 extra wide, mid/side), balance, invert left, invert right |

@@ -31,7 +31,7 @@ fn beats_per_sample(ctx: ProcessContext) -> f64 {
 /// Phaser: a chain of first-order all-pass filters whose corner sweeps
 /// between 200 Hz and 4 kHz, mixed with the dry signal.
 ///
-/// Parameters: `[rate Hz, depth, feedback, stages, mix]`.
+/// Parameters: `[rate Hz, depth, feedback, stages, mix, warm]`.
 #[derive(Debug, Clone, Default)]
 pub struct Phaser {
     /// Per channel: all-pass states (input and output memories).
@@ -54,6 +54,7 @@ impl Phaser {
         let feedback = param(p, 2, 0.5).clamp(0.0, 0.9);
         let stages = (param(p, 3, 6.0).round() as usize).clamp(2, 12);
         let mix = param(p, 4, 0.5).clamp(0.0, 1.0);
+        let warm = 1.0 + 3.0 * param(p, 5, 0.0).clamp(0.0, 1.0);
         let step = rate / sr;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             for (ch, sample) in [l, r].into_iter().enumerate() {
@@ -73,7 +74,11 @@ impl Phaser {
                     x = 0.0;
                     self.state[ch] = [(0.0, 0.0); 12];
                 }
-                self.feedback[ch] = flush_denormal(x);
+                self.feedback[ch] = if warm > 1.0 {
+                    flush_denormal((x * warm).tanh() / warm)
+                } else {
+                    flush_denormal(x)
+                };
                 *sample += (x - *sample) * mix;
             }
             self.phase = (self.phase + step).fract();
@@ -352,6 +357,19 @@ mod tests {
         flanger.process(&mut l, &mut r, &[0.5, 3.0, 2.0, 0.9, 0.5], ctx());
         assert!(l.iter().chain(&r).all(|s| s.is_finite() && s.abs() < 3.0));
         assert!(l.iter().zip(&dry).any(|(a, b)| (a - b).abs() > 0.05));
+    }
+
+    #[test]
+    fn warm_phaser_saturates_its_feedback() {
+        let run = |warm: f32| {
+            let (mut l, mut r) = tone(24_000);
+            let mut phaser = Phaser::default();
+            phaser.process(&mut l, &mut r, &[1.0, 1.0, 0.9, 12.0, 0.5, warm], ctx());
+            l
+        };
+        let (cold, warm) = (run(0.0), run(1.0));
+        assert!(warm.iter().all(|s| s.is_finite() && s.abs() < 2.0));
+        assert!(cold.iter().zip(&warm).any(|(a, b)| (a - b).abs() > 1e-3));
     }
 
     #[test]

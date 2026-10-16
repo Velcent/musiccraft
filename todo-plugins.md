@@ -36,9 +36,9 @@ new UI editor or large DSP.
 - [x] Fruity Squeeze → add a "squeeze" (sample-and-hold amplitude) mode to
   `bitcrusher`.
 - [x] Fruity Fast Dist → threshold-style hard clipping shape on `distortion`.
-- [ ] Vintage Chorus → `chorus` gains a "voices" (1–3) parameter and a
+- [x] Vintage Chorus → `chorus` gains a "voices" (1–3) parameter and a
   bucket-brigade style low-pass on the wet path.
-- [ ] Vintage Phaser → `phaser` gains a "warm" option (soft saturation in the
+- [x] Vintage Phaser → `phaser` gains a "warm" option (soft saturation in the
   feedback loop).
 - [ ] Fruity Send → per-insert send level as an effect (currently only mixer
   routing sends).

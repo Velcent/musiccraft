@@ -817,6 +817,21 @@ const CHORUS: &[Preset] = &[
         "Vibrato",
         &[("rate", 5.0), ("depth", 3.0), ("delay", 7.0), ("mix", 1.0)],
     ),
+    preset(
+        "Vintage ensemble",
+        &[
+            ("rate", 0.6),
+            ("depth", 3.5),
+            ("delay", 14.0),
+            ("mix", 0.5),
+            ("voices", 3.0),
+            ("tone", 6_000.0),
+        ],
+    ),
+    preset(
+        "Dark duo",
+        &[("voices", 2.0), ("tone", 3_000.0), ("mix", 0.45)],
+    ),
 ];
 
 const LIMITER: &[Preset] = &[
@@ -856,6 +871,16 @@ const PHASER: &[Preset] = &[
             ("feedback", 0.85),
             ("stages", 12.0),
             ("mix", 0.6),
+        ],
+    ),
+    preset(
+        "Vintage",
+        &[
+            ("rate", 0.3),
+            ("depth", 0.8),
+            ("feedback", 0.7),
+            ("stages", 4.0),
+            ("warm", 0.8),
         ],
     ),
 ];

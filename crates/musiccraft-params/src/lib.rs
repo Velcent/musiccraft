@@ -851,6 +851,7 @@ const PHASER_PARAMS: &[ParamSpec] = &[
     spec("feedback", 0.0, 0.9, 0.5, ""),
     int_spec("stages", 2.0, 12.0, 6.0),
     spec("mix", 0.0, 1.0, 0.5, ""),
+    spec("warm", 0.0, 1.0, 0.0, ""),
 ];
 
 const FLANGER_PARAMS: &[ParamSpec] = &[
@@ -936,6 +937,8 @@ const CHORUS_PARAMS: &[ParamSpec] = &[
     spec("depth", 0.0, 10.0, 3.0, "ms"),
     spec("delay", 5.0, 30.0, 12.0, "ms"),
     spec("mix", 0.0, 1.0, 0.4, ""),
+    int_spec("voices", 1.0, 3.0, 1.0),
+    spec("tone", 500.0, 20_000.0, 20_000.0, "Hz"),
 ];
 
 const LIMITER_PARAMS: &[ParamSpec] = &[
