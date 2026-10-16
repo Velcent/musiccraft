@@ -860,6 +860,31 @@ fn zone_sampler_picks_a_zone_by_key_and_velocity() {
 }
 
 #[test]
+fn resynth_channels_play_and_change_sample() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_resynth builtin:tom
+         note.add 1 0 8 A5
+         channel.set_param 1 resyn_speed 0.5
+         channel.set_param 1 resyn_blur 0.3",
+    );
+    let options = RenderOptions {
+        max_tail_seconds: 0.5,
+        ..RenderOptions::default()
+    };
+    let out = render(s.project(), options).0;
+    assert!(out.iter().all(|x| x.is_finite()));
+    assert!(rms(&out[..20_000]) > 0.001, "it sounds");
+    run(&mut s, "channel.set_sample 1 builtin:snare");
+    s.run_line("edit.undo").unwrap();
+    assert!(matches!(
+        &s.project().channels[0].instrument,
+        musiccraft_project::Instrument::Resynth { sample } if sample == "builtin:tom"
+    ));
+}
+
+#[test]
 fn zone_commands_check_and_undo() {
     let mut s = session();
     run(&mut s, "channel.add_zones\nchannel.add_zone 1 builtin:hat");

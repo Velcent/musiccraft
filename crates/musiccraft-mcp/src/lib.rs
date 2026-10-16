@@ -329,6 +329,7 @@ impl Server {
                 musiccraft_project::Instrument::Keys => "keys".to_owned(),
                 musiccraft_project::Instrument::Additive => "additive".to_owned(),
                 musiccraft_project::Instrument::Granular { sample } => format!("granular {sample}"),
+                musiccraft_project::Instrument::Resynth { sample } => format!("resynth {sample}"),
                 musiccraft_project::Instrument::Kit { pads } => {
                     format!(
                         "kit ({} pads)",

@@ -196,6 +196,8 @@ pub enum Instrument {
     Kit(Vec<Option<Arc<SampleBuffer>>>),
     /// Samples mapped to key and velocity ranges.
     Zones(Vec<Zone>),
+    /// A sample's harmonics played back additively.
+    Resynth(Arc<musiccraft_dsp::resynth::HarmonicTable>),
     /// Forwards notes to these channel indices.
     Layer(Vec<u16>),
     /// The external processor (plugin) in this engine slot; silent when the

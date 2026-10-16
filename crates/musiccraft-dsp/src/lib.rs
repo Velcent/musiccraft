@@ -19,6 +19,7 @@ pub mod modulation;
 mod osc;
 pub mod pitch;
 pub mod response;
+pub mod resynth;
 mod reverb;
 mod sample;
 pub mod scratch;

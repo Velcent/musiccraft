@@ -97,6 +97,7 @@ pub(crate) fn glides(instrument: &Instrument) -> bool {
         Instrument::Synth
             | Instrument::Sampler(_)
             | Instrument::Zones(_)
+            | Instrument::Resynth(_)
             | Instrument::Fm
             | Instrument::Keys
             | Instrument::Additive
@@ -185,6 +186,8 @@ pub(crate) struct Voice {
     strings: [KsString; MAX_STRINGS],
     /// Low-passed noise that bows the strings.
     bow_noise: f32,
+    /// Resynth: the (blurred) harmonic levels now playing.
+    resyn_levels: [f32; PARTIALS],
     string_peak: f32,
     string_count: u32,
     sample_pos: f64,
@@ -248,6 +251,7 @@ impl Voice {
             noise: 0x9E37_79B9,
             strings: std::array::from_fn(|_| KsString::new()),
             bow_noise: 0.0,
+            resyn_levels: [0.0; PARTIALS],
             string_peak: 0.0,
             string_count: 0,
             phases: [0.0; PARTIALS],
@@ -318,6 +322,11 @@ impl Voice {
         match instrument {
             Instrument::DrumSynth => self.start_drum(params),
             Instrument::Pluck => self.start_pluck(params, start.key),
+            Instrument::Resynth(table) => {
+                let start = param(params, inst::RESYN_POSITION).clamp(0.0, 1.0) * table.duration();
+                let looped = param(params, inst::RESYN_LOOP) >= 0.5;
+                self.resyn_levels = table.at(start, looped);
+            }
             Instrument::Zones(zones) => {
                 self.pad = zones
                     .iter()
@@ -542,6 +551,7 @@ impl Voice {
             Instrument::Fm => self.render_fm(params, pitch, left, right),
             Instrument::Keys => self.render_keys(params, pitch, left, right),
             Instrument::Additive => self.render_additive(params, pitch, left, right),
+            Instrument::Resynth(table) => self.render_resynth(table, params, pitch, left, right),
             // Layers forward notes; they never sound themselves.
             Instrument::Layer(_) => self.active = false,
             // External instruments never get voices; see `engine::trigger`.
@@ -891,6 +901,73 @@ impl Voice {
                 sum += (phase as f32 * tau).sin() * weight * decay;
             }
             self.emit(l, r, sum * amp * SYNTH_GAIN * 1.6);
+            if self.env.is_idle() {
+                self.active = false;
+                break;
+            }
+        }
+    }
+
+    /// Resynthesis: the table's harmonic levels, read at `resyn_speed` from
+    /// `resyn_position` and smoothed by `resyn_blur`, played as sines on the
+    /// note's harmonics (stretched by `add_inharm`).
+    fn render_resynth(
+        &mut self,
+        table: &musiccraft_dsp::resynth::HarmonicTable,
+        params: &ChannelParams,
+        pitch: f32,
+        left: &mut [f32],
+        right: &mut [f32],
+    ) {
+        let count = (param(params, inst::ADD_PARTIALS).round() as usize).clamp(1, PARTIALS);
+        let inharm = param(params, inst::ADD_INHARM).clamp(0.0, 1.0);
+        let speed = param(params, inst::RESYN_SPEED).clamp(0.0, 4.0);
+        let start = param(params, inst::RESYN_POSITION).clamp(0.0, 1.0) * table.duration();
+        let blur = param(params, inst::RESYN_BLUR).clamp(0.0, 1.0);
+        let looped = param(params, inst::RESYN_LOOP) >= 0.5;
+        let sr = self.sample_rate;
+        let interval = FILTER_UPDATE_INTERVAL as f32 / sr;
+        // Blur 1 smooths levels over about half a second.
+        let follow = if blur > 0.0 {
+            1.0 - (-interval / (blur * 0.5)).exp()
+        } else {
+            1.0
+        };
+        let norm = 1.0 / table.peak_sum.max(1e-3);
+        let mut hz = key_to_hz(pitch + self.glide);
+        let tau = std::f32::consts::TAU;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if !self.advance_gate() {
+                continue;
+            }
+            if self.glide != 0.0 {
+                self.step_glide();
+                hz = key_to_hz(pitch + self.glide);
+            }
+            if self.filter_countdown == 0 {
+                let t = start + self.elapsed as f32 / sr * speed;
+                let target = table.at(t, looped);
+                for (level, want) in self.resyn_levels.iter_mut().zip(target) {
+                    *level += (want - *level) * follow;
+                }
+                self.filter_countdown = FILTER_UPDATE_INTERVAL;
+            }
+            self.filter_countdown -= 1;
+            self.elapsed = self.elapsed.saturating_add(1);
+            let amp = self.env.next_level() * self.velocity;
+            let mut sum = 0.0;
+            for n in 1..=count {
+                let nf = n as f32;
+                let f = hz * nf * (1.0 + inharm * 0.02 * (nf - 1.0));
+                if f > sr * 0.45 {
+                    break;
+                }
+                let i = n - 1;
+                let phase = self.phases[i];
+                self.phases[i] = (phase + f64::from(f / sr)).fract();
+                sum += (phase as f32 * tau).sin() * self.resyn_levels[i];
+            }
+            self.emit(l, r, sum * norm * amp * SYNTH_GAIN * 1.6);
             if self.env.is_idle() {
                 self.active = false;
                 break;
@@ -1897,6 +1974,33 @@ mod more_instrument_tests {
             }
             assert!(peak(&out[18_000..]) < 1e-3, "{name} releases");
         }
+    }
+
+    #[test]
+    fn resynth_plays_the_measured_harmonics_at_the_note() {
+        // A 220 Hz tone with a strong second harmonic, measured once.
+        let data: Vec<f32> = (0..96_000)
+            .map(|i| {
+                let w = std::f32::consts::TAU * 220.0 * i as f32 / 48_000.0;
+                0.3 * w.sin() + 0.2 * (2.0 * w).sin()
+            })
+            .collect();
+        let buffer = SampleBuffer::mono(data, 48_000.0);
+        let table = Arc::new(musiccraft_dsp::resynth::HarmonicTable::analyze(&buffer));
+        let instrument = Instrument::Resynth(Arc::clone(&table));
+        let mut params = ChannelParams::default();
+        params.instrument[inst::SUSTAIN] = 1.0;
+        params.instrument[inst::ADD_PARTIALS] = 32.0;
+        // Key 69 is A5 (440 Hz): the measured spectrum moves up an octave.
+        let out = render(&instrument, &params, 69, 24_000, None);
+        let level = peak(&out[4_800..]);
+        assert!(level > 0.05 && level < 1.0, "level {level}");
+        let hz = pitch_hz(&out[4_800..14_400]);
+        assert!((hz - 440.0).abs() < 8.0, "plays at the note: {hz}");
+        assert!(out.iter().all(|s| s.is_finite()));
+        // An empty analysis is silent.
+        let empty = Instrument::Resynth(Arc::new(musiccraft_dsp::resynth::HarmonicTable::silent()));
+        assert!(peak(&render(&empty, &params, 69, 4_800, None)) < 1e-6);
     }
 
     #[test]

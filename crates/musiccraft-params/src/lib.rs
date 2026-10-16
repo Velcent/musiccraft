@@ -384,6 +384,14 @@ pub mod inst {
     pub const MIDI_CC1: usize = 132;
     pub const MIDI_CC1_NUMBER: usize = 140;
     pub const MIDI_PROGRAM: usize = 148;
+    /// Resynth: playback speed through the analysis (0 freezes, 1 as recorded).
+    pub const RESYN_SPEED: usize = 149;
+    /// Resynth: start position, 0..1 of the sample.
+    pub const RESYN_POSITION: usize = 150;
+    /// Resynth: smears the harmonic levels over time, 0..1.
+    pub const RESYN_BLUR: usize = 151;
+    /// Resynth: 1 = loop the analysis instead of holding its last frame.
+    pub const RESYN_LOOP: usize = 152;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -537,6 +545,10 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("midi_cc7_number", 0.0, 127.0, 91.0),
     int_spec("midi_cc8_number", 0.0, 127.0, 93.0),
     int_spec("midi_program", 0.0, 128.0, 0.0),
+    spec("resyn_speed", 0.0, 4.0, 1.0, ""),
+    spec("resyn_position", 0.0, 1.0, 0.0, ""),
+    spec("resyn_blur", 0.0, 1.0, 0.0, ""),
+    int_spec("resyn_loop", 0.0, 1.0, 0.0),
 ];
 
 /// Number of MIDI Out control-change knobs.
@@ -1517,6 +1529,8 @@ mod tests {
             (inst::MIDI_CC1, "midi_cc1"),
             (inst::MIDI_CC1_NUMBER, "midi_cc1_number"),
             (inst::MIDI_PROGRAM, "midi_program"),
+            (inst::RESYN_SPEED, "resyn_speed"),
+            (inst::RESYN_LOOP, "resyn_loop"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

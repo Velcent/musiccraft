@@ -61,6 +61,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             add_granular,
         ),
         cmd(
+            "channel.add_resynth",
+            "channel.add_resynth <sample> [name]",
+            "Add a channel that measures a sample's harmonics and plays them back at any pitch.",
+            add_resynth,
+        ),
+        cmd(
             "channel.add_kit",
             "channel.add_kit [name]",
             "Add a 16-pad drum kit (pads 1-8 start with the built-in sounds).",
@@ -397,6 +403,24 @@ fn add_keys(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
         channel.params.0[musiccraft_project::params::inst::SUSTAIN] = 1.0;
         channel.params.0[musiccraft_project::params::inst::RELEASE] = 0.05;
     }
+    Ok(push_channel(project, channel))
+}
+
+fn add_resynth(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, usize::MAX)?;
+    let sample = args.str(0)?;
+    let default_name = check_sample(project, args, sample)?;
+    let name = name_or(args, 1, &format!("{default_name} resynth"))?;
+    let id = ChannelId(project.alloc_id());
+    let mut channel = Channel::new(
+        id,
+        name,
+        Instrument::Resynth {
+            sample: sample.to_owned(),
+        },
+    );
+    channel.params.0[musiccraft_project::params::inst::SUSTAIN] = 1.0;
+    channel.params.0[musiccraft_project::params::inst::ADD_PARTIALS] = 32.0;
     Ok(push_channel(project, channel))
 }
 
@@ -854,7 +878,9 @@ fn set_sample(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     let sample = args.str(1)?;
     check_sample(project, args, sample)?;
     let current = match &mut project.channels[index].instrument {
-        Instrument::Sampler { sample } | Instrument::Granular { sample } => sample,
+        Instrument::Sampler { sample }
+        | Instrument::Granular { sample }
+        | Instrument::Resynth { sample } => sample,
         _ => return Err(args.invalid(format!("channel {} does not play a sample", index + 1))),
     };
     let previous = std::mem::replace(current, sample.to_owned());

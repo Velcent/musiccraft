@@ -102,7 +102,8 @@ new UI editor or large DSP.
 
 ### Hard
 
-- [ ] Harmor / Harmless → image and audio resynthesis, blur and prism.
+- [x] Harmor / Harmless → audio resynthesis with blur and stretch (`channel.add_resynth`). Image
+  resynthesis is left out: it would need an image decoder dependency.
 - [ ] Patcher → modular graph of instruments and effects inside one slot
   (currently "not planned").
 - [ ] VST3 hosting (Fruity Wrapper) → extends the `unsafe` exception; needs

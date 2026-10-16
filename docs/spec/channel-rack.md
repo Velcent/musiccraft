@@ -215,6 +215,23 @@ Out channels voice their own notes and are never cut.
   `gran_scan` (how fast the position moves while held, −2…2 × real time).
   Pitch follows the key around `root_key`.
 
+## Resynth
+
+- `channel.add_resynth <sample> [name]` measures the sample's harmonics once
+  (when the channel is built): the median pitch it hears is its fundamental
+  (220 Hz if it hears none), and Hann-windowed spectra up to 512 times along
+  the sample give the level of harmonics 1–32 (the strongest bin within two
+  of each harmonic), normalized to the loudest. Notes play those levels as
+  sines on the note's own harmonics, so any sample becomes a pitched
+  instrument that keeps its tone changing over time.
+- `resyn_speed` (0 freezes, 1 as recorded, up to 4), `resyn_position`
+  (start, 0–1 of the sample), `resyn_blur` (0–1: levels follow the analysis
+  over up to half a second, smearing changes), `resyn_loop` (hold the last
+  frame or loop), and from the additive synth `add_partials` and
+  `add_inharm` (stretches the harmonics apart). Levels update every 32
+  samples. `channel.set_sample` changes the sample. Browser samples offer
+  "Add as resynth" in their right-click menu.
+
 ## Zone sampler
 
 - `channel.add_zones [name]` adds a sampler that plays several samples, each

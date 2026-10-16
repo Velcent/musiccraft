@@ -23,8 +23,8 @@ Status:
 | Transistor Bass, BooBass | Synth bass presets ("Acid bass", "Sub bass", "Round bass", "Picked bass", "Fretless") with slide notes | covered | |
 | Fruity DX10 | FM synth (4 operators, 6 algorithms) | covered | |
 | Sytrus, Toxic Biohazard | FM synth (6 operators, 12 algorithms, per-operator waveforms, output filter) | partial | One filter on the output rather than per operator; waveforms are picked, not drawn |
-| Morphine, Ogun | Additive synth (two spectra with a timed and LFO morph) | partial | No resynthesis of samples |
-| Harmor, Harmless | Additive synth, synth | partial | No image or audio resynthesis, no blur/prism |
+| Morphine, Ogun | Additive synth (two spectra with a timed and LFO morph), resynth | covered | |
+| Harmor, Harmless | Resynth (`channel.add_resynth`: a sample's harmonics over time, with speed, blur and stretch), additive synth, synth | partial | No image resynthesis; prism is the harmonic stretch |
 | FL Keys | Keys: piano | covered | |
 | (electric piano, organ presets) | Keys: e-piano, organ (9 drawbars) | covered | |
 | Plucked!, Sakura | Pluck (Karplus–Strong strings with bowing, up to three detuned strings) | covered | |

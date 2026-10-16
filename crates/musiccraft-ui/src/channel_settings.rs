@@ -333,6 +333,7 @@ fn contents(
         Instrument::Zones { zones } => {
             crate::zone_editor::show(ui, state, frame, index, zones, actions);
         }
+        Instrument::Resynth { sample } => resynth(ui, state, index, channel, sample, actions),
         Instrument::Layer { channels } => {
             layer(ui, frame, index, channels, actions);
             return;
@@ -1514,6 +1515,96 @@ fn synth(
                 param_knob(ui, state, number, channel, base + 2, "Amount", actions);
             });
         }
+    });
+}
+
+fn resynth(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    index: usize,
+    channel: &Channel,
+    sample: &str,
+    actions: &mut Vec<Action>,
+) {
+    let number = index + 1;
+    section(ui, "RESYNTHESIS", |ui| {
+        ui.horizontal(|ui| {
+            let name = std::path::Path::new(sample)
+                .file_name()
+                .map_or_else(|| sample.to_owned(), |n| n.to_string_lossy().into_owned());
+            ui.label(RichText::new(name).color(theme::ACCENT));
+            if ui
+                .small_button("Change…")
+                .hint("Measure another sample's harmonics")
+                .clicked()
+            {
+                state.open_dialog(Dialog::set_sample(index, sample.to_owned()));
+            }
+        });
+        ui.label(
+            RichText::new(
+                "The sample's harmonics are measured once and played on every note's pitch.",
+            )
+            .small()
+            .color(theme::TEXT_DIM),
+        );
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::RESYN_SPEED,
+                "Speed",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::RESYN_POSITION,
+                "Start",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::RESYN_BLUR,
+                "Blur",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_INHARM,
+                "Stretch",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_PARTIALS,
+                "Partials",
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::RESYN_LOOP,
+                &["Hold end", "Loop"],
+                actions,
+            );
+        });
     });
 }
 

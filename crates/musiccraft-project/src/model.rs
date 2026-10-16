@@ -195,6 +195,11 @@ pub enum Instrument {
         /// File path or built-in name, as for the sampler.
         sample: String,
     },
+    /// A sample's harmonics, measured and played back additively.
+    Resynth {
+        /// File path or built-in name, as for the sampler.
+        sample: String,
+    },
     /// Samples mapped to key and velocity ranges.
     Zones {
         /// The zones, in the order notes look for a match.
@@ -237,6 +242,7 @@ impl Instrument {
             Self::Granular { .. } => "granular",
             Self::Kit { .. } => "kit",
             Self::Zones { .. } => "zones",
+            Self::Resynth { .. } => "resynth",
             Self::Layer { .. } => "layer",
             Self::Plugin { .. } => "plugin",
             Self::MidiOut { .. } => "midi out",

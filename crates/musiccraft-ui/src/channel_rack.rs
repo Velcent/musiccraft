@@ -278,6 +278,7 @@ fn row(
             Instrument::Keys => "Keys".to_owned(),
             Instrument::Additive => "Additive synth".to_owned(),
             Instrument::Granular { sample } => format!("Granular: {sample}"),
+            Instrument::Resynth { sample } => format!("Resynth: {sample}"),
             Instrument::Kit { .. } => "Drum kit (16 pads)".to_owned(),
             Instrument::Zones { zones } => format!("Zone sampler ({} zones)", zones.len()),
             Instrument::Layer { channels } => format!("Layer of {} channels", channels.len()),

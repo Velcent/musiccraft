@@ -28,6 +28,8 @@ enum Source {
     Additive,
     /// A resolved sample reference played as grains.
     Granular(String),
+    /// A resolved sample reference to resynthesize.
+    Resynth(String),
     /// Resolved pad sample references (empty for an empty pad).
     Kit(Vec<String>),
     /// Zones with resolved sample references.
@@ -233,6 +235,9 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     musiccraft_project::Instrument::Granular { sample } => {
                         Source::Granular(sample_key(sample, base))
                     }
+                    musiccraft_project::Instrument::Resynth { sample } => {
+                        Source::Resynth(sample_key(sample, base))
+                    }
                     musiccraft_project::Instrument::Kit { pads } => Source::Kit(
                         pads.iter()
                             .map(|p| {
@@ -333,6 +338,8 @@ pub struct Bridge {
     /// The project's transport requests already acted on; `None` before the
     /// first sync.
     requests: Option<Requests>,
+    /// Resynthesis analyses by sample key, so rebuilding is cheap.
+    harmonics: BTreeMap<String, Arc<musiccraft_dsp::resynth::HarmonicTable>>,
 }
 
 impl Bridge {
@@ -347,6 +354,7 @@ impl Bridge {
             live: BTreeMap::new(),
             failed: BTreeMap::new(),
             requests: None,
+            harmonics: BTreeMap::new(),
         }
     }
 
@@ -563,6 +571,21 @@ impl Bridge {
         }
     }
 
+    /// The harmonic analysis of a sample (measured once, then cached).
+    fn harmonics(
+        &mut self,
+        key: &str,
+        warnings: &mut Vec<String>,
+    ) -> Arc<musiccraft_dsp::resynth::HarmonicTable> {
+        if let Some(table) = self.harmonics.get(key) {
+            return Arc::clone(table);
+        }
+        let buffer = self.load(key, warnings);
+        let table = Arc::new(musiccraft_dsp::resynth::HarmonicTable::analyze(&buffer));
+        self.harmonics.insert(key.to_owned(), Arc::clone(&table));
+        table
+    }
+
     /// A built-in effect, with its file loaded (the convolution reverb's
     /// impulse response).
     fn effect(
@@ -597,6 +620,7 @@ impl Bridge {
                 Source::Keys => Instrument::Keys,
                 Source::Additive => Instrument::Additive,
                 Source::Granular(key) => Instrument::Granular(self.load(key, warnings)),
+                Source::Resynth(key) => Instrument::Resynth(self.harmonics(key, warnings)),
                 Source::Kit(keys) => Instrument::Kit(
                     keys.iter()
                         .map(|k| (!k.is_empty()).then(|| self.load(k, warnings)))

@@ -128,6 +128,13 @@ fn item(ui: &mut egui::Ui, label: &str, dragged: Dragged, actions: &mut Vec<Acti
                 )));
                 ui.close();
             }
+            if ui.button("Add as resynth (play its harmonics)").clicked() {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.add_resynth",
+                    [sample.clone()],
+                )));
+                ui.close();
+            }
         });
     }
     if response.double_clicked() {
