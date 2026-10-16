@@ -151,7 +151,14 @@ Out channels voice their own notes and are never cut.
   a burst of noise circulating in a tuned, damped delay line). Parameters:
   `pluck_decay` (time to fade by 60 dB, 0.1–10 s), `pluck_damping` (0
   bright to 1 dark), `pluck_tone` (brightness of the initial burst). Ending
-  the note damps the string quickly. Presets: guitar, harp, bass, muted.
+  the note damps the string quickly. Presets: guitar, harp, bass, muted,
+  bowed and twelve-string.
+- `pluck_bow` (0–1) bows the string: while the note is held, low-passed
+  noise (brightness from `pluck_tone`, level following the channel
+  envelope) keeps feeding the string, so it sustains; releasing stops the
+  bow and the string damps as usual. `pluck_strings` (1–3) sounds extra
+  strings `pluck_detune` cents above and below the note (each with its own
+  burst), mixed at equal power.
 
 ## FM synth
 

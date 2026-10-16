@@ -17,6 +17,7 @@ mod meters;
 mod midi_out;
 mod modmatrix;
 mod sequence;
+mod strings;
 mod voice;
 
 pub use engine::{Engine, EngineHandle, LiveSender, engine_pair};

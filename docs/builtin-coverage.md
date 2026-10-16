@@ -27,7 +27,7 @@ Status:
 | Harmor, Harmless | Additive synth, synth | partial | No image or audio resynthesis, no blur/prism |
 | FL Keys | Keys: piano | covered | |
 | (electric piano, organ presets) | Keys: e-piano, organ (9 drawbars) | covered | |
-| Plucked!, Sakura | Pluck (Karplus–Strong string) | partial | Sakura's bowing and multi-string model are not implemented |
+| Plucked!, Sakura | Pluck (Karplus–Strong strings with bowing, up to three detuned strings) | covered | |
 | Drumaxx, Fruity Drum Synth Live, Fruity Kick, Fruit Kick | Drum synth (kick, snare, hat, tom, clap) | covered | |
 | FPC, Drumpad | Drum kit (16 pads) | covered | |
 | DirectWave | Sampler, drum kit | partial | No multi-sample key or velocity zones |

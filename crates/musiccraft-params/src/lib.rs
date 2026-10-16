@@ -362,6 +362,12 @@ pub mod inst {
     /// FM output low-pass cutoff, hertz (20 kHz = off), and resonance.
     pub const FM_CUTOFF: usize = 120;
     pub const FM_RESONANCE: usize = 121;
+    /// Pluck: bowing (continuous excitation while held), 0..1.
+    pub const PLUCK_BOW: usize = 122;
+    /// Pluck: strings sounding together, 1..3.
+    pub const PLUCK_STRINGS: usize = 123;
+    /// Pluck: detune of the extra strings, cents.
+    pub const PLUCK_DETUNE: usize = 124;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -488,6 +494,9 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("op6_wave", 0.0, 3.0, 0.0),
     spec("fm_cutoff", 20.0, 20_000.0, 20_000.0, "Hz"),
     spec("fm_resonance", 0.0, 1.0, 0.2, ""),
+    spec("pluck_bow", 0.0, 1.0, 0.0, ""),
+    int_spec("pluck_strings", 1.0, 3.0, 1.0),
+    spec("pluck_detune", 0.0, 30.0, 6.0, "cents"),
 ];
 
 /// Names of the FM operator waveforms, by `opN_wave` value.
@@ -1458,6 +1467,8 @@ mod tests {
             (inst::OP6_SUSTAIN, "op6_sustain"),
             (inst::OP1_WAVE, "op1_wave"),
             (inst::FM_RESONANCE, "fm_resonance"),
+            (inst::PLUCK_BOW, "pluck_bow"),
+            (inst::PLUCK_DETUNE, "pluck_detune"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

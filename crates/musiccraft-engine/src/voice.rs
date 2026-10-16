@@ -2,6 +2,7 @@ use musiccraft_dsp::{Adsr, AdsrParams, Oscillator, Svf, SvfMode, Waveform, key_t
 use musiccraft_params::inst;
 
 use crate::modmatrix::{ModSources, ModState, SynthMods};
+use crate::strings::{KsString, MAX_STRINGS};
 use crate::{ChannelParams, Instrument};
 
 /// Output level of one synth voice at full velocity, leaving headroom for chords.
@@ -11,7 +12,6 @@ const FILTER_UPDATE_INTERVAL: u32 = 32;
 /// Most unison voices per note.
 const MAX_UNISON: usize = 7;
 /// Length of each voice's string delay line (lowest pluck ~12 Hz at 48 kHz).
-const STRING_LEN: usize = 4096;
 /// Output level of the drum synth and pluck at full velocity.
 const DRUM_GAIN: f32 = 0.8;
 const PLUCK_GAIN: f32 = 0.35;
@@ -19,6 +19,11 @@ const PLUCK_GAIN: f32 = 0.35;
 const PARTIALS: usize = 32;
 /// FM operators.
 const FM_OPS: usize = 6;
+
+/// How many strings the pluck sounds.
+fn pluck_strings(params: &ChannelParams) -> usize {
+    (param(params, inst::PLUCK_STRINGS).round().max(1.0) as usize).min(MAX_STRINGS)
+}
 /// FM algorithms, by `fm_algo`: for each operator (1 first) a bit mask of the
 /// operators modulating it, the bit mask of carriers (heard operators), and
 /// the operator with feedback.
@@ -156,10 +161,9 @@ pub(crate) struct Voice {
     noise: u32,
     /// Plucked-string delay line, its write position, the delay in frames,
     /// the last read sample and the loudest output of the current period.
-    string: Vec<f32>,
-    string_write: usize,
-    string_delay: f32,
-    string_last: f32,
+    strings: [KsString; MAX_STRINGS],
+    /// Low-passed noise that bows the strings.
+    bow_noise: f32,
     string_peak: f32,
     string_count: u32,
     sample_pos: f64,
@@ -221,10 +225,8 @@ impl Voice {
             elapsed: 0,
             drum_phase: 0.0,
             noise: 0x9E37_79B9,
-            string: vec![0.0; STRING_LEN],
-            string_write: 0,
-            string_delay: 100.0,
-            string_last: 0.0,
+            strings: std::array::from_fn(|_| KsString::new()),
+            bow_noise: 0.0,
             string_peak: 0.0,
             string_count: 0,
             phases: [0.0; PARTIALS],
@@ -1000,77 +1002,79 @@ impl Voice {
     fn start_pluck(&mut self, params: &ChannelParams, key: u8) {
         let tone = param(params, inst::PLUCK_TONE).clamp(0.0, 1.0);
         let hz = key_to_hz(f32::from(key) + param(params, inst::PITCH)).max(1.0);
-        self.string_delay = (self.sample_rate / hz).clamp(2.0, (STRING_LEN - 4) as f32);
-        let mut smooth = 0.0;
+        let count = pluck_strings(params);
+        let detune = param(params, inst::PLUCK_DETUNE);
         let coeff = 0.05 + 0.95 * tone;
-        for i in 0..STRING_LEN {
-            let n = self.next_noise();
-            smooth += (n - smooth) * coeff;
-            if let Some(slot) = self.string.get_mut(i) {
-                *slot = if (i as f32) < self.string_delay {
-                    smooth
-                } else {
-                    0.0
-                };
+        let mut noise = self.noise;
+        for (k, string) in self.strings.iter_mut().enumerate() {
+            if k >= count {
+                string.clear();
+                continue;
             }
+            // Extra strings sit `detune` cents above and below the note.
+            let cents = match k {
+                1 => detune,
+                2 => -detune,
+                _ => 0.0,
+            };
+            let delay = self.sample_rate / (hz * 2.0_f32.powf(cents / 1_200.0));
+            let mut smooth = 0.0;
+            string.excite(delay, || {
+                noise ^= noise << 13;
+                noise ^= noise >> 17;
+                noise ^= noise << 5;
+                let n = noise as f32 / u32::MAX as f32 * 2.0 - 1.0;
+                smooth += (n - smooth) * coeff;
+                smooth
+            });
         }
-        self.string_write = self.string_delay.ceil() as usize % STRING_LEN;
-        self.string_last = 0.0;
+        self.noise = noise;
+        self.bow_noise = 0.0;
         self.string_peak = 1.0;
         self.string_count = 0;
     }
 
-    /// The string's output `delay` frames back.
-    fn string_read(&self, delay: f32) -> f32 {
-        let len = STRING_LEN as f32;
-        let position = (self.string_write as f32 - delay).rem_euclid(len);
-        let whole = position as usize;
-        let frac = position - whole as f32;
-        let a = self.string.get(whole % STRING_LEN).copied().unwrap_or(0.0);
-        let b = self
-            .string
-            .get((whole + 1) % STRING_LEN)
-            .copied()
-            .unwrap_or(0.0);
-        a + (b - a) * frac
-    }
-
-    /// Plucked string (Karplus-Strong): the burst circulates through a damped
-    /// delay tuned to the note.
+    /// Plucked (or bowed) strings (Karplus-Strong): the burst circulates
+    /// through damped delays tuned to the note; bowing keeps feeding them
+    /// noise while the note is held.
     fn render_pluck(&mut self, params: &ChannelParams, left: &mut [f32], right: &mut [f32]) {
         let damping = param(params, inst::PLUCK_DAMPING).clamp(0.0, 1.0) * 0.5;
         let sr = self.sample_rate;
-        let period = self.string_delay;
+        let count = pluck_strings(params);
+        let period = self.strings.first().map_or(100.0, |s| s.delay);
         let sustain = 0.001_f32.powf(period / (param(params, inst::PLUCK_DECAY).max(0.05) * sr));
         let release = 0.001_f32.powf(period / (0.08 * sr));
+        let bow = param(params, inst::PLUCK_BOW).clamp(0.0, 1.0);
+        let bow_tone = 0.05 + 0.95 * param(params, inst::PLUCK_TONE).clamp(0.0, 1.0);
+        let norm = 1.0 / (count as f32).sqrt();
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
                 continue;
             }
-            // The damping filter delays by `damping` frames; shorten the
-            // line to match so the pitch stays true.
-            let read = self.string_read((period - damping).max(1.0));
-            let filtered = read * (1.0 - damping) + self.string_last * damping;
-            self.string_last = read;
-            let feedback = if self.env.is_releasing() {
-                release
+            let releasing = self.env.is_releasing();
+            let feedback = if releasing { release } else { sustain };
+            let inject = if bow > 0.0 && !releasing {
+                let level = self.env.next_level();
+                let n = self.next_noise();
+                self.bow_noise += (n - self.bow_noise) * bow_tone;
+                self.bow_noise * bow * level * 0.03
             } else {
-                sustain
+                0.0
             };
-            if let Some(slot) = self.string.get_mut(self.string_write) {
-                // Each sample passes once per period, so the per-period
-                // factor applies directly.
-                *slot = filtered * feedback;
+            let mut read = 0.0;
+            for string in self.strings.iter_mut().take(count) {
+                read += string.step(damping, feedback, inject);
             }
-            self.string_write = (self.string_write + 1) % STRING_LEN;
+            read *= norm;
             let out = read * self.velocity * PLUCK_GAIN;
             *l += out * self.pan.0;
             *r += out * self.pan.1;
-            // Stop once a whole period stays below -80 dB.
+            // Stop once a whole period stays below -80 dB (a held, bowed
+            // string keeps going).
             self.string_peak = self.string_peak.max(read.abs());
             self.string_count += 1;
             if self.string_count as f32 >= period {
-                if self.string_peak < 1e-4 {
+                if self.string_peak < 1e-4 && (bow == 0.0 || releasing) {
                     self.active = false;
                     break;
                 }
@@ -1713,6 +1717,40 @@ mod instrument_tests {
         // Ending the note damps it fast.
         let short = render(&Instrument::Pluck, &params, 69, 24_000, Some(4_800));
         assert!(peak(&short[14_400..]) < 1e-3);
+    }
+
+    #[test]
+    fn bowed_strings_sustain_while_held_and_extra_strings_detune() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::PLUCK_DECAY] = 0.3;
+        params.instrument[inst::SUSTAIN] = 1.0;
+        let plucked = render(&Instrument::Pluck, &params, 69, 96_000, None);
+        params.instrument[inst::PLUCK_BOW] = 1.0;
+        let bowed = render(&Instrument::Pluck, &params, 69, 96_000, None);
+        let late = 72_000..96_000;
+        assert!(
+            peak(&plucked[late.clone()]) < 1e-3,
+            "a plucked string dies away"
+        );
+        assert!(
+            peak(&bowed[late.clone()]) > 0.02,
+            "a bowed one keeps sounding"
+        );
+        let hz = autocorrelation_hz(&bowed[48_000..57_600]);
+        assert!((hz - 440.0).abs() < 10.0, "bowed in tune: {hz}");
+        assert!(bowed.iter().all(|s| s.is_finite() && s.abs() < 1.5));
+        // Released, the bowed string stops too.
+        let released = render(&Instrument::Pluck, &params, 69, 48_000, Some(24_000));
+        assert!(peak(&released[40_000..]) < 1e-3);
+        params.instrument[inst::PLUCK_BOW] = 0.0;
+        params.instrument[inst::PLUCK_STRINGS] = 3.0;
+        let three = render(&Instrument::Pluck, &params, 69, 24_000, None);
+        assert_ne!(three, plucked[..24_000].to_vec());
+        let hz = autocorrelation_hz(&three[2_400..12_000]);
+        assert!(
+            (hz - 440.0).abs() < 10.0,
+            "three strings centre on the note: {hz}"
+        );
     }
 }
 

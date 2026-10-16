@@ -1136,6 +1136,27 @@ fn pluck(
                 actions,
             );
         });
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::PLUCK_BOW, "Bow", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::PLUCK_STRINGS,
+                "Strings",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::PLUCK_DETUNE,
+                "Detune",
+                actions,
+            );
+        });
     });
 }
 

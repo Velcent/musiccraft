@@ -89,7 +89,7 @@ new UI editor or large DSP.
 - [ ] DirectWave → multi-sample key and velocity zones in the sampler.
 - [x] Sytrus / Toxic Biohazard → six FM operators, per-operator filters and
   drawn operator waveforms.
-- [ ] Sakura → bowed string excitation and multi-string model for the pluck
+- [x] Sakura → bowed string excitation and multi-string model for the pluck
   instrument.
 - [ ] Morphine → morphing between two or more additive spectra.
 - [x] Wasp / PoiZone / Sawer → per-oscillator filters and a modulation matrix

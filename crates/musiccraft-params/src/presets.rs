@@ -500,6 +500,42 @@ pub const PLUCK: &[Preset] = &[
             ("pluck_tone", 0.5),
         ],
     ),
+    preset(
+        "Bowed cello",
+        &[
+            ("pluck_decay", 1.5),
+            ("pluck_damping", 0.6),
+            ("pluck_tone", 0.3),
+            ("pluck_bow", 0.8),
+            ("attack", 0.15),
+            ("sustain", 1.0),
+            ("release", 0.3),
+        ],
+    ),
+    preset(
+        "Twelve-string",
+        &[
+            ("pluck_decay", 3.5),
+            ("pluck_damping", 0.25),
+            ("pluck_tone", 0.7),
+            ("pluck_strings", 3.0),
+            ("pluck_detune", 5.0),
+        ],
+    ),
+    preset(
+        "Bowed ensemble",
+        &[
+            ("pluck_decay", 2.0),
+            ("pluck_damping", 0.5),
+            ("pluck_tone", 0.4),
+            ("pluck_bow", 0.6),
+            ("pluck_strings", 3.0),
+            ("pluck_detune", 9.0),
+            ("attack", 0.3),
+            ("sustain", 1.0),
+            ("release", 0.6),
+        ],
+    ),
 ];
 
 /// FM synth presets.
