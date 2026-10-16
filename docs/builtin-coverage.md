@@ -64,7 +64,7 @@ Status:
 | Effector | Separate effects | partial | No all-in-one effect |
 | Fruity Delay 2 / 3 | `delay` (offset, modulation, feedback low cut, diffusion, saturation) | covered | |
 | Fruity Delay Bank, Multiband Delay | `multi_tap` (per-tap pan, low cut and high cut) | covered | Four taps |
-| Fruity Reeverb 2, Luxeverb | `reverb` | covered | |
+| Fruity Reeverb 2, Luxeverb | `reverb`, `hall_reverb` (dense FDN with early reflections and modulation) | covered | |
 | Fruity Convolver | `convolution` (files or generated rooms) | covered | |
 | Fruity Chorus, Vintage Chorus | `chorus` (up to three voices, darkening tone) | covered | |
 | Fruity Flanger, Flangus | `flanger` | covered | |

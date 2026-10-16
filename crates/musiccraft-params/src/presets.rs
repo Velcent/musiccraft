@@ -1571,6 +1571,49 @@ const SEND: &[Preset] = &[
     preset("Send only", &[("dry", 0.0)]),
 ];
 
+const HALL_REVERB: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Small room",
+        &[
+            ("decay", 0.6),
+            ("size", 0.2),
+            ("predelay", 5.0),
+            ("early", 0.7),
+        ],
+    ),
+    preset(
+        "Concert hall",
+        &[
+            ("decay", 3.5),
+            ("size", 0.85),
+            ("predelay", 30.0),
+            ("damping", 5_000.0),
+        ],
+    ),
+    preset(
+        "Huge space",
+        &[
+            ("decay", 12.0),
+            ("size", 1.0),
+            ("predelay", 60.0),
+            ("mod_depth", 0.6),
+            ("mix", 0.4),
+        ],
+    ),
+    preset(
+        "Bright plate",
+        &[
+            ("decay", 1.8),
+            ("size", 0.4),
+            ("damping", 14_000.0),
+            ("early", 0.1),
+            ("low_cut", 250.0),
+        ],
+    ),
+    preset("Dark", &[("damping", 2_000.0), ("decay", 3.0)]),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1614,6 +1657,7 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::StereoShaper => STEREO_SHAPER,
         EffectKind::MultibandLimiter => MULTIBAND_LIMITER,
         EffectKind::Send => SEND,
+        EffectKind::HallReverb => HALL_REVERB,
         EffectKind::Plugin => &[],
     }
 }

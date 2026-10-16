@@ -518,13 +518,15 @@ pub enum EffectKind {
     MultibandLimiter,
     /// Sends a copy of the audio at this point in the chain to a higher-numbered insert; routed by the engine.
     Send,
+    /// Dense feedback-delay-network reverb with early reflections.
+    HallReverb,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 39] = [
+pub const EFFECT_KINDS: [EffectKind; 40] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -535,6 +537,7 @@ pub const EFFECT_KINDS: [EffectKind; 39] = [
     EffectKind::MultiTap,
     EffectKind::Stutter,
     EffectKind::Reverb,
+    EffectKind::HallReverb,
     EffectKind::Convolution,
     EffectKind::Chorus,
     EffectKind::Phaser,
@@ -709,6 +712,19 @@ const SEND_PARAMS: &[ParamSpec] = &[
     spec("level", 0.0, 1.25, 1.0, ""),
     spec("pan", -1.0, 1.0, 0.0, ""),
     spec("dry", 0.0, 1.0, 1.0, ""),
+];
+
+const HALL_REVERB_PARAMS: &[ParamSpec] = &[
+    spec("predelay", 0.0, 200.0, 20.0, "ms"),
+    spec("decay", 0.2, 20.0, 2.5, "s"),
+    spec("size", 0.0, 1.0, 0.6, ""),
+    spec("damping", 500.0, 20_000.0, 6_000.0, "Hz"),
+    spec("low_cut", 20.0, 1_000.0, 100.0, "Hz"),
+    spec("early", 0.0, 1.0, 0.4, ""),
+    spec("mod_depth", 0.0, 1.0, 0.3, ""),
+    spec("mod_rate", 0.05, 3.0, 0.4, "Hz"),
+    spec("width", 0.0, 1.0, 1.0, ""),
+    spec("mix", 0.0, 1.0, 0.3, ""),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -1047,6 +1063,7 @@ impl EffectKind {
             Self::StereoShaper => "stereo_shaper",
             Self::MultibandLimiter => "multiband_limiter",
             Self::Send => "send",
+            Self::HallReverb => "hall_reverb",
             Self::Plugin => "plugin",
         }
     }
@@ -1100,6 +1117,7 @@ impl EffectKind {
             Self::StereoShaper => STEREO_SHAPER_PARAMS,
             Self::MultibandLimiter => MULTIBAND_LIMITER_PARAMS,
             Self::Send => SEND_PARAMS,
+            Self::HallReverb => HALL_REVERB_PARAMS,
             Self::Plugin => &[],
         }
     }

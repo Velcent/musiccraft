@@ -10,6 +10,7 @@ mod effect;
 mod envelope;
 pub mod fft;
 mod filter;
+pub mod hall;
 pub mod mastering;
 pub mod modulation;
 mod osc;

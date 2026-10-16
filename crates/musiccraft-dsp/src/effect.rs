@@ -6,6 +6,7 @@ use crate::character::{
 };
 use crate::convolution::Convolver;
 use crate::creative::{MultibandCompressor, PitchShifter, Stutter, Vocoder};
+use crate::hall::HallReverb;
 use crate::mastering::MultibandLimiter;
 use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
 use crate::pitch::{PitchCorrector, Tuner};
@@ -168,6 +169,8 @@ pub enum Effect {
     MultibandLimiter(MultibandLimiter),
     /// Sends a copy of the audio at this point in the chain to a higher-numbered insert; routed by the engine.
     Send,
+    /// Dense feedback-delay-network reverb with early reflections.
+    HallReverb(HallReverb),
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -218,6 +221,7 @@ impl Effect {
             EffectKind::StereoShaper => Self::StereoShaper(StereoShaper::new(sample_rate)),
             EffectKind::MultibandLimiter => Self::MultibandLimiter(MultibandLimiter::default()),
             EffectKind::Send => Self::Send,
+            EffectKind::HallReverb => Self::HallReverb(HallReverb::new(sample_rate)),
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -265,6 +269,7 @@ impl Effect {
             Self::StereoShaper(_) => EffectKind::StereoShaper,
             Self::MultibandLimiter(_) => EffectKind::MultibandLimiter,
             Self::Send => EffectKind::Send,
+            Self::HallReverb(_) => EffectKind::HallReverb,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -330,6 +335,7 @@ impl Effect {
             Self::StereoShaper(fx) => fx.process(left, right, params, ctx),
             Self::MultibandLimiter(fx) => fx.process(left, right, params, ctx),
             Self::Send => {}
+            Self::HallReverb(fx) => fx.process(left, right, params, ctx),
             Self::Passthrough => {}
         }
     }
@@ -383,6 +389,7 @@ impl Effect {
             Self::ParametricEq(fx) => *fx = ParametricEq::default(),
 
             Self::MultibandLimiter(fx) => fx.reset(),
+            Self::HallReverb(fx) => fx.reset(),
             Self::Phaser(fx) => fx.reset(),
             Self::Flanger(fx) => fx.reset(),
             Self::Bitcrusher(fx) => fx.reset(),

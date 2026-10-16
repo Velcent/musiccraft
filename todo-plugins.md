@@ -51,7 +51,7 @@ new UI editor or large DSP.
   `auto_filter` (beyond one LFO and the envelope follower).
 - [x] Fruity Delay 3 → modulation, diffusion and a feedback filter for
   `delay`.
-- [ ] Luxeverb → a higher-density reverb (FDN design) with modulation and
+- [x] Luxeverb → a higher-density reverb (FDN design) with modulation and
   early reflections as a second reverb kind.
 - [ ] Hardcore → `guitar_chain`: a fixed chain of compressor, overdrive, tone
   stack, chorus and cabinet filter with per-stage bypass.

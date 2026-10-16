@@ -1077,6 +1077,40 @@ fn graph(
                 "The sweep over two seconds: rate is speed, depth is height"
             };
         }
+        EffectKind::HallReverb => {
+            let predelay = value(effect, "predelay") * 0.001;
+            let decay = value(effect, "decay").max(0.1);
+            let early = value(effect, "early");
+            let span = (decay * 1.5).clamp(1.0, 20.0) + predelay;
+            let x = |t: f32| rect.left() + rect.width() * t / span;
+            let level_y = |level: f32| rect.bottom() - level * rect.height() * 0.9;
+            for (i, ms) in [7.1_f32, 11.3, 17.9, 23.3, 31.7, 39.1].iter().enumerate() {
+                let scale = 0.5 + value(effect, "size");
+                let t = predelay + ms * scale * 0.001;
+                let level = early * (0.84 - i as f32 * 0.1);
+                painter.line_segment(
+                    [pos2(x(t), rect.bottom()), pos2(x(t), level_y(level))],
+                    Stroke::new(2.0, theme::HIGHLIGHT.gamma_multiply(0.8)),
+                );
+            }
+            // A 60 dB fall over `decay` seconds, drawn on a 60 dB scale.
+            let points = (0..=width)
+                .map(|i| {
+                    let t = span * i as f32 / width as f32;
+                    let db = if t < predelay {
+                        -60.0
+                    } else {
+                        -60.0 * (t - predelay) / decay
+                    };
+                    pos2(
+                        rect.left() + i as f32,
+                        level_y(((db + 60.0) / 60.0).max(0.0)),
+                    )
+                })
+                .collect();
+            curve(&painter, rect, color, points);
+            hint = "Early reflections (orange) after the predelay, then the tail falling 60 dB over the decay time";
+        }
         EffectKind::GraphicEq
         | EffectKind::ParametricEq
         | EffectKind::BassBoost
