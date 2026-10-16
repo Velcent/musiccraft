@@ -394,6 +394,18 @@ pub struct Pattern {
     /// project's swing. Never saved.
     #[serde(default, rename = "swing", skip_serializing)]
     pub(crate) legacy_swing: f32,
+    /// Automation inside the pattern: lanes that play wherever it plays.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub automation: Vec<PatternLane>,
+}
+
+/// One parameter's automation inside a pattern; ticks from the pattern start.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PatternLane {
+    /// The parameter driven.
+    pub target: AutomationTarget,
+    /// Points sorted by tick, one per tick.
+    pub points: Vec<AutomationPoint>,
 }
 
 impl Pattern {
@@ -406,6 +418,7 @@ impl Pattern {
             length_steps: 16,
             notes: Vec::new(),
             legacy_swing: 0.0,
+            automation: Vec::new(),
         }
     }
 

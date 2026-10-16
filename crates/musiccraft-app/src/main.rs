@@ -703,24 +703,26 @@ impl App {
         }
     }
 
-    /// While recording in song mode, a control change also records its value
-    /// as automation at the playhead (one batch, so one gesture is one undo
+    /// While recording, a control change also records its value at the
+    /// playhead: as song automation in song mode, into the selected pattern's
+    /// automation in pattern mode (one batch, so one gesture is one undo
     /// step).
     fn automated(&self, invocation: Invocation) -> Invocation {
+        use musiccraft_commands::automation_record::{with_automation_record, with_event_record};
         let project = self.session.project();
         let Some(audio) = &self.audio else {
             return invocation;
         };
         let meters = audio.handle.meters();
-        let recording = project.is_armed()
-            && meters.is_playing()
-            && project.play_mode == musiccraft_project::PlayMode::Song;
-        if !recording {
+        if !project.is_armed() || !meters.is_playing() {
             return invocation;
         }
         let tick = meters.position_ticks().max(0.0) as u32;
-        musiccraft_commands::automation_record::with_automation_record(&invocation, tick)
-            .unwrap_or(invocation)
+        let recorded = match project.play_mode {
+            musiccraft_project::PlayMode::Song => with_automation_record(&invocation, tick),
+            musiccraft_project::PlayMode::Pattern => with_event_record(&invocation, tick),
+        };
+        recorded.unwrap_or(invocation)
     }
 
     /// Feeds a live note into the recorder (or step edit); velocity 0 means

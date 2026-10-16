@@ -24,12 +24,23 @@ pub fn recordable_target(invocation: &Invocation) -> Option<String> {
 /// position `tick`, as one batch; `None` when automation cannot drive it.
 #[must_use]
 pub fn with_automation_record(invocation: &Invocation, tick: u32) -> Option<Invocation> {
+    with_record("automation.record", invocation, tick)
+}
+
+/// `invocation` followed by `pattern.record_event` of what it sets at pattern
+/// tick `tick` of the selected pattern, as one batch (pattern mode).
+#[must_use]
+pub fn with_event_record(invocation: &Invocation, tick: u32) -> Option<Invocation> {
+    with_record("pattern.record_event", invocation, tick)
+}
+
+fn with_record(name: &str, invocation: &Invocation, tick: u32) -> Option<Invocation> {
     let target = recordable_target(invocation)?;
     Some(Invocation::new(
         BATCH,
         [
             invocation.to_string(),
-            Invocation::new("automation.record", [target, format!("{tick}t")]).to_string(),
+            Invocation::new(name, [target, format!("{tick}t")]).to_string(),
         ],
     ))
 }
@@ -132,5 +143,32 @@ mod tests {
         // Undoing the second gesture keeps the first point.
         s.run_line("edit.undo").unwrap();
         assert_eq!(s.project().automations[0].points.len(), 1);
+    }
+
+    #[test]
+    fn pattern_mode_gestures_record_into_the_pattern() {
+        let mut s = session();
+        let depth = s.undo_depth();
+        for (tick, cutoff) in [(0, 500.0), (96, 1000.0), (384 + 192, 2000.0)] {
+            let set = Invocation::parse(&format!("channel.set_param 1 cutoff {cutoff}")).unwrap();
+            s.run_coalesced(&with_event_record(&set, tick).unwrap(), 3)
+                .unwrap();
+        }
+        assert_eq!(s.undo_depth(), depth + 1);
+        let lanes = &s.project().patterns[0].automation;
+        assert_eq!(lanes.len(), 1);
+        let ticks: Vec<u32> = lanes[0].points.iter().map(|p| p.tick).collect();
+        // Ticks fold into the one-bar pattern.
+        assert_eq!(ticks, [0, 96, 192]);
+        // A pattern lane keeps its mixer track from being removed.
+        let set = Invocation::parse("mixer.set_volume 1 0.5").unwrap();
+        s.run(&with_event_record(&set, 0).unwrap()).unwrap();
+        assert!(s.run_line("mixer.remove_track 1").is_err());
+        s.run_line("pattern.clear_events 1 mixer:1:volume").unwrap();
+        assert_eq!(s.project().patterns[0].automation.len(), 1);
+        s.run_line("edit.undo").unwrap();
+        s.run_line("edit.undo").unwrap();
+        s.run_line("edit.undo").unwrap();
+        assert!(s.project().patterns[0].automation.is_empty());
     }
 }

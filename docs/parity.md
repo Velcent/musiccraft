@@ -161,3 +161,4 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Display filter groups | `cmd:channel.set_group` |
 | Transport | Arm playlist tracks for audio takes; choose the input device | `cmd:playlist.toggle_track_arm` `spec:settings.md` |
 | Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
+| Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |

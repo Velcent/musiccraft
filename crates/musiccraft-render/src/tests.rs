@@ -1522,3 +1522,45 @@ fn master_pitch_transposes_built_in_instruments() {
     let left = render_slide(&s);
     assert!((hz_between(&left, 0.1, 0.9) - 220.0).abs() < 4.0);
 }
+
+#[test]
+fn pattern_automation_plays_wherever_the_pattern_plays() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         pattern.record_event channel:1:volume 4",
+    );
+    // One lane of one point at tick 96 in pattern mode.
+    let seq = build_sequence(s.project());
+    assert_eq!(seq.automation().len(), 1);
+    assert_eq!(seq.automation()[0].points.len(), 1);
+    assert_eq!(seq.automation()[0].points[0].0, 96);
+    // In song mode once per repeat of the pattern inside each clip; a clip
+    // sliced past the point skips that repeat's point.
+    run(
+        &mut s,
+        "playlist.add_clip 1 1 2 2
+         transport.set_mode song",
+    );
+    let ticks: Vec<u64> = build_sequence(s.project())
+        .automation()
+        .iter()
+        .flat_map(|l| l.points.iter().map(|p| p.0))
+        .collect();
+    assert_eq!(ticks, [768 + 96, 1152 + 96]);
+    run(
+        &mut s,
+        "playlist.slice_clip 1 2.5\nplaylist.remove_clip 1 2",
+    );
+    let ticks: Vec<u64> = build_sequence(s.project())
+        .automation()
+        .iter()
+        .flat_map(|l| l.points.iter().map(|p| p.0))
+        .collect();
+    assert_eq!(
+        ticks,
+        [1152 + 96],
+        "the sliced remainder plays the second repeat"
+    );
+}

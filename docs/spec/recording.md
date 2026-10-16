@@ -53,8 +53,28 @@
 - The front end runs the control's own command and `automation.record` as one
   batch, coalesced per gesture, so one drag is one undo step that also removes
   the points (and a new automation) it recorded.
-- During playback, a lane only drives its parameter between its first and last
-  point, so the control stays free past the last recorded point.
+- An automation clip drives its parameter over the whole clip (holding its
+  first value before the first point and its last value after the last), so
+  after a drag the parameter stays where the control was left.
+
+## Automation inside patterns
+
+- A pattern can hold automation of its own: lanes (one per target) of points
+  in pattern ticks, saved with the pattern and copied when it is cloned or
+  made unique. They play wherever the pattern plays: in pattern mode, and in
+  song mode once per repeat of the pattern inside each of its clips (a clip's
+  offset and length cut the lane to its window). Unlike automation clips, a
+  pattern lane drives its parameter only between its first and last point.
+- With recording armed and playback running in **pattern mode**, moving a
+  control records into the selected pattern: `pattern.record_event <target>
+  <tick>` (tick in steps or `<n>t`, folded into the pattern) writes the
+  target's current value. The front end batches it with the control's command
+  and coalesces per gesture, as in song mode.
+- `pattern.clear_events <pattern> [target]` removes all or one target's lanes
+  (pattern list → right-click → Clear automation); `pattern.set_events
+  <pattern> <json>` restores them exactly (undo).
+- A mixer track or effect a pattern lane drives cannot be removed, as for
+  automation clips; slot moves and track renumbering update pattern lanes too.
 
 ## Step edit
 
@@ -89,6 +109,8 @@
 - Count-in (Ctrl+P), wait for input (Ctrl+I), blend and replace recording,
   loop recording, step edit (Ctrl+E) and recording knob movements as automation
   are recording options and shortcuts described in the FL Studio online manual,
-  "Recording" and "Keyboard shortcuts" sections. Behaviour is described in our
-  own words; the one-bar count-in, the replace sweep rule, the automation clip
-  placement and the command names are our own design.
+  "Recording" and "Keyboard shortcuts" sections; automation inside patterns
+  mirrors its per-pattern event automation ("Event editor"). Behaviour is
+  described in our own words; the one-bar count-in, the replace sweep rule,
+  the automation clip placement, pattern lanes and the command names are our
+  own design.

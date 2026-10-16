@@ -215,6 +215,64 @@ fn engine_target(project: &Project, target: &AutomationTarget) -> Option<(Engine
     })
 }
 
+/// A pattern's automation lanes placed at song tick `at`, keeping only points
+/// at pattern ticks `skip..skip + span` (a clip's window into the pattern).
+/// Pattern lanes drive their parameter only between their points.
+fn pattern_lanes(
+    project: &Project,
+    pattern: &Pattern,
+    at: u64,
+    skip: u64,
+    span: u64,
+) -> Vec<AutomationLane> {
+    pattern
+        .automation
+        .iter()
+        .filter_map(|lane| {
+            let (target, convert) = engine_target(project, &lane.target)?;
+            let points: Vec<(u64, f32)> = lane
+                .points
+                .iter()
+                .filter(|p| (skip..skip + span).contains(&u64::from(p.tick)))
+                .map(|p| (at + u64::from(p.tick) - skip, convert(p.value)))
+                .collect();
+            (!points.is_empty()).then_some(AutomationLane { target, points })
+        })
+        .collect()
+}
+
+/// Pattern automation of every pattern clip, once per repeat of the pattern.
+fn song_pattern_lanes(project: &Project) -> Vec<AutomationLane> {
+    let mut lanes = Vec::new();
+    for clip in &project.playlist.clips {
+        if clip.muted || !project.playlist.track_audible(clip.track) {
+            continue;
+        }
+        let Some(pattern) = clip
+            .pattern()
+            .and_then(|id| project.pattern_position(id))
+            .and_then(|i| project.patterns.get(i))
+        else {
+            continue;
+        };
+        if pattern.automation.is_empty() {
+            continue;
+        }
+        let period = u64::from(pattern.length_ticks().max(1));
+        let (skip, span) = (u64::from(clip.offset), u64::from(clip.length));
+        let mut repeat = skip / period * period;
+        while repeat < skip + span {
+            // This repeat's window, in pattern ticks.
+            let from = skip.max(repeat) - repeat;
+            let to = (skip + span).min(repeat + period) - repeat;
+            let at = u64::from(clip.start) + (repeat + from - skip);
+            lanes.extend(pattern_lanes(project, pattern, at, from, to - from));
+            repeat += period;
+        }
+    }
+    lanes
+}
+
 /// One lane per automation clip, covering exactly the clip's span.
 fn song_automation(project: &Project) -> Vec<AutomationLane> {
     let mut lanes = Vec::new();
@@ -322,11 +380,22 @@ pub fn build_full_sequence(project: &Project) -> Sequence {
                 ),
                 u64::from(pattern.length_ticks()),
             )
+            .with_automation(pattern_lanes(
+                project,
+                pattern,
+                0,
+                0,
+                u64::from(pattern.length_ticks()),
+            ))
         }
         PlayMode::Song => Sequence::new(
             crate::delivery::apply(project, crate::arp::apply(project, song_events(project))),
             u64::from(project.song_length_ticks()),
         )
-        .with_automation(song_automation(project)),
+        .with_automation({
+            let mut lanes = song_automation(project);
+            lanes.extend(song_pattern_lanes(project));
+            lanes
+        }),
     }
 }

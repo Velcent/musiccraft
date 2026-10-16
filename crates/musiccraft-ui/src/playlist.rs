@@ -231,6 +231,21 @@ fn pattern_list(
                             )));
                             ui.close();
                         }
+                        if !pattern.automation.is_empty()
+                            && ui
+                                .button(format!(
+                                    "Clear automation ({} lanes)",
+                                    pattern.automation.len()
+                                ))
+                                .on_hover_text("Remove the knob moves recorded into this pattern")
+                                .clicked()
+                        {
+                            actions.push(Action::Run(Invocation::new(
+                                "pattern.clear_events",
+                                [(i + 1).to_string()],
+                            )));
+                            ui.close();
+                        }
                         ui.add_enabled_ui(project.patterns.len() > 1, |ui| {
                             if ui
                                 .button(RichText::new("Delete").color(theme::DANGER))
