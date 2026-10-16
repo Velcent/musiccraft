@@ -86,14 +86,14 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
 
 /// A small deterministic random generator (xorshift64*), so tools that use
 /// randomness give the same result for the same seed.
-struct Rng(u64);
+pub(super) struct Rng(u64);
 
 impl Rng {
-    fn new(seed: u64) -> Self {
+    pub(super) fn new(seed: u64) -> Self {
         Self(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1)
     }
 
-    fn next(&mut self) -> u64 {
+    pub(super) fn next(&mut self) -> u64 {
         self.0 ^= self.0 >> 12;
         self.0 ^= self.0 << 25;
         self.0 ^= self.0 >> 27;
@@ -101,7 +101,7 @@ impl Rng {
     }
 
     /// A whole number in `-range..=range`.
-    fn spread(&mut self, range: u32) -> i64 {
+    pub(super) fn spread(&mut self, range: u32) -> i64 {
         if range == 0 {
             return 0;
         }
@@ -111,7 +111,7 @@ impl Rng {
 }
 
 /// Notes grouped by start time, in time order.
-fn by_start(notes: &[Note]) -> BTreeMap<u32, Vec<Note>> {
+pub(super) fn by_start(notes: &[Note]) -> BTreeMap<u32, Vec<Note>> {
     let mut groups: BTreeMap<u32, Vec<Note>> = BTreeMap::new();
     for note in notes {
         groups.entry(note.start).or_default().push(*note);
@@ -123,7 +123,7 @@ fn by_start(notes: &[Note]) -> BTreeMap<u32, Vec<Note>> {
 }
 
 /// Runs `f` over the target channel's notes and reports the result.
-fn apply(
+pub(super) fn apply(
     project: &mut Project,
     args: &Args<'_>,
     what: &str,
@@ -277,7 +277,7 @@ fn flip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
 }
 
 /// The scale named `name` (spaces or underscores).
-fn scale(name: &str) -> Option<&'static [u8]> {
+pub(super) fn scale(name: &str) -> Option<&'static [u8]> {
     let wanted = name.replace('_', " ");
     SCALES
         .iter()
@@ -286,7 +286,7 @@ fn scale(name: &str) -> Option<&'static [u8]> {
 }
 
 /// The pitch class of a root such as `C`, `F#` or `Bb` (or a key number).
-fn pitch_class(text: &str) -> Option<u8> {
+pub(super) fn pitch_class(text: &str) -> Option<u8> {
     text.parse::<u8>()
         .ok()
         .or_else(|| parse_key(&format!("{text}4")))
@@ -294,7 +294,7 @@ fn pitch_class(text: &str) -> Option<u8> {
 }
 
 /// The nearest key to `key` in the scale, ties going down.
-fn nearest_in_scale(key: u8, root: u8, degrees: &[u8]) -> u8 {
+pub(super) fn nearest_in_scale(key: u8, root: u8, degrees: &[u8]) -> u8 {
     let fits = |k: i32| {
         (0..=127).contains(&k) && degrees.contains(&(((k - i32::from(root)).rem_euclid(12)) as u8))
     };

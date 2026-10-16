@@ -92,6 +92,39 @@
   notes, and Tools → Toggle slide flips the selected notes. Slide notes are
   drawn with a ramp mark.
 
+## Shaping and generating tools
+
+Each rewrites one channel's notes in the pattern as one undo step (Tools →
+Shape / Generate in the piano roll use the defaults in brackets).
+
+- `note.limit <channel> <low> <high>`: notes outside the key range move by
+  octaves into it (clamped when the range is under an octave) [C4–B5].
+- `note.lfo <channel> <velocity|pan|fine|mod_x|mod_y> <period> <depth>
+  [sine|triangle|square|saw]`: sets the property from an LFO over each note's
+  start time, swinging around the property's centre (velocity and Mod X/Y
+  64, pan and fine 0) by `depth` percent of the room on either side [one bar,
+  50% velocity or 80% pan, sine].
+- `note.scale_levels <channel> <prop> <percent> [offset]`: scales the
+  property's distance from its centre and adds an offset, clamped [velocity
+  75%].
+- `note.flam <channel> <spacing> [count] [velocity percent]`: adds up to 8
+  grace notes before each note, `spacing` apart, each quieter by the percent
+  (default 60%); notes too close to the start get none [6 ticks, 1].
+- `note.randomize <channel> <low> <high> <density> [seed] [root scale]`:
+  replaces the notes with one-step notes on the step grid: each step gets a
+  note with probability `density` %, a random key in the range (moved into the
+  scale when given) and velocity 70–127. The same seed gives the same notes
+  [C4–C6, 50%, highlighted scale].
+- `note.chords <channel> <root> <major|minor> <degrees> [length]`: replaces
+  the notes with triads stacked in thirds on scale degrees 1–7 (`1-5-6-4`),
+  one per `length` (default a bar) [I–V–vi–IV, i–VI–III–VII, ii–V–I in the
+  highlighted scale's key].
+- `note.articulate <channel> <length percent> [accent]`: sets each note to a
+  share of the gap to the next note start and adds `accent` to the velocity
+  of notes on a beat [staccato 50% +10, tenuto 100%].
+- `note.claw <channel> <every> [offset]`: keeps every Nth start time (a chord
+  counts once) from `offset` and drops the rest [every 2nd].
+
 ## Arpeggiator
 
 - Every channel has an arpeggiator (channel settings → ARPEGGIATOR):
@@ -225,3 +258,7 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   FL Studio online manual, "Keyboard shortcuts", piano roll section.
 - Synth architecture: textbook subtractive synthesis. PolyBLEP and the
   trapezoidal SVF follow publicly published papers (Välimäki et al.; Simper).
+- Limit, LFO, scale levels, flam, randomizer, chord progressions, articulate
+  and claw machine mirror the piano roll tools listed in the FL Studio online
+  manual, "Piano roll" (tools menu). Every rule above (ranges, centres, the
+  random grid, triad stacking) is our own design.

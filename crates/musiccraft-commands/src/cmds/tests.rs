@@ -53,6 +53,11 @@ const SCRIPT: &[&str] = &[
     "note.move 3 2 E4 3 F4",
     "note.resize 3 0 C4 4",
     "note.slice 3 0 C4 1",
+    "note.limit 3 C4 B5",
+    "note.lfo 3 velocity 8 50",
+    "note.scale_levels 3 pan 50 10",
+    "note.flam 3 6t",
+    "note.articulate 3 80 5",
     "note.set_velocity 3 0 C4 127",
     "note.set_pan 3 0 C4 -40",
     "note.set_slide 3 0 C4 on",
@@ -583,6 +588,126 @@ fn route_free_takes_an_unused_insert_or_adds_one() {
     assert_eq!(s.project().channels[0].mixer_track, tracks);
     run(&mut s, "edit.undo");
     assert_eq!(s.project().mixer.len(), tracks);
+}
+
+/// (start, length, key, velocity) of channel 1's notes in pattern 1.
+fn note_rows(s: &Session) -> Vec<(u32, u32, u8, u8)> {
+    s.project().patterns[0]
+        .notes
+        .iter()
+        .map(|n| (n.start, n.length, n.key, n.velocity))
+        .collect()
+}
+
+fn synth_with(notes: &[&str]) -> Session {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    for line in notes {
+        run(&mut s, line);
+    }
+    s
+}
+
+#[test]
+fn limit_folds_notes_into_the_range_by_octaves() {
+    let mut s = synth_with(&[
+        "note.add 1 0 1 C3",
+        "note.add 1 1 1 G7",
+        "note.add 1 2 1 E5",
+    ]);
+    run(&mut s, "note.limit 1 C5 B5");
+    let keys: Vec<u8> = note_rows(&s).iter().map(|n| n.2).collect();
+    assert_eq!(keys, [60, 67, 64]);
+    fails(&mut s, "note.limit 1 C6 C5");
+}
+
+#[test]
+fn lfo_and_scale_levels_shape_velocities() {
+    let mut s = synth_with(&[
+        "note.add 1 0 1 C5 100",
+        "note.add 1 4 1 C5 100",
+        "note.add 1 8 1 C5 100",
+    ]);
+    // A square LFO over 8 steps at full depth: high, low, high.
+    run(&mut s, "note.lfo 1 velocity 8 100 square");
+    let vels: Vec<u8> = note_rows(&s).iter().map(|n| n.3).collect();
+    assert_eq!(vels, [127, 1, 127]);
+    // Halving around the centre (64).
+    run(&mut s, "note.scale_levels 1 velocity 50");
+    let vels: Vec<u8> = note_rows(&s).iter().map(|n| n.3).collect();
+    assert_eq!(vels, [96, 33, 96]);
+    fails(&mut s, "note.lfo 1 volume 8 100");
+    run(&mut s, "note.lfo 1 pan 16 50");
+    assert_eq!(
+        s.project().patterns[0].notes[1].pan,
+        50,
+        "a quarter cycle in"
+    );
+}
+
+#[test]
+fn flam_adds_quieter_grace_notes_before() {
+    let mut s = synth_with(&["note.add 1 4 1 C5 100", "note.add 1 0 1 E5 100"]);
+    run(&mut s, "note.flam 1 6t 2 50");
+    let rows = note_rows(&s);
+    assert!(rows.contains(&(90, 6, 60, 50)) && rows.contains(&(84, 6, 60, 25)));
+    assert_eq!(rows.len(), 4, "the note at 0 has no room for grace notes");
+}
+
+#[test]
+fn randomize_is_repeatable_and_stays_in_range_and_scale() {
+    let mut s = synth_with(&[]);
+    run(&mut s, "note.randomize 1 C5 C6 50 7 C major");
+    let first = note_rows(&s);
+    assert!(!first.is_empty() && first.len() < 16);
+    for (_, _, key, _) in &first {
+        assert!((60..=72).contains(key));
+        assert!([0, 2, 4, 5, 7, 9, 11].contains(&(key % 12)), "{key}");
+    }
+    run(&mut s, "note.randomize 1 C5 C6 50 7 C major");
+    assert_eq!(note_rows(&s), first, "same seed, same notes");
+    run(&mut s, "note.randomize 1 C5 C6 100 8");
+    assert_eq!(note_rows(&s).len(), 16);
+}
+
+#[test]
+fn chords_lay_down_a_progression() {
+    let mut s = synth_with(&[]);
+    run(&mut s, "note.chords 1 C4 major 1-5-6-4");
+    let rows = note_rows(&s);
+    let at = |bar: u32| -> Vec<u8> {
+        rows.iter()
+            .filter(|n| n.0 == bar * 384)
+            .map(|n| n.2)
+            .collect()
+    };
+    assert_eq!(at(0), [48, 52, 55], "C");
+    assert_eq!(at(1), [55, 59, 62], "G");
+    assert_eq!(at(2), [57, 60, 64], "Am");
+    assert_eq!(at(3), [53, 57, 60], "F");
+    fails(&mut s, "note.chords 1 C4 major 1-9");
+}
+
+#[test]
+fn articulate_and_claw() {
+    let mut s = synth_with(&[
+        "note.add 1 0 1 C5 90",
+        "note.add 1 2 1 D5 90",
+        "note.add 1 3 1 E5 90",
+        "note.add 1 4 4 F5 90",
+    ]);
+    run(&mut s, "note.articulate 1 50 10");
+    let rows = note_rows(&s);
+    assert_eq!(
+        rows[0],
+        (0, 24, 60, 100),
+        "half the gap; accented on the beat"
+    );
+    assert_eq!(rows[1], (48, 12, 62, 90));
+    run(&mut s, "note.claw 1 2");
+    let keys: Vec<u8> = note_rows(&s).iter().map(|n| n.2).collect();
+    assert_eq!(keys, [60, 64]);
+    fails(&mut s, "note.claw 1 0");
 }
 
 #[test]

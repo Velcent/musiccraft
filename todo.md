@@ -73,15 +73,15 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 
 - [ ] Per-step graph editor (pitch, pan, velocity per step).
 - [ ] Per-channel time shift, gate and note echo.
-- [ ] Piano roll tools:
-  - [ ] Limit.
-  - [ ] LFO.
-  - [ ] Scale levels.
-  - [ ] Flam.
-  - [ ] Full randomizer.
-  - [ ] Chord / pattern generator.
-  - [ ] Articulate.
-  - [ ] Claw machine.
+- [x] Piano roll tools:
+  - [x] Limit.
+  - [x] LFO.
+  - [x] Scale levels.
+  - [x] Flam.
+  - [x] Full randomizer.
+  - [x] Chord / pattern generator.
+  - [x] Articulate.
+  - [x] Claw machine.
 - [ ] Master pitch / A4 tuning.
 - [ ] Tap tempo.
 - [ ] MP3 export (already a `todo` in parity.md).

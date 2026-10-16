@@ -4,6 +4,7 @@ mod automation;
 mod channel;
 mod clip_edit;
 mod mixer;
+mod note_gen;
 mod note_tools;
 mod notes;
 mod pattern;
@@ -26,6 +27,7 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(channel::commands());
     commands.extend(notes::commands());
     commands.extend(note_tools::commands());
+    commands.extend(note_gen::commands());
     commands.extend(pattern::commands());
     commands.extend(mixer::commands());
     commands.extend(playlist::commands());

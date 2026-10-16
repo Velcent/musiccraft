@@ -1122,6 +1122,55 @@ fn tools_menu(
             toggled = toggle_slide.clone();
             ui.close();
         }
+        let root = state.roll.scale.map_or(0, |(root, _)| root);
+        let scale_name = state.roll.scale.map(|(_, i)| {
+            musiccraft_project::music::SCALES
+                .get(i)
+                .map_or("major", |(n, _)| n)
+                .replace(' ', "_")
+        });
+        ui.menu_button("Generate", |ui| {
+            let mut random = vec![
+                "C4".to_owned(),
+                "C6".to_owned(),
+                "50".to_owned(),
+                state.begin_gesture().to_string(),
+            ];
+            if let Some(name) = &scale_name {
+                random.extend([root.to_string(), name.clone()]);
+            }
+            item(
+                ui,
+                "Randomize",
+                "Replace the notes with random ones on the step grid (in the highlighted scale)",
+                "note.randomize",
+                random,
+            );
+            let minor = scale_name.as_deref().is_some_and(|n| n.contains("minor"));
+            for (label, degrees) in [("I–V–vi–IV", "1-5-6-4"), ("i–VI–III–VII", "1-6-3-7"), ("ii–V–I", "2-5-1")] {
+                item(
+                    ui,
+                    &format!("Chords {label}"),
+                    "Replace the notes with this progression, a bar per chord (key of the highlighted scale)",
+                    "note.chords",
+                    vec![
+                        (48 + root).to_string(),
+                        if minor { "minor" } else { "major" }.into(),
+                        degrees.into(),
+                    ],
+                );
+            }
+        });
+        ui.menu_button("Shape", |ui| {
+            item(ui, "Limit to C4–B5", "Fold notes into two octaves", "note.limit", vec!["C4".into(), "B5".into()]);
+            item(ui, "Velocity LFO", "Sine on velocity, one bar per cycle", "note.lfo", vec!["velocity".into(), "16".into(), "50".into()]);
+            item(ui, "Pan LFO", "Sine on pan, one bar per cycle", "note.lfo", vec!["pan".into(), "16".into(), "80".into()]);
+            item(ui, "Scale velocities 75%", "Bring velocities closer to the middle", "note.scale_levels", vec!["velocity".into(), "75".into()]);
+            item(ui, "Flam", "Add a quieter grace note just before each note", "note.flam", vec!["6t".into()]);
+            item(ui, "Staccato", "Half the gap to the next note; accent the beats", "note.articulate", vec!["50".into(), "10".into()]);
+            item(ui, "Tenuto", "Hold each note until the next one", "note.articulate", vec!["100".into()]);
+            item(ui, "Claw every 2nd", "Keep every second note or chord", "note.claw", vec!["2".into()]);
+        });
         ui.menu_button("Arpeggiate", |ui| {
             for (label, mode) in [
                 ("Up", "up"),
