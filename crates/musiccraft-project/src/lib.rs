@@ -579,6 +579,13 @@ impl Project {
                 track.to_master = true;
             }
         }
+        let playlist = &mut self.playlist;
+        playlist.muted_tracks.retain(|t| *t < PLAYLIST_TRACKS);
+        playlist.soloed_tracks.retain(|t| *t < PLAYLIST_TRACKS);
+        playlist.track_names.retain(|t, _| *t < PLAYLIST_TRACKS);
+        playlist
+            .track_colors
+            .retain(|t, c| *t < PLAYLIST_TRACKS && *c < 16);
         // Older files kept swing per pattern: take the largest.
         if self.swing == 0.0 {
             self.swing = self

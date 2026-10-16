@@ -52,6 +52,30 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_track_mute,
         ),
         cmd(
+            "playlist.set_track_solo",
+            "playlist.set_track_solo <track> <on|off>",
+            "Solo a playlist track: while any track is soloed, only soloed tracks play.",
+            set_track_solo,
+        ),
+        cmd(
+            "playlist.toggle_track_solo",
+            "playlist.toggle_track_solo <track>",
+            "Solo or unsolo a playlist track.",
+            toggle_track_solo,
+        ),
+        cmd(
+            "playlist.rename_track",
+            "playlist.rename_track <track> [name]",
+            "Name a playlist track (no name restores the default).",
+            rename_track,
+        ),
+        cmd(
+            "playlist.set_track_color",
+            "playlist.set_track_color <track> <1-16|none>",
+            "Colour a playlist track.",
+            set_track_color,
+        ),
+        cmd(
             "playlist.toggle_track_mute",
             "playlist.toggle_track_mute <track>",
             "Toggle a playlist track's mute.",
@@ -345,6 +369,92 @@ fn toggle_track_mute(project: &mut Project, args: &Args<'_>) -> Result<Outcome, 
     Ok(Outcome::undoable(
         format!("playlist track {} mute {}", track + 1, on_off(mute)),
         Invocation::new(args.name(), [(track + 1).to_string()]),
+    ))
+}
+
+fn set_track_solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let track = track_arg(args, 0)?;
+    let solo = args.flag(1)?;
+    let was = project.playlist.soloed_tracks.contains(&track);
+    if solo {
+        project.playlist.soloed_tracks.insert(track);
+    } else {
+        project.playlist.soloed_tracks.remove(&track);
+    }
+    let message = format!("playlist track {} solo {}", track + 1, on_off(solo));
+    if was == solo {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(
+            args.name(),
+            [(track + 1).to_string(), on_off(was).to_owned()],
+        ),
+    ))
+}
+
+fn toggle_track_solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let track = track_arg(args, 0)?;
+    let solo = !project.playlist.soloed_tracks.remove(&track);
+    if solo {
+        project.playlist.soloed_tracks.insert(track);
+    }
+    Ok(Outcome::undoable(
+        format!("playlist track {} solo {}", track + 1, on_off(solo)),
+        Invocation::new(args.name(), [(track + 1).to_string()]),
+    ))
+}
+
+fn rename_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, usize::MAX)?;
+    let track = track_arg(args, 0)?;
+    let name = if args.len() > 1 {
+        Some(args.rest(1)?.trim().to_owned()).filter(|n| !n.is_empty())
+    } else {
+        None
+    };
+    let names = &mut project.playlist.track_names;
+    let previous = match &name {
+        Some(name) => names.insert(track, name.clone()),
+        None => names.remove(&track),
+    };
+    let mut inverse = vec![(track + 1).to_string()];
+    inverse.extend(previous);
+    Ok(Outcome::undoable(
+        format!(
+            "playlist track {} is {}",
+            track + 1,
+            project.playlist.track_name(track)
+        ),
+        Invocation::new(args.name(), inverse),
+    ))
+}
+
+fn set_track_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let track = track_arg(args, 0)?;
+    let color = match args.str(1)? {
+        "none" => None,
+        _ => {
+            let n = args.number(1, "colour")?;
+            if !(1..=16).contains(&n) {
+                return Err(args.invalid("colours are 1 to 16"));
+            }
+            Some(u8::try_from(n - 1).unwrap_or(0))
+        }
+    };
+    let colors = &mut project.playlist.track_colors;
+    let previous = match color {
+        Some(c) => colors.insert(track, c),
+        None => colors.remove(&track),
+    };
+    let label = |c: Option<u8>| c.map_or_else(|| "none".to_owned(), |c| (c + 1).to_string());
+    Ok(Outcome::undoable(
+        format!("playlist track {} colour {}", track + 1, label(color)),
+        Invocation::new(args.name(), [(track + 1).to_string(), label(previous)]),
     ))
 }
 

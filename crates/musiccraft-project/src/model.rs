@@ -825,6 +825,15 @@ pub struct Playlist {
     /// Track rows that are muted (0-based).
     #[serde(default)]
     pub muted_tracks: BTreeSet<u32>,
+    /// Soloed track rows (0-based): while any is soloed, only they play.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub soloed_tracks: BTreeSet<u32>,
+    /// Track names by row (0-based); unnamed rows show "Track n".
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub track_names: BTreeMap<u32, String>,
+    /// Track colours by row (0-based): palette index 0..=15.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub track_colors: BTreeMap<u32, u8>,
     /// Song-mode loop region `(start, end)` in ticks, if set.
     #[serde(default)]
     pub loop_range: Option<(u32, u32)>,
@@ -834,6 +843,22 @@ pub struct Playlist {
 }
 
 impl Playlist {
+    /// Whether clips on `track` play: not muted, and soloed when any row is.
+    #[must_use]
+    pub fn track_audible(&self, track: u32) -> bool {
+        !self.muted_tracks.contains(&track)
+            && (self.soloed_tracks.is_empty() || self.soloed_tracks.contains(&track))
+    }
+
+    /// The row's name ("Track n" when it has none).
+    #[must_use]
+    pub fn track_name(&self, track: u32) -> String {
+        self.track_names
+            .get(&track)
+            .cloned()
+            .unwrap_or_else(|| format!("Track {}", track + 1))
+    }
+
     /// Where song playback returns at the end: the first song-loop marker.
     #[must_use]
     pub fn song_loop_tick(&self) -> Option<u32> {

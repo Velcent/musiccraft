@@ -390,7 +390,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             edit(ui, state, project, &grid, &response, clip, &boxes, actions);
             draw_ruler(&painter, &grid, clip, project, state.playlist.loop_drag);
             ruler(ui, state, project, &grid, clip, actions);
-            headers(ui, project, &grid, clip, actions);
+            headers(ui, state, project, &grid, clip, actions);
             if response.hovered() {
                 let zoom = ui.input(|i| i.zoom_delta());
                 if zoom != 1.0 {
@@ -909,6 +909,7 @@ fn ruler(
 
 fn headers(
     ui: &mut egui::Ui,
+    state: &mut UiState,
     project: &Project,
     grid: &Grid,
     clip: Rect,
@@ -930,22 +931,69 @@ fn headers(
             pos2(area.left(), y),
             pos2(area.right(), y + grid.row_height),
         );
+        let playlist = &project.playlist;
+        if let Some(&color) = playlist.track_colors.get(&row) {
+            painter.rect_filled(
+                Rect::from_min_size(r.left_top(), vec2(4.0, r.height())),
+                0.0,
+                theme::track_color(color),
+            );
+        }
         painter.line_segment(
             [r.left_bottom(), r.right_bottom()],
             Stroke::new(1.0, theme::GRID_LINE),
         );
+        let text = if playlist.track_audible(row) {
+            theme::TEXT
+        } else {
+            theme::TEXT_DIM
+        };
         painter.text(
             r.left_center() + vec2(24.0, 0.0),
             Align2::LEFT_CENTER,
-            format!("Track {}", row + 1),
+            playlist.track_name(row),
             FontId::proportional(11.0),
-            theme::TEXT_DIM,
+            text,
         );
+        let number = (row + 1).to_string();
+        // Right-click the header: rename or colour the row.
+        let header = ui.interact(r, ui.id().with(("track-header", row)), Sense::click());
+        header.context_menu(|ui| {
+            if ui.button("Rename…").clicked() {
+                state.open_dialog(crate::dialogs::Dialog::rename_playlist_track(
+                    row,
+                    &playlist.track_name(row),
+                ));
+                ui.close();
+            }
+            ui.label("Colour");
+            ui.horizontal_wrapped(|ui| {
+                for c in 0..16u8 {
+                    let (swatch, response) =
+                        ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
+                    ui.painter().rect_filled(swatch, 2.0, theme::track_color(c));
+                    if response.clicked() {
+                        actions.push(Action::Run(Invocation::new(
+                            "playlist.set_track_color",
+                            [number.clone(), (c + 1).to_string()],
+                        )));
+                        ui.close();
+                    }
+                }
+            });
+            if ui.button("No colour").clicked() {
+                actions.push(Action::Run(Invocation::new(
+                    "playlist.set_track_color",
+                    [number.clone(), "none".to_owned()],
+                )));
+                ui.close();
+            }
+        });
         let dot = Rect::from_center_size(r.left_center() + vec2(12.0, 0.0), vec2(14.0, 14.0));
         if !area.contains_rect(dot) {
             continue;
         }
-        let muted = project.playlist.muted_tracks.contains(&row);
+        let muted = playlist.muted_tracks.contains(&row);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(dot));
         if widgets::dot(&mut child, !muted, theme::ACCENT)
             .hint("Mute track")
@@ -953,7 +1001,25 @@ fn headers(
         {
             actions.push(Action::Run(Invocation::new(
                 "playlist.toggle_track_mute",
-                [(row + 1).to_string()],
+                [number.clone()],
+            )));
+        }
+        let solo = Rect::from_center_size(r.right_center() - vec2(12.0, 0.0), vec2(16.0, 14.0));
+        let soloed = playlist.soloed_tracks.contains(&row);
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(solo));
+        let label = RichText::new("S").small().color(if soloed {
+            theme::HIGHLIGHT
+        } else {
+            theme::TEXT_DIM
+        });
+        if child
+            .add(egui::Button::new(label).frame(false))
+            .on_hover_text("Solo track")
+            .clicked()
+        {
+            actions.push(Action::Run(Invocation::new(
+                "playlist.toggle_track_solo",
+                [number],
             )));
         }
     }

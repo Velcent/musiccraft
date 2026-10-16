@@ -7,6 +7,15 @@
   pattern, the pattern repeats; notes are cut at the clip's end.
 - Clips on one row may not overlap.
 - Rows can be muted; muted rows do not play.
+- **Track rows** have a name, a colour, mute and solo (all saved, all undoable):
+  `playlist.rename_track <track> [name]` (no name restores "Track n"),
+  `playlist.set_track_color <track> <1-16|none>`, `playlist.set_track_solo
+  <track> <on|off>` and `playlist.toggle_track_solo <track>`. While any row is
+  soloed, only soloed rows play; a muted row stays silent even when soloed.
+  Silenced rows skip pattern, audio and automation clips alike. The row header
+  shows the colour, name, a mute dot and an S (solo) button; right-click it to
+  rename it or pick a colour. A coloured row shows a stripe of its colour at the
+  left of its header; silenced rows show their name dimmed.
 - Playlist time arguments are in bars from 0 (4/4); fractions are allowed and
   `<n>t` gives exact ticks.
 - Commands: `playlist.add_clip <pattern> <track> <start> [length]` (default length:
@@ -129,3 +138,6 @@
   render; the loop marker drawn with a down-facing arrow), and its "Add time
   marker" shortcut Alt+T ("Keyboard shortcuts"). Glyphs, colours, the one-loop-
   point rule, resuming past a pause and command names are our own.
+- Playlist track names, colours, mute and solo follow the FL Studio online
+  manual, "Playlist" (track header options). The colour palette and command
+  names are our own.

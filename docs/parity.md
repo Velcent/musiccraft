@@ -59,6 +59,7 @@ of contents; see `docs/clean-room.md`.
 | Patterns | Next empty pattern, then name it | `cmd:pattern.next_empty` `key:F4=ui.next_empty_pattern` |
 | Patterns | Next / previous pattern | `key:Plus=pattern.next` `key:Minus=pattern.prev` |
 | Patterns | Clone / rename / delete / length | `cmd:pattern.clone` `cmd:pattern.rename` `cmd:pattern.remove` `cmd:pattern.set_length` |
+| Playlist | Track names, colours, mute and solo | `cmd:playlist.rename_track` `cmd:playlist.set_track_color` `cmd:playlist.toggle_track_mute` `cmd:playlist.toggle_track_solo` |
 | Playlist | Place, move, resize, delete clips | `cmd:playlist.add_clip` `cmd:playlist.move_clip` `cmd:playlist.resize_clip` `cmd:playlist.remove_clip` `spec:playlist.md` |
 | Playlist | Track mute | `cmd:playlist.toggle_track_mute` |
 | Playlist | Select, duplicate, group move | `cmd:edit.batch` `done` |

@@ -73,7 +73,7 @@ fn pattern_events(project: &Project, pattern: &Pattern) -> Vec<NoteEvent> {
 fn song_events(project: &Project) -> Vec<NoteEvent> {
     let mut events = Vec::new();
     for clip in &project.playlist.clips {
-        if project.playlist.muted_tracks.contains(&clip.track) {
+        if !project.playlist.track_audible(clip.track) {
             continue;
         }
         match clip.source {
@@ -202,7 +202,7 @@ fn song_automation(project: &Project) -> Vec<AutomationLane> {
         let Some(id) = clip.automation() else {
             continue;
         };
-        if project.playlist.muted_tracks.contains(&clip.track) {
+        if !project.playlist.track_audible(clip.track) {
             continue;
         }
         let Some(automation) = project

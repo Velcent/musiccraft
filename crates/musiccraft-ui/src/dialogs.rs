@@ -22,6 +22,7 @@ pub enum Purpose {
     RenameChannel(usize),
     RenamePattern(usize),
     RenameTrack(usize),
+    RenamePlaylistTrack(u32),
     AddFolder,
     AddPluginFolder,
     RenameAutomation(usize),
@@ -129,6 +130,10 @@ impl Dialog {
         Self::new(Purpose::AddPluginFolder, home)
     }
 
+    pub fn rename_playlist_track(track: u32, current: &str) -> Self {
+        Self::new(Purpose::RenamePlaylistTrack(track), current.to_owned())
+    }
+
     pub fn rename_track(track: usize, current: &str) -> Self {
         Self::new(Purpose::RenameTrack(track), current.to_owned())
     }
@@ -146,6 +151,7 @@ impl Dialog {
             Purpose::RenameChannel(_) => "Rename channel",
             Purpose::RenamePattern(_) => "Rename pattern",
             Purpose::RenameTrack(_) => "Rename mixer track",
+            Purpose::RenamePlaylistTrack(_) => "Rename playlist track",
             Purpose::AddFolder => "Add folder to the browser",
             Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
@@ -185,6 +191,9 @@ impl Dialog {
             }
             Purpose::RenameTrack(track) => {
                 Invocation::new("mixer.rename", [track.to_string(), text])
+            }
+            Purpose::RenamePlaylistTrack(track) => {
+                Invocation::new("playlist.rename_track", [(track + 1).to_string(), text])
             }
             Purpose::AddFolder => Invocation::new("ui.add_folder", [text]),
             Purpose::AddPluginFolder => Invocation::new("ui.add_plugin_folder", [text]),

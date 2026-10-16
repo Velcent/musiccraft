@@ -1244,3 +1244,36 @@ fn recording_without_looping_stops_at_the_pattern_end() {
     assert!(!engine.is_playing());
     assert_eq!(handle.meters().end_stops(), 1);
 }
+
+#[test]
+fn soloed_playlist_tracks_silence_the_others() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick
+         step.toggle 1 0
+         pattern.add
+         channel.add_sampler builtin:snare
+         step.toggle 2 0
+         playlist.add_clip 1 1 0
+         playlist.add_clip 2 2 0
+         transport.set_mode song",
+    );
+    let channels = |s: &Session| -> Vec<u16> {
+        build_sequence(s.project())
+            .events()
+            .iter()
+            .map(|e| e.channel)
+            .collect()
+    };
+    assert_eq!(channels(&s), [0, 1]);
+    run(&mut s, "playlist.set_track_solo 2 on");
+    assert_eq!(channels(&s), [1], "only the soloed track");
+    run(&mut s, "playlist.set_track_mute 2 on");
+    assert!(channels(&s).is_empty(), "muted wins over solo");
+    run(
+        &mut s,
+        "playlist.set_track_mute 2 off\nplaylist.toggle_track_solo 2",
+    );
+    assert_eq!(channels(&s), [0, 1]);
+}

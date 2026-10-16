@@ -39,6 +39,18 @@ pub const PALETTE: [Color32; 8] = [
     Color32::from_rgb(0xe0, 0xd0, 0x5c),
 ];
 
+/// Colour `index` (0..16) of the playlist track palette: the clip colours,
+/// then darker versions of them.
+#[must_use]
+pub fn track_color(index: u8) -> Color32 {
+    let base = palette(usize::from(index));
+    if index >= 8 {
+        base.gamma_multiply(0.6).to_opaque()
+    } else {
+        base
+    }
+}
+
 /// Colour for item `index`.
 #[must_use]
 pub fn palette(index: usize) -> Color32 {

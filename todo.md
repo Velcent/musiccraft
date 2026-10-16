@@ -46,11 +46,11 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   - [x] Loop recording.
   - [x] Step recording.
   - [x] Record knob movements as automation.
-- [ ] Transport:
+- [x] Transport:
   - [x] Pause with Ctrl+Space (`transport.pause`, `transport.play_pause`).
   - [x] Panic with Ctrl+H (all notes off).
   - [x] Home jumps to the start.
-- [ ] Playlist tracks: names, colours, mute and solo.
+- [x] Playlist tracks: names, colours, mute and solo.
 - [ ] Playlist clip editing:
   - [ ] Slice clips.
   - [ ] Make unique.
