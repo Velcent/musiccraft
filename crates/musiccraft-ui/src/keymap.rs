@@ -155,6 +155,12 @@ mod tests {
             keymap.chord_for("view.toggle mixer").unwrap().to_string(),
             "F9"
         );
+        // FL-familiar: R records, Ctrl+N saves a new version.
+        let r = Chord::parse("R").unwrap();
+        assert_eq!(keymap.lookup(&r).unwrap().name, "ui.toggle_record");
+        let ctrl_n = Chord::parse("Ctrl+N").unwrap();
+        assert_eq!(keymap.lookup(&ctrl_n).unwrap().name, "ui.save_new_version");
+        assert!(keymap.chord_for("ui.new").is_none(), "New is menu-only");
     }
 
     #[test]

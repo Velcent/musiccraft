@@ -23,6 +23,11 @@
   remembers the path; without an argument it saves to the remembered path.
   `project.load <path>` and `project.new` replace the project and clear undo
   history. The transport state is not saved.
+- `project.save_new_version` (Ctrl+N via `ui.save_new_version`) saves a copy
+  as the next numbered sibling and continues in it: `song.mcproj` becomes
+  `song_2.mcproj`, `song_2.mcproj` becomes `song_3.mcproj`, and names already
+  on disk are skipped. The earlier file is left as it was. A project that has
+  never been saved fails the command; the UI opens Save as instead.
 
 ## Export
 
@@ -64,3 +69,6 @@
 
 - Own design. WAV/RIFF is an open format, written with the `hound` crate. We do
   not read or write any other DAW's project format.
+- Saving a new numbered version on Ctrl+N follows the "save new version"
+  shortcut described in the public FL Studio online manual ("Keyboard
+  shortcuts"); the naming scheme is our own.

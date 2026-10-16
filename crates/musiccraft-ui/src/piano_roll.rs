@@ -1625,12 +1625,12 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         state.roll.selection = selected.iter().map(|n| (n.start + span, n.key)).collect();
     }
     let moves = [
-        (Modifiers::NONE, Key::ArrowUp, 0, 1),
-        (Modifiers::NONE, Key::ArrowDown, 0, -1),
-        (Modifiers::SHIFT, Key::ArrowUp, 0, 12),
-        (Modifiers::SHIFT, Key::ArrowDown, 0, -12),
-        (Modifiers::NONE, Key::ArrowRight, snap, 0),
-        (Modifiers::NONE, Key::ArrowLeft, -snap, 0),
+        (Modifiers::SHIFT, Key::ArrowUp, 0, 1),
+        (Modifiers::SHIFT, Key::ArrowDown, 0, -1),
+        (Modifiers::COMMAND, Key::ArrowUp, 0, 12),
+        (Modifiers::COMMAND, Key::ArrowDown, 0, -12),
+        (Modifiers::SHIFT, Key::ArrowRight, snap, 0),
+        (Modifiers::SHIFT, Key::ArrowLeft, -snap, 0),
     ];
     for (modifiers, key, dt, dk) in moves {
         if pressed(modifiers, key) && !selected.is_empty() {

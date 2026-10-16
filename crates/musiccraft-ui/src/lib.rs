@@ -531,6 +531,10 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                 None => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
             },
             "ui.save_as" => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
+            "ui.save_new_version" => match frame.project.path() {
+                Some(_) => out.push(Action::Run(Invocation::bare("project.save_new_version"))),
+                None => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
+            },
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.export_stems" => state.dialog = Some(dialogs::Dialog::export_stems(frame.project)),
             "ui.quit" => out.push(Action::Quit),
@@ -615,6 +619,14 @@ mod tests {
         assert!(state.windows.mixer);
         assert_eq!(out, [Action::Run(Invocation::bare("transport.toggle"))]);
         assert!(state.dialog.is_some(), "unsaved project asks for a path");
+        state.dialog = None;
+        let out = resolve_ui_actions(
+            &mut state,
+            &frame,
+            vec![Action::Run(Invocation::bare("ui.save_new_version"))],
+        );
+        assert!(out.is_empty());
+        assert!(state.dialog.is_some(), "a new version needs a first save");
     }
 
     #[test]

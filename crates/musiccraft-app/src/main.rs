@@ -118,7 +118,10 @@ fn replaces_project(name: &str) -> bool {
 
 /// Commands after which the project matches a file (or a fresh start).
 fn marks_saved(name: &str) -> bool {
-    matches!(name, "project.new" | "project.load" | "project.save")
+    matches!(
+        name,
+        "project.new" | "project.load" | "project.save" | "project.save_new_version"
+    )
 }
 
 /// Display data for a sample that audio clips play.

@@ -32,7 +32,7 @@
 - The scale menu tints the rows of a scale (major, natural and harmonic minor,
   dorian, mixolydian, major and minor pentatonic) on any root; the root row is
   tinted more strongly. Display only.
-- With recording armed (REC button or Ctrl+E) and playback running, notes played on
+- With recording armed (REC button or R) and playback running, notes played on
   a MIDI keyboard or the typing keyboard are written into the selected pattern on
   the selected channel at the playhead position (folded into the pattern length
   in song mode). Each recorded note is one undo step. Notes held across the loop
@@ -177,8 +177,9 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - Keys while the pointer is over the piano roll: Delete/Backspace remove the
   selection; Ctrl+A selects all; Escape clears; Ctrl+C / Ctrl+X copy / cut;
   Ctrl+V pastes at the pointer; Ctrl+B duplicates the selection right after its
-  end (rounded up to the snap); arrows move by one key or one snap step, and
-  Shift+Up/Down by an octave. Every operation is one undo step (`edit.batch`),
+  end (rounded up to the snap); Shift+Up/Down move by one key, Shift+Left/Right
+  by one snap step, and Ctrl+Up/Down by an octave (plain arrows do not move
+  notes). Every operation is one undo step (`edit.batch`),
   with moves ordered so notes of the selection never overwrite each other.
 - Ctrl+scroll zooms horizontally.
 - Notes have a pan, -100 to 100 (`note.set_pan`; `note.add` takes it as an
@@ -197,5 +198,7 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   from the note edge) follows conventions described in the FL Studio online
   manual, "Piano roll" section, and common to most DAWs. Implementation and
   layout are our own.
+- Selection keys (Shift+arrows move, Ctrl+Up/Down by an octave) follow the
+  FL Studio online manual, "Keyboard shortcuts", piano roll section.
 - Synth architecture: textbook subtractive synthesis. PolyBLEP and the
   trapezoidal SVF follow publicly published papers (Välimäki et al.; Simper).
