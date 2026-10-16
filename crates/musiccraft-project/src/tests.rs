@@ -149,6 +149,7 @@ fn rich_project() -> Project {
         start: 0,
         length: TICKS_PER_BAR,
         offset: 0,
+        muted: false,
     });
     project.play_mode = PlayMode::Song;
     project
@@ -285,6 +286,7 @@ fn song_length_rounds_up_to_bars() {
         start: TICKS_PER_BAR,
         length: 10,
         offset: 0,
+        muted: false,
     });
     assert_eq!(project.song_length_ticks(), 2 * TICKS_PER_BAR);
     assert_eq!(project.playlist.clip_at(3, TICKS_PER_BAR + 9), Some(0));
@@ -307,6 +309,7 @@ fn clips_keep_the_old_file_shape() {
         start: 0,
         length: 384,
         offset: 0,
+        muted: false,
     };
     let json = serde_json::to_string(&clip).unwrap();
     assert_eq!(json, r#"{"pattern":3,"track":1,"start":0,"length":384}"#);
@@ -347,6 +350,7 @@ fn loading_drops_clips_of_missing_sources() {
         start: 0,
         length: 10,
         offset: 0,
+        muted: false,
     });
     let loaded = Project::from_json(&project.to_json().unwrap()).unwrap();
     assert_eq!(loaded.playlist.clips.len(), 1);

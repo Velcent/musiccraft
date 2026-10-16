@@ -244,6 +244,7 @@ fn merge(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
         start,
         length: end - start,
         offset: 0,
+        muted: false,
     };
     let mut kept: Vec<Clip> = old
         .iter()

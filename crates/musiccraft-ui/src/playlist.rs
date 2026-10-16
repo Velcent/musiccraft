@@ -115,22 +115,38 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
             (
                 Tool::Draw,
                 Icon::Pencil,
-                "Draw: click places the selected pattern, drag moves, edge resizes",
+                "Draw (P): click places the selected pattern, drag moves, edge resizes",
             ),
             (
                 Tool::Paint,
                 Icon::Brush,
-                "Paint: drag to lay the selected pattern end to end",
+                "Paint (B): drag to lay the selected pattern end to end",
             ),
             (
                 Tool::Delete,
                 Icon::Eraser,
-                "Delete: click or drag over clips to delete them",
+                "Delete (D): click or drag over clips to delete them",
             ),
             (
                 Tool::Select,
                 Icon::Select,
-                "Select: drag a box around clips; click empty space to clear",
+                "Select (E): drag a box around clips; click empty space to clear",
+            ),
+            (
+                Tool::Mute,
+                Icon::Mute,
+                "Mute (T): click a clip to mute or unmute it",
+            ),
+            (
+                Tool::Slice,
+                Icon::Slice,
+                "Slice (C): click a clip to cut it in two there",
+            ),
+            (Tool::Play, Icon::Play, "Play (Y): click to play from there"),
+            (
+                Tool::Zoom,
+                Icon::Zoom,
+                "Zoom (Z): click to zoom in, Shift+click to zoom out",
             ),
         ] {
             if icons::button(ui, icon, state.playlist.tool == tool, theme::ACCENT, hint).clicked() {
@@ -347,6 +363,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     start: *start,
                     length: *length,
                     offset: 0,
+                    muted: false,
                 };
                 draw_clip(
                     &painter, &grid, frame, &preview, *track, *start, *length, true,
@@ -479,7 +496,7 @@ fn draw_clip(
         }
     };
     let rect = grid.span(track, start, length).shrink2(vec2(0.5, 1.5));
-    let muted = project.playlist.muted_tracks.contains(&track);
+    let muted = clip.muted || !project.playlist.track_audible(track);
     let alpha = if ghost {
         120
     } else if muted {
@@ -1099,12 +1116,18 @@ fn per_clip(clips: &[Clip], name: &str, extra: &[String]) -> Option<Invocation> 
 
 /// Slices every clip that crosses `at` there.
 pub(crate) fn slice_at(clips: &[Clip], at: u32) -> Option<Invocation> {
-    let crossing: Vec<Clip> = clips
-        .iter()
-        .filter(|c| c.start < at && at < c.end())
-        .copied()
-        .collect();
-    per_clip(&crossing, "playlist.slice_clip", &[format!("{at}t")])
+    batch(
+        clips
+            .iter()
+            .filter(|c| c.start < at && at < c.end())
+            .map(|c| {
+                Invocation::new(
+                    "playlist.slice_clip",
+                    [(c.track + 1).to_string(), format!("{at}t")],
+                )
+            })
+            .collect(),
+    )
 }
 
 /// Merges the selected pattern clips (two or more) into one.
@@ -1413,8 +1436,44 @@ fn tool_stroke(
             }
             !state.playlist.painted.is_empty()
         }
-        // The playlist has no mute tool.
-        Tool::Draw | Tool::Select | Tool::Mute => false,
+        Tool::Mute | Tool::Slice | Tool::Play | Tool::Zoom => {
+            let Some(p) = pointer.filter(|_| response.clicked_by(PointerButton::Primary)) else {
+                return true;
+            };
+            let tick = grid.tick_at(p.x);
+            let clicked = under(p);
+            match (state.playlist.tool, clicked) {
+                (Tool::Mute, Some(c)) => actions.push(Action::Run(Invocation::new(
+                    "playlist.toggle_clip_mute",
+                    [(c.track + 1).to_string(), format!("{}t", c.start)],
+                ))),
+                (Tool::Slice, Some(c)) => {
+                    let at = state.playlist.snap.round(tick);
+                    let at = if at > c.start && at < c.end() {
+                        at
+                    } else {
+                        tick.max(0.0) as u32
+                    };
+                    actions.extend(slice_at(&[c], at).map(Action::Run));
+                }
+                (Tool::Play, _) => {
+                    actions.push(Action::Seek(f64::from(state.playlist.snap.floor(tick))));
+                    actions.push(Action::Run(Invocation::bare("transport.play")));
+                }
+                (Tool::Zoom, _) => {
+                    let factor = if ui.input(|i| i.modifiers.shift) {
+                        1.0 / 1.5
+                    } else {
+                        1.5
+                    };
+                    state.playlist.px_per_bar =
+                        (state.playlist.px_per_bar * factor).clamp(16.0, 400.0);
+                }
+                _ => {}
+            }
+            true
+        }
+        Tool::Draw | Tool::Select => false,
     }
 }
 
@@ -1709,6 +1768,7 @@ mod tests {
             start,
             length,
             offset: 0,
+            muted: false,
         }
     }
 
@@ -1717,7 +1777,7 @@ mod tests {
         let clips = [pattern_clip(0, 0, 384), pattern_clip(1, 384, 384)];
         assert_eq!(
             slice_at(&clips, 192).unwrap().to_string(),
-            "playlist.slice_clip 1 0t 192t"
+            "playlist.slice_clip 1 192t"
         );
         assert!(slice_at(&clips, 384).is_none(), "an edge is not a cut");
         assert!(merge(&clips[..1]).is_none(), "merging needs two clips");
@@ -1736,6 +1796,7 @@ mod tests {
                 start: 384,
                 length: 384,
                 offset: 0,
+                muted: false,
             },
             grab: 0.0,
             track,

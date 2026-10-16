@@ -23,6 +23,18 @@ Alt+T        = ui.add_marker
 Ctrl+Insert  = ui.insert_space
 Ctrl+Delete  = ui.delete_space
 
+# Tools (piano roll and playlist)
+P            = ui.tool draw
+B            = ui.tool paint
+D            = ui.tool delete
+E            = ui.tool select
+C            = ui.tool slice
+T            = ui.tool mute
+Y            = ui.tool play
+Z            = ui.tool zoom
+S            = ui.toggle_slide
+O            = ui.toggle_porta
+
 # Windows
 F5           = view.toggle playlist
 F6           = view.toggle channel_rack
@@ -33,6 +45,15 @@ F10          = ui.settings
 
 # Patterns
 F4           = ui.next_empty_pattern
+1            = pattern.select 1
+2            = pattern.select 2
+3            = pattern.select 3
+4            = pattern.select 4
+5            = pattern.select 5
+6            = pattern.select 6
+7            = pattern.select 7
+8            = pattern.select 8
+9            = pattern.select 9
 Plus         = pattern.next
 Minus        = pattern.prev
 

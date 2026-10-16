@@ -60,6 +60,9 @@ pub fn show(
         let over = ctx
             .pointer_hover_pos()
             .is_some_and(|p| window.response.rect.contains(p));
+        if open && over && !state.typing_keyboard && !ctx.egui_wants_keyboard_input() {
+            keys(ctx, state, project, actions);
+        }
         if over && egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ctx) {
             ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,
@@ -506,4 +509,73 @@ fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Actio
             });
         });
     });
+}
+
+/// Keys while the pointer is over the rack: 1–0 mute channels 1–10 (Ctrl:
+/// solo), and for the selected channel Alt+C clone, Alt+Delete delete,
+/// Alt+Up/Down move, Ctrl+L route to a free mixer track and
+/// Shift+Ctrl+Left/Right shift its steps.
+fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
+    use egui::{Key, Modifiers};
+    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
+    let digits = [
+        Key::Num1,
+        Key::Num2,
+        Key::Num3,
+        Key::Num4,
+        Key::Num5,
+        Key::Num6,
+        Key::Num7,
+        Key::Num8,
+        Key::Num9,
+        Key::Num0,
+    ];
+    for (i, key) in digits.into_iter().enumerate() {
+        let number = (i + 1).to_string();
+        if i >= project.channels.len() {
+            continue;
+        }
+        if pressed(Modifiers::COMMAND, key) {
+            run(actions, "channel.solo", [number]);
+        } else if pressed(Modifiers::NONE, key) {
+            run(actions, "channel.toggle_mute", [number]);
+        }
+    }
+    let selected = state.selected_channel;
+    if selected >= project.channels.len() {
+        return;
+    }
+    let number = (selected + 1).to_string();
+    if pressed(Modifiers::ALT, Key::C) {
+        run(actions, "channel.clone", [number.clone()]);
+    }
+    if pressed(Modifiers::ALT, Key::Delete) {
+        run(actions, "channel.remove", [number.clone()]);
+    }
+    if pressed(Modifiers::ALT, Key::ArrowUp) && selected > 0 {
+        run(
+            actions,
+            "channel.move",
+            [number.clone(), selected.to_string()],
+        );
+        state.selected_channel -= 1;
+    }
+    if pressed(Modifiers::ALT, Key::ArrowDown) && selected + 1 < project.channels.len() {
+        run(
+            actions,
+            "channel.move",
+            [number.clone(), (selected + 2).to_string()],
+        );
+        state.selected_channel += 1;
+    }
+    if pressed(Modifiers::COMMAND, Key::L) {
+        run(actions, "channel.route_free", [number.clone()]);
+    }
+    let shift_ctrl = Modifiers::COMMAND | Modifiers::SHIFT;
+    if pressed(shift_ctrl, Key::ArrowLeft) {
+        run(actions, "step.shift", [number.clone(), "-1".to_owned()]);
+    }
+    if pressed(shift_ctrl, Key::ArrowRight) {
+        run(actions, "step.shift", [number, "1".to_owned()]);
+    }
 }

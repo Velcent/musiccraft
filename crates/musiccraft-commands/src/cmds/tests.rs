@@ -52,6 +52,7 @@ const SCRIPT: &[&str] = &[
     "note.add 3 4 1.5 G4",
     "note.move 3 2 E4 3 F4",
     "note.resize 3 0 C4 4",
+    "note.slice 3 0 C4 1",
     "note.set_velocity 3 0 C4 127",
     "note.set_pan 3 0 C4 -40",
     "note.set_slide 3 0 C4 on",
@@ -114,6 +115,7 @@ const SCRIPT: &[&str] = &[
     "playlist.set_track_color 3 none",
     "playlist.set_track_color 4 2",
     "playlist.slice_clip 3 6",
+    "playlist.toggle_clip_mute 3 6",
     "playlist.make_unique 3 6",
     "playlist.insert_space 2 1",
     "playlist.delete_space 2 1",
@@ -551,6 +553,32 @@ fn inserting_and_deleting_time_moves_clips_and_markers() {
         run(&mut s, "edit.undo");
     }
     assert_eq!(*s.project(), before);
+}
+
+#[test]
+fn route_free_takes_an_unused_insert_or_adds_one() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth Bass");
+    run(&mut s, "channel.add_synth Lead");
+    run(&mut s, "channel.route 2 1");
+    run(&mut s, "mixer.add_effect 2 reverb");
+    run(&mut s, "channel.route_free 1");
+    // Insert 1 feeds Lead, insert 2 has an effect: insert 3 is free.
+    assert_eq!(s.project().channels[0].mixer_track, 3);
+    assert_eq!(s.project().mixer[3].name, "Bass");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().channels[0].mixer_track, 0);
+    assert_eq!(s.project().mixer[3].name, "Insert 3");
+    // With every insert in use a new one is added.
+    let tracks = s.project().mixer.len();
+    for t in 3..tracks {
+        run(&mut s, &format!("mixer.add_effect {t} reverb"));
+    }
+    run(&mut s, "channel.route_free 1");
+    assert_eq!(s.project().mixer.len(), tracks + 1);
+    assert_eq!(s.project().channels[0].mixer_track, tracks);
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().mixer.len(), tracks);
 }
 
 #[test]

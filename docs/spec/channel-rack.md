@@ -19,6 +19,13 @@
   `channel.toggle_mute`, `channel.solo`, `channel.route`, `channel.set_sample` and
   `channel.set_param` edit channels. All are undoable. Removing a channel removes
   its notes from every pattern; undo restores both.
+- `channel.route_free <n>` routes a channel to the first mixer insert that no
+  other channel feeds and that has no effects, adding an insert when none is
+  free, and names that insert after the channel (one undo step).
+- Keys over the rack (see `keymap.md`): 1–0 mute channels 1–10, Ctrl+1–0 solo
+  them; Alt+C, Alt+Delete and Alt+Up/Down clone, delete and move the selected
+  channel; Ctrl+L runs `channel.route_free`; Shift+Ctrl+Left/Right shift its
+  steps.
 - `channel.solo <n>` mutes every other channel; running it again on an already
   soloed channel unmutes all channels.
 - **Steps** are sixteenth notes. `step.toggle <channel> <step>` (0-based step)

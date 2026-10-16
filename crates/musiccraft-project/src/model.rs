@@ -631,6 +631,9 @@ pub struct Clip {
     /// Ticks into the source where the clip begins (a sliced clip).
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub offset: u32,
+    /// A muted clip stays on the playlist but does not play.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub muted: bool,
 }
 
 impl Clip {

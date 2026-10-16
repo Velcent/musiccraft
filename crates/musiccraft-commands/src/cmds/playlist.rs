@@ -52,6 +52,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_track_mute,
         ),
         cmd(
+            "playlist.toggle_clip_mute",
+            "playlist.toggle_clip_mute <track> <at>",
+            "Mute or unmute one clip: a muted clip stays but does not play.",
+            toggle_clip_mute,
+        ),
+        cmd(
             "playlist.set_track_solo",
             "playlist.set_track_solo <track> <on|off>",
             "Solo a playlist track: while any track is soloed, only soloed tracks play.",
@@ -174,7 +180,35 @@ fn add_inverse(project: &Project, clip: &Clip) -> Invocation {
     if clip.offset > 0 {
         args.push(ticks(clip.offset));
     }
-    Invocation::new(name, args)
+    let add = Invocation::new(name, args);
+    if !clip.muted {
+        return add;
+    }
+    // A muted clip comes back muted.
+    let mute = Invocation::new(
+        "playlist.toggle_clip_mute",
+        [(clip.track + 1).to_string(), ticks(clip.start)],
+    );
+    Invocation::new(crate::BATCH, [add.to_string(), mute.to_string()])
+}
+
+fn toggle_clip_mute(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = clip_arg(project, args, 0)?;
+    let clip = &mut project.playlist.clips[index];
+    clip.muted = !clip.muted;
+    Ok(Outcome::undoable(
+        format!(
+            "clip on track {} at {}t {}",
+            clip.track + 1,
+            clip.start,
+            if clip.muted { "muted" } else { "unmuted" }
+        ),
+        Invocation::new(
+            args.name(),
+            [(clip.track + 1).to_string(), ticks(clip.start)],
+        ),
+    ))
 }
 
 fn remove_inverse(clip: &Clip) -> Invocation {
@@ -206,6 +240,7 @@ fn add_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
         start: args.time(2, TICKS_PER_BAR)?,
         length,
         offset: offset_arg(args, 4)?,
+        muted: false,
     };
     place(
         project,
@@ -247,6 +282,7 @@ fn add_automation_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome
         start: args.time(2, TICKS_PER_BAR)?,
         length,
         offset: offset_arg(args, 4)?,
+        muted: false,
     };
     place(
         project,
@@ -269,6 +305,7 @@ fn add_audio_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Com
         start: args.time(2, TICKS_PER_BAR)?,
         length: args.duration(3, TICKS_PER_BAR)?,
         offset: offset_arg(args, 4)?,
+        muted: false,
     };
     place(
         project,

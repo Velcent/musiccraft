@@ -123,6 +123,7 @@ fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         start: 0,
         length,
         offset: 0,
+        muted: false,
     });
     project.playlist.sort_clips();
     let number = project.automations.len();

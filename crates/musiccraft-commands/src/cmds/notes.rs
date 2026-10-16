@@ -70,6 +70,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             move_note,
         ),
         cmd(
+            "note.slice",
+            "note.slice <channel> <start> <key> <at> [@pattern]",
+            "Cut a note in two at a time inside it (both keep its properties).",
+            slice,
+        ),
+        cmd(
             "note.resize",
             "note.resize <channel> <start> <key> <length> [@pattern]",
             "Change a note's length.",
@@ -423,6 +429,34 @@ fn resize(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         note.length = length;
         Ok(format!("note length {length}t"))
     })
+}
+
+fn slice(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(4, 4)?;
+    let at = args.time(3, TICKS_PER_STEP)?;
+    let target = Target::resolve(project, args)?;
+    let index = find(project, args, &target, 1)?;
+    let pattern = &mut project.patterns[target.pattern];
+    let old = pattern.notes[index];
+    if at <= old.start || at >= old.start + old.length {
+        return Err(args.invalid("cut inside the note, not at its edge"));
+    }
+    pattern.notes[index].length = at - old.start;
+    pattern.put_note(Note {
+        start: at,
+        length: old.start + old.length - at,
+        ..old
+    });
+    Ok(Outcome::undoable(
+        format!("sliced {} at {at}t", key_name(old.key)),
+        Invocation::new(
+            crate::BATCH,
+            [
+                target.remove_inverse(at, old.key).to_string(),
+                target.add_inverse(&old).to_string(),
+            ],
+        ),
+    ))
 }
 
 fn set_velocity(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

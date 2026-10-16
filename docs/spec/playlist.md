@@ -154,7 +154,12 @@
 
 - **Tools** as in the piano roll: Draw, Paint (drag to lay the selected
   pattern end to end, skipping places taken by other clips; one undo step),
-  Delete (click or drag over clips; one undo step) and Select (box select).
+  Delete (click or drag over clips; one undo step) and Select (box select),
+  plus Mute (click a clip to mute or unmute it: `playlist.toggle_clip_mute
+  <track> <at>`, undoable; a muted clip stays, drawn faint, and does not
+  play), Slice (click a clip to cut it at the snapped click), Play (click
+  moves the playhead there and plays) and Zoom (click zooms in, Shift+click
+  out). Keys P, B, D, E, T, C, Y, Z pick them.
 
 - Left-click on an empty cell places the selected pattern at the snapped bar;
   dragging a clip moves it; dragging its right edge resizes it; right-click

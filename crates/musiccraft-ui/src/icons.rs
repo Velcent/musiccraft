@@ -31,6 +31,10 @@ pub enum Icon {
     Select,
     /// Mute tool (speaker with a slash).
     Mute,
+    /// Slice tool (a blade across a bar).
+    Slice,
+    /// Zoom tool (magnifier).
+    Zoom,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -117,6 +121,22 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
             ));
             painter.line_segment([p(r, 0.68, 0.3), p(r, 0.98, 0.7)], stroke);
             painter.line_segment([p(r, 0.98, 0.3), p(r, 0.68, 0.7)], stroke);
+        }
+        Icon::Slice => {
+            painter.rect_stroke(
+                Rect::from_min_max(p(r, 0.05, 0.3), p(r, 0.95, 0.7)),
+                1.0,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+            painter.line_segment([p(r, 0.6, 0.0), p(r, 0.4, 1.0)], Stroke::new(2.0, color));
+        }
+        Icon::Zoom => {
+            painter.circle_stroke(p(r, 0.42, 0.42), r.width() * 0.3, stroke);
+            painter.line_segment(
+                [p(r, 0.63, 0.63), p(r, 0.95, 0.95)],
+                Stroke::new(2.2, color),
+            );
         }
         Icon::Select => {
             let corners = [

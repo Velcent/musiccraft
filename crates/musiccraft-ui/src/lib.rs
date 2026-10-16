@@ -552,6 +552,22 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                 let tick = tick - tick % musiccraft_project::params::PPQ;
                 state.dialog = Some(dialogs::Dialog::add_marker(tick));
             }
+            "ui.tool" => {
+                // One tool choice for the piano roll and the playlist.
+                match invocation
+                    .args
+                    .first()
+                    .and_then(|t| piano_roll::Tool::parse(t))
+                {
+                    Some(tool) => {
+                        state.roll.tool = tool;
+                        state.playlist.tool = tool;
+                    }
+                    None => state.set_status("ui.tool: unknown tool", true),
+                }
+            }
+            "ui.toggle_slide" => state.roll.slide = !state.roll.slide,
+            "ui.toggle_porta" => state.roll.porta = !state.roll.porta,
             "ui.insert_space" | "ui.delete_space" => {
                 let name = invocation.name.replace("ui.", "playlist.");
                 match frame.project.playlist.loop_range {

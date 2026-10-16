@@ -59,13 +59,13 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   - [x] Reverse.
   - [x] Fade in / out.
   - [x] Insert / delete space (Ctrl+Ins / Ctrl+Del).
-- [ ] Single-key tools: P draw, B paint, D delete, E select, C slice, T mute,
+- [x] Single-key tools: P draw, B paint, D delete, E select, C slice, T mute,
   Y play, Z zoom; plus S slide and O porta for new piano-roll notes.
-- [ ] Channel rack keys:
-  - [ ] 1–0 mute a channel, Ctrl+1–0 solo one.
-  - [ ] Alt+C clone, Alt+Del delete, Alt+Up/Down move.
-  - [ ] Ctrl+L sends to a free mixer track.
-  - [ ] Shift+Ctrl+Left/Right shifts steps.
+- [x] Channel rack keys:
+  - [x] 1–0 mute a channel, Ctrl+1–0 solo one.
+  - [x] Alt+C clone, Alt+Del delete, Alt+Up/Down move.
+  - [x] Ctrl+L sends to a free mixer track.
+  - [x] Shift+Ctrl+Left/Right shifts steps.
 - [ ] MIDI export (Ctrl+Shift+M).
 - [ ] Mixer track options: stereo separation, phase invert, swap left/right.
 
@@ -85,7 +85,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 - [ ] Master pitch / A4 tuning.
 - [ ] Tap tempo.
 - [ ] MP3 export (already a `todo` in parity.md).
-- [ ] Pattern select with keys 1–9.
+- [x] Pattern select with keys 1–9.
 - [ ] Automation of individual notes or events inside a pattern.
 - [ ] Channel display filter groups.
 - [ ] Per-track arm and audio input selection.

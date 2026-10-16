@@ -178,6 +178,12 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   lay notes end to end at the last length; one undo step), Delete (click or
   drag over notes; one undo step) and Select (drag a box without Ctrl; click
   empty space to clear). Starting a Paint drag on a note moves it as Draw would.
+  Mute (click or drag toggles muting), Slice (click a note to cut it in two at
+  the snapped click: `note.slice <channel> <start> <key> <at> [@pattern]`,
+  undoable, both parts keep the note's properties), Play (click hears the note
+  or key under the pointer) and Zoom (click zooms in, Shift+click out). Keys:
+  P, B, D, E, T, C, Y, Z pick the tools (the same choice applies to the
+  playlist); S and O toggle Slide and Porta for new notes.
 - Left-click on empty grid adds a note with the last used length; dragging a note
   moves it; dragging its right edge resizes it; right-click deletes.
 - Right-click deletes a note; right-drag deletes every note the pointer passes

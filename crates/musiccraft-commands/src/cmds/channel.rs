@@ -2,7 +2,7 @@ use std::path::Path;
 
 use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES, INSTRUMENT_PARAMS, index_of};
 use musiccraft_project::{
-    Channel, ChannelId, Instrument, Note, PatternId, Project, check_pan, check_volume,
+    Channel, ChannelId, Instrument, MixerTrack, Note, PatternId, Project, check_pan, check_volume,
 };
 use serde::{Deserialize, Serialize};
 
@@ -155,6 +155,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "channel.solo <channel>",
             "Mute every other channel; if already solo, unmute all.",
             solo,
+        ),
+        cmd(
+            "channel.route_free",
+            "channel.route_free <channel>",
+            "Route a channel to a free mixer track (adding one if needed) named after it.",
+            route_free,
         ),
         cmd(
             "channel.route",
@@ -749,6 +755,46 @@ fn solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
         return Ok(Outcome::done(message));
     }
     Ok(Outcome::undoable(message, Invocation::new(BATCH, undo)))
+}
+
+/// Routes a channel to the first insert that nothing feeds and that has no
+/// effects (adding one if none is free) and names that insert after it.
+fn route_free(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let index = channel_arg(project, args, 0)?;
+    let free = (1..project.mixer.len()).find(|&t| {
+        project.mixer[t].effects.is_empty()
+            && !project
+                .channels
+                .iter()
+                .enumerate()
+                .any(|(i, c)| i != index && c.mixer_track == t)
+    });
+    let name = project.channels[index].name.clone();
+    let previous_track = project.channels[index].mixer_track;
+    let route_back = Invocation::new(
+        "channel.route",
+        [(index + 1).to_string(), previous_track.to_string()],
+    );
+    let (track, undo_track) = match free {
+        Some(t) => {
+            let old = std::mem::replace(&mut project.mixer[t].name, name.clone());
+            (t, Invocation::new("mixer.rename", [t.to_string(), old]))
+        }
+        None => {
+            if project.mixer.len() >= musiccraft_project::params::MAX_MIXER_TRACKS {
+                return Err(args.invalid("every mixer track is in use"));
+            }
+            project.mixer.push(MixerTrack::new(name.clone()));
+            let t = project.mixer.len() - 1;
+            (t, Invocation::new("mixer.remove_track", [t.to_string()]))
+        }
+    };
+    project.channels[index].mixer_track = track;
+    Ok(Outcome::undoable(
+        format!("channel {} routed to free mixer track {track}", index + 1),
+        Invocation::new(BATCH, [route_back.to_string(), undo_track.to_string()]),
+    ))
 }
 
 fn route(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

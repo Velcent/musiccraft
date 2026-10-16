@@ -53,6 +53,29 @@ pub(crate) enum Tool {
     Select,
     /// Click or drag over notes to mute or unmute them.
     Mute,
+    /// Click a note (or clip) to cut it in two there.
+    Slice,
+    /// Click to hear a note (piano roll) or play from there (playlist).
+    Play,
+    /// Click to zoom in, Shift+click to zoom out.
+    Zoom,
+}
+
+impl Tool {
+    /// The tool a `ui.tool` argument names.
+    pub(crate) fn parse(name: &str) -> Option<Self> {
+        Some(match name {
+            "draw" => Self::Draw,
+            "paint" => Self::Paint,
+            "delete" => Self::Delete,
+            "select" => Self::Select,
+            "mute" => Self::Mute,
+            "slice" => Self::Slice,
+            "play" => Self::Play,
+            "zoom" => Self::Zoom,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -375,27 +398,38 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             (
                 Tool::Draw,
                 Icon::Pencil,
-                "Draw: click adds a note, drag moves or resizes, Ctrl+drag selects",
+                "Draw (P): click adds a note, drag moves or resizes, Ctrl+drag selects",
             ),
             (
                 Tool::Paint,
                 Icon::Brush,
-                "Paint: drag to lay down notes one after another",
+                "Paint (B): drag to lay down notes one after another",
             ),
             (
                 Tool::Delete,
                 Icon::Eraser,
-                "Delete: click or drag over notes to delete them",
+                "Delete (D): click or drag over notes to delete them",
             ),
             (
                 Tool::Select,
                 Icon::Select,
-                "Select: drag a box around notes; click empty space to clear",
+                "Select (E): drag a box around notes; click empty space to clear",
             ),
             (
                 Tool::Mute,
                 Icon::Mute,
-                "Mute: click or drag over notes to mute or unmute them",
+                "Mute (T): click or drag over notes to mute or unmute them",
+            ),
+            (
+                Tool::Slice,
+                Icon::Slice,
+                "Slice (C): click a note to cut it in two there",
+            ),
+            (Tool::Play, Icon::Play, "Play (Y): click to hear a note or key"),
+            (
+                Tool::Zoom,
+                Icon::Zoom,
+                "Zoom (Z): click to zoom in, Shift+click to zoom out",
             ),
         ] {
             if icons::button(ui, icon, state.roll.tool == tool, theme::ACCENT, hint).clicked() {
@@ -404,9 +438,9 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
         }
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.toggle_value(&mut state.roll.slide, "Slide")
-            .hint("New notes are slide notes: they bend the notes they overlap (in their colour group) to their key");
+            .hint("(S) New notes are slide notes: they bend the notes they overlap (in their colour group) to their key");
         ui.toggle_value(&mut state.roll.porta, "Porta").hint(
-            "New notes are portamento notes: they glide from the previous note and retrigger",
+            "(O) New notes are portamento notes: they glide from the previous note and retrigger",
         );
         let label = if state.roll.color == 0 {
             "Colour: channel".to_owned()
@@ -1150,6 +1184,73 @@ fn right_erase(
     }
 }
 
+/// The click tools: Slice cuts the clicked note, Play previews the clicked
+/// note or key, Zoom zooms. Returns whether the active tool is one of them.
+#[allow(clippy::too_many_arguments)]
+fn click_tool(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    response: &egui::Response,
+    notes: &[&Note],
+    boxes: &[(usize, Rect)],
+    channel: usize,
+    at: &dyn Fn(Pos2) -> (f32, Option<u8>),
+    actions: &mut Vec<Action>,
+) -> bool {
+    let tool = state.roll.tool;
+    if !matches!(tool, Tool::Slice | Tool::Play | Tool::Zoom) {
+        return false;
+    }
+    let Some(p) = response
+        .interact_pointer_pos()
+        .filter(|_| response.clicked_by(PointerButton::Primary))
+    else {
+        return true;
+    };
+    let (tick, key) = at(p);
+    let note = match hit_test(boxes.iter().copied(), p) {
+        Hit::Body(i) | Hit::Edge(i) => notes.get(i).map(|n| **n),
+        Hit::Empty => None,
+    };
+    match tool {
+        Tool::Slice => {
+            if let Some(n) = note {
+                let snapped = state.roll.snap.round(tick);
+                let cut = if snapped > n.start && snapped < n.start + n.length {
+                    snapped
+                } else {
+                    tick.max(0.0) as u32
+                };
+                if cut > n.start && cut < n.start + n.length {
+                    actions.push(Action::Run(Invocation::new(
+                        "note.slice",
+                        [
+                            (channel + 1).to_string(),
+                            format!("{}t", n.start),
+                            n.key.to_string(),
+                            format!("{cut}t"),
+                        ],
+                    )));
+                }
+            }
+        }
+        Tool::Play => {
+            if let Some(key) = note.map(|n| n.key).or(key) {
+                actions.push(Action::PreviewShort { channel, key });
+            }
+        }
+        _ => {
+            let factor = if ui.input(|i| i.modifiers.shift) {
+                1.0 / 1.5
+            } else {
+                1.5
+            };
+            state.roll.px_per_step = (state.roll.px_per_step * factor).clamp(6.0, 96.0);
+        }
+    }
+    true
+}
+
 /// Paint and delete strokes. Returns `true` when the tool handled the input.
 #[allow(clippy::too_many_arguments)]
 fn tool_stroke(
@@ -1318,6 +1419,9 @@ fn edit(
     right_erase(state, response, notes, boxes, channel, actions);
     let tool = state.roll.tool;
     if tool_stroke(ui, state, response, notes, boxes, channel, &at, actions) {
+        return;
+    }
+    if click_tool(ui, state, response, notes, boxes, channel, &at, actions) {
         return;
     }
     if response.drag_started_by(PointerButton::Primary) {

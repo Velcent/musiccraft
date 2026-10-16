@@ -65,6 +65,7 @@ of contents; see `docs/clean-room.md`.
 | Playlist | Consolidate a clip to audio | `cmd:playlist.consolidate` |
 | Playlist | Reverse and fade audio clips | `cmd:playlist.reverse_clip` `cmd:playlist.set_clip_fade` |
 | Playlist | Insert / delete space | `cmd:playlist.insert_space` `cmd:playlist.delete_space` `key:Ctrl+Insert=ui.insert_space` `key:Ctrl+Delete=ui.delete_space` |
+| Playlist | Mute single clips | `cmd:playlist.toggle_clip_mute` |
 | Playlist | Track mute | `cmd:playlist.toggle_track_mute` |
 | Playlist | Select, duplicate, group move | `cmd:edit.batch` `done` |
 | Playlist | Click the ruler to move the playhead; follow playback | `done` |
@@ -143,3 +144,9 @@ of contents; see `docs/clean-room.md`.
 | Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
 | Scripting | Headless CLI and scripts | `done` |
 | Scripting | MCP server for AI agents | `spec:mcp.md` |
+| Input | Single-key tools (P B D E C T Y Z) | `key:P=ui.tool draw` `key:C=ui.tool slice` `key:Z=ui.tool zoom` |
+| Input | Slide / porta toggles for new notes | `key:S=ui.toggle_slide` `key:O=ui.toggle_porta` |
+| Input | Pattern select with 1–9 | `key:1=pattern.select 1` `key:9=pattern.select 9` |
+| Channel rack | Keys: mute, solo, clone, delete, move, shift steps | `spec:keymap.md` `done` |
+| Channel rack | Route to a free mixer track (Ctrl+L) | `cmd:channel.route_free` |
+| Piano roll | Slice notes | `cmd:note.slice` |
