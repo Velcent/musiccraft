@@ -17,6 +17,9 @@ of contents; see `docs/clean-room.md`.
 | Area | Feature | Requires |
 | --- | --- | --- |
 | Transport | Play / stop | `cmd:transport.toggle` `key:Space=transport.toggle` |
+| Transport | Pause and play / pause | `cmd:transport.pause` `cmd:transport.play_pause` `key:Ctrl+Space=transport.play_pause` |
+| Transport | Jump to the start | `cmd:transport.jump_to_start` `key:Home=transport.jump_to_start` |
+| Transport | Panic (all notes off) | `cmd:transport.panic` `key:Ctrl+H=transport.panic` |
 | Transport | Pattern / song mode | `cmd:transport.set_mode` `key:L=transport.toggle_mode` |
 | Transport | Tempo | `cmd:project.set_tempo` `spec:transport.md` |
 | Transport | Metronome | `cmd:transport.toggle_metronome` `key:Ctrl+M=transport.toggle_metronome` |
@@ -36,7 +39,7 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Velocity editor lane | `cmd:note.set_velocity` `done` |
 | Piano roll | Select, copy, paste, duplicate, nudge | `cmd:edit.batch` `done` |
 | Piano roll | Per-note pan lane | `cmd:note.set_pan` `done` |
-| Piano roll | Per-note pitch slides | `cmd:note.set_slide` `spec:piano-roll.md` |
+| Piano roll | Per-note pitch slides (overlap sets the time; per colour group; chords follow the top note) | `cmd:note.set_slide` `spec:piano-roll.md` |
 | Piano roll | Portamento and muted notes, mute tool | `cmd:note.set_prop` `spec:piano-roll.md` |
 | Piano roll | Note release velocity, fine pitch, Mod X/Y and colour, edited in the event lane | `cmd:note.set_prop` `spec:piano-roll.md` |
 | Piano roll | Right-drag deletes notes | `spec:piano-roll.md` `done` |
@@ -62,6 +65,7 @@ of contents; see `docs/clean-room.md`.
 | Playlist | Markers | `cmd:playlist.add_marker` `cmd:playlist.remove_marker` `key:Alt+T=ui.add_marker` |
 | Playlist | Pause and song-loop markers (stop at the end instead of looping) | `cmd:playlist.set_marker_action` `spec:playlist.md` |
 | Mixer | Insert tracks | `cmd:mixer.add_track` `cmd:mixer.remove_track` `spec:mixer.md` |
+| Mixer | Pan law: circular (-3 dB centre) or triangular | `cmd:project.set_pan_law` `spec:mixer.md` |
 | Mixer | Volume / pan / mute / solo | `cmd:mixer.set_volume` `cmd:mixer.set_pan` `cmd:mixer.toggle_mute` `cmd:mixer.toggle_solo` |
 | Mixer | Effect slots: add, remove, reorder, bypass | `cmd:mixer.add_effect` `cmd:mixer.remove_effect` `cmd:mixer.move_effect` `cmd:mixer.toggle_effect` |
 | Mixer | Effect parameters | `cmd:mixer.set_effect_param` |

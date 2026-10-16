@@ -24,8 +24,8 @@
 - **Folders**: browser folders (add, remove) and extra plugin folders (add,
   remove), searched in addition to the standard CLAP locations; a rescan
   button, the number of plugins found and any files that failed to load.
-- **Project**: name and tempo (through the usual commands, so undoable), file
-  path, and counts of channels, patterns, clips and plugins.
+- **Project**: name, tempo and pan law (through the usual commands, so
+  undoable), file path, and counts of channels, patterns, clips and plugins.
 
 ## Sources
 

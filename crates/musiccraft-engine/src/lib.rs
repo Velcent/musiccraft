@@ -27,6 +27,7 @@ pub use graph::{
 pub use message::{EngineMessage, Garbage, LiveEvent};
 pub use meters::{Meters, SCOPE_LEN};
 pub use midi_out::{MIDI_OUT_CAPACITY, MidiOutEvent, MidiOutReceiver};
+pub use musiccraft_dsp::PanLaw;
 pub use sequence::{AutomationLane, AutomationTarget, NoteEvent, NoteShape, Sequence};
 
 /// Largest number of frames processed in one internal block. Device callbacks of

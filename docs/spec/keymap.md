@@ -24,6 +24,8 @@
 | --- | --- |
 | Space | Play / stop |
 | Ctrl+Space | Play / pause |
+| Home | Jump to the start (playback continues) |
+| Ctrl+H | Panic: all notes off |
 | L | Toggle pattern / song mode |
 | Ctrl+M | Metronome on / off |
 | R | Arm / disarm recording |

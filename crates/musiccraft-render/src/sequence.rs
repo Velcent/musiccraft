@@ -33,6 +33,7 @@ fn event(
             cutoff: centred(p.mod_x) * 3.0,
             resonance: centred(p.mod_y) * 0.5,
             porta: p.porta,
+            color: p.color,
         },
         slide: note.slide,
         start: u64::from(start),

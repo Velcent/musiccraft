@@ -21,7 +21,7 @@ pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
     InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MarkerAction,
-    MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode,
+    MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern, PatternId, PlayMode,
     Playlist, PluginRef, PluginSlot, STEP_KEY,
 };
 pub use musiccraft_params as params;
@@ -63,6 +63,16 @@ impl Transport {
     pub fn is_paused(self) -> bool {
         self == Self::Paused
     }
+}
+
+/// Counts of one-shot transport requests. The bridge acts when a count rises;
+/// they are runtime-only and ignored by project equality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Requests {
+    /// `transport.jump_to_start` runs.
+    pub jumps_to_start: u32,
+    /// `transport.panic` runs.
+    pub panics: u32,
 }
 
 impl fmt::Display for Transport {
@@ -121,6 +131,9 @@ pub struct Project {
     tempo_bpm: f64,
     #[serde(skip)]
     transport: Transport,
+    /// One-shot transport requests (jump to start, panic); never saved.
+    #[serde(skip)]
+    requests: Requests,
     /// Whether the transport loops the current pattern or plays the song.
     #[serde(default)]
     pub play_mode: PlayMode,
@@ -143,6 +156,9 @@ pub struct Project {
     /// Whether the metronome clicks during playback (never rendered to files).
     #[serde(default)]
     pub metronome: bool,
+    /// How channel and mixer pans split left and right.
+    #[serde(default)]
+    pub pan_law: PanLaw,
     next_id: u32,
     #[serde(skip)]
     path: Option<PathBuf>,
@@ -173,6 +189,7 @@ impl Project {
             name: name.into(),
             tempo_bpm: DEFAULT_TEMPO_BPM,
             transport: Transport::Stopped,
+            requests: Requests::default(),
             play_mode: PlayMode::Pattern,
             channels: Vec::new(),
             patterns: vec![Pattern::new(PatternId(1), "Pattern 1")],
@@ -181,6 +198,7 @@ impl Project {
             playlist: Playlist::default(),
             automations: Vec::new(),
             metronome: false,
+            pan_law: PanLaw::Circular,
             next_id: 2,
             path: None,
         }
@@ -220,6 +238,22 @@ impl Project {
             return Err(ProjectError::TempoOutOfRange(bpm));
         }
         Ok(std::mem::replace(&mut self.tempo_bpm, bpm))
+    }
+
+    /// How many times jump-to-start and panic have been requested.
+    #[must_use]
+    pub fn requests(&self) -> Requests {
+        self.requests
+    }
+
+    /// Asks the engine to move the playhead to where Stop returns.
+    pub fn request_jump_to_start(&mut self) {
+        self.requests.jumps_to_start = self.requests.jumps_to_start.wrapping_add(1);
+    }
+
+    /// Asks the engine to release every sounding note.
+    pub fn request_panic(&mut self) {
+        self.requests.panics = self.requests.panics.wrapping_add(1);
     }
 
     /// Sets the transport state and returns the previous state.
@@ -579,6 +613,7 @@ impl PartialEq for Project {
             && self.mixer == other.mixer
             && self.playlist == other.playlist
             && self.metronome == other.metronome
+            && self.pan_law == other.pan_law
             && self.automations == other.automations
     }
 }

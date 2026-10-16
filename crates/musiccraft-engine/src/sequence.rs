@@ -32,6 +32,8 @@ pub struct NoteShape {
     pub resonance: f32,
     /// Glide from the channel's previous note, retriggering.
     pub porta: bool,
+    /// Colour group, 0..=15: slide notes bend only notes of their own group.
+    pub color: u8,
 }
 
 impl Default for NoteShape {
@@ -42,6 +44,7 @@ impl Default for NoteShape {
             cutoff: 0.0,
             resonance: 0.0,
             porta: false,
+            color: 0,
         }
     }
 }
@@ -112,11 +115,12 @@ pub struct Sequence {
 
 impl Sequence {
     /// Builds a sequence that loops after `length` ticks. Events are sorted;
-    /// events starting at or after `length` are dropped.
+    /// events starting at or after `length` are dropped. On the same tick and
+    /// channel, slide notes come after the notes they bend, lowest key first.
     #[must_use]
     pub fn new(mut events: Vec<NoteEvent>, length: u64) -> Self {
         events.retain(|e| e.start < length);
-        events.sort_by_key(|e| (e.start, e.channel, e.key));
+        events.sort_by_key(|e| (e.start, e.channel, e.slide, e.key));
         Self {
             events,
             length,

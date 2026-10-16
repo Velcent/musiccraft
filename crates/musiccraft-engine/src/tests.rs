@@ -1,3 +1,4 @@
+use std::f32::consts::FRAC_1_SQRT_2;
 use std::sync::Arc;
 
 use musiccraft_dsp::{Effect, SampleBuffer};
@@ -9,9 +10,11 @@ const SR: u32 = 48_000;
 /// Frames per beat at 120 BPM and 48 kHz.
 const BEAT: usize = 24_000;
 
+/// Unity-gain channel settings: a centred channel is -3 dB (circular pan
+/// law), so the volume makes up for it.
 fn impulse_params() -> ChannelParams {
     let mut params = ChannelParams {
-        volume: 1.0,
+        volume: std::f32::consts::SQRT_2,
         ..ChannelParams::default()
     };
     params.instrument[inst::ATTACK] = 0.0;
@@ -570,6 +573,38 @@ fn loop_start_is_where_playback_wraps_and_stop_returns() {
 }
 
 #[test]
+fn channel_pan_follows_the_pan_law() {
+    for (law, pan, expected) in [
+        (PanLaw::Circular, 0.0, (FRAC_1_SQRT_2, FRAC_1_SQRT_2)),
+        (PanLaw::Circular, 1.0, (0.0, 1.0)),
+        (PanLaw::Triangular, 0.0, (0.5, 0.5)),
+        (PanLaw::Triangular, -0.5, (0.75, 0.25)),
+    ] {
+        let (mut engine, _handle) = impulse_engine();
+        let params = ChannelParams {
+            volume: 1.0,
+            pan,
+            pan_law: law,
+            ..impulse_params()
+        };
+        engine.apply(EngineMessage::Channel { channel: 0, params });
+        // Let the gain ramp settle before the note.
+        render_stereo(&mut engine, MAX_BLOCK);
+        engine.apply(EngineMessage::NoteOn {
+            channel: 0,
+            key: 60,
+            velocity: 1.0,
+        });
+        let out = render_stereo(&mut engine, 8);
+        assert!(
+            (out[0] - expected.0).abs() < 1e-5 && (out[1] - expected.1).abs() < 1e-5,
+            "{law:?} at {pan}: {:?}",
+            &out[..2]
+        );
+    }
+}
+
+#[test]
 fn note_pan_moves_a_note_left_or_right() {
     let (mut engine, _handle) = impulse_engine();
     let mut left = note(0, 0);
@@ -825,6 +860,92 @@ fn slide_notes_on_fixed_pitch_instruments_play_as_new_notes() {
         render_mono(&mut engine, 1_000);
         assert_eq!(engine.active_voices(), voices, "{name}");
     }
+}
+
+/// A synth engine at 120 BPM playing `events` (start and length in beats).
+fn synth_playing(events: &[(u64, u64, u8, u8, bool)]) -> Engine {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    graph.add_channel(Instrument::Synth, impulse_params());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    let ppq = u64::from(PPQ);
+    let notes = events
+        .iter()
+        .map(|&(start, length, key, color, slide)| {
+            let mut event = note(0, 0);
+            event.start = start * ppq;
+            event.length = length * ppq;
+            event.key = key;
+            event.shape.color = color;
+            event.slide = slide;
+            event
+        })
+        .collect();
+    let seq = Sequence::new(notes, 16 * ppq);
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::Play);
+    engine
+}
+
+#[test]
+fn a_chord_slides_by_its_top_note_within_its_colour_group() {
+    // C4 + G4 in group 0, E3 in group 1; a slide to A4 in group 0 at beat 1.
+    let mut engine = synth_playing(&[
+        (0, 4, 48, 0, false),
+        (0, 4, 55, 0, false),
+        (0, 4, 40, 1, false),
+        (1, 1, 57, 0, true),
+    ]);
+    render_mono(&mut engine, 3 * BEAT);
+    // G4 → A4 is +2, so C4 → D4; E3 is in another group and stays.
+    assert_eq!(engine.held_keys(), [40, 50, 57]);
+    assert_eq!(engine.active_voices(), 3, "a slide note starts no voice");
+}
+
+#[test]
+fn colour_groups_slide_independently() {
+    let mut engine = synth_playing(&[
+        (0, 4, 48, 0, false),
+        (0, 4, 40, 1, false),
+        (1, 1, 52, 0, true),
+        (1, 1, 35, 1, true),
+    ]);
+    render_mono(&mut engine, 3 * BEAT);
+    assert_eq!(engine.held_keys(), [35, 52]);
+}
+
+#[test]
+fn a_slide_note_with_nothing_of_its_group_sounding_is_silent() {
+    // The only held note is in another colour group.
+    let mut engine = synth_playing(&[(0, 4, 48, 1, false), (1, 1, 60, 0, true)]);
+    render_mono(&mut engine, 3 * BEAT / 2);
+    assert_eq!(engine.held_keys(), [48]);
+    let mut engine = synth_playing(&[(1, 1, 60, 0, true)]);
+    let out = render_mono(&mut engine, 3 * BEAT);
+    assert!(
+        out.iter().all(|s| s.abs() < 1e-6),
+        "no voice for a lone slide"
+    );
+}
+
+#[test]
+fn the_highest_of_several_simultaneous_slide_notes_wins() {
+    let mut engine = synth_playing(&[
+        (0, 4, 48, 0, false),
+        (1, 1, 50, 0, true),
+        (1, 1, 53, 0, true),
+    ]);
+    render_mono(&mut engine, 3 * BEAT);
+    assert_eq!(engine.held_keys(), [53]);
+}
+
+#[test]
+fn a_slide_never_lengthens_the_note_it_bends() {
+    // The note ends at beat 2; the slide note runs to beat 4.
+    let mut engine = synth_playing(&[(0, 2, 48, 0, false), (1, 3, 60, 0, true)]);
+    render_mono(&mut engine, 2 * BEAT + BEAT / 2);
+    assert!(engine.held_keys().is_empty());
 }
 
 #[test]

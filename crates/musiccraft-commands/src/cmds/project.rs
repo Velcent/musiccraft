@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use musiccraft_project::Project;
+use musiccraft_project::{PanLaw, Project};
 
 use crate::args::Args;
 use crate::command::cmd;
@@ -14,6 +14,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "project.set_tempo <bpm>",
             "Set the project tempo in beats per minute (undoable).",
             set_tempo,
+        ),
+        cmd(
+            "project.set_pan_law",
+            "project.set_pan_law <circular|triangular>",
+            "Choose how channel and mixer pans split left and right (undoable).",
+            set_pan_law,
         ),
         cmd(
             "project.rename",
@@ -68,6 +74,23 @@ fn set_tempo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
         Ok(Outcome::undoable(
             message,
             Invocation::new(args.name(), [previous.to_string()]),
+        ))
+    }
+}
+
+fn set_pan_law(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let raw = args.str(0)?;
+    let law = PanLaw::from_label(raw)
+        .ok_or_else(|| args.invalid(format!("`{raw}` is not circular or triangular")))?;
+    let previous = std::mem::replace(&mut project.pan_law, law);
+    let message = format!("{} pan law", law.label());
+    if previous == law {
+        Ok(Outcome::done(message))
+    } else {
+        Ok(Outcome::undoable(
+            message,
+            Invocation::new(args.name(), [previous.label().to_owned()]),
         ))
     }
 }

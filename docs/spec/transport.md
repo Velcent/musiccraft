@@ -17,6 +17,15 @@
   `transport.play_pause` (default key Ctrl+Space) pauses when playing and plays
   from the playhead otherwise. From `paused`, Space (`transport.toggle`) also
   resumes, and `transport.stop` rewinds.
+- `transport.jump_to_start` (default key Home) moves the playhead to where
+  Stop returns (tick 0, or the loop region's start) without changing the
+  transport state: playback continues from there, and a paused transport
+  stays paused.
+- `transport.panic` (default key Ctrl+H) is "all notes off": every sounding
+  note is released at once, including one-shot samples, live keys, plugin
+  instruments (all notes off) and MIDI Out channels (a note off for every
+  note they started), and the browser preview stops. Playback is not stopped;
+  later notes play as usual. Effect tails (reverb, delay) ring out.
 - `transport.set_mode pattern|song` chooses what plays: `pattern` loops the
   selected pattern; `song` plays the playlist arrangement and loops at its end.
   `transport.toggle_mode` switches between them (default key: `L`).
@@ -34,10 +43,16 @@
   block advances position by `frames * bpm / 60 * 96 / sample_rate`. Tempo changes
   apply from the next block; position never jumps.
 - While stopped the engine does not advance; held voices finish their release.
+- Jump-to-start and panic are requests, not state: each command increases a
+  counter on the project that is never saved and does not affect project
+  equality. The bridge sends `Seek` (to the sequence's Stop position) or
+  `AllNotesOff` when a counter rises after its first sync; a counter that
+  drops (a new or loaded project) or a fresh bridge only sets the baseline.
 - `Stop` releases every voice and rewinds to the sequence's home: tick 0, or the
   loop region's start. `Pause` releases voices and keeps the position; the engine
   also pauses by itself on a pause marker (see `playlist.md`), counting each one so
-  the app can stop its transport and keep the playhead on the marker.
+  the app can put its transport in `paused` to match (`transport.pause`); the
+  playhead is already on the marker.
 - The loop length is the selected pattern's length in pattern mode, and the song
   length rounded up to whole bars in song mode (one bar when empty). Reaching the
   end wraps to tick 0 (or a song-loop marker) within the same audio block,
@@ -49,3 +64,6 @@
 - Space-bar play/stop, stop returning to the start, and a pattern/song mode switch
   are common conventions described in the public manuals of several pattern-based
   DAWs (FL Studio online manual, "Transport panel" and "Keyboard shortcuts").
+- Home to jump to the start and Ctrl+H for panic (all notes off) follow the FL
+  Studio online manual, "Keyboard shortcuts", global section. What panic
+  releases and the request counters are our own design.

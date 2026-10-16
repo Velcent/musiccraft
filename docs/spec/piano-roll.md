@@ -44,8 +44,9 @@
   `release` (release velocity 0–127, default 64: lower is a shorter release,
   higher a longer one, up to ×4), `fine` (−100…100 cents), `mod_x` and `mod_y`
   (0–127, default 64; on the synth they offset the filter cutoff by up to ±3
-  octaves and the resonance), `color` (1–16, a colour group for display;
-  plugins receive notes on one channel), `porta` and `muted`.
+  octaves and the resonance), `color` (1–16, a colour group; groups slide
+  independently, see slide notes; plugins receive notes on one channel),
+  `porta` and `muted`.
 - `note.set_prop <channel> <start> <key> <prop> <value> [@pattern]` sets one
   (`release`, `fine`, `mod_x`, `mod_y`, `color`, `porta on|off`,
   `muted on|off`); undoable.
@@ -65,16 +66,28 @@
 ## Slide notes
 
 - A note can be a **slide note** (`note.set_slide <channel> <start> <key>
-  <on|off>`, undoable; stored as `"slide": true`). When it starts while
-  another note of the same channel is sounding, it does not start a new
-  voice: the sounding note glides to the slide note's key over the slide
-  note's length, starting on the slide note's own frame, and keeps sounding
-  until the slide note ends. With nothing sounding, a slide note plays like a
-  normal note.
+  <on|off>`, undoable; stored as `"slide": true`). A slide note never starts
+  a voice of its own: it bends the notes it overlaps.
+  - It affects the notes of its channel and **colour group** that are sounding
+    when it starts (including notes that start on the same tick). Each colour
+    group slides independently, so a chord can carry up to 16 separate slides.
+  - A slide note that overlaps no note of its group is **silent**.
+  - The **top note** (highest key) of the group sets the offset: it slides to
+    the slide note's key, and every other note of the group moves by the same
+    number of semitones, keeping its interval. Notes keep the new pitch after
+    the slide, until they end.
+  - The **overlap sets the slide time**: each note glides from the slide
+    note's own frame until the slide note or that note ends, whichever comes
+    first. A slide never lengthens a note: it stops when the note being slid
+    ends.
+  - Several slide notes of one group starting together: the highest wins.
+  - Live notes held on a keyboard can be slid by sequenced slide notes; they
+    glide over the whole slide note.
 - Works on every built-in instrument whose pitch can move: synth, sampler, FM,
   keys, additive and granular (new grains follow the glide). Kit pads, the drum
   synth, the pluck and sliced samples fix their pitch when a note starts, so a
-  slide note plays there as a normal note; plugins get a normal note too.
+  slide note plays there as a normal note; plugins and MIDI Out channels get a
+  normal note too.
 - In the piano roll, the Slide toggle on the toolbar makes new notes slide
   notes, and Tools → Toggle slide flips the selected notes. Slide notes are
   drawn with a ramp mark.
@@ -198,6 +211,10 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   from the note edge) follows conventions described in the FL Studio online
   manual, "Piano roll" section, and common to most DAWs. Implementation and
   layout are our own.
+- Slide notes (silent without an overlap, the overlap as the slide time,
+  colour groups as independent slides, the top note setting a chord's offset)
+  follow the FL Studio online manual, "Piano roll" section, note properties
+  and slide notes. Wording and implementation are our own.
 - Selection keys (Shift+arrows move, Ctrl+Up/Down by an octave) follow the
   FL Studio online manual, "Keyboard shortcuts", piano roll section.
 - Synth architecture: textbook subtractive synthesis. PolyBLEP and the

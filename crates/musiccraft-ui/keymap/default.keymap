@@ -8,6 +8,8 @@
 # Transport
 Space        = transport.toggle
 Ctrl+Space   = transport.play_pause
+Home         = transport.jump_to_start
+Ctrl+H       = transport.panic
 L            = transport.toggle_mode
 Ctrl+M       = transport.toggle_metronome
 R            = ui.toggle_record

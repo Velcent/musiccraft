@@ -228,6 +228,36 @@ fn export_command_writes_a_wav() {
 }
 
 #[test]
+fn the_pan_law_reaches_channel_pans_but_not_mixer_pans() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         channel.set_param 1 sustain 1
+         note.add 1 0 16 A5",
+    );
+    let options = RenderOptions {
+        sample_rate: 22_050,
+        loops: 1,
+        max_tail_seconds: 0.0,
+    };
+    let level = |s: &Session| rms(&render(s.project(), options).0);
+    let circular = level(&s);
+    run(&mut s, "project.set_pan_law triangular");
+    let triangular = level(&s);
+    // Centre: -3 dB versus -6 dB.
+    let ratio = triangular / circular;
+    assert!(
+        (ratio - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-3,
+        "{ratio}"
+    );
+    // A mixer pan is a balance: centred, it leaves the level alone; panned
+    // right, the left side keeps only (1 - pan).
+    run(&mut s, "mixer.set_pan 0 0.5");
+    assert!((level(&s) / triangular - 0.5).abs() < 1e-3);
+}
+
+#[test]
 fn pause_keeps_the_playhead_and_stop_rewinds() {
     let mut s = session();
     run(&mut s, "channel.add_sampler builtin:kick");
@@ -256,6 +286,91 @@ fn pause_keeps_the_playhead_and_stop_rewinds() {
     let _ = bridge.sync(s.project(), &mut handle);
     engine.process(&mut out, 2);
     assert!(engine.position_ticks().abs() < f64::EPSILON);
+}
+
+#[test]
+fn jump_to_start_keeps_the_transport_state() {
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let mut out = vec![0.0; 2048];
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    engine.process(&mut out, 2);
+    let played = engine.position_ticks();
+    assert!(played > 0.0);
+    run(&mut s, "transport.jump_to_start");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.is_playing(), "playback continues");
+    assert!(engine.position_ticks() < played, "back at the start");
+    // Paused: the playhead moves, the transport stays paused.
+    run(&mut s, "transport.pause");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.position_ticks() > 0.0);
+    run(&mut s, "transport.jump_to_start");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(!engine.is_playing());
+    assert!(engine.position_ticks().abs() < f64::EPSILON);
+}
+
+#[test]
+fn panic_releases_every_note_and_playback_goes_on() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         channel.set_param 1 sustain 1
+         channel.set_param 1 release 0
+         note.add 1 0 16 C5",
+    );
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let mut out = vec![0.0; 2048];
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert_eq!(engine.active_voices(), 1);
+    // A held live key is released too.
+    let _ = handle.send(musiccraft_engine::EngineMessage::NoteOn {
+        channel: 0,
+        key: 64,
+        velocity: 1.0,
+    });
+    engine.process(&mut out, 2);
+    assert_eq!(engine.active_voices(), 2);
+    run(&mut s, "transport.panic");
+    let _ = bridge.sync(s.project(), &mut handle);
+    for _ in 0..4 {
+        engine.process(&mut out, 2);
+    }
+    assert_eq!(engine.active_voices(), 0, "all notes off");
+    assert!(engine.is_playing(), "playback goes on");
+}
+
+#[test]
+fn requests_from_before_a_bridge_or_a_load_do_nothing() {
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick\ntransport.play");
+    run(&mut s, "transport.jump_to_start\ntransport.panic");
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let mut out = vec![0.0; 2048];
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    let position = engine.position_ticks();
+    // A new project starts its counters again: no seek, no panic.
+    run(
+        &mut s,
+        "project.new\nchannel.add_sampler builtin:kick\ntransport.play",
+    );
+    let report = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.position_ticks() > position, "{report:?}");
 }
 
 #[test]
@@ -384,7 +499,7 @@ fn automation_clip_fades_the_master_in_song_mode() {
     let second = 44_100;
     let early = rms(&out[second / 2..second + second / 2]);
     let late = rms(&out[7 * second + second / 2..8 * second - 100]);
-    assert!(early > 0.05, "early {early}");
+    assert!(early > 0.03, "early {early}");
     assert!(late < early / 5.0, "faded: early {early}, late {late}");
 }
 
@@ -569,8 +684,9 @@ fn frequency(data: &[f32], sample_rate: f32) -> f32 {
     crossings as f32 * sample_rate / data.len() as f32
 }
 
-#[test]
-fn slide_notes_glide_the_sounding_note_without_retriggering() {
+/// A synth with one sine oscillator and full sustain, at 120 BPM (a step is
+/// 1/8 s), plus `notes`.
+fn sine_session(notes: &str) -> Session {
     let mut s = session();
     run(
         &mut s,
@@ -578,42 +694,90 @@ fn slide_notes_glide_the_sounding_note_without_retriggering() {
          channel.add_synth
          channel.set_param 1 wave1 0
          channel.set_param 1 osc_mix 0
-         channel.set_param 1 sustain 1
-         note.add 1 0 8 C4
-         note.add 1 4 8 C5 100 0 slide",
+         channel.set_param 1 sustain 1",
     );
-    let sr = 48_000.0;
+    run(&mut s, notes);
+    s
+}
+
+const SLIDE_RATE: u32 = 48_000;
+
+fn render_slide(s: &Session) -> Vec<f32> {
     let options = RenderOptions {
-        sample_rate: 48_000,
+        sample_rate: SLIDE_RATE,
         loops: 1,
-        max_tail_seconds: 0.0,
+        max_tail_seconds: 0.5,
     };
-    let (left, _, _) = render(s.project(), options);
-    // At 120 BPM a step is 1/8 s: the slide starts at 0.5 s, ends at 1.5 s.
-    let at = |from: f32, to: f32| frequency(&left[(from * sr) as usize..(to * sr) as usize], sr);
-    // The glide spans the slide note: key 48 + 12 semitones over 0.5–1.5 s.
-    let hz = |key: f32| 440.0 * 2f32.powf((key - 69.0) / 12.0);
-    let before = at(0.1, 0.45);
-    assert!((before - hz(48.0)).abs() < 3.0, "before slide {before}");
-    let middle = at(0.95, 1.05);
+    render(s.project(), options).0
+}
+
+/// Frequency over `from..to` seconds.
+fn hz_between(data: &[f32], from: f32, to: f32) -> f32 {
+    let sr = SLIDE_RATE as f32;
+    frequency(&data[(from * sr) as usize..(to * sr) as usize], sr)
+}
+
+fn key_hz(key: f32) -> f32 {
+    440.0 * 2f32.powf((key - 69.0) / 12.0)
+}
+
+#[test]
+fn slide_notes_glide_over_the_overlap_and_end_with_the_slid_note() {
+    // C4 for 1 s; a C5 slide note from 0.5 s to 1.5 s overlaps it for 0.5 s.
+    let s = sine_session("note.add 1 0 8 C4\nnote.add 1 4 8 C5 100 0 slide");
+    let left = render_slide(&s);
+    let before = hz_between(&left, 0.1, 0.45);
+    assert!((before - key_hz(48.0)).abs() < 3.0, "before slide {before}");
+    let middle = hz_between(&left, 0.7, 0.8);
     assert!(
-        (middle - hz(54.0)).abs() < 8.0,
-        "halfway {middle} vs {}",
-        hz(54.0)
+        (middle - key_hz(54.0)).abs() < 8.0,
+        "halfway through the overlap {middle} vs {}",
+        key_hz(54.0)
     );
-    let late = at(1.42, 1.49);
+    let late = hz_between(&left, 0.93, 0.99);
     assert!(
-        late > hz(58.5) && late < hz(60.0) + 3.0,
+        late > key_hz(58.5) && late < key_hz(60.0) + 3.0,
         "nearly there {late}"
     );
-    // Still sounding until the slide note ends.
-    assert!(rms(&left[(1.4 * sr) as usize..(1.48 * sr) as usize]) > 0.05);
+    // The slide does not lengthen the note: it ends at 1 s (plus its release).
+    assert!(rms(&left[(1.3 * 48_000.0) as usize..(1.45 * 48_000.0) as usize]) < 1e-3);
+}
 
-    // A slide note with nothing sounding plays normally.
-    let mut s = session();
-    run(&mut s, "channel.add_synth\nnote.add 1 0 4 C4 100 0 slide");
-    let (left, _, _) = render(s.project(), options);
-    assert!(rms(&left[..4_800]) > 0.01);
+#[test]
+fn slide_notes_without_an_overlap_are_silent() {
+    let s = sine_session(
+        "note.add 1 0 4 C4 100 0 slide\nnote.add 1 8 4 C4\nnote.add 1 12 4 G4 100 0 slide",
+    );
+    let left = render_slide(&s);
+    assert!(rms(&left[..48_000]) < 1e-4, "nothing before the first note");
+    // The second slide note starts as the note ends: no overlap either.
+    assert!(rms(&left[(1.8 * 48_000.0) as usize..]) < 1e-3);
+}
+
+#[test]
+fn slide_notes_starting_with_their_note_bend_it() {
+    let s = sine_session("note.add 1 0 8 C4\nnote.add 1 0 4 C5 100 0 slide");
+    let left = render_slide(&s);
+    let after = hz_between(&left, 0.6, 0.95);
+    assert!((after - key_hz(60.0)).abs() < 4.0, "slid to C5: {after}");
+}
+
+#[test]
+fn note_colour_groups_reach_the_engine() {
+    let s = sine_session(
+        "note.add 1 0 16 C4
+         note.add 1 0 16 G4
+         note.add 1 0 16 E3
+         note.set_prop 1 0 E3 color 2
+         note.add 1 2 2 A4 100 0 slide",
+    );
+    let seq = build_sequence(s.project());
+    let colors: Vec<(u8, u8)> = seq
+        .events()
+        .iter()
+        .map(|e| (e.key, e.shape.color))
+        .collect();
+    assert!(colors.contains(&(40, 1)) && colors.contains(&(55, 0)));
 }
 
 #[test]
@@ -925,4 +1089,45 @@ fn markers_pause_and_loop_song_playback_but_not_exports() {
     let seq = build_sequence(s.project());
     assert_eq!(seq.next_pause(0.0, 4.0 * bar), None);
     assert_eq!(seq.loop_start(), 2 * u64::from(TICKS_PER_BAR));
+}
+
+#[test]
+fn pausing_the_transport_at_a_pause_marker_keeps_the_playhead_there() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 960
+         channel.add_sampler builtin:kick
+         step.toggle 1 0
+         playlist.add_clip 1 1 0 4
+         transport.set_mode song
+         playlist.add_marker 1 Break
+         playlist.set_marker_action 1 pause
+         transport.play",
+    );
+    let marker = f64::from(TICKS_PER_BAR);
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let _ = bridge.sync(s.project(), &mut handle);
+    let mut out = vec![0.0; 2048];
+    // Bar 1 starts 0.25 s in at 960 BPM: play past it.
+    for _ in 0..16 {
+        engine.process(&mut out, 2);
+    }
+    assert!(!engine.is_playing());
+    assert_eq!(handle.meters().marker_pause(), (1, marker));
+    // What the app does when it sees the pause: pause the transport.
+    run(&mut s, "transport.pause");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!((engine.position_ticks() - marker).abs() < f64::EPSILON);
+    // Space continues past the marker; Stop rewinds.
+    run(&mut s, "transport.toggle");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.is_playing() && engine.position_ticks() > marker);
+    run(&mut s, "transport.stop");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.position_ticks().abs() < f64::EPSILON);
 }

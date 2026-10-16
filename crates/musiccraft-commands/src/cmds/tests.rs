@@ -27,6 +27,7 @@ fn fails(s: &mut Session, line: &str) -> CommandError {
 /// Every undoable command, in an order where each line is valid.
 const SCRIPT: &[&str] = &[
     "project.set_tempo 140",
+    "project.set_pan_law triangular",
     "project.rename My Song",
     "channel.add_sampler builtin:kick",
     "channel.add_sampler builtin:snare Snare Drum",
@@ -281,6 +282,21 @@ fn undo_after_switching_patterns_edits_the_original_pattern() {
 }
 
 #[test]
+fn pan_law_is_undoable() {
+    use musiccraft_project::PanLaw;
+    let mut s = session();
+    assert_eq!(s.project().pan_law, PanLaw::Circular);
+    run(&mut s, "project.set_pan_law triangular");
+    assert_eq!(s.project().pan_law, PanLaw::Triangular);
+    run(&mut s, "project.set_pan_law triangular");
+    assert_eq!(s.undo_depth(), 1, "the same law records nothing");
+    fails(&mut s, "project.set_pan_law balance");
+    fails(&mut s, "project.set_pan_law");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().pan_law, PanLaw::Circular);
+}
+
+#[test]
 fn transport_mode_commands() {
     let mut s = session();
     run(&mut s, "transport.set_mode song");
@@ -311,6 +327,28 @@ fn pause_holds_and_play_pause_toggles() {
     run(&mut s, "transport.stop");
     assert_eq!(s.project().transport(), Transport::Stopped);
     assert_eq!(s.undo_depth(), 0);
+}
+
+#[test]
+fn jump_to_start_and_panic_are_requests_outside_history() {
+    use musiccraft_project::Transport;
+    let mut s = session();
+    let before = s.project().clone();
+    run(&mut s, "transport.play");
+    run(&mut s, "transport.jump_to_start");
+    run(&mut s, "transport.panic");
+    run(&mut s, "transport.panic");
+    let requests = s.project().requests();
+    assert_eq!((requests.jumps_to_start, requests.panics), (1, 2));
+    assert_eq!(
+        s.project().transport(),
+        Transport::Playing,
+        "playback goes on"
+    );
+    assert_eq!(s.undo_depth(), 0);
+    run(&mut s, "transport.stop");
+    assert_eq!(*s.project(), before, "requests are not project content");
+    fails(&mut s, "transport.panic now");
 }
 
 #[test]

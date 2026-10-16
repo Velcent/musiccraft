@@ -44,9 +44,61 @@ pub fn pan_gains(pan: f32) -> (f32, f32) {
     ((1.0 - pan).min(1.0), (1.0 + pan).min(1.0))
 }
 
+/// How a channel or mixer pan splits a signal between left and right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PanLaw {
+    /// Equal power: -3 dB on each side at centre.
+    #[default]
+    Circular,
+    /// Equal amplitude: -6 dB on each side at centre.
+    Triangular,
+}
+
+impl PanLaw {
+    /// Left and right gains for `pan` in -1..=1 (non-finite values centre).
+    /// A hard pan is unity on its side and silent on the other.
+    #[must_use]
+    pub fn gains(self, pan: f32) -> (f32, f32) {
+        let pan = if pan.is_finite() {
+            pan.clamp(-1.0, 1.0)
+        } else {
+            0.0
+        };
+        match self {
+            Self::Circular => {
+                let angle = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
+                (angle.cos(), angle.sin())
+            }
+            Self::Triangular => ((1.0 - pan) * 0.5, (1.0 + pan) * 0.5),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pan_laws_meet_their_centre_and_edge_levels() {
+        let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
+        let (l, r) = PanLaw::Circular.gains(0.0);
+        assert!(close(gain_to_db(l), -3.0103) && close(l, r));
+        let (l, r) = PanLaw::Triangular.gains(0.0);
+        assert!(close(l, 0.5) && close(r, 0.5));
+        for law in [PanLaw::Circular, PanLaw::Triangular] {
+            let (l, r) = law.gains(-1.0);
+            assert!(close(l, 1.0) && r.abs() < 1e-6, "{law:?} hard left");
+            let (l, r) = law.gains(1.0);
+            assert!(l.abs() < 1e-6 && close(r, 1.0), "{law:?} hard right");
+            assert_eq!(law.gains(f32::NAN), law.gains(0.0));
+            // Circular keeps the power constant; triangular the amplitude.
+            let (l, r) = law.gains(0.3);
+            match law {
+                PanLaw::Circular => assert!(close(l * l + r * r, 1.0)),
+                PanLaw::Triangular => assert!(close(l + r, 1.0)),
+            }
+        }
+    }
 
     #[test]
     fn db_round_trip() {

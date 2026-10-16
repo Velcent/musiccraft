@@ -26,6 +26,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             play_pause,
         ),
         cmd(
+            "transport.jump_to_start",
+            "transport.jump_to_start",
+            "Move the playhead to the start; playback continues from there.",
+            jump_to_start,
+        ),
+        cmd(
+            "transport.panic",
+            "transport.panic",
+            "All notes off: release every sounding note (playback continues).",
+            panic,
+        ),
+        cmd(
             "transport.toggle",
             "transport.toggle",
             "Play if stopped, stop if playing.",
@@ -114,6 +126,18 @@ fn play_pause(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
         project.set_transport(Transport::Playing);
         Ok(Outcome::done("playing"))
     }
+}
+
+fn jump_to_start(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    project.request_jump_to_start();
+    Ok(Outcome::done("jumped to the start"))
+}
+
+fn panic(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    project.request_panic();
+    Ok(Outcome::done("all notes off"))
 }
 
 fn set_mode(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

@@ -169,6 +169,25 @@ fn json_round_trip_preserves_everything_but_transport() {
 }
 
 #[test]
+fn pan_law_is_saved_and_older_files_load_as_circular() {
+    let mut project = Project::default();
+    assert_eq!(project.pan_law, PanLaw::Circular);
+    project.pan_law = PanLaw::Triangular;
+    let json = project.to_json().unwrap();
+    assert!(json.contains("\"pan_law\": \"triangular\""));
+    assert_eq!(
+        Project::from_json(&json).unwrap().pan_law,
+        PanLaw::Triangular
+    );
+    let older = json.replace("\"pan_law\": \"triangular\",", "");
+    assert!(!older.contains("pan_law"));
+    assert_eq!(
+        Project::from_json(&older).unwrap().pan_law,
+        PanLaw::Circular
+    );
+}
+
+#[test]
 fn loading_rejects_other_formats_and_newer_versions() {
     let json = rich_project().to_json().unwrap();
     let other = json.replace("musiccraft-project", "something-else");

@@ -4,7 +4,7 @@
 
 - A project has an ordered list of **channels**. Each channel has a name, an
   instrument (sampler or synth), instrument parameters, volume (linear gain 0 to
-  1.25, default 0.8), pan (-1 to 1, balance law), mute, and the mixer track it
+  1.25, default 0.8), pan (-1 to 1, using the project's pan law; see `mixer.md`), mute, and the mixer track it
   feeds (0 = master).
 - Channels are numbered from 1 in display order. Internally each has a stable id
   so that reordering or removing channels never reattaches notes to the wrong

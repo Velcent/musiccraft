@@ -1027,13 +1027,14 @@ impl App {
         }
     }
 
-    /// Song playback stopped at a pause marker: stop the transport too, and keep
-    /// the playhead on the marker so Play continues from there.
+    /// Song playback stopped at a pause marker: the engine already holds the
+    /// playhead there, so pause the transport to match. Play continues from
+    /// the marker; Stop rewinds.
     fn follow_marker_pause(&mut self) {
         let Some(audio) = &self.audio else {
             return;
         };
-        let (count, position) = audio.handle.meters().marker_pause();
+        let (count, _) = audio.handle.meters().marker_pause();
         if count <= self.marker_pauses {
             // Nothing new (or a restarted engine counting from zero again).
             self.marker_pauses = count;
@@ -1043,15 +1044,12 @@ impl App {
         if !self.session.project().transport().is_playing() {
             return;
         }
-        if let Err(err) = self.session.run(&Invocation::bare("transport.stop")) {
-            self.ui.set_status(err.to_string(), true);
-            return;
+        match self.session.run(&Invocation::bare("transport.pause")) {
+            Ok(_) => self
+                .ui
+                .set_status("paused at a marker; press Space to continue", false),
+            Err(err) => self.ui.set_status(err.to_string(), true),
         }
-        // Stop rewinds; move the playhead back onto the marker afterwards.
-        self.sync();
-        self.send(EngineMessage::Seek(position));
-        self.ui
-            .set_status("paused at a marker; press Space to continue", false);
     }
 
     fn update_title(&mut self, ctx: &egui::Context) {
