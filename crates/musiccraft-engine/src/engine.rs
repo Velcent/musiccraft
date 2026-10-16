@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use musiccraft_dsp::ProcessContext;
+use musiccraft_dsp::mastering::BandSplitter;
 use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR, inst};
 use rtrb::{Consumer, Producer, RingBuffer};
 
@@ -1334,6 +1335,15 @@ fn process_track(
             }
             continue;
         }
+        if let musiccraft_dsp::Effect::BandSplit(splitter) = &mut slot.effect {
+            match later.as_mut() {
+                Some((tracks, offset)) => {
+                    band_split(l, r, &slot.params.values, splitter, tracks, *offset, ctx);
+                }
+                None => splitter.process(l, r, &slot.params.values, ctx),
+            }
+            continue;
+        }
         if slot.effect.kind() == EffectKind::Send {
             if let Some((tracks, offset)) = later.as_mut() {
                 send(l, r, &slot.params.values, tracks, *offset);
@@ -1396,6 +1406,52 @@ fn send(l: &mut [f32], r: &mut [f32], p: &[f32], tracks: &mut [TrackNode], offse
         for sample in l.iter_mut().chain(r.iter_mut()) {
             *sample *= dry;
         }
+    }
+}
+
+/// The band splitter: each band with a valid target insert is added to that
+/// insert's input; bands without one stay on this track.
+/// Parameters: `[low Hz, high Hz, low target, mid target, high target]`.
+fn band_split(
+    l: &mut [f32],
+    r: &mut [f32],
+    p: &[f32],
+    splitter: &mut BandSplitter,
+    tracks: &mut [TrackNode],
+    offset: usize,
+    ctx: ProcessContext,
+) {
+    splitter.prepare(p, ctx.sample_rate);
+    // Index into `tracks` of each band's target, if it has a valid one.
+    let targets: [Option<usize>; 3] = std::array::from_fn(|b| {
+        let target = p.get(2 + b).copied().unwrap_or(0.0).round();
+        (target >= 0.5)
+            .then(|| (target as usize).checked_sub(offset))
+            .flatten()
+            .filter(|j| *j < tracks.len())
+    });
+    for (i, (sl, sr)) in l.iter_mut().zip(r.iter_mut()).enumerate() {
+        let bands = splitter.frame(*sl, *sr);
+        let mut keep = [0.0_f32; 2];
+        for (band, target) in bands.iter().zip(targets) {
+            let dest = target.and_then(|j| tracks.get_mut(j));
+            match dest {
+                Some(dest) => {
+                    if let Some(d) = dest.left.get_mut(i) {
+                        *d += band[0];
+                    }
+                    if let Some(d) = dest.right.get_mut(i) {
+                        *d += band[1];
+                    }
+                }
+                None => {
+                    keep[0] += band[0];
+                    keep[1] += band[1];
+                }
+            }
+        }
+        *sl = keep[0];
+        *sr = keep[1];
     }
 }
 

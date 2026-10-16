@@ -103,6 +103,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | X/Y multi-effect and four-stage effect chain | `fx:multi_fx` `fx:fx_chain` |
 | Effects | Beat shaper (drawn time and volume envelopes) | `fx:beat_shaper` |
 | Effects | Send effect (mid-chain send to another insert) | `fx:send` |
+| Effects | Band splitter (three bands to separate inserts) | `fx:band_split` |
 | Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |
 | Effects | Pitch shifter | `fx:pitch_shift` |
 | Effects | Convolution reverb with impulse files or generated rooms | `fx:convolution` `cmd:mixer.set_effect_file` |

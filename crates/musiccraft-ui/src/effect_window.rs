@@ -343,6 +343,8 @@ fn knobs(
                 "sidechain" => format!("from {value:.0}"),
                 "target" if value < 0.5 => "off".to_owned(),
                 "target" => format!("to {value:.0}"),
+                name if name.ends_with("_target") && value < 0.5 => "stays".to_owned(),
+                name if name.ends_with("_target") => format!("to {value:.0}"),
                 "rate" | "slice" | "every" if synced => SYNC_RATE_NAMES
                     .get(value.round() as usize)
                     .copied()
@@ -1380,6 +1382,37 @@ fn graph(
             handles.push((pos2(freq_x(rect, f1), mid), Some("low_freq"), None));
             handles.push((pos2(freq_x(rect, f2), mid), Some("high_freq"), None));
             hint = "Three bands with their own compressors; drag the points to move the crossovers. Lines show each band's gain; brighter shading compresses harder";
+        }
+        EffectKind::BandSplit => {
+            frequency_grid(&painter, rect);
+            let (f1, f2) = (value(effect, "low_freq"), value(effect, "high_freq"));
+            let edges = [F_LOW, f1, f2, F_HIGH];
+            for (band, name) in ["low", "mid", "high"].iter().enumerate() {
+                let (a, b) = (freq_x(rect, edges[band]), freq_x(rect, edges[band + 1]));
+                let target = value(effect, &format!("{name}_target")).round();
+                let fill = if target >= 0.5 { 0.45 } else { 0.12 };
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(a, rect.top()), pos2(b, rect.bottom())),
+                    0.0,
+                    color.gamma_multiply(fill),
+                );
+                let text = if target >= 0.5 {
+                    format!("{name} → insert {target:.0}")
+                } else {
+                    format!("{name} stays")
+                };
+                painter.text(
+                    pos2((a + b) * 0.5, rect.top() + 4.0),
+                    egui::Align2::CENTER_TOP,
+                    text,
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT,
+                );
+            }
+            let mid = rect.center().y;
+            handles.push((pos2(freq_x(rect, f1), mid), Some("low_freq"), None));
+            handles.push((pos2(freq_x(rect, f2), mid), Some("high_freq"), None));
+            hint = "Three bands; a band with a target insert leaves this track for it. Drag the points to move the crossovers";
         }
         EffectKind::MultibandLimiter => {
             frequency_grid(&painter, rect);

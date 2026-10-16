@@ -10,7 +10,7 @@ use crate::convolution::Convolver;
 use crate::creative::{MultibandCompressor, PitchShifter, Stutter, Vocoder};
 use crate::guitar::GuitarChain;
 use crate::hall::HallReverb;
-use crate::mastering::MultibandLimiter;
+use crate::mastering::{BandSplitter, MultibandLimiter};
 use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
 use crate::pitch::{PitchCorrector, Tuner};
 use crate::toolbox::{Dynamics, StereoShaper};
@@ -182,6 +182,8 @@ pub enum Effect {
     FxChain(FxChain),
     /// Drawn time and volume envelopes over a tempo-synced cycle.
     BeatShaper(BeatShaper),
+    /// Splits the audio into three bands sent to other inserts; routed by the engine.
+    BandSplit(BandSplitter),
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -237,6 +239,7 @@ impl Effect {
             EffectKind::MultiFx => Self::MultiFx(MultiFx::new(sample_rate)),
             EffectKind::FxChain => Self::FxChain(FxChain::new(sample_rate)),
             EffectKind::BeatShaper => Self::BeatShaper(BeatShaper::new(sample_rate)),
+            EffectKind::BandSplit => Self::BandSplit(BandSplitter::default()),
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -289,6 +292,7 @@ impl Effect {
             Self::MultiFx(_) => EffectKind::MultiFx,
             Self::FxChain(_) => EffectKind::FxChain,
             Self::BeatShaper(_) => EffectKind::BeatShaper,
+            Self::BandSplit(_) => EffectKind::BandSplit,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -359,6 +363,7 @@ impl Effect {
             Self::MultiFx(fx) => fx.process(left, right, params, ctx),
             Self::FxChain(fx) => fx.process(left, right, params, ctx),
             Self::BeatShaper(fx) => fx.process(left, right, params, ctx),
+            Self::BandSplit(fx) => fx.process(left, right, params, ctx),
             Self::Passthrough => {}
         }
     }
@@ -417,6 +422,7 @@ impl Effect {
             Self::MultiFx(fx) => fx.reset(),
             Self::FxChain(fx) => fx.reset(),
             Self::BeatShaper(fx) => fx.reset(),
+            Self::BandSplit(fx) => fx.reset(),
             Self::Phaser(fx) => fx.reset(),
             Self::Flanger(fx) => fx.reset(),
             Self::Bitcrusher(fx) => fx.reset(),

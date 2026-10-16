@@ -653,6 +653,47 @@ fn send_effect_feeds_its_target_from_mid_chain() {
 }
 
 #[test]
+fn band_split_moves_the_low_band_to_its_target() {
+    let level = |script: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_synth Sub
+                 note.add 1 0 16 C2
+                 channel.route 1 1
+                 mixer.add_effect 1 band_split
+                 mixer.set_effect_param 1 1 low_target 2
+                 {script}"
+            ),
+        );
+        let options = RenderOptions {
+            max_tail_seconds: 0.0,
+            ..RenderOptions::default()
+        };
+        rms(&render(s.project(), options).0[4_000..20_000])
+    };
+    let routed = level("");
+    let muted = level("mixer.toggle_mute 2");
+    assert!(
+        routed > 0.01,
+        "the bass reaches the master through insert 2"
+    );
+    assert!(
+        muted < routed * 0.2,
+        "most of a C2 is in the low band: {muted} vs {routed}"
+    );
+    let mut s = session();
+    run(&mut s, "mixer.add_effect 1 band_split");
+    assert!(
+        s.run_line("mixer.set_effect_param 1 1 mid_target 1")
+            .is_err()
+    );
+    run(&mut s, "mixer.set_effect_param 1 1 high_target 3");
+    assert!(s.run_line("mixer.remove_track 3").is_err());
+}
+
+#[test]
 fn send_targets_follow_track_insertion_and_block_removal() {
     let mut s = session();
     run(

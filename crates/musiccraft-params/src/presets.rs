@@ -1761,6 +1761,15 @@ const BEAT_SHAPER: &[Preset] = &[
     ),
 ];
 
+const BAND_SPLIT: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Bass split", &[("low_freq", 120.0), ("high_freq", 6_000.0)]),
+    preset(
+        "Vocal split",
+        &[("low_freq", 300.0), ("high_freq", 4_000.0)],
+    ),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1809,6 +1818,7 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::MultiFx => MULTI_FX,
         EffectKind::FxChain => FX_CHAIN,
         EffectKind::BeatShaper => BEAT_SHAPER,
+        EffectKind::BandSplit => BAND_SPLIT,
         EffectKind::Plugin => &[],
     }
 }

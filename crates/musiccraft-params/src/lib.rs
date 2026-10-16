@@ -528,13 +528,15 @@ pub enum EffectKind {
     FxChain,
     /// Drawn time and volume envelopes over a tempo-synced cycle.
     BeatShaper,
+    /// Splits the audio into three bands sent to other inserts; routed by the engine.
+    BandSplit,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 44] = [
+pub const EFFECT_KINDS: [EffectKind; 45] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -571,6 +573,7 @@ pub const EFFECT_KINDS: [EffectKind; 44] = [
     EffectKind::Autopan,
     EffectKind::Stereo,
     EffectKind::Send,
+    EffectKind::BandSplit,
     EffectKind::StereoShaper,
     EffectKind::DcBlock,
     EffectKind::Distortion,
@@ -797,6 +800,14 @@ const BEAT_SHAPER_PARAMS: &[ParamSpec] = &[
     spec("volume_7", 0.0, 1.0, 1.0, ""),
     spec("volume_8", 0.0, 1.0, 1.0, ""),
     spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const BAND_SPLIT_PARAMS: &[ParamSpec] = &[
+    spec("low_freq", 40.0, 1_000.0, 200.0, "Hz"),
+    spec("high_freq", 500.0, 16_000.0, 2_500.0, "Hz"),
+    int_spec("low_target", 0.0, 127.0, 0.0),
+    int_spec("mid_target", 0.0, 127.0, 0.0),
+    int_spec("high_target", 0.0, 127.0, 0.0),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -1140,6 +1151,7 @@ impl EffectKind {
             Self::MultiFx => "multi_fx",
             Self::FxChain => "fx_chain",
             Self::BeatShaper => "beat_shaper",
+            Self::BandSplit => "band_split",
             Self::Plugin => "plugin",
         }
     }
@@ -1198,6 +1210,7 @@ impl EffectKind {
             Self::MultiFx => MULTI_FX_PARAMS,
             Self::FxChain => FX_CHAIN_PARAMS,
             Self::BeatShaper => BEAT_SHAPER_PARAMS,
+            Self::BandSplit => BAND_SPLIT_PARAMS,
             Self::Plugin => &[],
         }
     }
@@ -1209,18 +1222,20 @@ impl EffectKind {
         self.params().iter().position(|p| p.name == "sidechain")
     }
 
-    /// Index of the `target` parameter (the insert a send effect feeds), for
-    /// effects that have one.
+    /// Whether parameter `index` names an insert this effect feeds (the send's
+    /// `target`, the band splitter's `low_target` …).
     #[must_use]
-    pub fn send_target_index(self) -> Option<usize> {
-        self.params().iter().position(|p| p.name == "target")
+    pub fn is_send_target(self, index: usize) -> bool {
+        self.params()
+            .get(index)
+            .is_some_and(|p| p.name == "target" || p.name.ends_with("_target"))
     }
 
-    /// Index of the parameter naming another mixer track (a sidechain source
-    /// or a send target), for effects that have one.
-    #[must_use]
-    pub fn track_ref_index(self) -> Option<usize> {
-        self.sidechain_index().or_else(|| self.send_target_index())
+    /// Indices of the parameters naming other mixer tracks: sidechain
+    /// sources and send targets.
+    pub fn track_ref_indices(self) -> impl Iterator<Item = usize> {
+        let sidechain = self.sidechain_index();
+        (0..self.params().len()).filter(move |&i| Some(i) == sidechain || self.is_send_target(i))
     }
 
     /// Default parameter values for this effect.

@@ -67,6 +67,7 @@
 | `stereo` | width (0 mono – 2 extra wide, mid/side), balance, invert left, invert right |
 | `stereo_shaper` | left_to_left, right_to_left, left_to_right, right_to_right (−1–1; each output side is a mix of both inputs, so swapping sides, mono from one side and polarity flips are all settings), delay ms (−20–20: positive delays the right side, negative the left, for Haas widening), output dB |
 | `send` | target (0 = off, else a higher-numbered insert), level (0–1.25), pan (balance of the sent copy), dry (0–1, share of the audio that continues down this track's chain). Adds the audio as it is at this point of the chain to the target insert's input, so effects after the send are not heard on the copy. A send on the master, or one naming the same or a lower insert, is refused. Inserting or removing tracks renumbers targets; removing a target track is refused |
+| `band_split` | low/mid and mid/high crossover Hz (the `multiband` split; the bands sum flat), low_target, mid_target, high_target (0 = the band stays on this track, else a higher-numbered insert that receives it instead). Lets each band get its own effects and fader. Targets follow the `send` rules |
 | `gate` | rate (1/32 note – 1 bar per step), duty (open share of a step), depth, smooth ms, steps (16-step on/off pattern as a number, bit 0 = first step) |
 | `autopan` | rate (1/32 note – 1 bar per cycle), depth, shape (sine, triangle, square) |
 | `graphic_eq` | seven peak bands at 63, 160, 400, 1k, 2.5k, 6.3k, 16k Hz (±18 dB each), output dB |
@@ -97,8 +98,8 @@
 | `stutter` | slice (1/32 note – 1 bar), every (period, 1/32 note – 1 bar), portion (share at the end of each period that repeats), decay (level of each repeat relative to the last), mix |
 | `convolution` | mix, predelay ms, low cut Hz, high cut Hz, output dB; the impulse response is chosen with `mixer.set_effect_file` |
 
-The `send` effect's `target` follows the same renumbering rules as sidechain
-sources (below).
+The `send` effect's `target` and the band splitter's targets follow the same
+renumbering rules as sidechain sources (below).
 
 Effects with a `sidechain` parameter (the compressor and the vocoder) read the
 post-fader output of the insert it names: a lower-numbered insert, or any insert

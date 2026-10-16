@@ -61,7 +61,7 @@ new UI editor or large DSP.
   inside one insert).
 - [x] Gross Beat → drawn time (scratch/repeat) and volume envelopes per beat,
   extending `stutter` and `gate`.
-- [ ] Frequency Splitter → split a track into three bands routed to
+- [x] Frequency Splitter → split a track into three bands routed to
   separate mixer inserts (needs multi-output routing).
 - [ ] Fruity Scratcher → turntable-style scratching of a sample or the input
   buffer (currently "not planned"; revisit).

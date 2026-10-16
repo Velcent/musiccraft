@@ -1,4 +1,5 @@
-//! Mastering effects: the three-band limiter. All allocation happens in `new`.
+//! Mastering effects: the three-band limiter and the band splitter. All
+//! allocation happens in `new`.
 
 use crate::creative::Split;
 use crate::{Limiter, ProcessContext, db_to_gain};
@@ -87,6 +88,49 @@ impl MultibandLimiter {
     }
 }
 
+/// Band splitter: the multiband split (Linkwitz–Riley, bands sum flat) whose
+/// bands the engine sends to other inserts. On its own (offline, or with no
+/// targets) the bands are summed back, which leaves the sound unchanged
+/// apart from the crossovers' phase.
+///
+/// Parameters: `[low/mid Hz, mid/high Hz, low target, mid target, high
+/// target]`.
+#[derive(Debug, Clone, Default)]
+pub struct BandSplitter {
+    split: [Split; 2],
+}
+
+impl BandSplitter {
+    /// Sets the crossovers for a block.
+    pub fn prepare(&mut self, p: &[f32], sample_rate: f32) {
+        for split in &mut self.split {
+            split.set(param(p, 0, 200.0), param(p, 1, 2_500.0), sample_rate);
+        }
+    }
+
+    /// Splits one stereo frame into `[low, mid, high]`, each `[left, right]`.
+    pub fn frame(&mut self, l: f32, r: f32) -> [[f32; 2]; 3] {
+        let [split_l, split_r] = &mut self.split;
+        let (lb, rb) = (split_l.process(l), split_r.process(r));
+        [[lb[0], rb[0]], [lb[1], rb[1]], [lb[2], rb[2]]]
+    }
+
+    /// Processes a block in place with every band kept.
+    pub fn process(&mut self, left: &mut [f32], right: &mut [f32], p: &[f32], ctx: ProcessContext) {
+        self.prepare(p, ctx.sample_rate);
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let bands = self.frame(*l, *r);
+            *l = bands.iter().map(|b| b[0]).sum();
+            *r = bands.iter().map(|b| b[1]).sum();
+        }
+    }
+
+    /// Clears the filters.
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +195,28 @@ mod tests {
         };
         assert!(run(60.0) < 0.15, "low band held down");
         assert!(run(1_000.0) > 0.45, "mids untouched");
+    }
+
+    #[test]
+    fn band_splitter_bands_sum_back_and_separate() {
+        let mut fx = BandSplitter::default();
+        fx.prepare(&[200.0, 2_500.0], 48_000.0);
+        let low = sine(60.0, 24_000, 0.5);
+        let mut energy = [0.0_f32; 3];
+        for (i, x) in low.iter().enumerate() {
+            let bands = fx.frame(*x, *x);
+            if i > 12_000 {
+                for (e, b) in energy.iter_mut().zip(bands) {
+                    *e += b[0] * b[0];
+                }
+            }
+        }
+        assert!(energy[0] > 100.0 * (energy[1] + energy[2]), "{energy:?}");
+        let mut fx = BandSplitter::default();
+        let input = sine(1_000.0, 24_000, 0.5);
+        let (mut l, mut r) = (input.clone(), input.clone());
+        fx.process(&mut l, &mut r, &[200.0, 2_500.0, 0.0, 0.0, 0.0], ctx());
+        assert!((peak(&l[12_000..]) - 0.5).abs() < 0.01, "flat sum");
     }
 
     #[test]

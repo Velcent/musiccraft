@@ -79,7 +79,7 @@ Status:
 | Pitcher, Newtone | `pitch_correct` | partial | Real-time correction to a key and scale; no MIDI-controlled target notes, harmonies or offline note editing |
 | Gross Beat | `beat_shaper` (drawn time and volume envelopes), `gate`, `stutter` | covered | Eight points per envelope |
 | Fruity Scratcher | — | not planned | Turntable simulation |
-| Frequency Splitter | — | not planned | Splitting into separate mixer tracks; `multiband` covers band processing |
+| Frequency Splitter | `band_split` (three bands to separate inserts) | covered | |
 | Fruity Send, Fruity Mute 2 | `send` effect (mid-chain send with dry control), mixer sends and mute | covered | |
 | Fruity Spectroman, Wave Candy | Spectrum analyzer, toolbar oscilloscope | covered | |
 | Fruity dB Meter | Mixer meters | covered | |

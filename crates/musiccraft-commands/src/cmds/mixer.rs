@@ -160,12 +160,11 @@ fn sidechains(project: &Project) -> Vec<(usize, usize, usize, usize)> {
     let mut out = Vec::new();
     for (t, track) in project.mixer.iter().enumerate() {
         for (s, effect) in track.effects.iter().enumerate() {
-            let Some(index) = effect.kind.track_ref_index() else {
-                continue;
-            };
-            let source = effect.values.get(index).copied().unwrap_or(0.0).round() as usize;
-            if source > 0 {
-                out.push((t, s, index, source));
+            for index in effect.kind.track_ref_indices() {
+                let source = effect.values.get(index).copied().unwrap_or(0.0).round() as usize;
+                if source > 0 {
+                    out.push((t, s, index, source));
+                }
             }
         }
     }
@@ -645,7 +644,7 @@ fn set_effect_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
             ));
         }
     }
-    if effect.kind.send_target_index() == Some(param) && value >= 0.5 {
+    if effect.kind.is_send_target(param) && value >= 0.5 {
         let target = value as usize;
         if index == 0 || target <= index || target >= project_tracks {
             return Err(args.invalid("a send effect feeds a higher-numbered insert"));
