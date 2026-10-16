@@ -121,6 +121,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             move_channel,
         ),
         cmd(
+            "channel.set_group",
+            "channel.set_group <channel> [group]",
+            "Put a channel in a display filter group (no group name: none).",
+            set_group,
+        ),
+        cmd(
             "channel.rename",
             "channel.rename <channel> <name>",
             "Rename a channel.",
@@ -636,6 +642,29 @@ fn move_channel(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     Ok(Outcome::undoable(
         format!("moved channel {} to {}", from + 1, to + 1),
         Invocation::new(args.name(), [(to + 1).to_string(), (from + 1).to_string()]),
+    ))
+}
+
+fn set_group(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, usize::MAX)?;
+    let index = channel_arg(project, args, 0)?;
+    let group = if args.len() > 1 {
+        args.rest(1)?.trim().to_owned()
+    } else {
+        String::new()
+    };
+    let previous = std::mem::replace(&mut project.channels[index].group, group.clone());
+    let mut inverse = vec![(index + 1).to_string()];
+    if !previous.is_empty() {
+        inverse.push(previous);
+    }
+    Ok(Outcome::undoable(
+        if group.is_empty() {
+            format!("channel {} is in no group", index + 1)
+        } else {
+            format!("channel {} is in group {group}", index + 1)
+        },
+        Invocation::new(args.name(), inverse),
     ))
 }
 

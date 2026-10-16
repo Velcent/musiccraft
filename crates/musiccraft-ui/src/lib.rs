@@ -216,6 +216,8 @@ pub struct UiState {
     pub typing_keyboard: bool,
     /// Times (seconds) of the latest tempo taps.
     pub taps: Vec<f64>,
+    /// The channel rack shows only this display filter group (`None`: all).
+    pub rack_group: Option<String>,
     /// While recording in song mode, also capture the audio input.
     pub record_audio: bool,
     /// Text that filters the plugin parameter list.
@@ -280,6 +282,7 @@ impl UiState {
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             taps: Vec::new(),
+            rack_group: None,
             record_audio: false,
             plugin_filter: String::new(),
             hint: None,

@@ -34,6 +34,9 @@ const SCRIPT: &[&str] = &[
     "channel.add_sampler builtin:snare Snare Drum",
     "channel.add_synth Lead",
     "channel.rename 3 Bass",
+    "channel.set_group 3 Low end",
+    "channel.set_group 1 Drums",
+    "channel.set_group 3",
     "channel.set_volume 1 0.5",
     "channel.set_pan 2 -0.25",
     "channel.set_mute 2 on",
@@ -726,6 +729,20 @@ fn master_pitch_and_a4_tuning() {
     run(&mut s, "edit.undo");
     run(&mut s, "edit.undo");
     assert!(s.project().master_pitch.abs() < f32::EPSILON);
+}
+
+#[test]
+fn channel_groups_are_saved_and_undoable() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.set_group 1 Drums");
+    assert_eq!(s.project().channels[0].group, "Drums");
+    let json = s.project().to_json().unwrap();
+    assert!(json.contains("\"group\": \"Drums\""));
+    run(&mut s, "channel.set_group 1");
+    assert!(s.project().channels[0].group.is_empty());
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().channels[0].group, "Drums");
 }
 
 #[test]

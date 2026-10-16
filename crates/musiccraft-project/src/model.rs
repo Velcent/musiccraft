@@ -269,6 +269,9 @@ pub struct Channel {
     /// Mixer track receiving this channel; 0 is master.
     #[serde(default)]
     pub mixer_track: usize,
+    /// Display filter group ("" = none): the rack can show one group at a time.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub group: String,
 }
 
 impl Channel {
@@ -289,6 +292,7 @@ impl Channel {
             pan: 0.0,
             mute: false,
             mixer_track: 0,
+            group: String::new(),
         }
     }
 }

@@ -32,7 +32,7 @@ pub fn show(
         .default_width((area.width() - 200.0).clamp(420.0, 760.0))
         .constrain_to(area)
         .show(ctx, |ui| {
-            header(ui, project, actions);
+            header(ui, state, project, actions);
             ui.separator();
             egui::ScrollArea::both()
                 .id_salt("rack-scroll")
@@ -40,7 +40,13 @@ pub fn show(
                 .max_height(420.0)
                 .show(ui, |ui| {
                     for (index, channel) in project.channels.iter().enumerate() {
-                        row(ui, state, project, index, channel, actions);
+                        let shown = state
+                            .rack_group
+                            .as_ref()
+                            .is_none_or(|group| *group == channel.group);
+                        if shown {
+                            row(ui, state, project, index, channel, actions);
+                        }
                     }
                     if project.channels.is_empty() {
                         ui.label(
@@ -85,8 +91,45 @@ pub fn show(
     }
 }
 
-fn header(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
+fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
+        let mut groups: Vec<&str> = project
+            .channels
+            .iter()
+            .map(|c| c.group.as_str())
+            .filter(|g| !g.is_empty())
+            .collect();
+        groups.sort_unstable();
+        groups.dedup();
+        if state
+            .rack_group
+            .as_ref()
+            .is_some_and(|g| !g.is_empty() && !groups.contains(&g.as_str()))
+        {
+            state.rack_group = None;
+        }
+        if !groups.is_empty() {
+            egui::ComboBox::from_id_salt("rack-group")
+                .width(90.0)
+                .selected_text(match &state.rack_group {
+                    None => "All".to_owned(),
+                    Some(g) if g.is_empty() => "Unsorted".to_owned(),
+                    Some(g) => g.clone(),
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut state.rack_group, None, "All");
+                    for group in &groups {
+                        ui.selectable_value(
+                            &mut state.rack_group,
+                            Some((*group).to_owned()),
+                            *group,
+                        );
+                    }
+                    ui.selectable_value(&mut state.rack_group, Some(String::new()), "Unsorted");
+                })
+                .response
+                .on_hover_text("Show one display filter group (right-click a channel → Group…)");
+        }
         let pattern = project.current_pattern();
         ui.label(
             RichText::new(&pattern.name)
@@ -249,6 +292,10 @@ fn context_menu(
     actions: &mut Vec<Action>,
 ) {
     let number = (index + 1).to_string();
+    if ui.button("Group…").clicked() {
+        state.open_dialog(crate::dialogs::Dialog::channel_group(index, &channel.group));
+        ui.close();
+    }
     if ui.button("Channel settings").clicked() {
         state.selected_channel = index;
         state.windows.channel_settings = true;

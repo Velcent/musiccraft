@@ -24,6 +24,7 @@ pub enum Purpose {
     RenamePattern(usize),
     RenameTrack(usize),
     RenamePlaylistTrack(u32),
+    ChannelGroup(usize),
     AddFolder,
     AddPluginFolder,
     RenameAutomation(usize),
@@ -139,6 +140,10 @@ impl Dialog {
         Self::new(Purpose::AddPluginFolder, home)
     }
 
+    pub fn channel_group(channel: usize, current: &str) -> Self {
+        Self::new(Purpose::ChannelGroup(channel), current.to_owned())
+    }
+
     pub fn rename_playlist_track(track: u32, current: &str) -> Self {
         Self::new(Purpose::RenamePlaylistTrack(track), current.to_owned())
     }
@@ -162,6 +167,7 @@ impl Dialog {
             Purpose::RenamePattern(_) => "Rename pattern",
             Purpose::RenameTrack(_) => "Rename mixer track",
             Purpose::RenamePlaylistTrack(_) => "Rename playlist track",
+            Purpose::ChannelGroup(_) => "Channel group (empty: none)",
             Purpose::AddFolder => "Add folder to the browser",
             Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
@@ -202,6 +208,13 @@ impl Dialog {
             }
             Purpose::RenameTrack(track) => {
                 Invocation::new("mixer.rename", [track.to_string(), text])
+            }
+            Purpose::ChannelGroup(channel) => {
+                let mut args = vec![(channel + 1).to_string()];
+                if !text.is_empty() {
+                    args.push(text);
+                }
+                Invocation::new("channel.set_group", args)
             }
             Purpose::RenamePlaylistTrack(track) => {
                 Invocation::new("playlist.rename_track", [(track + 1).to_string(), text])

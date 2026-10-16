@@ -26,6 +26,11 @@
   them; Alt+C, Alt+Delete and Alt+Up/Down clone, delete and move the selected
   channel; Ctrl+L runs `channel.route_free`; Shift+Ctrl+Left/Right shift its
   steps.
+- **Display filter groups**: `channel.set_group <n> [group]` (undoable,
+  saved as `"group"`; no name removes it) puts a channel in a named group. The
+  rack's group menu (shown once any channel has a group) shows All, one
+  group, or Unsorted (channels without one). Right-click a channel → Group…
+  sets it. Filtering only hides rows; numbering and keys stay the same.
 - `channel.solo <n>` mutes every other channel; running it again on an already
   soloed channel unmutes all channels.
 - **Steps** are sixteenth notes. `step.toggle <channel> <step>` (0-based step)
@@ -247,3 +252,5 @@ square partials), normalized to a 0.9 peak and faded out at the end.
 - Time shift, gate and note echo are channel settings described in the FL
   Studio online manual, "Channel settings" (miscellaneous functions: time,
   echo delay). Units, ranges and rules are our own.
+- Display filter groups follow the channel rack filter groups described in the
+  FL Studio online manual, "Channel Rack". "Unsorted" and the menu are our own.
