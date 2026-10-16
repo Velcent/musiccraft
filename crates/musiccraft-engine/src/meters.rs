@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
-use musiccraft_params::MAX_MIXER_TRACKS;
+use musiccraft_params::{MAX_EFFECT_SLOTS, MAX_MIXER_TRACKS};
 
 /// Samples kept for the oscilloscope (master output, mono).
 pub const SCOPE_LEN: usize = 2048;
@@ -17,6 +17,7 @@ pub struct Meters {
     scope: Vec<AtomicU32>,
     scope_write: AtomicUsize,
     load_bits: AtomicU32,
+    pitches: Vec<AtomicU32>,
 }
 
 impl Default for Meters {
@@ -39,6 +40,9 @@ impl Meters {
             scope: (0..SCOPE_LEN).map(|_| AtomicU32::new(0)).collect(),
             scope_write: AtomicUsize::new(0),
             load_bits: AtomicU32::new(0),
+            pitches: (0..MAX_MIXER_TRACKS * MAX_EFFECT_SLOTS)
+                .map(|_| AtomicU32::new(0))
+                .collect(),
         }
     }
 
@@ -112,6 +116,26 @@ impl Meters {
         self.active_voices.store(voices, Ordering::Relaxed);
     }
 
+    /// The pitch (Hz) the detecting effect in `slot` of mixer `track` last
+    /// heard (pitch corrector, tuner); `None` without a clear pitch.
+    #[must_use]
+    pub fn pitch(&self, track: usize, slot: usize) -> Option<f32> {
+        let index = Self::pitch_index(track, slot)?;
+        let hz = f32::from_bits(self.pitches.get(index)?.load(Ordering::Relaxed));
+        (hz > 0.0 && hz.is_finite()).then_some(hz)
+    }
+
+    fn pitch_index(track: usize, slot: usize) -> Option<usize> {
+        (track < MAX_MIXER_TRACKS && slot < MAX_EFFECT_SLOTS)
+            .then_some(track * MAX_EFFECT_SLOTS + slot)
+    }
+
+    pub(crate) fn record_pitch(&self, track: usize, slot: usize, hz: Option<f32>) {
+        if let Some(cell) = Self::pitch_index(track, slot).and_then(|i| self.pitches.get(i)) {
+            cell.store(hz.unwrap_or(0.0).to_bits(), Ordering::Relaxed);
+        }
+    }
+
     pub(crate) fn record_peak(&self, track: usize, left: f32, right: f32) {
         // For non-negative floats the bit patterns order the same as the values.
         for (i, value) in [(track * 2, left), (track * 2 + 1, right)] {
@@ -136,6 +160,19 @@ mod tests {
         assert_eq!(meters.take_peak(3), (0.0, 0.0));
         meters.record_peak(MAX_MIXER_TRACKS + 5, 1.0, 1.0);
         assert_eq!(meters.take_peak(MAX_MIXER_TRACKS + 5), (0.0, 0.0));
+    }
+
+    #[test]
+    fn pitches_are_kept_per_slot() {
+        let meters = Meters::new();
+        assert_eq!(meters.pitch(2, 1), None);
+        meters.record_pitch(2, 1, Some(220.0));
+        assert_eq!(meters.pitch(2, 1), Some(220.0));
+        assert_eq!(meters.pitch(2, 0), None);
+        meters.record_pitch(2, 1, None);
+        assert_eq!(meters.pitch(2, 1), None);
+        meters.record_pitch(MAX_MIXER_TRACKS, 0, Some(1.0));
+        assert_eq!(meters.pitch(MAX_MIXER_TRACKS, 0), None);
     }
 
     #[test]

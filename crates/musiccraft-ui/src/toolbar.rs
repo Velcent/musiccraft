@@ -138,6 +138,7 @@ fn add_menu(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
                 ("Additive", "channel.add_additive"),
                 ("Drum kit (16 pads)", "channel.add_kit"),
                 ("Layer", "channel.add_layer"),
+                ("MIDI Out", "channel.add_midi_out"),
             ] {
                 if ui.button(label).clicked() {
                     if let Ok(invocation) = Invocation::parse(line) {

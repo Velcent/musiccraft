@@ -839,3 +839,30 @@ fn convolution_reverb_loads_its_impulse() {
     let late = rms(&left[22_050..33_075]);
     assert!(late > 1e-4, "tail: {late}");
 }
+
+#[test]
+fn midi_out_channels_reach_the_midi_queue_and_render_silent() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_midi_out 5
+         step.set 1 1 on
+         transport.play",
+    );
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut midi = handle.take_midi_out().unwrap();
+    let mut bridge = Bridge::new(44_100);
+    let report = bridge.sync(s.project(), &mut handle);
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    let mut out = vec![0.0; 2 * 22_050];
+    engine.process(&mut out, 2);
+    assert!(out.iter().all(|x| *x == 0.0), "MIDI Out makes no sound");
+    let bytes: Vec<[u8; 3]> = std::iter::from_fn(|| midi.pop()).map(|e| e.bytes).collect();
+    assert_eq!(bytes, vec![[0x94, 60, 100], [0x84, 60, 0]]);
+
+    // Changing the MIDI channel rebuilds it; exports stay silent.
+    run(&mut s, "channel.set_midi_channel 1 6");
+    assert!(bridge.sync(s.project(), &mut handle).rebuilt_graph);
+    let (left, right, _) = render(s.project(), RenderOptions::default());
+    assert!(left.iter().chain(&right).all(|x| *x == 0.0));
+}

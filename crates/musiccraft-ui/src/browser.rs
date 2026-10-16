@@ -225,7 +225,7 @@ fn plugin_database(
                     {
                         actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
                     }
-                    let more: [(&str, &str, Invocation); 7] = [
+                    let more: [(&str, &str, Invocation); 8] = [
                         (
                             "FM synth",
                             "Four-operator FM synth",
@@ -260,6 +260,11 @@ fn plugin_database(
                             "Layer",
                             "Plays several channels at once",
                             Invocation::bare("channel.add_layer"),
+                        ),
+                        (
+                            "MIDI Out",
+                            "Sends notes to external MIDI gear",
+                            Invocation::bare("channel.add_midi_out"),
                         ),
                     ];
                     for (label, hint, invocation) in more {
@@ -356,6 +361,8 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::PitchShift => "Pitch shifter",
         K::Stutter => "Stutter",
         K::Convolution => "Convolution reverb",
+        K::PitchCorrect => "Pitch corrector",
+        K::Tuner => "Tuner",
         K::Plugin => "Plugin",
     }
 }

@@ -63,6 +63,8 @@
 | `multiband` | low/mid and mid/high crossover Hz (Linkwitz–Riley, bands sum flat), threshold dB / ratio / gain dB per band, attack ms, release ms, output dB |
 | `vocoder` | sidechain (the modulator, e.g. a voice; this insert's audio is the carrier), bandwidth, attack ms, release ms, shift semitones (moves the carrier bands), noise (hiss mixed into the carrier for consonants), mix, output dB; 16 bands 120 Hz–7.5 kHz. Without a sidechain only the dry share passes |
 | `pitch_shift` | pitch semitones (−24–24), fine cents, window ms (longer is smoother, shorter tracks transients better), mix |
+| `pitch_correct` | key (C–B), scale (chromatic, major, minor, harmonic minor, major pentatonic, minor pentatonic), speed ms (how quickly the pitch glides to the target; 0 snaps at once for a hard-tuned sound), amount (share of the distance to the target note that is corrected), reference Hz (the frequency of A4, 415–466), mix. For one voice or instrument at a time; see *Pitch correction and tuner* |
+| `tuner` | reference Hz (the frequency of A4). Leaves audio untouched; its window shows the note heard |
 | `stutter` | slice (1/32 note – 1 bar), every (period, 1/32 note – 1 bar), portion (share at the end of each period that repeats), decay (level of each repeat relative to the last), mix |
 | `convolution` | mix, predelay ms, low cut Hz, high cut Hz, output dB; the impulse response is chosen with `mixer.set_effect_file` |
 
@@ -87,6 +89,25 @@ time with the beat) and a free-running clock at the project tempo while
 stopped. The gate's window shows the 16 steps; clicking one turns it on or off.
 
 Ranges and defaults are defined in `musiccraft-params`.
+
+## Pitch correction and tuner
+
+- Both effects detect the pitch of a single voice or instrument (monophonic,
+  60–1000 Hz) from the mid signal, with a new estimate about every 5 ms. Silence
+  (below −60 dBFS) and noise have no pitch.
+- The **pitch corrector** finds the note of the chosen scale nearest to the
+  detected pitch and shifts the audio toward it: the correction (in semitones)
+  is `(target − detected) × amount`, approached with a one-pole glide whose time
+  constant is `speed`. Between notes, where no pitch is detected, the last
+  correction is held so consonants do not wobble. The shifted copy fades in over
+  the first 10 cents of correction, so notes already in tune pass through
+  untouched; with amount 0 the audio is unchanged.
+- The **tuner** passes audio through unchanged.
+- The engine publishes each detecting slot's latest pitch (bypassed slots
+  publish none) for the UI. Their windows show the note name (A4 = MIDI note
+  69 at the reference frequency), the frequency, a ±50-cent meter that turns
+  the accent colour within 5 cents, and, for the corrector, the target note
+  and a twelve-key strip with the scale's notes lit.
 
 ## Effect windows and presets
 
@@ -137,7 +158,9 @@ Ranges and defaults are defined in `musiccraft-params`.
   manual's effects list; the designs are ours. Convolution is uniformly
   partitioned overlap-save (textbook); the vocoder is a classic channel
   vocoder (band-pass filter banks and envelope followers); the pitch shifter is
-  a two-tap crossfaded delay-line design; the generated impulse responses are
+  a two-tap crossfaded delay-line design; pitch detection is the published
+  YIN method (de Cheveigné and Kawahara, JASA 2002), and the corrector drives
+  the same delay-line shifter; the generated impulse responses are
   filtered decaying noise with early reflections, our own.
 - Effect windows (preset bar, graph, knobs) follow the common layout of plugin
   windows in pattern-based DAWs; the graphs and factory presets are our own.

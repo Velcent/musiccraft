@@ -36,7 +36,7 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
-| `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response` and `fft` modules only to draw effect curves and the spectrum analyzer. |
+| `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response`, `fft` and `pitch` modules only to draw effect curves, the spectrum analyzer and the tuner display. |
 | `musiccraft-app` | Wires session, bridge, audio device, MIDI input and UI together. |
 | `xtask` | `cargo xtask parity`: checks the feature checklist against the registry and keymap. |
 
@@ -65,6 +65,10 @@ xtask ──► commands, render, ui (keymap) ───────────�
   run, the bridge diffs the project against what the engine last received and
   pushes messages through a lock-free SPSC queue (`rtrb`).
 - **MIDI thread** (optional): sends live note events through a second SPSC queue.
+- **MIDI output thread** (optional): drains a third SPSC queue, filled by the
+  engine with the note messages of MIDI Out channels (fixed-size `Copy`
+  events; a full queue drops them), and sends them to the chosen port. It
+  polls every millisecond, so timing is accurate to about one audio buffer.
 - The engine never reads `Project`. Data the engine needs (sample buffers, note
   sequences, effect state) is prepared on the main thread.
 
@@ -130,7 +134,7 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `serde`, `serde_json` | Project file format and JSON payloads in undo inverses and MCP. |
 | `hound` | WAV decoding for samples and WAV encoding for export. |
 | `eframe` (egui) | Cross-platform immediate-mode UI; kept swappable behind commands. |
-| `midir` | MIDI keyboard input in the app. |
+| `midir` | MIDI keyboard input and MIDI Out channels' output port in the app. |
 | `clap-sys` | Rust declarations of the CLAP plugin ABI (types and constants only). |
 | `libloading` | Opens `.clap` shared libraries and finds their entry point. |
 | `libc` | `poll(2)` for file descriptors plugin windows register (Unix only). |

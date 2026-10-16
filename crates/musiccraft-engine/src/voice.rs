@@ -372,6 +372,8 @@ impl Voice {
             Instrument::Layer(_) => self.active = false,
             // External instruments never get voices; see `engine::trigger`.
             Instrument::External(_) => self.active = false,
+            // MIDI Out channels send messages; see `engine::trigger`.
+            Instrument::MidiOut(_) => self.active = false,
             Instrument::Synth => self.render_synth(params, pitch, left, right, sample_rate),
             Instrument::DrumSynth => self.render_drum(params, left, right),
             Instrument::Pluck => self.render_pluck(params, left, right),

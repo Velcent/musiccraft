@@ -35,6 +35,8 @@ pub struct Settings {
     pub buffer_frames: Option<u32>,
     /// MIDI input port.
     pub midi_input: MidiInput,
+    /// MIDI output port for MIDI Out channels; `None` sends nothing.
+    pub midi_output: Option<String>,
     /// Interface scale, 0.75–2.
     pub ui_scale: f32,
     /// Show the hint bar.
@@ -56,6 +58,7 @@ impl Default for Settings {
             sample_rate: None,
             buffer_frames: None,
             midi_input: MidiInput::Auto,
+            midi_output: None,
             ui_scale: 1.0,
             show_hints: true,
             autosave: true,
@@ -97,6 +100,8 @@ pub struct SettingsInfo {
     pub running_rate: u32,
     /// MIDI input ports.
     pub midi_ports: Vec<String>,
+    /// MIDI output ports.
+    pub midi_out_ports: Vec<String>,
     /// A note about the last audio (re)start, such as a fallback.
     pub audio_note: Option<String>,
     /// Installed plugins found.
@@ -371,6 +376,31 @@ fn midi(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut
     }
     ui.add_space(4.0);
     ui.label(RichText::new(&frame.engine.midi).color(theme::ACCENT));
+    ui.add_space(8.0);
+    ui.label(RichText::new("Output (MIDI Out channels)").strong());
+    let mut output = |ui: &mut egui::Ui, label: &str, value: Option<String>| {
+        if ui.radio(settings.midi_output == value, label).clicked() {
+            changed(
+                actions,
+                Settings {
+                    midi_output: value,
+                    ..settings.clone()
+                },
+            );
+        }
+    };
+    output(ui, "None", None);
+    for port in &info.midi_out_ports {
+        output(ui, port, Some(port.clone()));
+    }
+    if info.midi_out_ports.is_empty() {
+        note(
+            ui,
+            "No MIDI output ports found. Connect your gear and refresh.",
+        );
+    }
+    ui.add_space(4.0);
+    ui.label(RichText::new(&frame.engine.midi_out).color(theme::ACCENT));
     if ui.button("Refresh ports").clicked() {
         actions.push(Action::RefreshDevices);
     }

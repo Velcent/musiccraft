@@ -142,6 +142,9 @@ pub enum Instrument {
     /// The external processor (plugin) in this engine slot; silent when the
     /// slot is empty.
     External(u16),
+    /// Sends its notes to external MIDI gear on this MIDI channel (0–15)
+    /// instead of sounding.
+    MidiOut(u8),
 }
 
 /// A channel: instrument, settings and a scratch buffer.

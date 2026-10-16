@@ -34,6 +34,8 @@ enum Source {
     Layer(Vec<u16>),
     /// A plugin in this engine slot (`None`: not running).
     Plugin(Option<u16>),
+    /// External MIDI gear on this MIDI channel (0–15).
+    MidiOut(u8),
 }
 
 /// What a rebuild depends on for one effect slot: its kind, the engine slot
@@ -215,6 +217,9 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     ),
                     musiccraft_project::Instrument::Plugin { plugin } => {
                         Source::Plugin(slots.get(&plugin.instance).copied())
+                    }
+                    musiccraft_project::Instrument::MidiOut { midi_channel } => {
+                        Source::MidiOut((*midi_channel).clamp(1, 16) - 1)
                     }
                 })
                 .collect(),
@@ -544,6 +549,7 @@ impl Bridge {
                 Source::Layer(children) => Instrument::Layer(children.clone()),
                 // An out-of-range slot plays nothing.
                 Source::Plugin(slot) => Instrument::External(slot.unwrap_or(u16::MAX)),
+                Source::MidiOut(midi_channel) => Instrument::MidiOut(*midi_channel),
             };
             graph.add_channel(instrument, *params);
         }

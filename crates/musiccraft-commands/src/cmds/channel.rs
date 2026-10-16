@@ -85,6 +85,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_layer,
         ),
         cmd(
+            "channel.add_midi_out",
+            "channel.add_midi_out [1-16] [name]",
+            "Add a channel that sends its notes to external MIDI gear on a MIDI channel (default 1).",
+            add_midi_out,
+        ),
+        cmd(
+            "channel.set_midi_channel",
+            "channel.set_midi_channel <channel> <1-16>",
+            "Set the MIDI channel a MIDI Out channel sends on.",
+            set_midi_channel,
+        ),
+        cmd(
             "channel.remove",
             "channel.remove <channel>",
             "Remove a channel and its notes in every pattern.",
@@ -319,6 +331,41 @@ fn add_layer(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
         },
         "Layer",
     )
+}
+
+/// Parses a MIDI channel number, 1–16.
+fn midi_channel(args: &Args<'_>, i: usize) -> Result<u8, CommandError> {
+    let n: u8 = args.parse(i, "MIDI channel")?;
+    if (1..=16).contains(&n) {
+        Ok(n)
+    } else {
+        Err(args.invalid("MIDI channels are numbered 1 to 16"))
+    }
+}
+
+fn add_midi_out(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    // A leading number is the MIDI channel; anything after it is the name.
+    let numbered = args.opt(0).is_some_and(|a| a.parse::<u8>().is_ok());
+    let midi = if numbered { midi_channel(args, 0)? } else { 1 };
+    let from = usize::from(numbered);
+    let name = name_or(args, from, &format!("MIDI Out {midi}"))?;
+    let id = ChannelId(project.alloc_id());
+    let channel = Channel::new(id, name, Instrument::MidiOut { midi_channel: midi });
+    Ok(push_channel(project, channel))
+}
+
+fn set_midi_channel(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = channel_arg(project, args, 0)?;
+    let midi = midi_channel(args, 1)?;
+    let Instrument::MidiOut { midi_channel } = &mut project.channels[index].instrument else {
+        return Err(args.invalid(format!("channel {} is not a MIDI Out channel", index + 1)));
+    };
+    let previous = std::mem::replace(midi_channel, midi);
+    Ok(Outcome::undoable(
+        format!("channel {} sends on MIDI channel {midi}", index + 1),
+        Invocation::new(args.name(), [(index + 1).to_string(), previous.to_string()]),
+    ))
 }
 
 fn add_keys(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

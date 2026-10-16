@@ -88,11 +88,12 @@ Hover any control and the hint bar at the top says what it does.
   (filter cutoff and resonance), edited in the event lane at the bottom
   alongside velocity and pan.
 - **Mixer** (F9, floating): faders with a dB curve, pan, on/solo, ten effect
-  slots, sends via the arrows under each strip. 33 built-in effects: filter,
+  slots, sends via the arrows under each strip. 35 built-in effects: filter,
   auto filter, vowel filter, 3-band, graphic and parametric EQ, bass boost,
   delay, multi-tap delay, stutter, reverb, convolution reverb (load an impulse
   file or pick a generated room), chorus, phaser, flanger, ring modulator,
-  frequency shifter, pitch shifter, vocoder, compressor and multiband
+  frequency shifter, pitch shifter, pitch corrector (snap a voice to a key and
+  scale), tuner, vocoder, compressor and multiband
   compressor (sidechain), limiter, noise gate, transient shaper, trance gate,
   auto-pan, stereo tool, DC remover, distortion, overdrive, soft clipper,
   waveshaper and bitcrusher. Click an effect to open its window: presets, and
@@ -109,6 +110,8 @@ Hover any control and the hint bar at the top says what it does.
 - **Recording**: REC + playing records a MIDI or typing keyboard into the
   pattern; with File → Record audio input, song-mode takes become audio clips.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
+- **MIDI Out channels** (rack → More instruments) send their notes to
+  external gear on a MIDI channel; pick the output port in Settings → MIDI.
 - **Plugins (CLAP)**: instruments and effects from `~/.clap`, `/usr/lib/clap`
   and `CLAP_PATH` show up in the browser, the rack's add menu and mixer slots.
   Each gets a parameter panel and can open its own window; parameters and

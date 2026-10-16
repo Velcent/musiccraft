@@ -1215,6 +1215,20 @@ const PITCH_SHIFT: &[Preset] = &[
     ),
 ];
 
+const PITCH_CORRECT: &[Preset] = &[
+    preset("Natural", &[]),
+    preset("Hard tune", &[("speed", 0.0)]),
+    preset("Gentle", &[("speed", 120.0), ("amount", 0.6)]),
+    preset("C major", &[("scale", 1.0), ("speed", 10.0)]),
+    preset("A minor", &[("key", 9.0), ("scale", 2.0), ("speed", 10.0)]),
+];
+
+const TUNER: &[Preset] = &[
+    preset("A = 440 Hz", &[]),
+    preset("A = 432 Hz", &[("reference", 432.0)]),
+    preset("A = 442 Hz", &[("reference", 442.0)]),
+];
+
 const STUTTER: &[Preset] = &[
     preset("Bar end", &[]),
     preset("Build", &[("slice", 0.0), ("portion", 0.5)]),
@@ -1280,6 +1294,8 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::PitchShift => PITCH_SHIFT,
         EffectKind::Stutter => STUTTER,
         EffectKind::Convolution => CONVOLUTION,
+        EffectKind::PitchCorrect => PITCH_CORRECT,
+        EffectKind::Tuner => TUNER,
         EffectKind::Plugin => &[],
     }
 }

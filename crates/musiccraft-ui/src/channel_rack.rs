@@ -227,6 +227,9 @@ fn row(
             Instrument::Kit { .. } => "Drum kit (16 pads)".to_owned(),
             Instrument::Layer { channels } => format!("Layer of {} channels", channels.len()),
             Instrument::Plugin { plugin } => format!("Plugin: {} ({})", plugin.name, plugin.id),
+            Instrument::MidiOut { midi_channel } => {
+                format!("MIDI Out: external gear on MIDI channel {midi_channel}")
+            }
         });
         if response.clicked() {
             // Clicking the selected channel again closes its settings.
@@ -492,6 +495,7 @@ fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Actio
                     ("Additive", "channel.add_additive"),
                     ("Drum kit (16 pads)", "channel.add_kit"),
                     ("Layer", "channel.add_layer"),
+                    ("MIDI Out", "channel.add_midi_out"),
                 ] {
                     if ui.button(label).clicked() {
                         if let Ok(invocation) = Invocation::parse(line) {
