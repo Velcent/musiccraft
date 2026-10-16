@@ -14,6 +14,7 @@ mod plugin;
 mod project;
 mod record;
 mod transport;
+mod zones;
 
 #[cfg(test)]
 mod tests;
@@ -37,5 +38,6 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(controller::commands());
     commands.extend(plugin::commands());
     commands.extend(record::commands());
+    commands.extend(zones::commands());
     commands
 }

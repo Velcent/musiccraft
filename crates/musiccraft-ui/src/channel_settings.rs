@@ -71,7 +71,7 @@ fn param_knob(
     }
 }
 
-fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
+pub(crate) fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
         .fill(theme::PANEL_DARK)
         .corner_radius(6.0)
@@ -329,6 +329,9 @@ fn contents(
         Instrument::Kit { pads } => {
             kit(ui, state, index, channel, pads, actions);
             return;
+        }
+        Instrument::Zones { zones } => {
+            crate::zone_editor::show(ui, state, frame, index, zones, actions);
         }
         Instrument::Layer { channels } => {
             layer(ui, frame, index, channels, actions);

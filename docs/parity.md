@@ -110,6 +110,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Convolution reverb with impulse files or generated rooms | `fx:convolution` `cmd:mixer.set_effect_file` |
 | Effects | Spectrum analyzer | `done` |
 | Effects | Pitch correction and tuner | `fx:pitch_correct` `fx:tuner` `spec:mixer.md` |
+| Generators | Zone sampler (samples on key and velocity zones) | `cmd:channel.add_zones` `cmd:channel.add_zone` `cmd:channel.set_zone` `spec:channel-rack.md` |
 | Generators | MIDI out to external gear | `cmd:channel.add_midi_out` `cmd:channel.set_midi_channel` `spec:channel-rack.md` |
 | Generators | MIDI out control changes, program change and MIDI clock | `cmd:channel.set_param` `spec:channel-rack.md` |
 | Instruments | Subtractive synth with unison, sub, drive, filter types, LFO and presets | `cmd:channel.add_synth` `spec:piano-roll.md` |

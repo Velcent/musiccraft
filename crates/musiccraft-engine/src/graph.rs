@@ -149,6 +149,30 @@ pub struct EffectParams {
     pub values: [f32; MAX_EFFECT_PARAMS],
 }
 
+/// One sample of a zone sampler and the notes that play it.
+#[derive(Debug, Clone)]
+pub struct Zone {
+    /// The sample.
+    pub buffer: Arc<SampleBuffer>,
+    /// Lowest and highest key that play it.
+    pub low: u8,
+    pub high: u8,
+    /// Key at which it plays at its recorded pitch.
+    pub root: u8,
+    /// Lowest and highest velocity (1–127) that play it.
+    pub vel_low: u8,
+    pub vel_high: u8,
+}
+
+impl Zone {
+    /// Whether a note of `key` at `velocity` (0..1) plays this zone.
+    #[must_use]
+    pub fn plays(&self, key: u8, velocity: f32) -> bool {
+        let vel = (velocity.clamp(0.0, 1.0) * 127.0).round().clamp(1.0, 127.0) as u8;
+        (self.low..=self.high).contains(&key) && (self.vel_low..=self.vel_high).contains(&vel)
+    }
+}
+
 /// The sound source of a channel.
 #[derive(Debug, Clone)]
 pub enum Instrument {
@@ -170,6 +194,8 @@ pub enum Instrument {
     Granular(Arc<SampleBuffer>),
     /// Sixteen sample pads (`None` for an empty pad).
     Kit(Vec<Option<Arc<SampleBuffer>>>),
+    /// Samples mapped to key and velocity ranges.
+    Zones(Vec<Zone>),
     /// Forwards notes to these channel indices.
     Layer(Vec<u16>),
     /// The external processor (plugin) in this engine slot; silent when the

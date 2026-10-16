@@ -86,7 +86,7 @@ new UI editor or large DSP.
 
 ### Medium
 
-- [ ] DirectWave → multi-sample key and velocity zones in the sampler.
+- [x] DirectWave → multi-sample key and velocity zones in the sampler.
 - [x] Sytrus / Toxic Biohazard → six FM operators, per-operator filters and
   drawn operator waveforms.
 - [x] Sakura → bowed string excitation and multi-string model for the pluck

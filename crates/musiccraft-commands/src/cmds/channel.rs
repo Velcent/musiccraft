@@ -231,7 +231,7 @@ pub(super) fn check_sample(
         .map_or_else(|| sample.to_owned(), |s| s.to_string_lossy().into_owned()))
 }
 
-fn push_channel(project: &mut Project, channel: Channel) -> Outcome {
+pub(super) fn push_channel(project: &mut Project, channel: Channel) -> Outcome {
     let name = channel.name.clone();
     project.channels.push(channel);
     let number = project.channels.len();
@@ -307,7 +307,7 @@ fn add_pluck(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     ))
 }
 
-fn name_or(args: &Args<'_>, from: usize, default: &str) -> Result<String, CommandError> {
+pub(super) fn name_or(args: &Args<'_>, from: usize, default: &str) -> Result<String, CommandError> {
     if args.len() > from {
         args.rest(from)
     } else {

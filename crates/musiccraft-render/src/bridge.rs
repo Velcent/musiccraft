@@ -30,6 +30,8 @@ enum Source {
     Granular(String),
     /// Resolved pad sample references (empty for an empty pad).
     Kit(Vec<String>),
+    /// Zones with resolved sample references.
+    Zones(Vec<musiccraft_project::SampleZone>),
     /// Channel positions the layer plays.
     Layer(Vec<u16>),
     /// A plugin in this engine slot (`None`: not running).
@@ -239,6 +241,15 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                                 } else {
                                     sample_key(p, base)
                                 }
+                            })
+                            .collect(),
+                    ),
+                    musiccraft_project::Instrument::Zones { zones } => Source::Zones(
+                        zones
+                            .iter()
+                            .map(|z| musiccraft_project::SampleZone {
+                                sample: sample_key(&z.sample, base),
+                                ..z.clone()
                             })
                             .collect(),
                     ),
@@ -589,6 +600,19 @@ impl Bridge {
                 Source::Kit(keys) => Instrument::Kit(
                     keys.iter()
                         .map(|k| (!k.is_empty()).then(|| self.load(k, warnings)))
+                        .collect(),
+                ),
+                Source::Zones(zones) => Instrument::Zones(
+                    zones
+                        .iter()
+                        .map(|z| musiccraft_engine::Zone {
+                            buffer: self.load(&z.sample, warnings),
+                            low: z.low,
+                            high: z.high,
+                            root: z.root,
+                            vel_low: z.vel_low,
+                            vel_high: z.vel_high,
+                        })
                         .collect(),
                 ),
                 Source::Layer(children) => Instrument::Layer(children.clone()),

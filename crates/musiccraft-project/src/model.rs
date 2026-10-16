@@ -195,6 +195,11 @@ pub enum Instrument {
         /// File path or built-in name, as for the sampler.
         sample: String,
     },
+    /// Samples mapped to key and velocity ranges.
+    Zones {
+        /// The zones, in the order notes look for a match.
+        zones: Vec<SampleZone>,
+    },
     /// Sixteen sample pads.
     Kit {
         /// Pad samples, empty for an empty pad.
@@ -231,6 +236,7 @@ impl Instrument {
             Self::Additive => "additive",
             Self::Granular { .. } => "granular",
             Self::Kit { .. } => "kit",
+            Self::Zones { .. } => "zones",
             Self::Layer { .. } => "layer",
             Self::Plugin { .. } => "plugin",
             Self::MidiOut { .. } => "midi out",
@@ -243,6 +249,38 @@ impl Instrument {
         match self {
             Self::Plugin { plugin } => Some(plugin),
             _ => None,
+        }
+    }
+}
+
+/// One sample of a zone sampler and the notes that play it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SampleZone {
+    /// File path or built-in name, as for the sampler.
+    pub sample: String,
+    /// Lowest key that plays it.
+    pub low: u8,
+    /// Highest key that plays it.
+    pub high: u8,
+    /// Key at which it plays at its recorded pitch.
+    pub root: u8,
+    /// Lowest velocity (1–127) that plays it.
+    pub vel_low: u8,
+    /// Highest velocity (1–127) that plays it.
+    pub vel_high: u8,
+}
+
+impl SampleZone {
+    /// A zone over the whole keyboard and every velocity.
+    #[must_use]
+    pub fn new(sample: impl Into<String>) -> Self {
+        Self {
+            sample: sample.into(),
+            low: 0,
+            high: 127,
+            root: 60,
+            vel_low: 1,
+            vel_high: 127,
         }
     }
 }
@@ -280,7 +318,7 @@ impl Channel {
     pub fn new(id: ChannelId, name: impl Into<String>, instrument: Instrument) -> Self {
         let params = match instrument {
             Instrument::Sampler { .. } => InstrumentParams::sampler(),
-            Instrument::Kit { .. } => InstrumentParams::sampler(),
+            Instrument::Kit { .. } | Instrument::Zones { .. } => InstrumentParams::sampler(),
             _ => InstrumentParams::default(),
         };
         Self {

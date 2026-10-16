@@ -96,6 +96,7 @@ pub(crate) fn glides(instrument: &Instrument) -> bool {
         instrument,
         Instrument::Synth
             | Instrument::Sampler(_)
+            | Instrument::Zones(_)
             | Instrument::Fm
             | Instrument::Keys
             | Instrument::Additive
@@ -305,7 +306,7 @@ impl Voice {
         self.delay = start.delay;
         self.gate = start.gate;
         self.age = age;
-        self.one_shot = (matches!(instrument, Instrument::Sampler(_))
+        self.one_shot = (matches!(instrument, Instrument::Sampler(_) | Instrument::Zones(_))
             && param(params, inst::ONE_SHOT) >= 0.5
             && !start.live)
             || matches!(instrument, Instrument::DrumSynth);
@@ -317,6 +318,12 @@ impl Voice {
         match instrument {
             Instrument::DrumSynth => self.start_drum(params),
             Instrument::Pluck => self.start_pluck(params, start.key),
+            Instrument::Zones(zones) => {
+                self.pad = zones
+                    .iter()
+                    .position(|z| z.plays(start.key, start.velocity))
+                    .unwrap_or(usize::MAX);
+            }
             Instrument::Kit(_) => {
                 let root = param(params, inst::ROOT_KEY).round() as i32;
                 self.pad = (i32::from(start.key) - root).rem_euclid(16) as usize;
@@ -359,6 +366,17 @@ impl Voice {
         self.slice_end = None;
         self.reverse = false;
         self.sample_frames = 0.0;
+        if let Instrument::Zones(zones) = instrument {
+            // A reversed zone plays from its end, like the sampler.
+            if let Some(zone) = zones.get(self.pad) {
+                self.reverse = param(params, inst::REVERSE) >= 0.5;
+                self.sample_pos = if self.reverse {
+                    zone.buffer.len() as f64 - 1.0
+                } else {
+                    0.0
+                };
+            }
+        }
         if let Instrument::Sampler(buffer) = instrument {
             let slices = param(params, inst::SLICES).round().max(1.0) as i32;
             // A sliced audio clip starts part-way; a reversed sample plays
@@ -497,14 +515,23 @@ impl Voice {
                 } else {
                     pitch
                 };
-                self.render_sample(buffer, params, pitch, left, right, sample_rate);
+                let root = param(params, inst::ROOT_KEY);
+                self.render_sample(buffer, params, pitch, root, left, right, sample_rate);
             }
+            Instrument::Zones(zones) => match zones.get(self.pad) {
+                Some(zone) => {
+                    let root = f32::from(zone.root);
+                    self.render_sample(&zone.buffer, params, pitch, root, left, right, sample_rate);
+                }
+                None => self.active = false,
+            },
             Instrument::Kit(pads) => {
                 // Pads play at their own pitch.
                 let pitch = param(params, inst::ROOT_KEY) + param(params, inst::PITCH);
                 match pads.get(self.pad) {
                     Some(Some(buffer)) => {
-                        self.render_sample(buffer, params, pitch, left, right, sample_rate);
+                        let root = param(params, inst::ROOT_KEY);
+                        self.render_sample(buffer, params, pitch, root, left, right, sample_rate);
                     }
                     _ => self.active = false,
                 }
@@ -527,18 +554,19 @@ impl Voice {
         }
     }
 
-    /// Plays `buffer` from the current position at `pitch` relative to the
-    /// root key (sampler, slices and kit pads).
+    /// Plays `buffer` from the current position at `pitch` relative to
+    /// `root` (sampler, slices, zones and kit pads).
+    #[allow(clippy::too_many_arguments)]
     fn render_sample(
         &mut self,
         buffer: &musiccraft_dsp::SampleBuffer,
         params: &ChannelParams,
         pitch: f32,
+        root: f32,
         left: &mut [f32],
         right: &mut [f32],
         sample_rate: f32,
     ) {
-        let root = param(params, inst::ROOT_KEY);
         let rate = buffer.sample_rate() / f64::from(sample_rate);
         let step_for = |glide: f32| rate * 2.0_f64.powf(f64::from(pitch + glide - root) / 12.0);
         let mut step = step_for(self.glide);

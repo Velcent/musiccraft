@@ -26,7 +26,7 @@ pub use engine::{Engine, EngineHandle, LiveSender, engine_pair};
 pub use external::{External, ExternalTransport, MAX_EXTERNALS};
 pub use graph::{
     ChannelNode, ChannelParams, EffectParams, Graph, Instrument, MAX_SENDS, Preview, SendParams,
-    TrackParams,
+    TrackParams, Zone,
 };
 pub use message::{EngineMessage, Garbage, LiveEvent, Start};
 pub use meters::{Meters, SCOPE_LEN};

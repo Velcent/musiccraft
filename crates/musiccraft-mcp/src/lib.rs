@@ -335,6 +335,9 @@ impl Server {
                         pads.iter().filter(|p| !p.is_empty()).count()
                     )
                 }
+                musiccraft_project::Instrument::Zones { zones } => {
+                    format!("zone sampler ({} zones)", zones.len())
+                }
                 musiccraft_project::Instrument::Layer { channels } => {
                     format!("layer of {} channels", channels.len())
                 }

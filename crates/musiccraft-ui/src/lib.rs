@@ -24,6 +24,7 @@ mod theme;
 mod toolbar;
 mod tuner;
 mod widgets;
+mod zone_editor;
 
 use musiccraft_commands::Invocation;
 use musiccraft_project::Project;

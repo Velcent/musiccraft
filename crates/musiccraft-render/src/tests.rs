@@ -818,6 +818,76 @@ fn controller_commands_undo_and_follow_tracks() {
 }
 
 #[test]
+fn zone_sampler_picks_a_zone_by_key_and_velocity() {
+    let play = |note: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_zones
+                 channel.add_zone 1 builtin:kick 0 59 48
+                 channel.add_zone 1 builtin:snare 60 127 72
+                 channel.set_zone 1 2 vel_low 64
+                 {note}"
+            ),
+        );
+        let options = RenderOptions {
+            max_tail_seconds: 0.5,
+            ..RenderOptions::default()
+        };
+        render(s.project(), options).0
+    };
+    let kick = play("note.add 1 0 4 C4");
+    let snare = play("note.add 1 0 4 C6 110");
+    let soft = play("note.add 1 0 4 C6 30");
+    assert!(rms(&kick[..8_000]) > 0.01 && rms(&snare[..8_000]) > 0.01);
+    assert!(
+        kick[..8_000]
+            .iter()
+            .zip(&snare[..8_000])
+            .any(|(a, b)| (a - b).abs() > 0.01)
+    );
+    assert!(
+        rms(&soft) < 1e-6,
+        "below the snare zone's velocities: silent"
+    );
+    // A zone's root plays the sample at its own pitch: the same sample a
+    // fifth up moves faster, so it ends sooner.
+    let root = play("note.add 1 0 4 C3");
+    let up = play("note.add 1 0 4 G3");
+    let end = |x: &[f32]| x.iter().rposition(|s| s.abs() > 1e-3).unwrap_or(0);
+    assert!(end(&up) < end(&root), "{} vs {}", end(&up), end(&root));
+}
+
+#[test]
+fn zone_commands_check_and_undo() {
+    let mut s = session();
+    run(&mut s, "channel.add_zones\nchannel.add_zone 1 builtin:hat");
+    assert!(s.run_line("channel.add_zone 1 builtin:hat 70 60").is_err());
+    assert!(s.run_line("channel.set_zone 1 1 vel_low 0").is_err());
+    assert!(
+        s.run_line("channel.set_zone 1 2 root 40").is_err(),
+        "no zone 2"
+    );
+    run(
+        &mut s,
+        "channel.set_zone 1 1 high 64\nchannel.remove_zone 1 1",
+    );
+    s.run_line("edit.undo").unwrap();
+    s.run_line("edit.undo").unwrap();
+    let musiccraft_project::Instrument::Zones { zones } = &s.project().channels[0].instrument
+    else {
+        panic!("not a zone sampler");
+    };
+    assert_eq!((zones.len(), zones[0].high), (1, 127));
+    run(&mut s, "channel.add_synth");
+    assert!(
+        s.run_line("channel.add_zone 2 builtin:hat").is_err(),
+        "not a zone sampler"
+    );
+}
+
+#[test]
 fn send_targets_follow_track_insertion_and_block_removal() {
     let mut s = session();
     run(

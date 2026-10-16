@@ -19,6 +19,7 @@ pub enum Purpose {
     AddSample,
     SetSample(usize),
     SetPad(usize, usize),
+    AddZone(usize),
     SetEffectFile(usize, usize),
     RenameChannel(usize),
     RenamePattern(usize),
@@ -102,6 +103,10 @@ impl Dialog {
         Self::new(Purpose::SetSample(channel), current)
     }
 
+    pub fn add_zone(channel: usize, project: &Project) -> Self {
+        Self::new(Purpose::AddZone(channel), project_dir(project))
+    }
+
     pub fn set_pad(channel: usize, pad: usize, current: String) -> Self {
         Self::new(Purpose::SetPad(channel, pad), current)
     }
@@ -162,6 +167,7 @@ impl Dialog {
             Purpose::AddSample => "Add WAV sample",
             Purpose::SetSample(_) => "Change sample",
             Purpose::SetPad(_, _) => "Pad sample (file path or builtin:<sound>; - clears)",
+            Purpose::AddZone(_) => "Zone sample (file path or builtin:<sound>)",
             Purpose::SetEffectFile(_, _) => "Impulse response (audio file or ir:<name>)",
             Purpose::RenameChannel(_) => "Rename channel",
             Purpose::RenamePattern(_) => "Rename pattern",
@@ -189,6 +195,9 @@ impl Dialog {
             Purpose::ExportStems => Invocation::new("project.export_stems", [text]),
             Purpose::ExportMidi => Invocation::new("project.export_midi", [text]),
             Purpose::AddSample => Invocation::new("channel.add_sampler", [text]),
+            Purpose::AddZone(channel) => {
+                Invocation::new("channel.add_zone", [(channel + 1).to_string(), text])
+            }
             Purpose::SetPad(channel, pad) => Invocation::new(
                 "channel.set_pad",
                 [(channel + 1).to_string(), (pad + 1).to_string(), text],

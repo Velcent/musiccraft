@@ -279,6 +279,7 @@ fn row(
             Instrument::Additive => "Additive synth".to_owned(),
             Instrument::Granular { sample } => format!("Granular: {sample}"),
             Instrument::Kit { .. } => "Drum kit (16 pads)".to_owned(),
+            Instrument::Zones { zones } => format!("Zone sampler ({} zones)", zones.len()),
             Instrument::Layer { channels } => format!("Layer of {} channels", channels.len()),
             Instrument::Plugin { plugin } => format!("Plugin: {} ({})", plugin.name, plugin.id),
             Instrument::MidiOut { midi_channel } => {
@@ -552,6 +553,7 @@ fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Actio
                     ("Organ", "channel.add_keys organ"),
                     ("Additive", "channel.add_additive"),
                     ("Drum kit (16 pads)", "channel.add_kit"),
+                    ("Zone sampler", "channel.add_zones"),
                     ("Layer", "channel.add_layer"),
                     ("MIDI Out", "channel.add_midi_out"),
                 ] {

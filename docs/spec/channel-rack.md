@@ -215,6 +215,22 @@ Out channels voice their own notes and are never cut.
   `gran_scan` (how fast the position moves while held, −2…2 × real time).
   Pitch follows the key around `root_key`.
 
+## Zone sampler
+
+- `channel.add_zones [name]` adds a sampler that plays several samples, each
+  in a **zone**: a key range (`low`–`high`), a velocity range (`vel_low`–
+  `vel_high`, 1–127) and the `root` key at which the sample plays at its
+  recorded pitch. A note plays the first zone (in list order) whose ranges
+  contain its key and velocity; when none does it is silent. One-shot,
+  fades, reverse, envelope and pitch work as on the sampler.
+- `channel.add_zone <channel> <sample> [low] [high] [root]` appends a zone
+  (defaults: the whole keyboard, root C5 = 60, all velocities);
+  `channel.remove_zone <channel> <zone>`, `channel.insert_zone <channel>
+  <zone> <json>` (undo) and `channel.set_zone <channel> <zone>
+  <low|high|root|vel_low|vel_high|sample> <value>` edit them. All undoable.
+- The editor lists the zones with their sample and ranges as dragged
+  numbers, a delete button per zone and "Add zone…" (asks for a sample).
+
 ## Drum kit
 
 - `channel.add_kit [name]` adds a 16-pad sample kit; key `root_key + n`

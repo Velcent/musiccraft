@@ -30,7 +30,7 @@ Status:
 | Plucked!, Sakura | Pluck (Karplus–Strong strings with bowing, up to three detuned strings) | covered | |
 | Drumaxx, Fruity Drum Synth Live, Fruity Kick, Fruit Kick | Drum synth (kick, snare, hat, tom, clap) | covered | |
 | FPC, Drumpad | Drum kit (16 pads) | covered | |
-| DirectWave | Sampler, drum kit | partial | No multi-sample key or velocity zones |
+| DirectWave | Zone sampler (`channel.add_zones`: key and velocity zones with their own root keys), sampler, drum kit | covered | |
 | Slicex, Fruity Slicer | `channel.slice` (sample slicing into steps) | covered | |
 | Fruity Granulizer | Granular instrument | covered | |
 | Layer | Layer channel | covered | |

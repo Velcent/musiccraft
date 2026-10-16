@@ -225,7 +225,7 @@ fn plugin_database(
                     {
                         actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
                     }
-                    let more: [(&str, &str, Invocation); 8] = [
+                    let more: [(&str, &str, Invocation); 9] = [
                         (
                             "FM synth",
                             "Four-operator FM synth",
@@ -255,6 +255,11 @@ fn plugin_database(
                             "Drum kit",
                             "16-pad sample kit",
                             Invocation::bare("channel.add_kit"),
+                        ),
+                        (
+                            "Zone sampler",
+                            "Several samples mapped to key and velocity zones",
+                            Invocation::bare("channel.add_zones"),
                         ),
                         (
                             "Layer",
