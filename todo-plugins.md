@@ -30,9 +30,9 @@ new UI editor or large DSP.
   mono-from-one-side.
 - [x] Fruity Delay Bank / Multiband Delay → per-tap low/high cut and pan for
   `multi_tap` (new parameters appended, old projects keep their sound).
-- [ ] Maximus → `multiband_limiter`: the `multiband` crossovers with a
+- [x] Maximus → `multiband_limiter`: the `multiband` crossovers with a
   limiter per band and a master ceiling.
-- [ ] Soundgoodizer → one-knob "enhance" preset family on `multiband_limiter`.
+- [x] Soundgoodizer → one-knob "enhance" preset family on `multiband_limiter`.
 - [ ] Fruity Squeeze → add a "squeeze" (sample-and-hold amplitude) mode to
   `bitcrusher`.
 - [ ] Fruity Fast Dist → threshold-style hard clipping shape on `distortion`.

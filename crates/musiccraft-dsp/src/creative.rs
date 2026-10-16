@@ -46,21 +46,21 @@ impl Crossover {
 /// One channel's three-way split. The low band also passes through the upper
 /// crossover's all-pass so all three stay in phase and sum flat.
 #[derive(Debug, Clone, Default)]
-struct Split {
+pub(crate) struct Split {
     lower: Crossover,
     upper: Crossover,
     align: Crossover,
 }
 
 impl Split {
-    fn set(&mut self, f1: f32, f2: f32, sample_rate: f32) {
+    pub(crate) fn set(&mut self, f1: f32, f2: f32, sample_rate: f32) {
         let f2 = f2.max(f1 * 1.1);
         self.lower.set(f1, sample_rate);
         self.upper.set(f2, sample_rate);
         self.align.set(f2, sample_rate);
     }
 
-    fn process(&mut self, x: f32) -> [f32; 3] {
+    pub(crate) fn process(&mut self, x: f32) -> [f32; 3] {
         let (low, rest) = self.lower.process(x);
         let (mid, high) = self.upper.process(rest);
         let (a, b) = self.align.process(low);

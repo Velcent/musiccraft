@@ -53,8 +53,8 @@ Status:
 | Fruity Compressor | `compressor` (with sidechain) | covered | |
 | Fruity Multiband Compressor | `multiband` | covered | |
 | Fruity Limiter | `dynamics` (gate, compressor and limiter in one insert); also `limiter`, `compressor`, `noise_gate` | covered | |
-| Maximus | `multiband` + `limiter` | partial | No combined multiband limiter in one effect |
-| Soundgoodizer | `multiband` "Upfront" preset | partial | |
+| Maximus | `multiband_limiter` | covered | Three bands with a master ceiling |
+| Soundgoodizer | `multiband_limiter` "Enhance" presets with the one-knob `amount` | covered | |
 | Transient Processor | `transient` | covered | |
 | Fruity Soft Clipper | `soft_clipper` | covered | |
 | Fruity WaveShaper | `waveshaper` | partial | Six fixed curves; the curve cannot be drawn |

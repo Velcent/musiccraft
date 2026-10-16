@@ -1361,6 +1361,65 @@ const STEREO_SHAPER: &[Preset] = &[
     ),
 ];
 
+const MULTIBAND_LIMITER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Enhance",
+        &[
+            ("low_drive", 6.0),
+            ("low_ceiling", -6.0),
+            ("mid_drive", 4.0),
+            ("mid_ceiling", -6.0),
+            ("high_drive", 6.0),
+            ("high_ceiling", -8.0),
+            ("high_level", 2.0),
+            ("amount", 0.5),
+        ],
+    ),
+    preset(
+        "Enhance hard",
+        &[
+            ("low_drive", 12.0),
+            ("low_ceiling", -9.0),
+            ("mid_drive", 9.0),
+            ("mid_ceiling", -9.0),
+            ("high_drive", 12.0),
+            ("high_ceiling", -10.0),
+            ("high_level", 3.0),
+            ("release", 60.0),
+        ],
+    ),
+    preset(
+        "Warm loud",
+        &[
+            ("low_drive", 8.0),
+            ("low_ceiling", -6.0),
+            ("low_level", 2.0),
+            ("mid_drive", 5.0),
+            ("mid_ceiling", -6.0),
+            ("high_level", -2.0),
+            ("release", 150.0),
+        ],
+    ),
+    preset(
+        "Tame lows",
+        &[
+            ("low_ceiling", -12.0),
+            ("low_level", 4.0),
+            ("low_freq", 120.0),
+        ],
+    ),
+    preset(
+        "Brickwall",
+        &[
+            ("mid_drive", 6.0),
+            ("low_drive", 6.0),
+            ("high_drive", 6.0),
+            ("ceiling", -1.0),
+        ],
+    ),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1402,6 +1461,7 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::Tuner => TUNER,
         EffectKind::Dynamics => DYNAMICS,
         EffectKind::StereoShaper => STEREO_SHAPER,
+        EffectKind::MultibandLimiter => MULTIBAND_LIMITER,
         EffectKind::Plugin => &[],
     }
 }

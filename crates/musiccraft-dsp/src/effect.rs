@@ -6,6 +6,7 @@ use crate::character::{
 };
 use crate::convolution::Convolver;
 use crate::creative::{MultibandCompressor, PitchShifter, Stutter, Vocoder};
+use crate::mastering::MultibandLimiter;
 use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
 use crate::pitch::{PitchCorrector, Tuner};
 use crate::toolbox::{Dynamics, StereoShaper};
@@ -163,6 +164,8 @@ pub enum Effect {
     Dynamics(Dynamics),
     /// See [`StereoShaper`].
     StereoShaper(StereoShaper),
+    /// Three-band limiter with a master ceiling.
+    MultibandLimiter(MultibandLimiter),
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -211,6 +214,7 @@ impl Effect {
             EffectKind::Tuner => Self::Tuner(Tuner::new(sample_rate)),
             EffectKind::Dynamics => Self::Dynamics(Dynamics::default()),
             EffectKind::StereoShaper => Self::StereoShaper(StereoShaper::new(sample_rate)),
+            EffectKind::MultibandLimiter => Self::MultibandLimiter(MultibandLimiter::default()),
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -256,6 +260,7 @@ impl Effect {
             Self::Tuner(_) => EffectKind::Tuner,
             Self::Dynamics(_) => EffectKind::Dynamics,
             Self::StereoShaper(_) => EffectKind::StereoShaper,
+            Self::MultibandLimiter(_) => EffectKind::MultibandLimiter,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -319,6 +324,7 @@ impl Effect {
             Self::Tuner(fx) => fx.process(left, right),
             Self::Dynamics(fx) => fx.process(left, right, params, ctx),
             Self::StereoShaper(fx) => fx.process(left, right, params, ctx),
+            Self::MultibandLimiter(fx) => fx.process(left, right, params, ctx),
             Self::Passthrough => {}
         }
     }
@@ -370,6 +376,7 @@ impl Effect {
             Self::GraphicEq(fx) => *fx = GraphicEq::default(),
             Self::ParametricEq(fx) => *fx = ParametricEq::default(),
 
+            Self::MultibandLimiter(fx) => fx.reset(),
             Self::Phaser(fx) => fx.reset(),
             Self::Flanger(fx) => fx.reset(),
             Self::Bitcrusher(fx) => fx.reset(),

@@ -365,6 +365,7 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::Tuner => "Tuner",
         K::Dynamics => "Dynamics",
         K::StereoShaper => "Stereo shaper",
+        K::MultibandLimiter => "Multiband limiter",
         K::Plugin => "Plugin",
     }
 }

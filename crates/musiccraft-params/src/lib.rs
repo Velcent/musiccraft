@@ -514,13 +514,15 @@ pub enum EffectKind {
     Dynamics,
     /// Left/right mixing matrix with an inter-channel delay.
     StereoShaper,
+    /// Three-band limiter with a master ceiling.
+    MultibandLimiter,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 37] = [
+pub const EFFECT_KINDS: [EffectKind; 38] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -543,6 +545,7 @@ pub const EFFECT_KINDS: [EffectKind; 37] = [
     EffectKind::Vocoder,
     EffectKind::Compressor,
     EffectKind::Multiband,
+    EffectKind::MultibandLimiter,
     EffectKind::Limiter,
     EffectKind::Dynamics,
     EffectKind::NoiseGate,
@@ -647,6 +650,23 @@ const STEREO_SHAPER_PARAMS: &[ParamSpec] = &[
     spec("right_to_right", -1.0, 1.0, 1.0, ""),
     spec("delay", -20.0, 20.0, 0.0, "ms"),
     spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const MULTIBAND_LIMITER_PARAMS: &[ParamSpec] = &[
+    spec("low_freq", 40.0, 1_000.0, 200.0, "Hz"),
+    spec("high_freq", 500.0, 16_000.0, 2_500.0, "Hz"),
+    spec("low_drive", 0.0, 24.0, 0.0, "dB"),
+    spec("low_ceiling", -24.0, 0.0, 0.0, "dB"),
+    spec("low_level", -18.0, 12.0, 0.0, "dB"),
+    spec("mid_drive", 0.0, 24.0, 0.0, "dB"),
+    spec("mid_ceiling", -24.0, 0.0, 0.0, "dB"),
+    spec("mid_level", -18.0, 12.0, 0.0, "dB"),
+    spec("high_drive", 0.0, 24.0, 0.0, "dB"),
+    spec("high_ceiling", -24.0, 0.0, 0.0, "dB"),
+    spec("high_level", -18.0, 12.0, 0.0, "dB"),
+    spec("release", 5.0, 1_000.0, 100.0, "ms"),
+    spec("amount", 0.0, 1.0, 1.0, ""),
+    spec("ceiling", -12.0, 0.0, -0.3, "dB"),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -971,6 +991,7 @@ impl EffectKind {
             Self::Tuner => "tuner",
             Self::Dynamics => "dynamics",
             Self::StereoShaper => "stereo_shaper",
+            Self::MultibandLimiter => "multiband_limiter",
             Self::Plugin => "plugin",
         }
     }
@@ -1022,6 +1043,7 @@ impl EffectKind {
             Self::Tuner => TUNER_PARAMS,
             Self::Dynamics => DYNAMICS_PARAMS,
             Self::StereoShaper => STEREO_SHAPER_PARAMS,
+            Self::MultibandLimiter => MULTIBAND_LIMITER_PARAMS,
             Self::Plugin => &[],
         }
     }

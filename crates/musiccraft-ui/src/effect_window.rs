@@ -1151,6 +1151,44 @@ fn graph(
             handles.push((pos2(freq_x(rect, f2), mid), Some("high_freq"), None));
             hint = "Three bands with their own compressors; drag the points to move the crossovers. Lines show each band's gain; brighter shading compresses harder";
         }
+        EffectKind::MultibandLimiter => {
+            frequency_grid(&painter, rect);
+            let (f1, f2) = (value(effect, "low_freq"), value(effect, "high_freq"));
+            let (top, bottom) = (6.0, -24.0);
+            let edges = [F_LOW, f1, f2, F_HIGH];
+            let amount = value(effect, "amount");
+            for (band, name) in ["low", "mid", "high"].iter().enumerate() {
+                let (a, b) = (freq_x(rect, edges[band]), freq_x(rect, edges[band + 1]));
+                let drive = value(effect, &format!("{name}_drive")) * amount;
+                let fill = color.gamma_multiply((0.1 + drive / 40.0).clamp(0.1, 0.7));
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(a, rect.top()), pos2(b, rect.bottom())),
+                    0.0,
+                    fill,
+                );
+                let ceiling = db_y(rect, value(effect, &format!("{name}_ceiling")), top, bottom);
+                painter.line_segment(
+                    [pos2(a, ceiling), pos2(b, ceiling)],
+                    Stroke::new(2.0, color),
+                );
+                painter.text(
+                    pos2((a + b) * 0.5, rect.top() + 4.0),
+                    egui::Align2::CENTER_TOP,
+                    format!("{name} +{drive:.0} dB"),
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT,
+                );
+            }
+            let master = db_y(rect, value(effect, "ceiling"), top, bottom);
+            painter.line_segment(
+                [pos2(rect.left(), master), pos2(rect.right(), master)],
+                Stroke::new(1.0, theme::DANGER),
+            );
+            let mid = rect.center().y;
+            handles.push((pos2(freq_x(rect, f1), mid), Some("low_freq"), None));
+            handles.push((pos2(freq_x(rect, f2), mid), Some("high_freq"), None));
+            hint = "Three bands, each driven into its own ceiling (lines); brighter shading drives harder. The red line is the master ceiling; drag the points to move the crossovers";
+        }
         EffectKind::Vocoder => {
             frequency_grid(&painter, rect);
             let shift = 2.0_f32.powf(value(effect, "shift") / 12.0);
