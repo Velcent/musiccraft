@@ -84,12 +84,16 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   - [x] Claw machine.
 - [x] Master pitch / A4 tuning.
 - [x] Tap tempo.
-- [ ] MP3 export (already a `todo` in parity.md).
+- [ ] MP3 export (already a `todo` in parity.md). Blocked: there is no mature
+  pure-Rust MP3 encoder; the usual crates wrap LAME (C, LGPL), which needs a
+  dependency decision from the maintainer first.
 - [x] Pattern select with keys 1–9.
 - [x] Automation of individual notes or events inside a pattern.
 - [x] Channel display filter groups.
 - [x] Per-track arm and audio input selection.
-- [ ] Time signatures (known deferred).
+- [ ] Time signatures (known deferred). Still deferred: 4/4 bars of 384 ticks
+  are assumed across the model, commands, UI grids and file format, so this
+  needs its own milestone and spec.
 
 ## Sources
 

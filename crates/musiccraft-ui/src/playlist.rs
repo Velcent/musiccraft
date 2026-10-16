@@ -18,7 +18,7 @@ use crate::icons::{self, Icon};
 use crate::piano_roll::Tool;
 use crate::{Action, Frame, UiState, theme, widgets};
 
-const HEADER_WIDTH: f32 = 96.0;
+const HEADER_WIDTH: f32 = 124.0;
 const RULER_HEIGHT: f32 = 20.0;
 const LIST_WIDTH: f32 = 130.0;
 
@@ -986,8 +986,13 @@ fn headers(
         } else {
             theme::TEXT_DIM
         };
-        painter.text(
-            r.left_center() + vec2(24.0, 0.0),
+        // The name stops short of the arm and solo buttons.
+        let name_area = Rect::from_min_max(
+            pos2(r.left() + 22.0, r.top()),
+            pos2(r.right() - 38.0, r.bottom()),
+        );
+        painter.with_clip_rect(name_area).text(
+            name_area.left_center(),
             Align2::LEFT_CENTER,
             playlist.track_name(row),
             FontId::proportional(11.0),
