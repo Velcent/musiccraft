@@ -15,6 +15,7 @@ mod graph;
 mod message;
 mod meters;
 mod midi_out;
+mod modmatrix;
 mod sequence;
 mod voice;
 

@@ -80,8 +80,8 @@ new UI editor or large DSP.
 
 ### Easy
 
-- [ ] SimSynth / MiniSynth → second filter and a second LFO per synth voice.
-- [ ] BooBass → dedicated "bass" synth preset bank with tone/pluck macros.
+- [x] SimSynth / MiniSynth → second filter and a second LFO per synth voice.
+- [x] BooBass → dedicated "bass" synth preset bank with tone/pluck macros.
 - [ ] Fruity DX10 → already covered; add more factory presets of our own.
 
 ### Medium
@@ -92,7 +92,7 @@ new UI editor or large DSP.
 - [ ] Sakura → bowed string excitation and multi-string model for the pluck
   instrument.
 - [ ] Morphine → morphing between two or more additive spectra.
-- [ ] Wasp / PoiZone / Sawer → per-oscillator filters and a modulation matrix
+- [x] Wasp / PoiZone / Sawer → per-oscillator filters and a modulation matrix
   in the synth.
 - [ ] Fruity Envelope / Keyboard / X-Y Controllers → controller channels whose
   outputs drive parameters like automation.

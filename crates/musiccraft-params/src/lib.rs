@@ -21,7 +21,7 @@ pub const TICKS_PER_BAR: u32 = PPQ * BEATS_PER_BAR;
 /// Capacity of an effect parameter array.
 pub const MAX_EFFECT_PARAMS: usize = 24;
 /// Capacity of an instrument parameter array.
-pub const MAX_INSTRUMENT_PARAMS: usize = 96;
+pub const MAX_INSTRUMENT_PARAMS: usize = 128;
 /// Maximum number of effect slots on one mixer track.
 pub const MAX_EFFECT_SLOTS: usize = 10;
 /// Maximum number of mixer tracks, master included.
@@ -315,6 +315,34 @@ pub mod inst {
     pub const ECHO_FEED: usize = 87;
     /// Note echo: semitones added per repeat.
     pub const ECHO_PITCH: usize = 88;
+    /// Second filter: 0 off, 1 low-pass, 2 band-pass, 3 high-pass.
+    pub const FILTER2_TYPE: usize = 89;
+    /// Second filter cutoff, hertz.
+    pub const CUTOFF2: usize = 90;
+    /// Second filter resonance, 0..1.
+    pub const RESONANCE2: usize = 91;
+    /// 0 series, 1 parallel, 2 split (osc 1 and sub to filter 1, osc 2 and 3 to filter 2).
+    pub const FILTER_ROUTING: usize = 92;
+    /// Second LFO rate, hertz.
+    pub const LFO2_RATE: usize = 93;
+    /// Second LFO shape: sine, triangle, saw, square, random steps.
+    pub const LFO2_SHAPE: usize = 94;
+    /// Modulation envelope attack, seconds.
+    pub const ENV2_ATTACK: usize = 95;
+    /// Modulation envelope decay, seconds.
+    pub const ENV2_DECAY: usize = 96;
+    /// Modulation slot 1 source (see `MOD_SOURCES`).
+    pub const MOD1_SOURCE: usize = 97;
+    /// Modulation slot 1 destination (see `MOD_DESTS`).
+    pub const MOD1_DEST: usize = 98;
+    /// Modulation slot 1 amount, -1..1.
+    pub const MOD1_AMOUNT: usize = 99;
+    pub const MOD2_SOURCE: usize = 100;
+    pub const MOD2_DEST: usize = 101;
+    pub const MOD2_AMOUNT: usize = 102;
+    pub const MOD3_SOURCE: usize = 103;
+    pub const MOD3_DEST: usize = 104;
+    pub const MOD3_AMOUNT: usize = 105;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -408,7 +436,43 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("echo_time", 1.0, 384.0, 48.0),
     spec("echo_feed", 0.0, 1.0, 0.5, ""),
     int_spec("echo_pitch", -12.0, 12.0, 0.0),
+    int_spec("filter2_type", 0.0, 3.0, 0.0),
+    spec("cutoff2", 20.0, 20_000.0, 2_000.0, "Hz"),
+    spec("resonance2", 0.0, 1.0, 0.2, ""),
+    int_spec("filter_routing", 0.0, 2.0, 0.0),
+    spec("lfo2_rate", 0.05, 20.0, 2.0, "Hz"),
+    int_spec("lfo2_shape", 0.0, 4.0, 0.0),
+    spec("env2_attack", 0.0, 10.0, 0.01, "s"),
+    spec("env2_decay", 0.01, 10.0, 0.5, "s"),
+    int_spec("mod1_source", 0.0, 6.0, 0.0),
+    int_spec("mod1_dest", 0.0, 8.0, 0.0),
+    spec("mod1_amount", -1.0, 1.0, 0.0, ""),
+    int_spec("mod2_source", 0.0, 6.0, 0.0),
+    int_spec("mod2_dest", 0.0, 8.0, 0.0),
+    spec("mod2_amount", -1.0, 1.0, 0.0, ""),
+    int_spec("mod3_source", 0.0, 6.0, 0.0),
+    int_spec("mod3_dest", 0.0, 8.0, 0.0),
+    spec("mod3_amount", -1.0, 1.0, 0.0, ""),
 ];
+
+/// Names of the synth's modulation sources, by `modN_source` value.
+pub const MOD_SOURCES: [&str; 7] = [
+    "off", "LFO 1", "LFO 2", "mod env", "velocity", "key", "amp env",
+];
+/// Names of the synth's modulation destinations, by `modN_dest` value.
+pub const MOD_DESTS: [&str; 9] = [
+    "pitch",
+    "cutoff",
+    "cutoff 2",
+    "resonance",
+    "osc mix",
+    "volume",
+    "pan",
+    "detune",
+    "osc 3",
+];
+/// Number of modulation slots.
+pub const MOD_SLOTS: usize = 3;
 
 /// Names of the keys instrument's types, by `keys_type` value.
 pub const KEYS_TYPES: [&str; 3] = ["piano", "epiano", "organ"];
@@ -1333,6 +1397,10 @@ mod tests {
             (inst::FADE_OUT, "fade_out"),
             (inst::TIME_SHIFT, "time_shift"),
             (inst::ECHO_PITCH, "echo_pitch"),
+            (inst::FILTER2_TYPE, "filter2_type"),
+            (inst::LFO2_SHAPE, "lfo2_shape"),
+            (inst::MOD1_SOURCE, "mod1_source"),
+            (inst::MOD3_AMOUNT, "mod3_amount"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

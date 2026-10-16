@@ -4,7 +4,9 @@ use crate::hint::Hint;
 use egui::{Color32, Pos2, RichText, Sense, Shape, Stroke, pos2, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::music::key_name;
-use musiccraft_project::params::{INSTRUMENT_PARAMS, ParamSpec, WAVEFORMS, inst};
+use musiccraft_project::params::{
+    INSTRUMENT_PARAMS, MOD_DESTS, MOD_SLOTS, MOD_SOURCES, ParamSpec, WAVEFORMS, inst,
+};
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME};
 
 use crate::dialogs::Dialog;
@@ -1269,6 +1271,118 @@ fn synth(
             );
         });
     });
+    ui.add_space(6.0);
+    section(ui, "FILTER 2", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::FILTER2_TYPE,
+                &["Off", "Low-pass", "Band-pass", "High-pass"],
+                actions,
+            );
+        });
+        if channel.params.get(inst::FILTER2_TYPE) >= 0.5 {
+            ui.horizontal(|ui| {
+                choice(
+                    ui,
+                    number,
+                    channel,
+                    inst::FILTER_ROUTING,
+                    &["Series", "Parallel", "Split"],
+                    actions,
+                );
+            });
+            ui.horizontal(|ui| {
+                param_knob(ui, state, number, channel, inst::CUTOFF2, "Cutoff", actions);
+                param_knob(
+                    ui,
+                    state,
+                    number,
+                    channel,
+                    inst::RESONANCE2,
+                    "Reso",
+                    actions,
+                );
+            });
+        }
+    });
+    ui.add_space(6.0);
+    section(ui, "LFO 2 · MOD ENV", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::LFO2_SHAPE,
+                &["Sine", "Tri", "Saw", "Square", "Random"],
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::LFO2_RATE, "Rate", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ENV2_ATTACK,
+                "Attack",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ENV2_DECAY,
+                "Decay",
+                actions,
+            );
+        });
+    });
+    ui.add_space(6.0);
+    section(ui, "MOD MATRIX", |ui| {
+        for slot in 0..MOD_SLOTS {
+            let base = inst::MOD1_SOURCE + slot * 3;
+            ui.horizontal(|ui| {
+                combo(ui, number, channel, base, &MOD_SOURCES, actions);
+                ui.label(RichText::new("→").small());
+                combo(ui, number, channel, base + 1, &MOD_DESTS, actions);
+                param_knob(ui, state, number, channel, base + 2, "Amount", actions);
+            });
+        }
+    });
+}
+
+/// A drop-down bound to an integer instrument parameter.
+fn combo(
+    ui: &mut egui::Ui,
+    number: usize,
+    channel: &Channel,
+    param: usize,
+    labels: &[&str],
+    actions: &mut Vec<Action>,
+) {
+    let current = channel.params.get(param).round() as usize;
+    egui::ComboBox::from_id_salt(("instrument-combo", number, param))
+        .width(84.0)
+        .selected_text(labels.get(current).copied().unwrap_or("?"))
+        .show_ui(ui, |ui| {
+            for (i, label) in labels.iter().enumerate() {
+                if ui.selectable_label(i == current, *label).clicked() && i != current {
+                    actions.push(Action::Run(Invocation::new(
+                        "channel.set_param",
+                        [
+                            number.to_string(),
+                            INSTRUMENT_PARAMS[param].name.to_owned(),
+                            i.to_string(),
+                        ],
+                    )));
+                }
+            }
+        });
 }
 
 /// A button showing one oscillator wave shape.

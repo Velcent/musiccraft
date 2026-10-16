@@ -19,8 +19,8 @@ Status:
 | --- | --- | --- | --- |
 | Channel sampler / Audio clip | Sampler channel, audio clips | covered | |
 | 3x Osc | Synth (three oscillators, sub, unison) | covered | |
-| SimSynth, MiniSynth, Sawer, PoiZone, Wasp / Wasp XT, Kepler, GMS | Synth with presets | partial | One filter and one LFO per voice; no per-oscillator filters or mod matrix |
-| Transistor Bass, BooBass | Synth "Acid bass"/"Sub bass" presets with slide notes | covered | |
+| SimSynth, MiniSynth, Sawer, PoiZone, Wasp / Wasp XT, Kepler, GMS | Synth with presets (two filters with series/parallel/split routing, two LFOs, mod envelope, three-slot mod matrix) | covered | |
+| Transistor Bass, BooBass | Synth bass presets ("Acid bass", "Sub bass", "Round bass", "Picked bass", "Fretless") with slide notes | covered | |
 | Fruity DX10 | FM synth (4 operators, 6 algorithms) | covered | |
 | Sytrus, Toxic Biohazard | FM synth | partial | 4 operators instead of 6, no per-operator filters or waveform drawing |
 | Morphine, Ogun | Additive synth (harmonic drawbars) | partial | No morphing between spectra, no resynthesis |

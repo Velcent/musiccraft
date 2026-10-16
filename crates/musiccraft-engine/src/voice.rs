@@ -1,6 +1,7 @@
 use musiccraft_dsp::{Adsr, AdsrParams, Oscillator, Svf, SvfMode, Waveform, key_to_hz, pan_gains};
 use musiccraft_params::inst;
 
+use crate::modmatrix::{ModSources, ModState, SynthMods};
 use crate::{ChannelParams, Instrument};
 
 /// Output level of one synth voice at full velocity, leaving headroom for chords.
@@ -104,6 +105,15 @@ pub(crate) struct Voice {
     lfo_phase: f32,
     filter_l: Svf,
     filter_r: Svf,
+    filter2_l: Svf,
+    filter2_r: Svf,
+    /// Second LFO and modulation envelope.
+    mod_state: ModState,
+    /// The matrix's latest output, and the gain and pan it currently
+    /// applies (ramped toward the latest output between updates).
+    mods: SynthMods,
+    mod_gain: f32,
+    mod_pan: f32,
     filter_countdown: u32,
     /// Frames since the voice started sounding (drum synth).
     elapsed: u32,
@@ -168,6 +178,12 @@ impl Voice {
             lfo_phase: 0.0,
             filter_l: Svf::new(),
             filter_r: Svf::new(),
+            filter2_l: Svf::new(),
+            filter2_r: Svf::new(),
+            mod_state: ModState::default(),
+            mods: SynthMods::default(),
+            mod_gain: 1.0,
+            mod_pan: 0.0,
             elapsed: 0,
             drum_phase: 0.0,
             noise: 0x9E37_79B9,
@@ -269,6 +285,15 @@ impl Voice {
         self.lfo_phase = 0.0;
         self.filter_l.reset();
         self.filter_r.reset();
+        self.filter2_l.reset();
+        self.filter2_r.reset();
+        self.mod_state.start();
+        self.mods = SynthMods {
+            gain: 1.0,
+            ..SynthMods::default()
+        };
+        self.mod_gain = 1.0;
+        self.mod_pan = 0.0;
         self.filter_countdown = 0;
         self.sample_pos = 0.0;
         if let Instrument::Granular(buffer) = instrument {
@@ -1035,6 +1060,16 @@ impl Voice {
         let drive = param(params, inst::DRIVE).clamp(0.0, 1.0);
         let drive_gain = 1.0 + drive * 8.0;
         let drive_norm = 1.0 / drive_gain.tanh();
+        let mode2 = match param(params, inst::FILTER2_TYPE).round() as i32 {
+            1 => Some(SvfMode::LowPass),
+            2 => Some(SvfMode::BandPass),
+            3 => Some(SvfMode::HighPass),
+            _ => None,
+        };
+        let cutoff2 = param(params, inst::CUTOFF2);
+        let resonance2 = param(params, inst::RESONANCE2).clamp(0.0, 1.0);
+        let routing = param(params, inst::FILTER_ROUTING).round() as i32;
+        let ramp = 1.0 / FILTER_UPDATE_INTERVAL as f32;
         // Unison voices sit evenly across -1..1; the stack is normalized so
         // more voices are not louder.
         let position = |i: usize| {
@@ -1054,9 +1089,32 @@ impl Voice {
             self.step_glide();
             let level = self.env.next_level();
             if self.filter_countdown == 0 {
-                lfo = (self.lfo_phase * std::f32::consts::TAU).sin() * lfo_depth;
+                let lfo_raw = (self.lfo_phase * std::f32::consts::TAU).sin();
+                lfo = lfo_raw * lfo_depth;
+                let sources = ModSources {
+                    lfo1: lfo_raw,
+                    velocity: self.velocity,
+                    key: ((pitch - 60.0) / 24.0).clamp(-1.0, 1.0),
+                    amp_env: level,
+                };
+                let mut noise = self.noise;
+                self.mods = self.mod_state.update(
+                    params,
+                    sources,
+                    FILTER_UPDATE_INTERVAL,
+                    sample_rate,
+                    || {
+                        noise ^= noise << 13;
+                        noise ^= noise >> 17;
+                        noise ^= noise << 5;
+                        noise as f32 / u32::MAX as f32 * 2.0 - 1.0
+                    },
+                );
+                self.noise = noise;
+                let mods = self.mods;
                 let vibrato = if lfo_target == 0 { lfo * 2.0 } else { 0.0 };
-                let base = f64::from(key_to_hz(pitch + self.glide + vibrato));
+                let base = f64::from(key_to_hz(pitch + self.glide + vibrato + mods.pitch));
+                let detune = detune * 2.0_f64.powf(f64::from(mods.detune) / 1200.0);
                 for i in 0..unison {
                     let cents = f64::from(spread * position(i));
                     let hz = base * 2.0_f64.powf(cents / 1200.0);
@@ -1068,24 +1126,38 @@ impl Voice {
                 self.sub.set_frequency(base * 0.5, sr);
                 self.osc3.set_frequency(base * osc3_ratio, sr);
                 let lfo_octaves = if lfo_target == 1 { lfo * 3.0 } else { 0.0 };
-                let modulated = cutoff * 2.0_f32.powf(env_amount * level + lfo_octaves);
+                let modulated =
+                    cutoff * 2.0_f32.powf(env_amount * level + lfo_octaves + mods.cutoff);
+                let resonance = (resonance + mods.resonance).clamp(0.0, 1.0);
                 self.filter_l.set(modulated, resonance, sample_rate);
                 self.filter_r.set(modulated, resonance, sample_rate);
+                if mode2.is_some() {
+                    let f2 = cutoff2 * 2.0_f32.powf(mods.cutoff2);
+                    self.filter2_l.set(f2, resonance2, sample_rate);
+                    self.filter2_r.set(f2, resonance2, sample_rate);
+                }
                 self.filter_countdown = FILTER_UPDATE_INTERVAL;
             }
+            self.mod_gain += (self.mods.gain - self.mod_gain) * ramp;
+            self.mod_pan += (self.mods.pan.clamp(-1.0, 1.0) - self.mod_pan) * ramp;
+            let mix = (mix + self.mods.osc_mix).clamp(0.0, 1.0);
+            let osc3_level = (osc3_level + self.mods.osc3).clamp(0.0, 1.0);
             self.filter_countdown -= 1;
             self.lfo_phase = (self.lfo_phase + lfo_step).fract();
-            let (mut sum_l, mut sum_r) = (0.0, 0.0);
+            // Group A is oscillator 1 and the sub, group B oscillators 2
+            // and 3; the split routing filters them separately.
+            let (mut a_l, mut a_r, mut b_l, mut b_r) = (0.0, 0.0, 0.0, 0.0);
             for i in 0..unison {
                 let (Some(a), Some(b)) = (self.osc1.get_mut(i), self.osc2.get_mut(i)) else {
                     continue;
                 };
-                let a = a.next_sample(wave1);
-                let b = b.next_sample(wave2);
-                let sample = (a + (b - a) * mix) * norm;
+                let a = a.next_sample(wave1) * (1.0 - mix) * norm;
+                let b = b.next_sample(wave2) * mix * norm;
                 let p = position(i);
-                sum_l += sample * (1.0 - p);
-                sum_r += sample * (1.0 + p);
+                a_l += a * (1.0 - p);
+                a_r += a * (1.0 + p);
+                b_l += b * (1.0 - p);
+                b_r += b * (1.0 + p);
             }
             let sub = self.sub.next_sample(Waveform::Sine) * sub_level;
             let third = if osc3_level > 0.0 {
@@ -1093,19 +1165,52 @@ impl Voice {
             } else {
                 0.0
             };
-            let (mut raw_l, mut raw_r) = (sum_l + sub + third, sum_r + sub + third);
+            let mut groups = [a_l + sub, a_r + sub, b_l + third, b_r + third];
             if drive > 0.001 {
-                raw_l = (raw_l * drive_gain).tanh() * drive_norm;
-                raw_r = (raw_r * drive_gain).tanh() * drive_norm;
+                for x in &mut groups {
+                    *x = (*x * drive_gain).tanh() * drive_norm;
+                }
             }
+            let [a_l, a_r, b_l, b_r] = groups;
             let tremolo = if lfo_target == 2 {
                 1.0 - (0.5 + 0.5 * lfo) * lfo_depth
             } else {
                 1.0
             };
-            let gain = level * self.velocity * SYNTH_GAIN * tremolo;
-            *l += self.filter_l.process(raw_l, mode) * gain * self.pan.0;
-            *r += self.filter_r.process(raw_r, mode) * gain * self.pan.1;
+            let gain = level * self.velocity * SYNTH_GAIN * tremolo * self.mod_gain;
+            let (out_l, out_r) = match mode2 {
+                None => (
+                    self.filter_l.process(a_l + b_l, mode),
+                    self.filter_r.process(a_r + b_r, mode),
+                ),
+                Some(mode2) => match routing {
+                    1 => (
+                        (self.filter_l.process(a_l + b_l, mode)
+                            + self.filter2_l.process(a_l + b_l, mode2))
+                            * 0.5,
+                        (self.filter_r.process(a_r + b_r, mode)
+                            + self.filter2_r.process(a_r + b_r, mode2))
+                            * 0.5,
+                    ),
+                    2 => (
+                        self.filter_l.process(a_l, mode) + self.filter2_l.process(b_l, mode2),
+                        self.filter_r.process(a_r, mode) + self.filter2_r.process(b_r, mode2),
+                    ),
+                    _ => (
+                        self.filter2_l
+                            .process(self.filter_l.process(a_l + b_l, mode), mode2),
+                        self.filter2_r
+                            .process(self.filter_r.process(a_r + b_r, mode), mode2),
+                    ),
+                },
+            };
+            let (pan_l, pan_r) = if self.mod_pan == 0.0 {
+                (1.0, 1.0)
+            } else {
+                ((1.0 - self.mod_pan).min(1.0), (1.0 + self.mod_pan).min(1.0))
+            };
+            *l += out_l * gain * self.pan.0 * pan_l;
+            *r += out_r * gain * self.pan.1 * pan_r;
             if self.env.is_idle() {
                 self.active = false;
                 break;
@@ -1266,6 +1371,66 @@ mod tests {
             assert!(diff > 1.0, "parameter {index} made no difference");
             assert!(out.iter().all(|s| s.is_finite() && s.abs() < 2.0));
         }
+    }
+
+    #[test]
+    fn second_filter_routings_and_matrix_change_the_sound() {
+        let base = ChannelParams::default();
+        let (reference, _) = render_synth_note(&base);
+        let mut with_filter2 = base;
+        with_filter2.instrument[inst::FILTER2_TYPE] = 1.0;
+        with_filter2.instrument[inst::CUTOFF2] = 300.0;
+        let cases: [(&[(usize, f32)], &str); 4] = [
+            (&[], "series"),
+            (&[(inst::FILTER_ROUTING, 1.0)], "parallel"),
+            (
+                &[(inst::FILTER_ROUTING, 2.0), (inst::OSC_MIX, 0.5)],
+                "split",
+            ),
+            (
+                &[
+                    (inst::MOD1_SOURCE, 4.0),
+                    (inst::MOD1_DEST, 0.0),
+                    (inst::MOD1_AMOUNT, 1.0),
+                ],
+                "velocity to pitch",
+            ),
+        ];
+        let mut outputs = Vec::new();
+        for (changes, name) in cases {
+            let mut params = with_filter2;
+            for (i, v) in changes {
+                params.instrument[*i] = *v;
+            }
+            let (out, _) = render_synth_note(&params);
+            let diff: f32 = out.iter().zip(&reference).map(|(a, b)| (a - b).abs()).sum();
+            assert!(diff > 1.0, "{name} made no difference");
+            assert!(out.iter().all(|s| s.is_finite() && s.abs() < 2.0), "{name}");
+            outputs.push(out);
+        }
+        // Each routing sounds different from the others.
+        for (i, a) in outputs.iter().enumerate() {
+            for b in outputs.iter().skip(i + 1) {
+                assert!(a.iter().zip(b).any(|(x, y)| (x - y).abs() > 1e-3));
+            }
+        }
+    }
+
+    #[test]
+    fn matrix_pitch_from_velocity_raises_an_octave() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::WAVE1] = 0.0;
+        params.instrument[inst::OSC_MIX] = 0.0;
+        params.instrument[inst::CUTOFF] = 20_000.0;
+        params.instrument[inst::SUSTAIN] = 1.0;
+        let (plain, _) = render_synth_note(&params);
+        params.instrument[inst::MOD1_SOURCE] = 4.0;
+        params.instrument[inst::MOD1_DEST] = 0.0;
+        params.instrument[inst::MOD1_AMOUNT] = 1.0;
+        let (raised, _) = render_synth_note(&params);
+        let crossings = |x: &[f32]| x.windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count();
+        let (a, b) = (crossings(&plain[1_000..]), crossings(&raised[1_000..]));
+        assert!((b as f32 / a as f32 - 2.0).abs() < 0.1, "{a} vs {b}");
     }
 
     fn held_start(key: u8) -> VoiceStart {

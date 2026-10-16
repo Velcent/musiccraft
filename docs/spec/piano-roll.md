@@ -192,6 +192,22 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - A sine LFO per voice (`lfo_rate` Hz, `lfo_depth` 0–1, `lfo_target`): pitch
   (up to ±2 semitones), cutoff (up to ±3 octaves) or volume (tremolo).
   Modulation, glide and filter coefficients update every 32 samples.
+- A second filter (`filter2_type`: off, low-, band- or high-pass; `cutoff2`,
+  `resonance2`) with `filter_routing`: series (filter 1 then filter 2),
+  parallel (both hear the whole mix, outputs averaged) or split (oscillator 1
+  and the sub go through filter 1, oscillators 2 and 3 through filter 2, so
+  each oscillator gets its own filter). With filter 2 off the routing is
+  ignored and the synth sounds as before.
+- A second LFO (`lfo2_rate` Hz, `lfo2_shape`: sine, triangle, saw, square,
+  random steps), a modulation envelope (`env2_attack`, `env2_decay` seconds;
+  rises 0→1 then falls back to 0, independent of the note length) and a
+  three-slot modulation matrix: each slot has `modN_source` (off, LFO 1,
+  LFO 2, mod envelope, velocity, key — −1 two octaves below C5 to +1 two
+  octaves above, amp envelope), `modN_dest` (pitch ±12 semitones, cutoff
+  ±4 octaves, cutoff 2 ±4 octaves, resonance ±1, oscillator mix ±1, volume
+  (gain × 1 + amount × source, 0–2), pan ±1, oscillator 2 detune ±100
+  cents, oscillator 3 level ±1) and `modN_amount` (−1–1). LFO sources are
+  their raw −1–1 shape, independent of `lfo_depth`. Slots add up.
 - **Presets**: the synth editor offers factory presets (bass, lead, pad, pluck,
   keys, brass, riser…). Applying one sets every synth parameter in one undo
   step (`edit.batch` of `channel.set_param`); the sampler-only parameters are
