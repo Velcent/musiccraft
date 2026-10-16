@@ -188,6 +188,33 @@ fn pan_law_is_saved_and_older_files_load_as_circular() {
 }
 
 #[test]
+fn per_pattern_swing_from_older_files_becomes_the_project_swing() {
+    let mut project = Project::default();
+    project.patterns.push(Pattern::new(PatternId(9), "B"));
+    let json = project.to_json().unwrap();
+    assert!(
+        json.contains("\"swing\": 0.0"),
+        "the project swing is saved"
+    );
+    // An older file: no project swing, swing on two patterns.
+    let older = json
+        .replace("\"swing\": 0.0,", "")
+        .replace(
+            "\"length_steps\": 16,",
+            "\"length_steps\": 16, \"swing\": 0.25,",
+        )
+        .replacen("\"swing\": 0.25,", "\"swing\": 0.5,", 1);
+    let loaded = Project::from_json(&older).unwrap();
+    assert!(
+        (loaded.swing - 0.5).abs() < f32::EPSILON,
+        "{}",
+        loaded.swing
+    );
+    let saved = loaded.to_json().unwrap();
+    assert_eq!(saved.matches("\"swing\"").count(), 1, "only the project's");
+}
+
+#[test]
 fn loading_rejects_other_formats_and_newer_versions() {
     let json = rich_project().to_json().unwrap();
     let other = json.replace("musiccraft-project", "something-else");

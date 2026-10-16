@@ -285,6 +285,10 @@ pub mod inst {
     pub const GRAN_SPREAD: usize = 71;
     pub const GRAN_PITCH_RAND: usize = 72;
     pub const GRAN_SCAN: usize = 73;
+    /// Share of the project swing this channel follows, 0..1.
+    pub const SWING_MIX: usize = 74;
+    /// 1 = swung notes keep their end (they get shorter).
+    pub const SWING_TRUNCATE: usize = 75;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -363,6 +367,8 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     spec("gran_spread", 0.0, 1.0, 0.1, ""),
     spec("gran_pitch_rand", 0.0, 12.0, 0.0, "st"),
     spec("gran_scan", -2.0, 2.0, 0.0, ""),
+    spec("swing_mix", 0.0, 1.0, 1.0, ""),
+    int_spec("swing_truncate", 0.0, 1.0, 0.0),
 ];
 
 /// Names of the keys instrument's types, by `keys_type` value.
@@ -998,6 +1004,8 @@ mod tests {
             (inst::KEYS_HAMMER, "keys_hammer"),
             (inst::ADD_DECAY, "add_decay"),
             (inst::GRAN_SCAN, "gran_scan"),
+            (inst::SWING_MIX, "swing_mix"),
+            (inst::SWING_TRUNCATE, "swing_truncate"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

@@ -27,7 +27,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
     that offset after the slide.
 - [x] Pan law: a circular default (-3 dB at centre) with a triangular option,
   instead of a plain balance control.
-- [ ] Swing: one global swing amount, scaled by a per-channel swing mix
+- [x] Swing: one global swing amount, scaled by a per-channel swing mix
   (default 100%); add a "truncate" option.
 
 ### Smaller

@@ -238,6 +238,20 @@ fn contents(
         }
     });
     ui.add_space(6.0);
+    section(ui, "SWING", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::SWING_MIX, "Mix", actions);
+            choice(
+                ui,
+                number,
+                channel,
+                inst::SWING_TRUNCATE,
+                &["Shift", "Truncate"],
+                actions,
+            );
+        });
+    });
+    ui.add_space(6.0);
     match &channel.instrument {
         Instrument::Sampler { sample } => {
             sampler(ui, state, frame, index, channel, sample, actions)

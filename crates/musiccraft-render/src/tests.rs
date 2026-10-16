@@ -393,7 +393,7 @@ fn swing_delays_offbeat_sixteenths_only() {
          step.toggle 1 1
          step.toggle 1 2
          step.toggle 1 3
-         pattern.set_swing 1 50",
+         project.set_swing 50",
     );
     let starts: Vec<u64> = build_sequence(s.project())
         .events()
@@ -401,6 +401,53 @@ fn swing_delays_offbeat_sixteenths_only() {
         .map(|e| e.start)
         .collect();
     assert_eq!(starts, [0, 24 + 6, 48, 72 + 6]);
+}
+
+/// (start, length) of channel `channel`'s events (0-based).
+fn timing(s: &Session, channel: u16) -> Vec<(u64, u64)> {
+    build_sequence(s.project())
+        .events()
+        .iter()
+        .filter(|e| e.channel == channel)
+        .map(|e| (e.start, e.length))
+        .collect()
+}
+
+#[test]
+fn swing_mix_scales_the_project_swing_per_channel() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:hat
+         channel.add_sampler builtin:kick
+         channel.add_sampler builtin:snare
+         step.toggle 1 1
+         step.toggle 2 1
+         step.toggle 3 1
+         project.set_swing 100
+         channel.set_param 2 swing_mix 0.5
+         channel.set_param 3 swing_mix 0",
+    );
+    assert_eq!(timing(&s, 0), [(24 + 12, 24)], "full mix (the default)");
+    assert_eq!(timing(&s, 1), [(24 + 6, 24)], "half");
+    assert_eq!(timing(&s, 2), [(24, 24)], "straight");
+}
+
+#[test]
+fn truncated_swing_keeps_the_note_end() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         note.add 1 1 1 C5
+         note.add 1 3 2 C5
+         project.set_swing 100
+         channel.set_param 1 swing_truncate 1",
+    );
+    assert_eq!(timing(&s, 0), [(36, 12), (84, 36)]);
+    // In song mode too.
+    run(&mut s, "playlist.add_clip 1 1 0 1\ntransport.set_mode song");
+    assert_eq!(timing(&s, 0), [(36, 12), (84, 36)]);
 }
 
 #[test]

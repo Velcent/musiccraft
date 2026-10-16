@@ -26,9 +26,21 @@
   starting there, otherwise removes every note of that channel starting there.
   `step.set` forces a state. Steps and piano-roll notes are the same data.
 
-- **Swing**: `pattern.set_swing <pattern> <0-100>` delays notes that start
-  exactly on an off-beat sixteenth (steps 1, 3, 5, …) by up to half a step
-  (12 ticks at 100%). Other notes are unaffected. Undoable; saved per pattern.
+- **Swing** is one amount for the whole project: `project.set_swing <0-100>`
+  (undoable; saved as `"swing"`, 0–1). Notes that start exactly on an off-beat
+  sixteenth (steps 1, 3, 5, …) are delayed by up to half a step: 12 ticks ×
+  swing × the channel's **swing mix**. Other notes are unaffected. It applies
+  to pattern notes in pattern and song mode, not to audio clips.
+  - `swing_mix` (channel parameter, 0–1, default 1 = 100%; `channel.set_param
+    <n> swing_mix <v>`) scales the global swing per channel: 0 keeps a channel
+    straight.
+  - `swing_truncate` (channel parameter, 0 or 1, default 0): a swung note
+    keeps its original end and so gets shorter by the delay (never below one
+    tick) instead of moving whole, so it cannot run into the next step.
+  - Both are in channel settings → SWING. The channel rack's swing box sets
+    the global amount.
+  - Older files stored swing per pattern. On load, a project without a global
+    swing takes the largest pattern swing.
 
 ## Sampler
 
@@ -160,6 +172,9 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   and mixer routing) follows the general workflow described in the FL Studio
   online manual, "Channel Rack" section. Command names, value ranges and defaults
   are our own.
+- Swing: the FL Studio online manual describes one main swing control, a
+  per-channel swing mix (default 100%) and a truncate option for swung
+  notes. The delay curve, the truncate rule and the migration are our own.
 - MIDI Out: note on/off messages per the MIDI 1.0 specification (MIDI
   Association); the channel kind mirrors the "send notes to external gear"
   generator listed in the FL Studio online manual's plugin list. Design ours.

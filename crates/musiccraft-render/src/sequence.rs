@@ -1,16 +1,30 @@
 use musiccraft_engine::{AutomationLane, AutomationTarget as EngineTarget, NoteEvent, Sequence};
-use musiccraft_params::TICKS_PER_STEP;
+use musiccraft_params::{TICKS_PER_STEP, inst};
 use musiccraft_project::{AutomationTarget, ClipSource, MAX_VOLUME, Pattern, PlayMode, Project};
 
-/// Where a note starts once the pattern's swing is applied: notes exactly on an
-/// off-beat sixteenth move later by up to half a step.
-fn swung(pattern: &Pattern, start: u32) -> u32 {
-    let on_offbeat = start % (2 * TICKS_PER_STEP) == TICKS_PER_STEP;
-    if on_offbeat && pattern.swing > 0.0 {
-        start + (pattern.swing.clamp(0.0, 1.0) * (TICKS_PER_STEP / 2) as f32).round() as u32
-    } else {
-        start
+/// A note's start and length within its pattern once swing is applied: notes
+/// exactly on an off-beat sixteenth move later by up to half a step (the
+/// project swing times the channel's swing mix); with `swing_truncate` they
+/// keep their end instead.
+fn swung(project: &Project, note: &musiccraft_project::Note) -> (u32, u32) {
+    let on_offbeat = note.start % (2 * TICKS_PER_STEP) == TICKS_PER_STEP;
+    let params = project
+        .channel_position(note.channel)
+        .and_then(|i| project.channels.get(i))
+        .map(|c| &c.params);
+    let mix = params.map_or(1.0, |p| p.get(inst::SWING_MIX));
+    let truncate = params.is_some_and(|p| p.get(inst::SWING_TRUNCATE) >= 0.5);
+    let amount = (project.swing * mix).clamp(0.0, 1.0);
+    if !on_offbeat || amount <= 0.0 {
+        return (note.start, note.length);
     }
+    let delay = (amount * (TICKS_PER_STEP / 2) as f32).round() as u32;
+    let length = if truncate {
+        note.length.saturating_sub(delay).max(1)
+    } else {
+        note.length
+    };
+    (note.start + delay, length)
 }
 
 fn event(
@@ -49,7 +63,10 @@ fn pattern_events(project: &Project, pattern: &Pattern) -> Vec<NoteEvent> {
     pattern
         .notes
         .iter()
-        .filter_map(|note| event(project, note, swung(pattern, note.start), note.length))
+        .filter_map(|note| {
+            let (start, length) = swung(project, note);
+            event(project, note, start, length)
+        })
         .collect()
 }
 
@@ -106,11 +123,12 @@ fn pattern_clip_events(
     // The pattern repeats for as long as the clip lasts.
     while offset < clip.length {
         for note in &pattern.notes {
-            let start = offset + swung(pattern, note.start);
+            let (start, length) = swung(project, note);
+            let start = offset + start;
             if start >= clip.length {
                 continue;
             }
-            let length = note.length.min(clip.length - start);
+            let length = length.min(clip.length - start);
             events.extend(event(project, note, clip.start + start, length));
         }
         offset += period;

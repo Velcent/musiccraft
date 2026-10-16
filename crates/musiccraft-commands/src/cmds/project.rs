@@ -16,6 +16,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_tempo,
         ),
         cmd(
+            "project.set_swing",
+            "project.set_swing <0-100>",
+            "Set the project swing in percent; each channel's swing_mix scales it (undoable).",
+            set_swing,
+        ),
+        cmd(
             "project.set_pan_law",
             "project.set_pan_law <circular|triangular>",
             "Choose how channel and mixer pans split left and right (undoable).",
@@ -74,6 +80,22 @@ fn set_tempo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
         Ok(Outcome::undoable(
             message,
             Invocation::new(args.name(), [previous.to_string()]),
+        ))
+    }
+}
+
+fn set_swing(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let percent = musiccraft_project::check_range("swing", args.f32(0, "swing")?, 0.0, 100.0)?;
+    let swing = percent / 100.0;
+    let previous = std::mem::replace(&mut project.swing, swing);
+    let message = format!("swing {percent}%");
+    if (previous - swing).abs() < f32::EPSILON {
+        Ok(Outcome::done(message))
+    } else {
+        Ok(Outcome::undoable(
+            message,
+            Invocation::new(args.name(), [(previous * 100.0).to_string()]),
         ))
     }
 }

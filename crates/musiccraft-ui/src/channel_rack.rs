@@ -100,8 +100,9 @@ fn header(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
                 [(project.current_pattern + 1).to_string(), steps.to_string()],
             );
         }
-        ui.label(RichText::new("swing").color(theme::TEXT_DIM));
-        let mut swing = (pattern.swing * 100.0).round();
+        ui.label(RichText::new("swing").color(theme::TEXT_DIM))
+            .on_hover_text("Project swing; each channel's swing mix scales it");
+        let mut swing = (project.swing * 100.0).round();
         let response = ui.add(
             egui::DragValue::new(&mut swing)
                 .range(0.0..=100.0)
@@ -109,14 +110,7 @@ fn header(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
                 .suffix("%"),
         );
         if response.changed() {
-            run(
-                actions,
-                "pattern.set_swing",
-                [
-                    (project.current_pattern + 1).to_string(),
-                    format!("{swing}"),
-                ],
-            );
+            run(actions, "project.set_swing", [format!("{swing}")]);
         }
     });
 }

@@ -56,12 +56,6 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             rename,
         ),
         cmd(
-            "pattern.set_swing",
-            "pattern.set_swing <pattern> <0-100>",
-            "Delay off-beat sixteenths for a shuffled feel (percent).",
-            set_swing,
-        ),
-        cmd(
             "pattern.set_length",
             "pattern.set_length <pattern> <steps>",
             "Set a pattern's length in steps.",
@@ -243,24 +237,5 @@ fn set_length(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     Ok(Outcome::undoable(
         message,
         Invocation::new(args.name(), [(index + 1).to_string(), previous.to_string()]),
-    ))
-}
-
-fn set_swing(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
-    args.expect(2, 2)?;
-    let index = pattern_arg(project, args, 0)?;
-    let percent = musiccraft_project::check_range("swing", args.f32(1, "swing")?, 0.0, 100.0)?;
-    let swing = percent / 100.0;
-    let previous = std::mem::replace(&mut project.patterns[index].swing, swing);
-    let message = format!("pattern {} swing {percent}%", index + 1);
-    if (previous - swing).abs() < f32::EPSILON {
-        return Ok(Outcome::done(message));
-    }
-    Ok(Outcome::undoable(
-        message,
-        Invocation::new(
-            args.name(),
-            [(index + 1).to_string(), (previous * 100.0).to_string()],
-        ),
     ))
 }

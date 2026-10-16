@@ -159,6 +159,10 @@ pub struct Project {
     /// How channel and mixer pans split left and right.
     #[serde(default)]
     pub pan_law: PanLaw,
+    /// Swing, 0..=1: notes on off-beat sixteenths are delayed by up to half a
+    /// step, scaled by each channel's `swing_mix`.
+    #[serde(default)]
+    pub swing: f32,
     next_id: u32,
     #[serde(skip)]
     path: Option<PathBuf>,
@@ -199,6 +203,7 @@ impl Project {
             automations: Vec::new(),
             metronome: false,
             pan_law: PanLaw::Circular,
+            swing: 0.0,
             next_id: 2,
             path: None,
         }
@@ -482,17 +487,29 @@ impl Project {
                 track.to_master = true;
             }
         }
+        // Older files kept swing per pattern: take the largest.
+        if self.swing == 0.0 {
+            self.swing = self
+                .patterns
+                .iter()
+                .map(|p| p.legacy_swing)
+                .filter(|s| s.is_finite())
+                .fold(0.0, f32::max);
+        }
+        for pattern in &mut self.patterns {
+            pattern.legacy_swing = 0.0;
+        }
+        self.swing = if self.swing.is_finite() {
+            self.swing.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         let channel_ids: Vec<ChannelId> = self.channels.iter().map(|c| c.id).collect();
         for pattern in &mut self.patterns {
             pattern
                 .notes
                 .retain(|n| channel_ids.contains(&n.channel) && n.key <= 127 && n.length > 0);
             pattern.length_steps = pattern.length_steps.clamp(1, MAX_PATTERN_STEPS);
-            pattern.swing = if pattern.swing.is_finite() {
-                pattern.swing.clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
             pattern.sort_notes();
         }
         let pattern_ids: Vec<PatternId> = self.patterns.iter().map(|p| p.id).collect();
@@ -614,6 +631,7 @@ impl PartialEq for Project {
             && self.playlist == other.playlist
             && self.metronome == other.metronome
             && self.pan_law == other.pan_law
+            && self.swing == other.swing
             && self.automations == other.automations
     }
 }

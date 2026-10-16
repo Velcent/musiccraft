@@ -386,10 +386,10 @@ pub struct Pattern {
     /// Notes, kept sorted by (channel, start, key).
     #[serde(default)]
     pub notes: Vec<Note>,
-    /// Swing amount 0..=1: notes on off-beat sixteenths are delayed by up to
-    /// half a step.
-    #[serde(default)]
-    pub swing: f32,
+    /// Per-pattern swing from older files (0..=1); loading moves it into the
+    /// project's swing. Never saved.
+    #[serde(default, rename = "swing", skip_serializing)]
+    pub(crate) legacy_swing: f32,
 }
 
 impl Pattern {
@@ -401,7 +401,7 @@ impl Pattern {
             name: name.into(),
             length_steps: 16,
             notes: Vec::new(),
-            swing: 0.0,
+            legacy_swing: 0.0,
         }
     }
 
