@@ -13,6 +13,10 @@
   loop. If already stopped it does nothing and reports so.
 - `transport.toggle` plays when stopped and stops when playing. The default keymap
   binds it to the space bar.
+- `transport.pause` halts playback and keeps the playhead (state `paused`);
+  `transport.play_pause` (default key Ctrl+Space) pauses when playing and plays
+  from the playhead otherwise. From `paused`, Space (`transport.toggle`) also
+  resumes, and `transport.stop` rewinds.
 - `transport.set_mode pattern|song` chooses what plays: `pattern` loops the
   selected pattern; `song` plays the playlist arrangement and loops at its end.
   `transport.toggle_mode` switches between them (default key: `L`).

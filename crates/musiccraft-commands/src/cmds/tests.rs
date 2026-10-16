@@ -292,6 +292,28 @@ fn transport_mode_commands() {
 }
 
 #[test]
+fn pause_holds_and_play_pause_toggles() {
+    use musiccraft_project::Transport;
+    let mut s = session();
+    run(&mut s, "transport.pause");
+    assert_eq!(
+        s.project().transport(),
+        Transport::Stopped,
+        "nothing to pause"
+    );
+    run(&mut s, "transport.play_pause");
+    assert_eq!(s.project().transport(), Transport::Playing);
+    run(&mut s, "transport.play_pause");
+    assert_eq!(s.project().transport(), Transport::Paused);
+    run(&mut s, "transport.toggle");
+    assert_eq!(s.project().transport(), Transport::Playing, "Space resumes");
+    run(&mut s, "transport.pause");
+    run(&mut s, "transport.stop");
+    assert_eq!(s.project().transport(), Transport::Stopped);
+    assert_eq!(s.undo_depth(), 0);
+}
+
+#[test]
 fn pattern_navigation_clamps() {
     let mut s = session();
     run(&mut s, "pattern.add");

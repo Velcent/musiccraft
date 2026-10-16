@@ -74,6 +74,7 @@ struct Desc {
     sequence: Sequence,
     tempo: f64,
     playing: bool,
+    paused: bool,
     metronome: bool,
 }
 
@@ -263,6 +264,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
         sequence,
         tempo: project.tempo_bpm(),
         playing: project.transport().is_playing(),
+        paused: project.transport().is_paused(),
         metronome: project.metronome,
     }
 }
@@ -647,9 +649,14 @@ impl Bridge {
         {
             messages.push(EngineMessage::SetMetronome(desc.metronome));
         }
-        if previous.as_ref().is_none_or(|p| p.playing != desc.playing) {
+        if previous
+            .as_ref()
+            .is_none_or(|p| (p.playing, p.paused) != (desc.playing, desc.paused))
+        {
             messages.push(if desc.playing {
                 EngineMessage::Play
+            } else if desc.paused {
+                EngineMessage::Pause
             } else {
                 EngineMessage::Stop
             });

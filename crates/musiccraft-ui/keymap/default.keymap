@@ -7,6 +7,7 @@
 
 # Transport
 Space        = transport.toggle
+Ctrl+Space   = transport.play_pause
 L            = transport.toggle_mode
 Ctrl+M       = transport.toggle_metronome
 R            = ui.toggle_record

@@ -14,6 +14,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             stop,
         ),
         cmd(
+            "transport.pause",
+            "transport.pause",
+            "Halt playback and keep the playhead where it is.",
+            pause,
+        ),
+        cmd(
+            "transport.play_pause",
+            "transport.play_pause",
+            "Pause if playing, otherwise play from the playhead.",
+            play_pause,
+        ),
+        cmd(
             "transport.toggle",
             "transport.toggle",
             "Play if stopped, stop if playing.",
@@ -65,7 +77,7 @@ fn play(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
 fn stop(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(0, 0)?;
     let previous = project.set_transport(Transport::Stopped);
-    Ok(Outcome::done(if previous.is_playing() {
+    Ok(Outcome::done(if previous != Transport::Stopped {
         "stopped"
     } else {
         "already stopped"
@@ -77,6 +89,27 @@ fn toggle(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
     if project.transport().is_playing() {
         project.set_transport(Transport::Stopped);
         Ok(Outcome::done("stopped"))
+    } else {
+        project.set_transport(Transport::Playing);
+        Ok(Outcome::done("playing"))
+    }
+}
+
+fn pause(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    if project.transport().is_playing() {
+        project.set_transport(Transport::Paused);
+        Ok(Outcome::done("paused"))
+    } else {
+        Ok(Outcome::done("not playing"))
+    }
+}
+
+fn play_pause(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    if project.transport().is_playing() {
+        project.set_transport(Transport::Paused);
+        Ok(Outcome::done("paused"))
     } else {
         project.set_transport(Transport::Playing);
         Ok(Outcome::done("playing"))

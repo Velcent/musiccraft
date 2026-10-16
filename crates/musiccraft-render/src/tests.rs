@@ -228,6 +228,37 @@ fn export_command_writes_a_wav() {
 }
 
 #[test]
+fn pause_keeps_the_playhead_and_stop_rewinds() {
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let mut out = vec![0.0; 2048];
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    engine.process(&mut out, 2);
+    run(&mut s, "transport.play_pause");
+    assert!(s.project().transport().is_paused());
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(!engine.is_playing());
+    let held = engine.position_ticks();
+    assert!(held > 0.0, "pause keeps the playhead");
+    // Play again continues from the same place.
+    run(&mut s, "transport.play_pause");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.is_playing());
+    assert!(engine.position_ticks() > held);
+    // Pausing and then stopping rewinds.
+    run(&mut s, "transport.pause\ntransport.stop");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.position_ticks().abs() < f64::EPSILON);
+}
+
+#[test]
 fn stop_message_rewinds_engine() {
     let (mut engine, _handle) = engine_pair(44_100);
     engine.apply(EngineMessage::Play);

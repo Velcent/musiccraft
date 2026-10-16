@@ -47,6 +47,8 @@ pub enum Transport {
     Stopped,
     /// Playback is running.
     Playing,
+    /// Playback is halted with the playhead kept where it was.
+    Paused,
 }
 
 impl Transport {
@@ -55,6 +57,12 @@ impl Transport {
     pub fn is_playing(self) -> bool {
         self == Self::Playing
     }
+
+    /// Returns `true` while paused (halted, playhead kept).
+    #[must_use]
+    pub fn is_paused(self) -> bool {
+        self == Self::Paused
+    }
 }
 
 impl fmt::Display for Transport {
@@ -62,6 +70,7 @@ impl fmt::Display for Transport {
         f.write_str(match self {
             Self::Stopped => "stopped",
             Self::Playing => "playing",
+            Self::Paused => "paused",
         })
     }
 }
