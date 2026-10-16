@@ -10,7 +10,8 @@ use musiccraft_dsp::{SvfMode, response};
 use musiccraft_project::EffectSlot;
 use musiccraft_project::params::presets::{self, Preset};
 use musiccraft_project::params::{
-    EffectKind, ParamSpec, SHAPER_FIRST_POINT, SHAPER_POINTS, index_of,
+    EffectKind, LFO_FIRST_STEP, LFO_SHAPES, LFO_STEPS, ParamSpec, SHAPER_FIRST_POINT,
+    SHAPER_POINTS, index_of,
 };
 
 use crate::hint::Hint;
@@ -311,7 +312,10 @@ fn knobs(
     ui.horizontal_wrapped(|ui| {
         for (p, spec) in effect.kind.params().iter().enumerate() {
             let value = effect.values[p];
-            if spec.name == "steps" || spec.name.starts_with("point_") {
+            if spec.name == "steps"
+                || spec.name.starts_with("point_")
+                || spec.name.starts_with("step_")
+            {
                 // Edited by clicking the steps or dragging the points in the graph.
                 continue;
             }
@@ -348,6 +352,7 @@ fn knobs(
                     "drawn",
                 ]),
                 "shape" => pick(&["sine", "triangle", "square"]),
+                "lfo_shape" => pick(&LFO_SHAPES),
                 "mode" if effect.kind == EffectKind::Distortion => pick(&["soft", "hard"]),
                 "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
                 "key" => pick(&musiccraft_project::params::NOTE_NAMES),
@@ -454,6 +459,66 @@ fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effe
             font,
             theme::TEXT,
         );
+    }
+}
+
+/// The band at the bottom of the auto filter's graph that shows its LFO.
+fn lfo_strip_rect(rect: Rect) -> Rect {
+    Rect::from_min_max(
+        pos2(rect.left(), rect.bottom() - rect.height() * 0.3),
+        rect.max,
+    )
+}
+
+/// The LFO level (−1–1) at height `y` in the LFO strip.
+fn lfo_strip_value(rect: Rect, y: f32) -> f32 {
+    let strip = lfo_strip_rect(rect).shrink2(vec2(0.0, 4.0));
+    (1.0 - 2.0 * (y - strip.top()) / strip.height().max(1.0)).clamp(-1.0, 1.0)
+}
+
+/// Draws one cycle of the auto filter's LFO, with the drawn shape's points as
+/// handles.
+fn lfo_strip(
+    painter: &egui::Painter,
+    rect: Rect,
+    color: Color32,
+    effect: &EffectSlot,
+    handles: &mut Vec<(Pos2, Option<&'static str>, Option<&'static str>)>,
+) {
+    let strip = lfo_strip_rect(rect);
+    painter.rect_filled(strip, 0.0, theme::PANEL_DARK.gamma_multiply(0.85));
+    let inner = strip.shrink2(vec2(0.0, 4.0));
+    let y = |v: f32| inner.center().y - v * inner.height() * 0.5;
+    let shape = value(effect, "lfo_shape");
+    let steps: Vec<f32> = (0..LFO_STEPS)
+        .map(|k| {
+            effect
+                .values
+                .get(LFO_FIRST_STEP + k)
+                .copied()
+                .unwrap_or(0.0)
+        })
+        .collect();
+    let width = strip.width().max(1.0) as usize;
+    let points: Vec<Pos2> = (0..=width)
+        .map(|i| {
+            let phase = i as f32 / width as f32;
+            let v = musiccraft_dsp::character::lfo_shape(shape, &steps, phase);
+            pos2(strip.left() + i as f32, y(v))
+        })
+        .collect();
+    for pair in points.windows(2) {
+        painter.line_segment(
+            [pair[0], pair[1]],
+            Stroke::new(1.5, color.gamma_multiply(0.8)),
+        );
+    }
+    if shape.round() as usize == LFO_SHAPES.len() - 1 {
+        for (k, v) in steps.iter().enumerate() {
+            let name = effect.kind.params()[LFO_FIRST_STEP + k].name;
+            let x = strip.left() + strip.width() * k as f32 / LFO_STEPS as f32;
+            handles.push((pos2(x, y(*v)), None, Some(name)));
+        }
     }
 }
 
@@ -1054,7 +1119,12 @@ fn graph(
                         rect.bottom() - rect.height() * (0.15 + 0.7 * res),
                     );
                     handles.push((at, Some("cutoff"), Some("resonance")));
-                    hint = "The filter at rest; the LFO and the input level sweep it from here. Drag to set cutoff and resonance";
+                    lfo_strip(&painter, rect, color, effect, &mut handles);
+                    hint = if value(effect, "lfo_shape").round() as usize == LFO_SHAPES.len() - 1 {
+                        "The filter at rest, and below it one cycle of the drawn LFO: drag its points up or down"
+                    } else {
+                        "The filter at rest; the LFO (shape below) and the input level sweep it from here. Drag to set cutoff and resonance"
+                    };
                 }
                 _ => hint = "The vowel's three formant peaks; the vowel knob morphs a-e-i-o-u",
             }
@@ -1472,6 +1542,9 @@ fn graph(
                             Some("resonance") => {
                                 let t = (rect.bottom() - pointer.y) / rect.height();
                                 push("resonance", ((t - 0.15) / 0.7).clamp(0.0, 1.0));
+                            }
+                            Some(name) if name.starts_with("step_") => {
+                                push(name, lfo_strip_value(rect, pointer.y));
                             }
                             Some(name) => push(name, y_db(rect, pointer.y, top, bottom)),
                             None => {}

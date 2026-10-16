@@ -1115,6 +1115,40 @@ const AUTO_FILTER: &[Preset] = &[
             ("cutoff", 800.0),
         ],
     ),
+    preset(
+        "Sidechain pump",
+        &[
+            ("cutoff", 20_000.0),
+            ("depth", 0.0),
+            ("lfo_shape", 2.0),
+            ("volume", 0.8),
+        ],
+    ),
+    preset(
+        "Drawn wah",
+        &[
+            ("mode", 1.0),
+            ("resonance", 0.7),
+            ("lfo_shape", 5.0),
+            ("step_1", -1.0),
+            ("step_2", 1.0),
+            ("step_3", -0.5),
+            ("step_4", 0.5),
+            ("step_5", -1.0),
+            ("step_6", 1.0),
+            ("step_7", 0.0),
+            ("step_8", -0.5),
+        ],
+    ),
+    preset(
+        "Moving pan",
+        &[
+            ("depth", 1.0),
+            ("lfo_shape", 1.0),
+            ("pan", 0.8),
+            ("rate", 4.0),
+        ],
+    ),
 ];
 
 const NOISE_GATE: &[Preset] = &[

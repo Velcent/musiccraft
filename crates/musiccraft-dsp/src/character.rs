@@ -333,10 +333,39 @@ impl Formant {
     }
 }
 
+/// The auto filter's LFO at `phase` (0..1 through a cycle), from −1 to 1:
+/// sine, triangle, saw up, saw down, square, or the drawn `steps` (evenly
+/// spaced through the cycle, joined by lines that wrap around).
+#[must_use]
+pub fn lfo_shape(shape: f32, steps: &[f32], phase: f32) -> f32 {
+    let phase = phase.rem_euclid(1.0);
+    match shape.round() as i32 {
+        1 => 4.0 * ((phase + 0.75).rem_euclid(1.0) - 0.5).abs() - 1.0,
+        2 => phase * 2.0 - 1.0,
+        3 => 1.0 - phase * 2.0,
+        4 => {
+            if phase < 0.5 {
+                1.0
+            } else {
+                -1.0
+            }
+        }
+        5 if !steps.is_empty() => {
+            let pos = phase * steps.len() as f32;
+            let i = (pos.floor() as usize).min(steps.len() - 1);
+            let a = steps.get(i).copied().unwrap_or(0.0);
+            let b = steps.get((i + 1) % steps.len()).copied().unwrap_or(a);
+            a + (b - a) * (pos - i as f32)
+        }
+        _ => (phase * TAU).sin(),
+    }
+}
+
 /// Auto filter: a resonant filter swept by a tempo-synced LFO and by the
-/// input's own level.
+/// input's own level; the LFO can also move the volume and pan.
 ///
-/// Parameters: `[mode, cutoff Hz, resonance, rate, lfo depth oct, envelope oct, mix]`.
+/// Parameters: `[mode, cutoff Hz, resonance, rate, lfo depth oct, envelope
+/// oct, mix, lfo shape, step 1 … step 8, volume depth, pan depth]`.
 #[derive(Debug, Clone, Default)]
 pub struct AutoFilter {
     filters: [Svf; 2],
@@ -356,6 +385,13 @@ impl AutoFilter {
         let depth = param(p, 4, 2.0);
         let envelope = param(p, 5, 0.0);
         let mix = param(p, 6, 1.0).clamp(0.0, 1.0);
+        let shape = param(p, 7, 0.0);
+        let first = musiccraft_params::LFO_FIRST_STEP;
+        let steps = p
+            .get(first..first + musiccraft_params::LFO_STEPS)
+            .unwrap_or(&[]);
+        let volume = param(p, 16, 0.0).clamp(0.0, 1.0);
+        let pan = param(p, 17, 0.0).clamp(-1.0, 1.0);
         let sr = ctx.sample_rate.max(1.0);
         let beats_per_sample = ctx.tempo_bpm / 60.0 / f64::from(sr);
         let release = (-1.0 / (0.08 * sr)).exp();
@@ -363,9 +399,9 @@ impl AutoFilter {
         for (i, (l, r)) in left.iter_mut().zip(right.iter_mut()).enumerate() {
             let level = (*l).abs().max((*r).abs());
             self.follower = level.max(self.follower * release);
+            let lfo = lfo_shape(shape, steps, (beats / rate).fract() as f32);
             // Coefficients change every 16 samples; that is plenty for a sweep.
             if i % 16 == 0 {
-                let lfo = ((beats / rate).fract() as f32 * TAU).sin();
                 let octaves = lfo * depth + envelope * self.follower.min(1.0) * 4.0;
                 let f = cutoff * 2.0_f32.powf(octaves);
                 for filter in &mut self.filters {
@@ -377,6 +413,12 @@ impl AutoFilter {
             let wr = self.filters[1].process(*r, mode);
             *l += (wl - *l) * mix;
             *r += (wr - *r) * mix;
+            if volume > 0.0 || pan != 0.0 {
+                let gain = 1.0 - volume * (1.0 - lfo) * 0.5;
+                let place = pan * lfo;
+                *l *= gain * (1.0 - place).min(1.0);
+                *r *= gain * (1.0 + place).min(1.0);
+            }
         }
     }
 }
@@ -722,6 +764,52 @@ mod tests {
         let (mut l, mut r) = (vec![0.0, 0.125], vec![0.0, 0.0]);
         waveshaper(&mut l, &mut r, &p);
         assert!((l[0] - 0.5).abs() < 1e-6 && (l[1] - 0.375).abs() < 1e-6);
+    }
+
+    #[test]
+    fn lfo_shapes_have_their_textbook_points() {
+        let near = |a: f32, b: f32| (a - b).abs() < 1e-5;
+        assert!(
+            near(lfo_shape(0.0, &[], 0.25), 1.0),
+            "sine peaks at a quarter"
+        );
+        for (phase, want) in [(0.0, 0.0), (0.25, 1.0), (0.5, 0.0), (0.75, -1.0)] {
+            assert!(
+                near(lfo_shape(1.0, &[], phase), want),
+                "triangle at {phase}"
+            );
+        }
+        assert!(near(lfo_shape(2.0, &[], 0.75), 0.5) && near(lfo_shape(3.0, &[], 0.75), -0.5));
+        assert!(near(lfo_shape(4.0, &[], 0.1), 1.0) && near(lfo_shape(4.0, &[], 0.6), -1.0));
+        let steps = [0.0, 1.0, 0.0, -1.0];
+        assert!(near(lfo_shape(5.0, &steps, 0.125), 0.5));
+        assert!(
+            near(lfo_shape(5.0, &steps, 0.875), -0.5),
+            "wraps back to the first"
+        );
+    }
+
+    #[test]
+    fn auto_filter_lfo_can_move_volume_and_pan() {
+        let mut p = musiccraft_params::EffectKind::AutoFilter.defaults();
+        p[1] = 20_000.0; // filter wide open
+        p[2] = 0.0;
+        p[4] = 0.0; // no sweep
+        p[7] = 4.0; // square: up for half a cycle, down for the rest
+        p[3] = 3.0; // a quarter note per cycle: 24_000 samples at 120 BPM
+        p[16] = 1.0;
+        p[17] = 1.0;
+        let mut fx = AutoFilter::default();
+        let (mut l, mut r) = (vec![0.5; 24_000], vec![0.5; 24_000]);
+        fx.process(&mut l, &mut r, &p, ctx());
+        // Up half: full level, panned right; down half: silent.
+        assert!(
+            l[6_000].abs() < 0.05 && r[6_000] > 0.4,
+            "{} {}",
+            l[6_000],
+            r[6_000]
+        );
+        assert!(l[18_000].abs() < 1e-3 && r[18_000].abs() < 1e-3);
     }
 
     #[test]

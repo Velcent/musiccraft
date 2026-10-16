@@ -46,7 +46,7 @@ Status:
 | Reference | MusicCraft | Status | Notes |
 | --- | --- | --- | --- |
 | Fruity Filter, Fast LP, Free Filter | `filter` | covered | |
-| Fruity Love Philter | `auto_filter` | partial | One LFO and an envelope follower; no drawn envelope shapes per target |
+| Fruity Love Philter | `auto_filter` | covered | One LFO (five shapes or drawn) driving cutoff, volume and pan, plus an envelope follower |
 | Fruity 7 Band EQ | `graphic_eq` | covered | |
 | Fruity Parametric EQ / EQ 2 | `parametric_eq` (7 bands), `eq` (3 bands) | covered | |
 | Fruity Bass Boost | `bass_boost` | covered | |

@@ -634,7 +634,25 @@ const AUTO_FILTER_PARAMS: &[ParamSpec] = &[
     spec("depth", 0.0, 4.0, 2.0, "oct"),
     spec("envelope", -4.0, 4.0, 0.0, "oct"),
     spec("mix", 0.0, 1.0, 1.0, ""),
+    int_spec("lfo_shape", 0.0, 5.0, 0.0),
+    spec("step_1", -1.0, 1.0, 0.0, ""),
+    spec("step_2", -1.0, 1.0, 0.7, ""),
+    spec("step_3", -1.0, 1.0, 1.0, ""),
+    spec("step_4", -1.0, 1.0, 0.7, ""),
+    spec("step_5", -1.0, 1.0, 0.0, ""),
+    spec("step_6", -1.0, 1.0, -0.7, ""),
+    spec("step_7", -1.0, 1.0, -1.0, ""),
+    spec("step_8", -1.0, 1.0, -0.7, ""),
+    spec("volume", 0.0, 1.0, 0.0, ""),
+    spec("pan", -1.0, 1.0, 0.0, ""),
 ];
+
+/// Number of points of the auto filter's drawn LFO shape.
+pub const LFO_STEPS: usize = 8;
+/// Index of the auto filter's first drawn LFO point.
+pub const LFO_FIRST_STEP: usize = 8;
+/// Names of the auto filter's LFO shapes, by `lfo_shape` value.
+pub const LFO_SHAPES: [&str; 6] = ["sine", "triangle", "saw up", "saw down", "square", "drawn"];
 
 const NOISE_GATE_PARAMS: &[ParamSpec] = &[
     spec("threshold", -80.0, 0.0, -40.0, "dB"),

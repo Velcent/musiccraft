@@ -47,7 +47,7 @@ new UI editor or large DSP.
 
 - [x] Fruity WaveShaper → a drawable transfer curve for `waveshaper` (curve
   points as parameters, dragged in the effect window).
-- [ ] Fruity Love Philter → drawn per-target envelope shapes for
+- [x] Fruity Love Philter → drawn per-target envelope shapes for
   `auto_filter` (beyond one LFO and the envelope follower).
 - [ ] Fruity Delay 3 → modulation, diffusion and a feedback filter for
   `delay`.
