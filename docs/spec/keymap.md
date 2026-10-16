@@ -23,6 +23,7 @@
 | Chord | Action |
 | --- | --- |
 | Space | Play / stop |
+| Ctrl+Space | Play / pause |
 | L | Toggle pattern / song mode |
 | Ctrl+M | Metronome on / off |
 | R | Arm / disarm recording |

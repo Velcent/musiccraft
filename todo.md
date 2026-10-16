@@ -47,7 +47,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   - [ ] Step recording.
   - [ ] Record knob movements as automation.
 - [ ] Transport:
-  - [ ] Pause with Ctrl+Space (the engine `Pause` message exists, no command).
+  - [x] Pause with Ctrl+Space (`transport.pause`, `transport.play_pause`).
   - [ ] Panic with Ctrl+H (all notes off).
   - [ ] Home jumps to the start.
 - [ ] Playlist tracks: names, colours, mute and solo.
