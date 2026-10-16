@@ -28,6 +28,7 @@ fn fails(s: &mut Session, line: &str) -> CommandError {
 const SCRIPT: &[&str] = &[
     "project.set_tempo 140",
     "project.set_pan_law triangular",
+    "project.set_master_pitch -50",
     "project.rename My Song",
     "channel.add_sampler builtin:kick",
     "channel.add_sampler builtin:snare Snare Drum",
@@ -708,6 +709,23 @@ fn articulate_and_claw() {
     let keys: Vec<u8> = note_rows(&s).iter().map(|n| n.2).collect();
     assert_eq!(keys, [60, 64]);
     fails(&mut s, "note.claw 1 0");
+}
+
+#[test]
+fn master_pitch_and_a4_tuning() {
+    let mut s = session();
+    run(&mut s, "project.set_a4 432");
+    assert!(
+        (s.project().master_pitch - -31.77).abs() < 0.01,
+        "{}",
+        s.project().master_pitch
+    );
+    run(&mut s, "project.set_master_pitch 1200");
+    fails(&mut s, "project.set_master_pitch 1300");
+    fails(&mut s, "project.set_a4 500");
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert!(s.project().master_pitch.abs() < f32::EPSILON);
 }
 
 #[test]

@@ -563,6 +563,26 @@ fn project(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
             ));
         }
     });
+    row(ui, "Master pitch", |ui| {
+        let mut cents = project.master_pitch;
+        let drag = ui.add(
+            egui::DragValue::new(&mut cents)
+                .range(-1200.0..=1200.0)
+                .speed(1.0)
+                .suffix(" ct"),
+        );
+        if drag.drag_started() || drag.gained_focus() {
+            state.begin_gesture();
+        }
+        if drag.changed() {
+            actions.push(Action::Coalesced(
+                Invocation::new("project.set_master_pitch", [format!("{cents:.0}")]),
+                state.gesture(),
+            ));
+        }
+        let a4 = 440.0 * 2f64.powf(f64::from(project.master_pitch) / 1200.0);
+        ui.label(format!("A4 = {a4:.2} Hz"));
+    });
     row(ui, "Pan law", |ui| {
         for law in musiccraft_project::PanLaw::ALL {
             let hint = match law {

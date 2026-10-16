@@ -1511,3 +1511,14 @@ fn time_shift_gate_and_echo_change_what_a_channel_plays() {
         ]
     );
 }
+
+#[test]
+fn master_pitch_transposes_built_in_instruments() {
+    // A5 is key 69 here: 440 Hz.
+    let mut s = sine_session("note.add 1 0 8 A5");
+    let left = render_slide(&s);
+    assert!((hz_between(&left, 0.1, 0.9) - 440.0).abs() < 4.0);
+    run(&mut s, "project.set_master_pitch -1200");
+    let left = render_slide(&s);
+    assert!((hz_between(&left, 0.1, 0.9) - 220.0).abs() < 4.0);
+}

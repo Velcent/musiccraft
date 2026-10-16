@@ -82,8 +82,8 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   - [x] Chord / pattern generator.
   - [x] Articulate.
   - [x] Claw machine.
-- [ ] Master pitch / A4 tuning.
-- [ ] Tap tempo.
+- [x] Master pitch / A4 tuning.
+- [x] Tap tempo.
 - [ ] MP3 export (already a `todo` in parity.md).
 - [x] Pattern select with keys 1–9.
 - [ ] Automation of individual notes or events inside a pattern.

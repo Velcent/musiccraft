@@ -20,6 +20,7 @@ mod invocation;
 mod midi_file;
 mod registry;
 mod session;
+pub mod tap_tempo;
 
 pub use command::{Command, Outcome};
 pub use error::CommandError;

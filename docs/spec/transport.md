@@ -32,6 +32,14 @@
 - `transport.toggle_metronome` (default key Ctrl+M) turns a click on every beat
   on or off: a short decaying sine, higher on each bar's first beat. The setting
   is saved with the project but the click is never part of an export.
+- **Tap tempo**: the TAP button next to the tempo display. Each tap sets the
+  tempo from the average interval of the last eight taps (clamped to the
+  range); a pause over two seconds starts a new count. One run of taps is one
+  undo step. The rule lives in `musiccraft_commands::tap_tempo`.
+- **Master pitch** (`project.set_master_pitch <cents>`, -1200…1200, or
+  `project.set_a4 <hz>`, 392–494 Hz, which sets the equivalent cents;
+  undoable, saved as `"master_pitch"`; Settings → Project) transposes every
+  built-in instrument. Plugins and MIDI Out channels are not retuned.
 - `project.set_tempo <bpm>` sets the tempo. It is undoable; setting the same value
   records no history entry.
 - Transport and mode commands are not part of undo history. The transport state
@@ -68,3 +76,5 @@
 - Home to jump to the start and Ctrl+H for panic (all notes off) follow the FL
   Studio online manual, "Keyboard shortcuts", global section. What panic
   releases and the request counters are our own design.
+- Tap tempo and master pitch (A4 tuning) follow the FL Studio online manual
+  ("Tempo tapper", "Main pitch"); the averaging rule and ranges are our own.

@@ -65,6 +65,11 @@ impl Transport {
     }
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_cents(value: &f32) -> bool {
+    *value == 0.0
+}
+
 /// How recorded notes treat what the pattern already has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -215,6 +220,10 @@ pub struct Project {
     /// How channel and mixer pans split left and right.
     #[serde(default)]
     pub pan_law: PanLaw,
+    /// Master pitch in cents (-1200..=1200): every built-in instrument is
+    /// transposed by it (A4 = 440 Hz × 2^(cents/1200)).
+    #[serde(default, skip_serializing_if = "is_zero_cents")]
+    pub master_pitch: f32,
     /// Swing, 0..=1: notes on off-beat sixteenths are delayed by up to half a
     /// step, scaled by each channel's `swing_mix`.
     #[serde(default)]
@@ -263,6 +272,7 @@ impl Project {
             metronome: false,
             pan_law: PanLaw::Circular,
             swing: 0.0,
+            master_pitch: 0.0,
             next_id: 2,
             path: None,
         }
@@ -598,6 +608,11 @@ impl Project {
         for pattern in &mut self.patterns {
             pattern.legacy_swing = 0.0;
         }
+        self.master_pitch = if self.master_pitch.is_finite() {
+            self.master_pitch.clamp(-1200.0, 1200.0)
+        } else {
+            0.0
+        };
         self.swing = if self.swing.is_finite() {
             self.swing.clamp(0.0, 1.0)
         } else {
@@ -732,6 +747,7 @@ impl PartialEq for Project {
             && self.pan_law == other.pan_law
             && self.record == other.record
             && self.swing == other.swing
+            && self.master_pitch == other.master_pitch
             && self.automations == other.automations
     }
 }

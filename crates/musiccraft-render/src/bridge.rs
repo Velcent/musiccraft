@@ -125,14 +125,19 @@ fn start_mode(project: &Project) -> Start {
     }
 }
 
-fn channel_params(channel: &Channel, pan_law: PanLaw) -> ChannelParams {
+fn channel_params(channel: &Channel, pan_law: PanLaw, master_pitch: f32) -> ChannelParams {
+    let mut instrument = channel.params.0;
+    // The master pitch transposes every built-in instrument.
+    if let Some(pitch) = instrument.get_mut(musiccraft_params::inst::PITCH) {
+        *pitch += master_pitch / 100.0;
+    }
     ChannelParams {
         volume: channel.volume,
         pan: channel.pan,
         pan_law,
         mute: channel.mute,
         track: u16::try_from(channel.mixer_track).unwrap_or(0),
-        instrument: channel.params.0,
+        instrument,
     }
 }
 
@@ -272,7 +277,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
         channels: project
             .channels
             .iter()
-            .map(|c| channel_params(c, pan_law))
+            .map(|c| channel_params(c, pan_law, project.master_pitch))
             .collect(),
         tracks: project
             .mixer

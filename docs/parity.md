@@ -156,3 +156,5 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Randomizer and chord progressions | `cmd:note.randomize` `cmd:note.chords` |
 | Piano roll | Articulate and claw machine | `cmd:note.articulate` `cmd:note.claw` |
 | Channel rack | Time shift, gate and note echo | `spec:channel-rack.md` `done` |
+| Transport | Master pitch / A4 tuning | `cmd:project.set_master_pitch` `cmd:project.set_a4` |
+| Transport | Tap tempo | `spec:transport.md` `done` |

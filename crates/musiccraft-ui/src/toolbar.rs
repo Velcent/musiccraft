@@ -494,6 +494,22 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             state.gesture(),
         ));
     }
+    if ui
+        .small_button("TAP")
+        .hint("Tap the beat a few times to set the tempo")
+        .clicked()
+    {
+        let now = ui.input(|i| i.time);
+        if state.taps.is_empty() || state.taps.last().is_some_and(|t| now - t > 2.0) {
+            state.begin_gesture();
+        }
+        if let Some(bpm) = musiccraft_commands::tap_tempo::tap(&mut state.taps, now) {
+            actions.push(Action::Coalesced(
+                Invocation::new("project.set_tempo", [format!("{bpm:.2}")]),
+                state.gesture(),
+            ));
+        }
+    }
     ui.add_space(4.0);
 
     let current = project.current_pattern;
