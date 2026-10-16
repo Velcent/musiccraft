@@ -21,6 +21,7 @@ pub mod pitch;
 pub mod response;
 mod reverb;
 mod sample;
+pub mod scratch;
 mod time;
 pub mod toolbox;
 mod util;

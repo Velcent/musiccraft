@@ -63,7 +63,7 @@ new UI editor or large DSP.
   extending `stutter` and `gate`.
 - [x] Frequency Splitter → split a track into three bands routed to
   separate mixer inserts (needs multi-output routing).
-- [ ] Fruity Scratcher → turntable-style scratching of a sample or the input
+- [x] Fruity Scratcher → turntable-style scratching of a sample or the input
   buffer (currently "not planned"; revisit).
 - [ ] Pitcher → MIDI-controlled target notes and harmonies for
   `pitch_correct`.

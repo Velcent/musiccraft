@@ -1770,6 +1770,17 @@ const BAND_SPLIT: &[Preset] = &[
     ),
 ];
 
+const SCRATCH: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Baby scratch", &[("pattern", 1.0), ("depth", 0.5)]),
+    preset("Chirps", &[("pattern", 2.0), ("rate", 2.0), ("depth", 0.3)]),
+    preset("Tear", &[("pattern", 3.0), ("depth", 0.6)]),
+    preset(
+        "Transformer",
+        &[("pattern", 4.0), ("rate", 4.0), ("depth", 0.4)],
+    ),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1819,6 +1830,7 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::FxChain => FX_CHAIN,
         EffectKind::BeatShaper => BEAT_SHAPER,
         EffectKind::BandSplit => BAND_SPLIT,
+        EffectKind::Scratch => SCRATCH,
         EffectKind::Plugin => &[],
     }
 }

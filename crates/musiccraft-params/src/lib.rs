@@ -530,13 +530,15 @@ pub enum EffectKind {
     BeatShaper,
     /// Splits the audio into three bands sent to other inserts; routed by the engine.
     BandSplit,
+    /// Freezes recent audio and moves the play point through it like a record.
+    Scratch,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 45] = [
+pub const EFFECT_KINDS: [EffectKind; 46] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -547,6 +549,7 @@ pub const EFFECT_KINDS: [EffectKind; 45] = [
     EffectKind::MultiTap,
     EffectKind::Stutter,
     EffectKind::BeatShaper,
+    EffectKind::Scratch,
     EffectKind::MultiFx,
     EffectKind::FxChain,
     EffectKind::Reverb,
@@ -808,6 +811,17 @@ const BAND_SPLIT_PARAMS: &[ParamSpec] = &[
     int_spec("low_target", 0.0, 127.0, 0.0),
     int_spec("mid_target", 0.0, 127.0, 0.0),
     int_spec("high_target", 0.0, 127.0, 0.0),
+];
+
+const SCRATCH_PARAMS: &[ParamSpec] = &[
+    int_spec("hold", 0.0, 1.0, 0.0),
+    spec("position", 0.0, 1.0, 0.0, ""),
+    spec("span", 0.0625, 8.0, 1.0, "beats"),
+    int_spec("pattern", 0.0, 4.0, 0.0),
+    int_spec("rate", 0.0, 5.0, 3.0),
+    spec("depth", 0.0, 1.0, 1.0, ""),
+    spec("inertia", 0.1, 200.0, 5.0, "ms"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -1152,6 +1166,7 @@ impl EffectKind {
             Self::FxChain => "fx_chain",
             Self::BeatShaper => "beat_shaper",
             Self::BandSplit => "band_split",
+            Self::Scratch => "scratch",
             Self::Plugin => "plugin",
         }
     }
@@ -1211,6 +1226,7 @@ impl EffectKind {
             Self::FxChain => FX_CHAIN_PARAMS,
             Self::BeatShaper => BEAT_SHAPER_PARAMS,
             Self::BandSplit => BAND_SPLIT_PARAMS,
+            Self::Scratch => SCRATCH_PARAMS,
             Self::Plugin => &[],
         }
     }

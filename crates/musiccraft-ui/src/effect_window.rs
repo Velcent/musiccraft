@@ -8,6 +8,7 @@ use musiccraft_dsp::beat::{BEAT_CYCLE_NAMES, BEAT_POINTS, FIRST_TIME, FIRST_VOLU
 use musiccraft_dsp::blocks::{BLOCK_CONTROLS, BLOCK_NAMES, CHAIN_STAGES};
 use musiccraft_dsp::character::GRAPHIC_BANDS;
 use musiccraft_dsp::modulation::{SYNC_RATE_NAMES, autopan_shape, gate_step_on};
+use musiccraft_dsp::scratch::SCRATCH_PATTERNS;
 use musiccraft_dsp::{SvfMode, response};
 use musiccraft_project::EffectSlot;
 use musiccraft_project::params::presets::{self, Preset};
@@ -327,7 +328,10 @@ fn knobs(
             }
             let synced = matches!(
                 effect.kind,
-                EffectKind::Gate | EffectKind::Autopan | EffectKind::AutoFilter
+                EffectKind::Gate
+                    | EffectKind::Autopan
+                    | EffectKind::AutoFilter
+                    | EffectKind::Scratch
             );
             let synced = synced
                 || (effect.kind == EffectKind::Stutter && matches!(spec.name, "slice" | "every"));
@@ -364,6 +368,8 @@ fn knobs(
                 "mode" if effect.kind == EffectKind::Distortion => pick(&["soft", "hard"]),
                 "drive_type" => pick(&["soft", "hard", "fuzz"]),
                 "cycle" => pick(&BEAT_CYCLE_NAMES),
+                "pattern" => pick(&SCRATCH_PATTERNS),
+                "hold" => if value >= 0.5 { "held" } else { "off" }.to_owned(),
                 "time_mode" => pick(&["steps", "ramps"]),
                 name if name.ends_with("block") => pick(&BLOCK_NAMES),
                 "cabinet" => pick(&["off", "small", "large"]),
@@ -1654,6 +1660,57 @@ fn graph(
             }
             hint = "One cycle, left to right. Top: how far behind playback runs (hold to repeat, ramp down to slow or stop); bottom: volume. Drag the points";
         }
+        EffectKind::Scratch => {
+            let held = value(effect, "hold") >= 0.5;
+            let pattern = value(effect, "pattern");
+            let depth = value(effect, "depth");
+            let position = value(effect, "position");
+            let record = Rect::from_min_max(
+                pos2(rect.left() + 8.0, rect.top() + 10.0),
+                pos2(rect.right() - 8.0, rect.top() + 30.0),
+            );
+            painter.rect_filled(
+                record,
+                3.0,
+                color.gamma_multiply(if held { 0.5 } else { 0.15 }),
+            );
+            painter.text(
+                record.center(),
+                egui::Align2::CENTER_CENTER,
+                if held {
+                    "held span"
+                } else {
+                    "recording (turn hold on to freeze)"
+                },
+                egui::FontId::proportional(10.0),
+                theme::TEXT,
+            );
+            // One cycle of the play point's movement, time down the graph.
+            let lane = Rect::from_min_max(
+                pos2(record.left(), record.bottom() + 6.0),
+                pos2(record.right(), rect.bottom() - 4.0),
+            );
+            let steps = lane.height().max(1.0) as usize;
+            let points: Vec<Pos2> = (0..=steps)
+                .map(|i| {
+                    let phase = i as f32 / steps as f32;
+                    let at = if pattern.round() as i32 == 0 {
+                        position
+                    } else {
+                        (position
+                            + musiccraft_dsp::scratch::scratch_pattern(pattern, phase).0 * depth)
+                            .min(1.0)
+                    };
+                    pos2(lane.left() + lane.width() * at, lane.top() + i as f32)
+                })
+                .collect();
+            for pair in points.windows(2) {
+                painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
+            }
+            let needle = pos2(record.left() + record.width() * position, record.center().y);
+            handles.push((needle, Some("position"), None));
+            hint = "The held stretch of audio, start to end; drag the needle (or automate position) to scratch. The line shows a pattern's movement over one cycle";
+        }
         EffectKind::MultiFx => {
             let block = value(effect, "block").round().max(0.0) as usize;
             let (x_name, y_name) = BLOCK_CONTROLS.get(block).copied().unwrap_or(("", ""));
@@ -1798,6 +1855,13 @@ fn graph(
                         push("threshold", db);
                     }
                     EffectKind::Limiter => push("ceiling", y_db(rect, pointer.y, 6.0, -60.0)),
+                    EffectKind::Scratch => {
+                        let left = rect.left() + 8.0;
+                        push(
+                            "position",
+                            (pointer.x - left) / (rect.width() - 16.0).max(1.0),
+                        );
+                    }
                     EffectKind::MultiFx => {
                         push("x", (pointer.x - rect.left()) / rect.width());
                         push("y", (rect.bottom() - pointer.y) / rect.height());
