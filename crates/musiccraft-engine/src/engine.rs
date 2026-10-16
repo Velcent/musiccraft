@@ -278,7 +278,14 @@ impl Engine {
         }
     }
 
-    /// Where the loop restarts (and Stop returns to), in ticks.
+    /// Where Stop returns to, in ticks: the loop start unless the sequence
+    /// names another home.
+    fn home(&self) -> f64 {
+        let home = self.sequence.as_deref().map_or(0, Sequence::home) as f64;
+        if home < self.loop_length() { home } else { 0.0 }
+    }
+
+    /// Where the loop restarts, in ticks.
     fn loop_start(&self) -> f64 {
         let start = self.sequence.as_deref().map_or(0, Sequence::loop_start) as f64;
         if start < self.loop_length() {
@@ -343,7 +350,7 @@ impl Engine {
             }
             EngineMessage::Stop => {
                 self.playing = false;
-                self.position = self.loop_start();
+                self.position = self.home();
                 self.resync_cursor();
                 self.release_all(true);
             }
@@ -695,7 +702,15 @@ impl Engine {
         for _ in 0..MAX_WRAPS_PER_BLOCK {
             let segment_end = position + (total - done) * tpf;
             let wraps = segment_end >= length;
-            let stop = if wraps { length } else { segment_end };
+            let mut stop = if wraps { length } else { segment_end };
+            // A pause marker inside this stretch ends playback there.
+            let pause = self
+                .sequence
+                .as_deref()
+                .and_then(|seq| seq.next_pause(position, stop));
+            if let Some(at) = pause {
+                stop = at;
+            }
             if self.metronome {
                 let ppq = f64::from(PPQ);
                 let mut beat = (position / ppq).ceil() * ppq;
@@ -729,6 +744,13 @@ impl Engine {
                     }
                     self.cursor += 1;
                 }
+            }
+            if let Some(at) = pause {
+                position = at;
+                self.playing = false;
+                self.release_all(true);
+                self.meters.record_marker_pause(at);
+                break;
             }
             if !wraps {
                 position = segment_end;

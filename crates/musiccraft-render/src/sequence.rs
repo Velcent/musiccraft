@@ -216,7 +216,8 @@ fn song_automation(project: &Project) -> Vec<AutomationLane> {
     lanes
 }
 /// The loop the transport plays: the selected pattern in pattern mode, the
-/// whole arrangement in song mode.
+/// whole arrangement in song mode (with its pause and song-loop markers, unless
+/// a loop region is set).
 #[must_use]
 pub fn build_sequence(project: &Project) -> Sequence {
     let full = build_full_sequence(project);
@@ -227,6 +228,16 @@ pub fn build_sequence(project: &Project) -> Sequence {
             Sequence::new(events, u64::from(end))
                 .with_automation(lanes)
                 .with_loop_start(u64::from(start))
+        }
+        (PlayMode::Song, None) => {
+            let pauses = project.playlist.pause_ticks();
+            let mut sequence = full.with_pauses(pauses.into_iter().map(u64::from).collect());
+            if let Some(at) = project.playlist.song_loop_tick() {
+                // At the end the song returns to the song-loop marker; Stop
+                // still goes back to the beginning.
+                sequence = sequence.with_loop_start(u64::from(at)).with_home(0);
+            }
+            sequence
         }
         _ => full,
     }

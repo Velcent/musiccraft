@@ -993,3 +993,43 @@ fn rebuilding_keeps_only_matching_midi_notes() {
     assert_eq!(midi_bytes(&mut rx), vec![[0x80, 60, 0]], "channel changed");
     handle.collect_garbage();
 }
+
+#[test]
+fn pause_markers_stop_playback_on_their_tick_and_resume_past_them() {
+    let (mut engine, handle) = impulse_engine();
+    let beat = u64::from(PPQ);
+    let seq = Sequence::new(vec![note(0, 0), note(2, 0), note(3, 0)], 4 * beat)
+        .with_pauses(vec![2 * beat]);
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 3 * BEAT);
+    // Beat 0 plays; playback stops on beat 2, before the note there.
+    assert_eq!(nonzero_frames(&out), [0]);
+    assert!(!handle.meters().is_playing());
+    assert!((engine.position_ticks() - 2.0 * f64::from(PPQ)).abs() < 1e-9);
+    assert_eq!(handle.meters().marker_pause(), (1, 2.0 * f64::from(PPQ)));
+    // Play continues from the marker without pausing on it again.
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 2 * BEAT);
+    assert_eq!(nonzero_frames(&out), [0, BEAT]);
+    assert_eq!(handle.meters().marker_pause().0, 1);
+}
+
+#[test]
+fn a_song_loop_point_wraps_there_but_stop_returns_home() {
+    let (mut engine, _handle) = impulse_engine();
+    let beat = u64::from(PPQ);
+    let seq = Sequence::new(vec![note(0, 0), note(2, 0)], 4 * beat)
+        .with_loop_start(2 * beat)
+        .with_home(0);
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 6 * BEAT);
+    // Beats 0 and 2, then back to beat 2 when the end (beat 4) is reached.
+    assert_eq!(nonzero_frames(&out), [0, 2 * BEAT, 4 * BEAT]);
+    engine.apply(EngineMessage::Stop);
+    assert!(
+        engine.position_ticks().abs() < 1e-9,
+        "Stop returns to the start"
+    );
+}

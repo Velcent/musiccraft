@@ -8,7 +8,9 @@ use egui::{
 };
 use musiccraft_commands::Invocation;
 use musiccraft_project::params::{PPQ, TICKS_PER_BAR};
-use musiccraft_project::{AutomationId, Clip, ClipSource, PLAYLIST_TRACKS, PlayMode, Project};
+use musiccraft_project::{
+    AutomationId, Clip, ClipSource, MarkerAction, PLAYLIST_TRACKS, PlayMode, Project,
+};
 
 use crate::dialogs::Dialog;
 use crate::geometry::{Grid, Hit, Snap, hit_test};
@@ -714,25 +716,58 @@ fn draw_ruler(
         if x < ruler.left() + HEADER_WIDTH || x > ruler.right() {
             continue;
         }
-        painter.add(egui::Shape::convex_polygon(
-            vec![
-                pos2(x, ruler.top() + 2.0),
-                pos2(x + 7.0, ruler.top() + 6.0),
-                pos2(x, ruler.top() + 10.0),
-            ],
-            theme::AUTOMATION,
-            Stroke::NONE,
-        ));
+        let top = ruler.top();
+        // Each action has its own glyph: a flag for a label, two bars for a
+        // pause, a down-facing arrow for the song loop point.
+        let color = match marker.action {
+            MarkerAction::None => theme::AUTOMATION,
+            MarkerAction::Pause => theme::DANGER,
+            MarkerAction::SongLoop => theme::ACCENT,
+        };
+        match marker.action {
+            MarkerAction::None => {
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        pos2(x, top + 2.0),
+                        pos2(x + 7.0, top + 6.0),
+                        pos2(x, top + 10.0),
+                    ],
+                    color,
+                    Stroke::NONE,
+                ));
+            }
+            MarkerAction::Pause => {
+                for dx in [0.0, 4.0] {
+                    painter.rect_filled(
+                        Rect::from_min_size(pos2(x + dx, top + 2.0), egui::vec2(2.5, 8.0)),
+                        0.0,
+                        color,
+                    );
+                }
+            }
+            MarkerAction::SongLoop => {
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        pos2(x - 1.0, top + 2.0),
+                        pos2(x + 8.0, top + 2.0),
+                        pos2(x + 3.5, top + 10.0),
+                    ],
+                    color,
+                    Stroke::NONE,
+                ));
+            }
+        }
+        let [r, g, b, _] = color.to_array();
         painter.line_segment(
-            [pos2(x, ruler.top()), pos2(x, clip.bottom())],
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(0xe0, 0x8c, 0xff, 70)),
+            [pos2(x, top), pos2(x, clip.bottom())],
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(r, g, b, 70)),
         );
         painter.text(
-            pos2(x + 9.0, ruler.top() + 1.0),
+            pos2(x + 10.0, top + 1.0),
             Align2::LEFT_TOP,
             &marker.name,
             FontId::proportional(10.5),
-            theme::AUTOMATION,
+            color,
         );
     }
 }
@@ -804,11 +839,56 @@ fn ruler(
     response.context_menu(|ui| {
         let x = press.map_or(area.left(), |p| p.x);
         let tick = Snap::Bar.floor(tick_at(x));
-        if ui.button("Add marker here…").clicked() {
+        if ui
+            .button("Add marker here…")
+            .hint("Alt+T adds one at the playhead")
+            .clicked()
+        {
             state.open_dialog(crate::dialogs::Dialog::add_marker(tick));
             ui.close();
         }
+        if ui
+            .button("Add pause marker here")
+            .hint("Song playback stops when it reaches this point")
+            .clicked()
+        {
+            actions.push(Action::Run(Invocation::new(
+                musiccraft_commands::BATCH,
+                [
+                    format!("playlist.add_marker {tick}t Pause"),
+                    format!("playlist.set_marker_action {tick}t pause"),
+                ],
+            )));
+            ui.close();
+        }
         if let Some(marker) = marker_at(x) {
+            ui.separator();
+            ui.label(format!("Marker \"{}\"", marker.name));
+            for action in MarkerAction::ALL {
+                let (label, hint) = match action {
+                    MarkerAction::None => ("No action", "Only a label"),
+                    MarkerAction::Pause => {
+                        ("Pause", "Song playback stops here; press play to continue")
+                    }
+                    MarkerAction::SongLoop => (
+                        "Song loop",
+                        "At the end of the song, playback returns here instead of to the start",
+                    ),
+                };
+                if ui
+                    .radio(marker.action == action, label)
+                    .hint(hint)
+                    .clicked()
+                {
+                    if marker.action != action {
+                        actions.push(Action::Run(Invocation::new(
+                            "playlist.set_marker_action",
+                            [format!("{}t", marker.tick), action.name().to_owned()],
+                        )));
+                    }
+                    ui.close();
+                }
+            }
             if ui
                 .button(format!("Remove marker \"{}\"", marker.name))
                 .clicked()

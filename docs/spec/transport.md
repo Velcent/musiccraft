@@ -30,11 +30,14 @@
   block advances position by `frames * bpm / 60 * 96 / sample_rate`. Tempo changes
   apply from the next block; position never jumps.
 - While stopped the engine does not advance; held voices finish their release.
-- `Stop` releases every voice and rewinds to tick 0. `Pause` (engine only, not yet
-  a command) releases voices and keeps the position.
+- `Stop` releases every voice and rewinds to the sequence's home: tick 0, or the
+  loop region's start. `Pause` releases voices and keeps the position; the engine
+  also pauses by itself on a pause marker (see `playlist.md`), counting each one so
+  the app can stop its transport and keep the playhead on the marker.
 - The loop length is the selected pattern's length in pattern mode, and the song
   length rounded up to whole bars in song mode (one bar when empty). Reaching the
-  end wraps to tick 0 within the same audio block, sample-accurately.
+  end wraps to tick 0 (or a song-loop marker) within the same audio block,
+  sample-accurately.
 
 ## Sources
 

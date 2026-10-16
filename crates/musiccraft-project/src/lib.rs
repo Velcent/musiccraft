@@ -20,9 +20,9 @@ pub use error::ProjectError;
 pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
-    InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MixerSend,
-    MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode, Playlist,
-    PluginRef, PluginSlot, STEP_KEY,
+    InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MarkerAction,
+    MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode,
+    Playlist, PluginRef, PluginSlot, STEP_KEY,
 };
 pub use musiccraft_params as params;
 
@@ -350,7 +350,12 @@ impl Project {
     /// Song length in ticks: the end of the last clip, rounded up to a bar.
     #[must_use]
     pub fn song_length_ticks(&self) -> u32 {
-        music::round_up_to_bar(self.playlist.length_ticks())
+        // A song-loop marker past the last clip extends the song to it.
+        let end = self
+            .playlist
+            .length_ticks()
+            .max(self.playlist.song_loop_tick().unwrap_or(0));
+        music::round_up_to_bar(end)
     }
 
     /// Serializes the project to the versioned JSON file format.

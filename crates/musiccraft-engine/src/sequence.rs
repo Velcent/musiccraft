@@ -104,6 +104,10 @@ pub struct Sequence {
     length: u64,
     automation: Vec<AutomationLane>,
     loop_start: u64,
+    /// Where Stop returns to, when it is not the loop start.
+    home: Option<u64>,
+    /// Ticks where playback pauses (pause markers), sorted.
+    pauses: Vec<u64>,
 }
 
 impl Sequence {
@@ -118,7 +122,42 @@ impl Sequence {
             length,
             automation: Vec::new(),
             loop_start: 0,
+            home: None,
+            pauses: Vec::new(),
         }
+    }
+
+    /// Makes Stop return to `tick` instead of the loop start (a song that wraps
+    /// to a song-loop marker still stops back at its beginning).
+    #[must_use]
+    pub fn with_home(mut self, tick: u64) -> Self {
+        self.home = Some(tick);
+        self
+    }
+
+    /// Where Stop returns to.
+    #[must_use]
+    pub fn home(&self) -> u64 {
+        self.home.unwrap_or(self.loop_start)
+    }
+
+    /// Pauses playback when it reaches any of `ticks`.
+    #[must_use]
+    pub fn with_pauses(mut self, mut ticks: Vec<u64>) -> Self {
+        ticks.sort_unstable();
+        ticks.dedup();
+        self.pauses = ticks;
+        self
+    }
+
+    /// The first pause point strictly after `from` and before `to` (ticks).
+    /// Playback that starts exactly on a pause point continues past it.
+    #[must_use]
+    pub fn next_pause(&self, from: f64, to: f64) -> Option<f64> {
+        self.pauses
+            .iter()
+            .map(|&t| t as f64)
+            .find(|&t| t > from && t < to)
     }
 
     /// Restarts the loop at `start` ticks instead of 0 (ignored unless it is
@@ -186,6 +225,22 @@ mod tests {
             pan: 0.0,
             slide: false,
         }
+    }
+
+    #[test]
+    fn pauses_are_found_strictly_inside_a_span() {
+        let seq = Sequence::new(vec![note(0)], 1_000).with_pauses(vec![500, 100, 500]);
+        assert_eq!(seq.next_pause(0.0, 1_000.0), Some(100.0));
+        assert_eq!(
+            seq.next_pause(100.0, 1_000.0),
+            Some(500.0),
+            "starting on one"
+        );
+        assert_eq!(seq.next_pause(100.0, 500.0), None, "end is exclusive");
+        assert_eq!(seq.home(), 0);
+        let seq = seq.with_loop_start(200);
+        assert_eq!(seq.home(), 200, "Stop returns to the loop start by default");
+        assert_eq!(seq.with_home(0).home(), 0);
     }
 
     #[test]
