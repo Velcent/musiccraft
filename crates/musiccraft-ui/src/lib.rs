@@ -665,6 +665,9 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
 mod interaction_tests;
 
 #[cfg(test)]
+mod glyph_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

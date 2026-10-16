@@ -65,7 +65,7 @@ pub(crate) fn show(
                 let (target_name, _) =
                     note_and_cents(reference * 2.0_f32.powf((target - 69.0) / 12.0), reference);
                 if target_name != heading || cents.abs() > IN_TUNE_CENTS {
-                    heading = format!("{heading} > {target_name}");
+                    heading = format!("{heading} → {target_name}");
                 }
             }
             painter.text(

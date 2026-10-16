@@ -438,7 +438,7 @@ pub(crate) fn knob_row(
                     if value.fract() < 0.05 || i == next {
                         letters[i].to_owned()
                     } else {
-                        format!("{}>{}", letters[i], letters[next])
+                        format!("{}→{}", letters[i], letters[next])
                     }
                 }
                 "invert_left" | "invert_right" => {
@@ -677,7 +677,7 @@ pub(crate) fn pretty(name: &str) -> String {
             _ => None,
         };
         if let (Some(a), Some(b)) = (side(from), side(to)) {
-            return format!("{a} > {b}");
+            return format!("{a} → {b}");
         }
     }
     // `stage2_block` → `S2 block`.
@@ -1461,7 +1461,7 @@ fn graph(
                     color.gamma_multiply(fill),
                 );
                 let text = if target >= 0.5 {
-                    format!("{name} > insert {target:.0}")
+                    format!("{name} → insert {target:.0}")
                 } else {
                     format!("{name} stays")
                 };

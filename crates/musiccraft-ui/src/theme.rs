@@ -57,8 +57,31 @@ pub fn palette(index: usize) -> Color32 {
     PALETTE[index % PALETTE.len()]
 }
 
-/// Installs the MusicCraft visuals on a context.
+/// The bundled fonts, with the monospace face as the last fallback for
+/// ordinary text: the proportional face has no arrows (→) or small triangles
+/// (▲ ▼), which would otherwise draw as empty boxes.
+#[must_use]
+pub fn fonts() -> egui::FontDefinitions {
+    let mut fonts = egui::FontDefinitions::default();
+    let mono = fonts
+        .families
+        .get(&egui::FontFamily::Monospace)
+        .and_then(|f| f.first())
+        .cloned();
+    if let (Some(mono), Some(proportional)) = (
+        mono,
+        fonts.families.get_mut(&egui::FontFamily::Proportional),
+    ) {
+        if !proportional.contains(&mono) {
+            proportional.push(mono);
+        }
+    }
+    fonts
+}
+
+/// Installs the MusicCraft fonts and visuals on a context.
 pub fn apply(ctx: &egui::Context) {
+    ctx.set_fonts(fonts());
     let mut visuals = Visuals::dark();
     visuals.panel_fill = PANEL;
     visuals.window_fill = PANEL;
