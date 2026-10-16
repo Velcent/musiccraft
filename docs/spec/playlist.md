@@ -37,10 +37,11 @@
   marker → No action / Pause / Song loop, or right-click the ruler → Add pause
   marker here (a marker named "Pause", one undo step).
   - `none` (default): only a label, drawn as a flag.
-  - `pause`: when song playback reaches the marker it stops there; the playhead
-    stays on the marker and Play continues from it (it does not pause again on the
-    marker it starts from). Put one at the end of the song to stop instead of
-    looping. Drawn as two red bars.
+  - `pause`: when song playback reaches the marker it pauses there (transport
+    `paused`); the playhead stays on the marker, Play continues from it (it
+    does not pause again on the marker it starts from) and Stop rewinds. Put
+    one at the end of the song to stop instead of looping. Drawn as two red
+    bars.
   - `song_loop`: when playback reaches the end of the song it returns to this
     marker instead of the beginning; Stop still returns to the beginning. Only one
     marker is the song loop: choosing it moves it there (one undo step). A

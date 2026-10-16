@@ -1090,3 +1090,44 @@ fn markers_pause_and_loop_song_playback_but_not_exports() {
     assert_eq!(seq.next_pause(0.0, 4.0 * bar), None);
     assert_eq!(seq.loop_start(), 2 * u64::from(TICKS_PER_BAR));
 }
+
+#[test]
+fn pausing_the_transport_at_a_pause_marker_keeps_the_playhead_there() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 960
+         channel.add_sampler builtin:kick
+         step.toggle 1 0
+         playlist.add_clip 1 1 0 4
+         transport.set_mode song
+         playlist.add_marker 1 Break
+         playlist.set_marker_action 1 pause
+         transport.play",
+    );
+    let marker = f64::from(TICKS_PER_BAR);
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let _ = bridge.sync(s.project(), &mut handle);
+    let mut out = vec![0.0; 2048];
+    // Bar 1 starts 0.25 s in at 960 BPM: play past it.
+    for _ in 0..16 {
+        engine.process(&mut out, 2);
+    }
+    assert!(!engine.is_playing());
+    assert_eq!(handle.meters().marker_pause(), (1, marker));
+    // What the app does when it sees the pause: pause the transport.
+    run(&mut s, "transport.pause");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!((engine.position_ticks() - marker).abs() < f64::EPSILON);
+    // Space continues past the marker; Stop rewinds.
+    run(&mut s, "transport.toggle");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.is_playing() && engine.position_ticks() > marker);
+    run(&mut s, "transport.stop");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.position_ticks().abs() < f64::EPSILON);
+}

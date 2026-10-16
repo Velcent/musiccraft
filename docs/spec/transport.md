@@ -51,7 +51,8 @@
 - `Stop` releases every voice and rewinds to the sequence's home: tick 0, or the
   loop region's start. `Pause` releases voices and keeps the position; the engine
   also pauses by itself on a pause marker (see `playlist.md`), counting each one so
-  the app can stop its transport and keep the playhead on the marker.
+  the app can put its transport in `paused` to match (`transport.pause`); the
+  playhead is already on the marker.
 - The loop length is the selected pattern's length in pattern mode, and the song
   length rounded up to whole bars in song mode (one bar when empty). Reaching the
   end wraps to tick 0 (or a song-loop marker) within the same audio block,
