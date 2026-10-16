@@ -119,6 +119,10 @@ pub(crate) struct Voice {
     string_peak: f32,
     string_count: u32,
     sample_pos: f64,
+    /// Sampler: playing backwards.
+    reverse: bool,
+    /// Sampler: output frames played, for the fade-in.
+    sample_frames: f64,
     pan: (f32, f32),
     /// Current glide offset in keys (moves toward 0) and its change per frame.
     glide: f32,
@@ -182,6 +186,8 @@ impl Voice {
             cut_step: 0.0,
             filter_countdown: 0,
             sample_pos: 0.0,
+            reverse: false,
+            sample_frames: 0.0,
             pan: (1.0, 1.0),
             glide: 0.0,
             glide_rate: 0.0,
@@ -270,8 +276,19 @@ impl Voice {
                 f64::from(param(params, inst::GRAN_POSITION).clamp(0.0, 1.0)) * buffer.len() as f64;
         }
         self.slice_end = None;
+        self.reverse = false;
+        self.sample_frames = 0.0;
         if let Instrument::Sampler(buffer) = instrument {
             let slices = param(params, inst::SLICES).round().max(1.0) as i32;
+            // A sliced audio clip starts part-way; a reversed sample plays
+            // from its end.
+            let offset = f64::from(start.shape.start.max(0.0)) * buffer.sample_rate();
+            self.reverse = param(params, inst::REVERSE) >= 0.5 && slices <= 1;
+            self.sample_pos = if self.reverse {
+                buffer.len() as f64 - 1.0 - offset
+            } else {
+                offset
+            };
             if slices > 1 {
                 // Key root + i plays slice i (wrapping), as a one-shot.
                 let root = param(params, inst::ROOT_KEY).round() as i32;
@@ -448,6 +465,8 @@ impl Voice {
             .slice_end
             .unwrap_or(f64::INFINITY)
             .min(buffer.len() as f64);
+        let fade_in = f64::from(param(params, inst::FADE_IN)) * f64::from(sample_rate);
+        let fade_out = f64::from(param(params, inst::FADE_OUT)) * f64::from(sample_rate);
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
                 continue;
@@ -457,16 +476,47 @@ impl Voice {
                 self.step_glide();
                 step = step_for(self.glide);
             }
-            let level = self.env.next_level() * self.velocity;
+            let fade = self.sample_fade(fade_in, fade_out, step, end);
+            self.sample_frames += 1.0;
+            let level = self.env.next_level() * self.velocity * fade;
             let (sl, sr) = buffer.read(self.sample_pos);
             *l += sl * level * self.pan.0;
             *r += sr * level * self.pan.1;
-            self.sample_pos += step;
-            if self.sample_pos >= end || self.env.is_idle() {
+            let done = if self.reverse {
+                self.sample_pos -= step;
+                self.sample_pos < 0.0
+            } else {
+                self.sample_pos += step;
+                self.sample_pos >= end
+            };
+            if done || self.env.is_idle() {
                 self.active = false;
                 break;
             }
         }
+    }
+
+    /// The sampler's fade gain (0..1) for the current frame: rising over
+    /// `fade_in` output frames from the start, falling over the last
+    /// `fade_out` frames before the note (or the sample) ends.
+    fn sample_fade(&self, fade_in: f64, fade_out: f64, step: f64, end: f64) -> f32 {
+        let mut gain = 1.0_f64;
+        if fade_in > 0.0 {
+            gain = gain.min(self.sample_frames / fade_in);
+        }
+        if fade_out > 0.0 {
+            let source_left = if self.reverse {
+                self.sample_pos
+            } else {
+                end - self.sample_pos
+            };
+            let mut left = source_left / step.abs().max(1e-9);
+            if let (Some(gate), false) = (self.gate, self.one_shot) {
+                left = left.min(gate as f64);
+            }
+            gain = gain.min(left / fade_out);
+        }
+        gain.clamp(0.0, 1.0) as f32
     }
 
     /// Writes one mono sample to both sides, with the note's pan.

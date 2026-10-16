@@ -113,6 +113,10 @@ const SCRIPT: &[&str] = &[
     "playlist.set_track_color 3 12",
     "playlist.set_track_color 3 none",
     "playlist.set_track_color 4 2",
+    "playlist.slice_clip 3 6",
+    "playlist.make_unique 3 6",
+    "playlist.insert_space 2 1",
+    "playlist.delete_space 2 1",
     "playlist.remove_clip 1 1.5",
     "automation.create channel:2:cutoff",
     "automation.create mixer:0:volume Fade out",
@@ -424,6 +428,129 @@ fn recording_state_and_options_stay_out_of_history() {
     let loaded = musiccraft_project::Project::from_json(&json).unwrap();
     assert_eq!(loaded.record, options);
     assert!(!loaded.is_armed());
+}
+
+fn clip_spans(s: &Session) -> Vec<(u32, u32, u32, u32)> {
+    s.project()
+        .playlist
+        .clips
+        .iter()
+        .map(|c| (c.track, c.start, c.length, c.offset))
+        .collect()
+}
+
+#[test]
+fn slicing_a_clip_keeps_playing_where_it_left_off() {
+    let mut s = session();
+    run(&mut s, "playlist.add_clip 1 1 0 4");
+    run(&mut s, "playlist.slice_clip 1 1.5");
+    assert_eq!(clip_spans(&s), [(0, 0, 576, 0), (0, 576, 960, 576)]);
+    fails(&mut s, "playlist.slice_clip 1 0");
+    // Undoing a removal keeps the offset.
+    run(&mut s, "playlist.remove_clip 1 2");
+    run(&mut s, "edit.undo");
+    assert_eq!(clip_spans(&s)[1], (0, 576, 960, 576));
+    run(&mut s, "edit.undo");
+    assert_eq!(clip_spans(&s), [(0, 0, 1536, 0)]);
+}
+
+#[test]
+fn make_unique_copies_the_source_for_one_clip() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C5");
+    run(&mut s, "playlist.add_clip 1 1 0");
+    run(&mut s, "playlist.add_clip 1 1 1");
+    run(&mut s, "playlist.make_unique 1 1");
+    let project = s.project();
+    assert_eq!(project.patterns.len(), 2);
+    assert_eq!(project.patterns[1].name, "Pattern 1 #2");
+    assert_eq!(project.patterns[1].notes, project.patterns[0].notes);
+    let sources: Vec<_> = project.playlist.clips.iter().map(|c| c.pattern()).collect();
+    assert_eq!(
+        sources,
+        [Some(project.patterns[0].id), Some(project.patterns[1].id)]
+    );
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().patterns.len(), 1);
+    assert!(
+        s.project()
+            .playlist
+            .clips
+            .iter()
+            .all(|c| c.pattern() == Some(s.project().patterns[0].id))
+    );
+}
+
+#[test]
+fn merging_pattern_clips_makes_one_pattern() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C5");
+    run(&mut s, "pattern.add");
+    run(&mut s, "note.add 1 2 1 E5 @2");
+    run(&mut s, "playlist.add_clip 1 1 0");
+    run(&mut s, "playlist.add_clip 2 2 1");
+    run(&mut s, "playlist.merge_clips 1 0 2 1");
+    let project = s.project();
+    assert_eq!(project.patterns.len(), 3);
+    let merged = &project.patterns[2];
+    let notes: Vec<(u32, u8)> = merged.notes.iter().map(|n| (n.start, n.key)).collect();
+    assert_eq!(notes, [(0, 60), (384 + 48, 64)]);
+    assert_eq!(clip_spans(&s), [(0, 0, 768, 0)]);
+    fails(&mut s, "playlist.merge_clips 1");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().patterns.len(), 2);
+    assert_eq!(clip_spans(&s).len(), 2);
+}
+
+#[test]
+fn audio_clips_reverse_and_fade_through_their_channel() {
+    use musiccraft_project::params::inst;
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    run(&mut s, "playlist.add_audio_clip 1 1 0 1");
+    run(&mut s, "playlist.reverse_clip 1 0");
+    run(&mut s, "playlist.set_clip_fade 1 0 out 0.5");
+    let params = &s.project().channels[0].params;
+    assert!((params.get(inst::REVERSE) - 1.0).abs() < f32::EPSILON);
+    assert!((params.get(inst::FADE_OUT) - 0.5).abs() < f32::EPSILON);
+    fails(&mut s, "playlist.set_clip_fade 1 0 sideways 1");
+    fails(&mut s, "playlist.set_clip_fade 1 0 in 11");
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert!(s.project().channels[0].params.get(inst::REVERSE) < 0.5);
+    run(&mut s, "playlist.add_clip 1 2 0");
+    fails(&mut s, "playlist.reverse_clip 2 0");
+}
+
+#[test]
+fn inserting_and_deleting_time_moves_clips_and_markers() {
+    let mut s = session();
+    run(&mut s, "playlist.add_clip 1 1 0 2");
+    run(&mut s, "playlist.add_clip 1 2 3 1");
+    run(&mut s, "playlist.add_marker 3 Drop");
+    let before = s.project().clone();
+    run(&mut s, "playlist.insert_space 1 2");
+    // The first clip is cut at bar 1; its rest and everything later move 2 bars.
+    assert_eq!(
+        clip_spans(&s),
+        [(0, 0, 384, 0), (0, 1152, 384, 384), (1, 1920, 384, 0)]
+    );
+    assert_eq!(s.project().playlist.markers[0].tick, 5 * 384);
+    run(&mut s, "playlist.delete_space 1 2");
+    assert_eq!(
+        clip_spans(&s),
+        [(0, 0, 384, 0), (0, 384, 384, 384), (1, 1152, 384, 0)]
+    );
+    assert_eq!(s.project().playlist.markers[0].tick, 3 * 384);
+    // Deleting across a marker removes it; a clip spanning the stretch is split.
+    run(&mut s, "playlist.delete_space 2.5 1");
+    assert!(s.project().playlist.markers.is_empty());
+    for _ in 0..3 {
+        run(&mut s, "edit.undo");
+    }
+    assert_eq!(*s.project(), before);
 }
 
 #[test]

@@ -297,6 +297,12 @@ pub mod inst {
     pub const MONO: usize = 78;
     /// Most voices sounding at once (0 = no limit).
     pub const POLY_MAX: usize = 79;
+    /// Sampler: 1 = play the sample backwards.
+    pub const REVERSE: usize = 80;
+    /// Sampler: fade-in time, seconds.
+    pub const FADE_IN: usize = 81;
+    /// Sampler: fade-out time before the note or sample ends, seconds.
+    pub const FADE_OUT: usize = 82;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -381,6 +387,9 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("cut_by", 0.0, 16.0, 0.0),
     int_spec("mono", 0.0, 1.0, 0.0),
     int_spec("poly_max", 0.0, 64.0, 0.0),
+    int_spec("reverse", 0.0, 1.0, 0.0),
+    spec("fade_in", 0.0, 10.0, 0.0, "s"),
+    spec("fade_out", 0.0, 10.0, 0.0, "s"),
 ];
 
 /// Names of the keys instrument's types, by `keys_type` value.
@@ -1020,6 +1029,8 @@ mod tests {
             (inst::SWING_TRUNCATE, "swing_truncate"),
             (inst::CUT_GROUP, "cut_group"),
             (inst::POLY_MAX, "poly_max"),
+            (inst::REVERSE, "reverse"),
+            (inst::FADE_OUT, "fade_out"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

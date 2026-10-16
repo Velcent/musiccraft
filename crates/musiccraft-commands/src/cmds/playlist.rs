@@ -11,19 +11,19 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
     vec![
         cmd(
             "playlist.add_clip",
-            "playlist.add_clip <pattern> <track> <start bar> [length bars]",
-            "Place a pattern on the playlist (bars from 0; <n>t for ticks).",
+            "playlist.add_clip <pattern> <track> <start bar> [length bars] [offset]",
+            "Place a pattern on the playlist (bars from 0; <n>t for ticks); offset starts it part-way in.",
             add_clip,
         ),
         cmd(
             "playlist.add_automation_clip",
-            "playlist.add_automation_clip <automation> <track> <start bar> [length bars]",
+            "playlist.add_automation_clip <automation> <track> <start bar> [length bars] [offset]",
             "Place an automation on the playlist.",
             add_automation_clip,
         ),
         cmd(
             "playlist.add_audio_clip",
-            "playlist.add_audio_clip <channel> <track> <start bar> <length bars>",
+            "playlist.add_audio_clip <channel> <track> <start bar> <length bars> [offset]",
             "Place a sampler channel's sample on the playlist as an audio clip.",
             add_audio_clip,
         ),
@@ -121,7 +121,7 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
 }
 
 /// 0-based playlist row from a 1-based track number in argument `i`.
-fn track_arg(args: &Args<'_>, i: usize) -> Result<u32, CommandError> {
+pub(super) fn track_arg(args: &Args<'_>, i: usize) -> Result<u32, CommandError> {
     let track = args.number(i, "playlist track")?;
     u32::try_from(track)
         .ok()
@@ -134,7 +134,11 @@ fn track_arg(args: &Args<'_>, i: usize) -> Result<u32, CommandError> {
         })
 }
 
-fn clip_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, CommandError> {
+pub(super) fn clip_arg(
+    project: &Project,
+    args: &Args<'_>,
+    i: usize,
+) -> Result<usize, CommandError> {
     let track = track_arg(args, i)?;
     let at = args.time(i + 1, TICKS_PER_BAR)?;
     project
@@ -143,7 +147,7 @@ fn clip_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, Comma
         .ok_or_else(|| args.invalid(format!("no clip on track {} at {at}t", track + 1)))
 }
 
-fn overlaps(project: &Project, clip: &Clip, ignore: Option<usize>) -> bool {
+pub(super) fn overlaps(project: &Project, clip: &Clip, ignore: Option<usize>) -> bool {
     project.playlist.clips.iter().enumerate().any(|(i, other)| {
         Some(i) != ignore
             && other.track == clip.track
@@ -161,15 +165,16 @@ fn add_inverse(project: &Project, clip: &Clip) -> Invocation {
         ),
         ClipSource::Audio(id) => ("playlist.add_audio_clip", project.channel_position(id)),
     };
-    Invocation::new(
-        name,
-        [
-            number.map_or(0, |i| i + 1).to_string(),
-            (clip.track + 1).to_string(),
-            ticks(clip.start),
-            ticks(clip.length),
-        ],
-    )
+    let mut args = vec![
+        number.map_or(0, |i| i + 1).to_string(),
+        (clip.track + 1).to_string(),
+        ticks(clip.start),
+        ticks(clip.length),
+    ];
+    if clip.offset > 0 {
+        args.push(ticks(clip.offset));
+    }
+    Invocation::new(name, args)
 }
 
 fn remove_inverse(clip: &Clip) -> Invocation {
@@ -179,8 +184,16 @@ fn remove_inverse(clip: &Clip) -> Invocation {
     )
 }
 
+/// The optional offset argument `i` (bars or `<n>t`), 0 when absent.
+fn offset_arg(args: &Args<'_>, i: usize) -> Result<u32, CommandError> {
+    match args.opt(i) {
+        Some(_) => args.time(i, TICKS_PER_BAR),
+        None => Ok(0),
+    }
+}
+
 fn add_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
-    args.expect(3, 4)?;
+    args.expect(3, 5)?;
     let pattern_index = project.pattern_index(args.number(0, "pattern")?)?;
     let pattern = &project.patterns[pattern_index];
     let length = match args.opt(3) {
@@ -192,6 +205,7 @@ fn add_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
         track: track_arg(args, 1)?,
         start: args.time(2, TICKS_PER_BAR)?,
         length,
+        offset: offset_arg(args, 4)?,
     };
     place(
         project,
@@ -220,7 +234,7 @@ fn place(
 }
 
 fn add_automation_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
-    args.expect(3, 4)?;
+    args.expect(3, 5)?;
     let index = project.automation_index(args.number(0, "automation")?)?;
     let automation = &project.automations[index];
     let length = match args.opt(3) {
@@ -232,6 +246,7 @@ fn add_automation_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome
         track: track_arg(args, 1)?,
         start: args.time(2, TICKS_PER_BAR)?,
         length,
+        offset: offset_arg(args, 4)?,
     };
     place(
         project,
@@ -242,7 +257,7 @@ fn add_automation_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome
 }
 
 fn add_audio_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
-    args.expect(4, 4)?;
+    args.expect(4, 5)?;
     let index = project.channel_index(args.number(0, "channel")?)?;
     let channel = &project.channels[index];
     if !matches!(channel.instrument, Instrument::Sampler { .. }) {
@@ -253,6 +268,7 @@ fn add_audio_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Com
         track: track_arg(args, 1)?,
         start: args.time(2, TICKS_PER_BAR)?,
         length: args.duration(3, TICKS_PER_BAR)?,
+        offset: offset_arg(args, 4)?,
     };
     place(
         project,
@@ -458,7 +474,7 @@ fn set_track_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Co
     ))
 }
 
-fn replace_clips(
+pub(super) fn replace_clips(
     project: &mut Project,
     args: &Args<'_>,
     clips: Vec<Clip>,
@@ -495,7 +511,10 @@ fn set_clips(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
 }
 
 /// An inverse that puts every marker back exactly as it was.
-fn restore_markers(args: &Args<'_>, markers: &[Marker]) -> Result<Invocation, CommandError> {
+pub(super) fn restore_markers(
+    args: &Args<'_>,
+    markers: &[Marker],
+) -> Result<Invocation, CommandError> {
     let json = serde_json::to_string(markers).map_err(|e| args.invalid(e.to_string()))?;
     Ok(Invocation::new("playlist.set_markers", [json]))
 }

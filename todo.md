@@ -51,14 +51,14 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   - [x] Panic with Ctrl+H (all notes off).
   - [x] Home jumps to the start.
 - [x] Playlist tracks: names, colours, mute and solo.
-- [ ] Playlist clip editing:
-  - [ ] Slice clips.
-  - [ ] Make unique.
-  - [ ] Merge.
-  - [ ] Consolidate / render to audio.
-  - [ ] Reverse.
-  - [ ] Fade in / out.
-  - [ ] Insert / delete space (Ctrl+Ins / Ctrl+Del).
+- [x] Playlist clip editing:
+  - [x] Slice clips.
+  - [x] Make unique.
+  - [x] Merge.
+  - [x] Consolidate / render to audio.
+  - [x] Reverse.
+  - [x] Fade in / out.
+  - [x] Insert / delete space (Ctrl+Ins / Ctrl+Del).
 - [ ] Single-key tools: P draw, B paint, D delete, E select, C slice, T mute,
   Y play, Z zoom; plus S slide and O porta for new piano-roll notes.
 - [ ] Channel rack keys:

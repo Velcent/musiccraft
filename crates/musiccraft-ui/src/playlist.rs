@@ -158,6 +158,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
         if ui.small_button("+").hint("Zoom in (Ctrl+scroll)").clicked() {
             state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
         }
+        ui.separator();
+        ui.menu_button("Clip", |ui| clip_menu(ui, state, frame, actions))
+            .response
+            .on_hover_text("Edit the selected clips");
     });
     ui.add_space(2.0);
     ui.horizontal_top(|ui| {
@@ -342,6 +346,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     track: *track,
                     start: *start,
                     length: *length,
+                    offset: 0,
                 };
                 draw_clip(
                     &painter, &grid, frame, &preview, *track, *start, *length, true,
@@ -625,15 +630,16 @@ fn add_clip_invocation(project: &Project, clip: &Clip, track: u32, start: u32) -
         ),
         ClipSource::Audio(id) => ("playlist.add_audio_clip", project.channel_position(id)),
     };
-    Invocation::new(
-        name,
-        [
-            number.map_or(1, |i| i + 1).to_string(),
-            (track + 1).to_string(),
-            format!("{start}t"),
-            format!("{}t", clip.length),
-        ],
-    )
+    let mut args = vec![
+        number.map_or(1, |i| i + 1).to_string(),
+        (track + 1).to_string(),
+        format!("{start}t"),
+        format!("{}t", clip.length),
+    ];
+    if clip.offset > 0 {
+        args.push(format!("{}t", clip.offset));
+    }
+    Invocation::new(name, args)
 }
 
 fn draw_ruler(
@@ -1077,6 +1083,189 @@ fn shifted(clip: &Clip, dt: i64, dtrack: i64) -> (u32, u32) {
     )
 }
 
+/// `name <track> <start>t [extra…]` for each clip, as one undo step.
+fn per_clip(clips: &[Clip], name: &str, extra: &[String]) -> Option<Invocation> {
+    batch(
+        clips
+            .iter()
+            .map(|c| {
+                let mut args = vec![(c.track + 1).to_string(), format!("{}t", c.start)];
+                args.extend(extra.iter().cloned());
+                Invocation::new(name, args)
+            })
+            .collect(),
+    )
+}
+
+/// Slices every clip that crosses `at` there.
+pub(crate) fn slice_at(clips: &[Clip], at: u32) -> Option<Invocation> {
+    let crossing: Vec<Clip> = clips
+        .iter()
+        .filter(|c| c.start < at && at < c.end())
+        .copied()
+        .collect();
+    per_clip(&crossing, "playlist.slice_clip", &[format!("{at}t")])
+}
+
+/// Merges the selected pattern clips (two or more) into one.
+pub(crate) fn merge(clips: &[Clip]) -> Option<Invocation> {
+    let patterns: Vec<&Clip> = clips
+        .iter()
+        .filter(|c| matches!(c.source, ClipSource::Pattern(_)))
+        .collect();
+    if patterns.len() < 2 {
+        return None;
+    }
+    Some(Invocation::new(
+        "playlist.merge_clips",
+        patterns
+            .iter()
+            .flat_map(|c| [(c.track + 1).to_string(), format!("{}t", c.start)]),
+    ))
+}
+
+/// A menu entry that runs `invocation`, greyed out without one.
+fn menu_item(
+    ui: &mut egui::Ui,
+    actions: &mut Vec<Action>,
+    label: &str,
+    hint: &str,
+    invocation: Option<Invocation>,
+) {
+    if ui
+        .add_enabled(invocation.is_some(), egui::Button::new(label))
+        .on_hover_text(hint)
+        .clicked()
+    {
+        actions.extend(invocation.map(Action::Run));
+        ui.close();
+    }
+}
+
+/// The Clip menu: edits for the selected clips.
+fn clip_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    let project = frame.project;
+    let selected: Vec<Clip> = project
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| state.playlist.selection.contains(&(c.track, c.start)))
+        .copied()
+        .collect();
+    let audio: Vec<Clip> = selected
+        .iter()
+        .filter(|c| matches!(c.source, ClipSource::Audio(_)))
+        .copied()
+        .collect();
+    if selected.is_empty() {
+        ui.label(
+            RichText::new("Select clips first (Select tool or Ctrl+A)").color(theme::TEXT_DIM),
+        );
+    }
+    let playhead = frame.engine.position_ticks.max(0.0) as u32;
+    menu_item(
+        ui,
+        actions,
+        "Slice at playhead",
+        "Cut the selected clips where the playhead is (or use the slice tool)",
+        slice_at(&selected, playhead),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Make unique",
+        "Give each selected clip its own copy of its pattern, automation or sample channel",
+        per_clip(&selected, "playlist.make_unique", &[]),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Merge",
+        "Merge the selected pattern clips into one new pattern",
+        merge(&selected),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Consolidate (render to audio)",
+        "Render each selected clip to a WAV file and replace it with an audio clip",
+        per_clip(
+            &selected
+                .iter()
+                .filter(|c| !matches!(c.source, ClipSource::Automation(_)))
+                .copied()
+                .collect::<Vec<_>>(),
+            "playlist.consolidate",
+            &[],
+        ),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Reverse",
+        "Play the selected audio clips backwards (again: forwards)",
+        per_clip(&audio, "playlist.reverse_clip", &[]),
+    );
+    if let Some(first) = audio.first() {
+        let channel = match first.source {
+            ClipSource::Audio(id) => project.channel_position(id),
+            _ => None,
+        };
+        if let Some(channel) = channel.and_then(|i| project.channels.get(i)) {
+            for (label, which, param) in [
+                ("Fade in", "in", musiccraft_project::params::inst::FADE_IN),
+                (
+                    "Fade out",
+                    "out",
+                    musiccraft_project::params::inst::FADE_OUT,
+                ),
+            ] {
+                ui.horizontal(|ui| {
+                    ui.label(label);
+                    let mut seconds = channel.params.get(param);
+                    let drag = ui.add(
+                        egui::DragValue::new(&mut seconds)
+                            .range(0.0..=10.0)
+                            .speed(0.01)
+                            .suffix(" s"),
+                    );
+                    if drag.drag_started() || drag.gained_focus() {
+                        state.begin_gesture();
+                    }
+                    if drag.changed() {
+                        let fades = per_clip(
+                            &audio,
+                            "playlist.set_clip_fade",
+                            &[which.to_owned(), format!("{seconds:.3}")],
+                        );
+                        actions.extend(fades.map(|i| Action::Coalesced(i, state.gesture())));
+                    }
+                });
+            }
+        }
+    }
+    ui.separator();
+    let space = |name: &str| {
+        project.playlist.loop_range.map(|(start, end)| {
+            Invocation::new(name, [format!("{start}t"), format!("{}t", end - start)])
+        })
+    };
+    menu_item(
+        ui,
+        actions,
+        "Insert space (Ctrl+Ins)",
+        "Insert empty time the size of the loop region at its start (Shift+drag the ruler)",
+        space("playlist.insert_space"),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Delete space (Ctrl+Del)",
+        "Delete the time of the loop region; later clips and markers move earlier",
+        space("playlist.delete_space"),
+    );
+}
+
 fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
     match invocations.len() {
         0 => None,
@@ -1513,6 +1702,31 @@ mod tests {
     use super::*;
     use musiccraft_project::PatternId;
 
+    fn pattern_clip(track: u32, start: u32, length: u32) -> Clip {
+        Clip {
+            source: ClipSource::Pattern(PatternId(1)),
+            track,
+            start,
+            length,
+            offset: 0,
+        }
+    }
+
+    #[test]
+    fn slicing_at_the_playhead_cuts_only_crossing_clips() {
+        let clips = [pattern_clip(0, 0, 384), pattern_clip(1, 384, 384)];
+        assert_eq!(
+            slice_at(&clips, 192).unwrap().to_string(),
+            "playlist.slice_clip 1 0t 192t"
+        );
+        assert!(slice_at(&clips, 384).is_none(), "an edge is not a cut");
+        assert!(merge(&clips[..1]).is_none(), "merging needs two clips");
+        assert_eq!(
+            merge(&clips).unwrap().to_string(),
+            "playlist.merge_clips 1 0t 2 384t"
+        );
+    }
+
     fn drag(kind: DragKind, track: u32, start: u32, length: u32) -> ClipDrag {
         ClipDrag {
             kind,
@@ -1521,6 +1735,7 @@ mod tests {
                 track: 0,
                 start: 384,
                 length: 384,
+                offset: 0,
             },
             grab: 0.0,
             track,

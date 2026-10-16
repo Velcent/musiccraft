@@ -73,6 +73,11 @@ Out channels voice their own notes and are never cut.
 
 ## Sampler
 
+- `reverse` (0 or 1) plays the sample backwards from its end; `fade_in` and
+  `fade_out` (0–10 s) fade each note in from its start and out over its last
+  seconds (before the note or the sample ends). Used by audio clips (see
+  `playlist.md`, "Clip editing"); sliced samplers and kit pads ignore
+  `reverse`.
 - Plays the sample from its start. The pitch follows the note key relative to the
   `root_key` parameter (default 60) plus the `pitch` parameter in semitones.
   Samples of any rate are resampled by linear interpolation.

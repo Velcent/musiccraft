@@ -13,6 +13,7 @@ musiccraft-engine.workspace = true
 musiccraft-params.workspace = true
 musiccraft-project.workspace = true
 musiccraft-samples.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

@@ -552,6 +552,19 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                 let tick = tick - tick % musiccraft_project::params::PPQ;
                 state.dialog = Some(dialogs::Dialog::add_marker(tick));
             }
+            "ui.insert_space" | "ui.delete_space" => {
+                let name = invocation.name.replace("ui.", "playlist.");
+                match frame.project.playlist.loop_range {
+                    Some((start, end)) => out.push(Action::Run(Invocation::new(
+                        &name,
+                        [format!("{start}t"), format!("{}t", end - start)],
+                    ))),
+                    None => state.set_status(
+                        "select a time range first: Shift+drag the playlist ruler",
+                        true,
+                    ),
+                }
+            }
             "ui.next_empty_pattern" => {
                 // Mirrors `pattern.next_empty`, then offers to name the pattern.
                 let project = frame.project;

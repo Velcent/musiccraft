@@ -1277,3 +1277,143 @@ fn soloed_playlist_tracks_silence_the_others() {
     );
     assert_eq!(channels(&s), [0, 1]);
 }
+
+#[test]
+fn a_sliced_pattern_clip_plays_on_from_its_offset() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick
+         step.toggle 1 0
+         step.toggle 1 4
+         step.toggle 1 8
+         step.toggle 1 12
+         playlist.add_clip 1 1 0 2
+         playlist.slice_clip 1 1.375
+         transport.set_mode song",
+    );
+    let starts: Vec<u64> = build_sequence(s.project())
+        .events()
+        .iter()
+        .map(|e| e.start)
+        .collect();
+    // Every beat over two bars, unchanged by the cut at bar 1 + 1.5 beats.
+    assert_eq!(starts, (0..8).map(|b| b * 96).collect::<Vec<_>>());
+}
+
+#[test]
+fn sliced_audio_clips_start_part_way_into_the_sample() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_sampler builtin:kick
+         playlist.add_audio_clip 1 1 0 1
+         playlist.slice_clip 1 0.5
+         transport.set_mode song",
+    );
+    let seq = build_sequence(s.project());
+    let offsets: Vec<(u64, f32)> = seq
+        .events()
+        .iter()
+        .map(|e| (e.start, e.shape.start))
+        .collect();
+    // Half a bar at 120 BPM is one second.
+    assert_eq!(offsets, [(0, 0.0), (192, 1.0)]);
+}
+
+#[test]
+fn reversed_and_faded_samples() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-reverse-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ramp = dir.join("ramp.wav");
+    // A rising ramp, 0.5 s at 48 kHz.
+    let data: Vec<f32> = (0..24_000).map(|i| i as f32 / 24_000.0).collect();
+    musiccraft_samples::write_wav(
+        &ramp,
+        &data,
+        &data,
+        48_000,
+        musiccraft_samples::WavFormat::Float32,
+    )
+    .unwrap();
+    let mut s = session();
+    run(
+        &mut s,
+        &format!(
+            "project.set_tempo 120
+             channel.add_sampler \"{}\"
+             channel.set_param 1 one_shot 1
+             channel.set_pan 1 -1
+             step.toggle 1 0",
+            ramp.display()
+        ),
+    );
+    let options = RenderOptions {
+        sample_rate: 48_000,
+        loops: 1,
+        max_tail_seconds: 0.0,
+    };
+    let left = |s: &Session| render(s.project(), options).0;
+    let forward = left(&s);
+    assert!(forward[100] < forward[20_000], "rises");
+    run(&mut s, "channel.set_param 1 reverse 1");
+    let backward = left(&s);
+    assert!(backward[100] > backward[20_000], "falls when reversed");
+    run(
+        &mut s,
+        "channel.set_param 1 reverse 0\nchannel.set_param 1 fade_out 0.25",
+    );
+    let faded = left(&s);
+    // Halfway through the fade-out the ramp is cut to about half.
+    let at = 18_000;
+    assert!(
+        (faded[at] / forward[at] - 0.5).abs() < 0.02,
+        "{}",
+        faded[at] / forward[at]
+    );
+    run(
+        &mut s,
+        "channel.set_param 1 fade_out 0\nchannel.set_param 1 fade_in 0.1",
+    );
+    let faded_in = left(&s);
+    assert!((faded_in[2_400] / forward[2_400] - 0.5).abs() < 0.02);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn consolidating_a_clip_renders_it_to_an_audio_clip() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-consolidate-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(
+        &mut s,
+        &format!(
+            "channel.add_synth
+             note.add 1 0 4 C5
+             playlist.add_clip 1 1 2 1
+             project.save \"{}\"",
+            dir.join("song.mcproj").display()
+        ),
+    );
+    run(&mut s, "playlist.consolidate 1 2");
+    let project = s.project();
+    assert_eq!(project.channels.len(), 2);
+    let clip = project.playlist.clips[0];
+    assert_eq!(
+        clip.source,
+        musiccraft_project::ClipSource::Audio(project.channels[1].id)
+    );
+    assert_eq!((clip.start, clip.length), (768, 384));
+    let wav = dir.join("consolidated/Pattern-1-1.wav");
+    assert!(wav.exists());
+    // The render holds the note: loud at the start, the length of the clip.
+    let buffer = musiccraft_samples::load_wav(&wav).unwrap();
+    let expected = 384.0 / 96.0 * 60.0 / 130.0;
+    assert!((buffer.duration_seconds() - expected).abs() < 1e-3);
+    assert!((0..4800).any(|i| buffer.read(i as f64).0.abs() > 0.05));
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().channels.len(), 1);
+    assert!(s.project().playlist.clips[0].pattern().is_some());
+    std::fs::remove_dir_all(dir).unwrap();
+}

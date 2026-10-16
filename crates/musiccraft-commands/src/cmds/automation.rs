@@ -122,6 +122,7 @@ fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         track,
         start: 0,
         length,
+        offset: 0,
     });
     project.playlist.sort_clips();
     let number = project.automations.len();

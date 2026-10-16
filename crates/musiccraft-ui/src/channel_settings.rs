@@ -364,6 +364,26 @@ fn sampler(
         let slices = channel.params.get(inst::SLICES).round().max(1.0) as u32;
         waveform(ui, frame.waveform, theme::palette(index), slices);
         ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FADE_IN,
+                "Fade in",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FADE_OUT,
+                "Fade out",
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
             let mut one_shot = channel.params.get(inst::ONE_SHOT) >= 0.5;
             if ui
                 .checkbox(&mut one_shot, "One shot")
@@ -376,6 +396,21 @@ fn sampler(
                         number.to_string(),
                         "one_shot".to_owned(),
                         if one_shot { "1" } else { "0" }.to_owned(),
+                    ],
+                )));
+            }
+            let mut reverse = channel.params.get(inst::REVERSE) >= 0.5;
+            if ui
+                .checkbox(&mut reverse, "Reverse")
+                .hint("Play the sample backwards")
+                .changed()
+            {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.set_param",
+                    [
+                        number.to_string(),
+                        "reverse".to_owned(),
+                        if reverse { "1" } else { "0" }.to_owned(),
                     ],
                 )));
             }

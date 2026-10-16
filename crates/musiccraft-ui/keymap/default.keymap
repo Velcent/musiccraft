@@ -20,6 +20,8 @@ Ctrl+T       = ui.typing_keyboard
 
 # Playlist
 Alt+T        = ui.add_marker
+Ctrl+Insert  = ui.insert_space
+Ctrl+Delete  = ui.delete_space
 
 # Windows
 F5           = view.toggle playlist

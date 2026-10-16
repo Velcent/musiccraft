@@ -61,6 +61,10 @@ of contents; see `docs/clean-room.md`.
 | Patterns | Clone / rename / delete / length | `cmd:pattern.clone` `cmd:pattern.rename` `cmd:pattern.remove` `cmd:pattern.set_length` |
 | Playlist | Track names, colours, mute and solo | `cmd:playlist.rename_track` `cmd:playlist.set_track_color` `cmd:playlist.toggle_track_mute` `cmd:playlist.toggle_track_solo` |
 | Playlist | Place, move, resize, delete clips | `cmd:playlist.add_clip` `cmd:playlist.move_clip` `cmd:playlist.resize_clip` `cmd:playlist.remove_clip` `spec:playlist.md` |
+| Playlist | Slice, make unique, merge clips | `cmd:playlist.slice_clip` `cmd:playlist.make_unique` `cmd:playlist.merge_clips` |
+| Playlist | Consolidate a clip to audio | `cmd:playlist.consolidate` |
+| Playlist | Reverse and fade audio clips | `cmd:playlist.reverse_clip` `cmd:playlist.set_clip_fade` |
+| Playlist | Insert / delete space | `cmd:playlist.insert_space` `cmd:playlist.delete_space` `key:Ctrl+Insert=ui.insert_space` `key:Ctrl+Delete=ui.delete_space` |
 | Playlist | Track mute | `cmd:playlist.toggle_track_mute` |
 | Playlist | Select, duplicate, group move | `cmd:edit.batch` `done` |
 | Playlist | Click the ruler to move the playhead; follow playback | `done` |

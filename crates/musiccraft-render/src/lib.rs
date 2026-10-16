@@ -9,11 +9,13 @@
 
 mod arp;
 mod bridge;
+mod consolidate;
 mod export;
 pub mod plugins;
 mod sequence;
 
 pub use bridge::{Bridge, SyncReport};
+pub use consolidate::ConsolidateCommand;
 pub use export::{
     ExportCommand, ExportFlacCommand, ExportStemsCommand, RenderOptions, export_stems, export_wav,
     register, register_with, render, render_with,

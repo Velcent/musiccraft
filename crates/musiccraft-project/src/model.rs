@@ -628,6 +628,9 @@ pub struct Clip {
     pub start: u32,
     /// Duration in ticks; a pattern repeats if the clip is longer.
     pub length: u32,
+    /// Ticks into the source where the clip begins (a sliced clip).
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub offset: u32,
 }
 
 impl Clip {
@@ -949,4 +952,9 @@ impl PanLaw {
     pub fn from_label(label: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|law| law.label() == label)
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }

@@ -77,6 +77,45 @@
 - `playlist.remove_clip`, `move_clip`, `resize_clip` and selection editing work
   the same for every kind. Ctrl+B duplicates any kind.
 
+## Clip editing
+
+- A clip has an **offset**: ticks into its source where it begins (0 for a
+  new clip). A pattern clip with an offset starts part-way into the pattern
+  (notes starting before it are cut); an audio clip starts part-way into the
+  sample (converted at the project tempo); an automation clip shows the curve
+  from that point. The add-clip commands take it as an optional last argument
+  and undo keeps it; project files store it only when it is not 0.
+- `playlist.slice_clip <track> <at>` cuts the clip covering `at` into two clips
+  there (the second keeps playing where the first stopped).
+- `playlist.make_unique <track> <at>` gives the clip its own copy of its
+  pattern, automation or sample channel, named "<name> #2" (#3, …); other
+  clips keep the original.
+- `playlist.merge_clips <track> <at> [<track> <at> …]` merges pattern clips
+  into one new pattern ("Merged n") holding everything they played, at their
+  positions, and one clip of it on the first of their tracks spanning them all.
+  Fails if that clip would overlap another or the pattern would exceed 1024
+  steps.
+- `playlist.consolidate <track> <at>` renders a pattern or audio clip alone
+  (effects included, 48 kHz 32-bit float) to `consolidated/<name>-<n>.wav`
+  beside the project, adds a sampler channel for it (one-shot off) and makes
+  the clip an audio clip of it. The project must be saved first. Undo puts the
+  clip back and removes the channel; the file stays.
+- `playlist.reverse_clip <track> <at>` and `playlist.set_clip_fade <track> <at>
+  <in|out> <seconds>` (0–10 s) set the sampler parameters `reverse`,
+  `fade_in` and `fade_out` of an audio clip's channel (also in channel
+  settings). Reversed samples play from their end. The fade-in rises from the
+  note's start; the fade-out falls over the last seconds before the note or the
+  sample ends. Make the clip unique first to treat one clip on its own.
+- `playlist.insert_space <start> <length>` moves every clip and marker at or
+  after `start` later by `length`; a clip across `start` is sliced there and
+  its second part moves. `playlist.delete_space <start> <length>` removes that
+  stretch: clips inside it go, clips across its edges are cut back, and later
+  clips and markers move earlier. Both are one undo step.
+- UI: the playlist's Clip menu acts on the selected clips (slice at the
+  playhead, make unique, merge, consolidate, reverse, fades) and inserts or
+  deletes the loop region's time; Ctrl+Insert and Ctrl+Delete do the same
+  (they need a loop region: Shift+drag the ruler).
+
 ## Audio recording
 
 - With File → Record audio input on, REC armed and the transport playing in song
@@ -141,3 +180,7 @@
 - Playlist track names, colours, mute and solo follow the FL Studio online
   manual, "Playlist" (track header options). The colour palette and command
   names are our own.
+- Clip editing (slice, make unique, merge, consolidate, reverse, fades, insert
+  and delete space with Ctrl+Insert / Ctrl+Delete) follows the playlist clip
+  menu and shortcuts in the FL Studio online manual, "Playlist" and "Keyboard
+  shortcuts". The offset model, naming and file layout are our own.

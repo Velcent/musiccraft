@@ -48,6 +48,7 @@ fn event(
             resonance: centred(p.mod_y) * 0.5,
             porta: p.porta,
             color: p.color,
+            start: 0.0,
         },
         slide: note.slide,
         start: u64::from(start),
@@ -93,9 +94,15 @@ fn song_events(project: &Project) -> Vec<NoteEvent> {
                 let root = project.channels[index]
                     .params
                     .get(musiccraft_params::inst::ROOT_KEY) as u8;
+                // A sliced clip starts part-way into the sample.
+                let seconds = f64::from(clip.offset) / f64::from(musiccraft_params::PPQ) * 60.0
+                    / project.tempo_bpm();
                 if let Ok(channel) = u16::try_from(index) {
                     events.push(NoteEvent {
-                        shape: musiccraft_engine::NoteShape::default(),
+                        shape: musiccraft_engine::NoteShape {
+                            start: seconds as f32,
+                            ..musiccraft_engine::NoteShape::default()
+                        },
                         slide: false,
                         start: u64::from(clip.start),
                         length: u64::from(clip.length.max(1)),
@@ -118,20 +125,27 @@ fn pattern_clip_events(
     clip: &musiccraft_project::Clip,
     events: &mut Vec<NoteEvent>,
 ) {
-    let period = pattern.length_ticks().max(1);
-    let mut offset = 0;
-    // The pattern repeats for as long as the clip lasts.
-    while offset < clip.length {
+    let period = u64::from(pattern.length_ticks().max(1));
+    let (skip, span) = (u64::from(clip.offset), u64::from(clip.length));
+    // The pattern repeats for as long as the clip lasts; a sliced clip starts
+    // `skip` ticks into it (notes starting before that are cut).
+    let mut repeat = skip / period * period;
+    while repeat < skip + span {
         for note in &pattern.notes {
             let (start, length) = swung(project, note);
-            let start = offset + start;
-            if start >= clip.length {
+            let Some(local) = (repeat + u64::from(start)).checked_sub(skip) else {
+                continue;
+            };
+            if local >= span {
                 continue;
             }
-            let length = length.min(clip.length - start);
-            events.extend(event(project, note, clip.start + start, length));
+            let length = u64::from(length).min(span - local);
+            let (Ok(local), Ok(length)) = (u32::try_from(local), u32::try_from(length)) else {
+                continue;
+            };
+            events.extend(event(project, note, clip.start + local, length));
         }
-        offset += period;
+        repeat += period;
     }
 }
 
@@ -216,18 +230,20 @@ fn song_automation(project: &Project) -> Vec<AutomationLane> {
         };
         let start = u64::from(clip.start);
         let end = u64::from(clip.end());
+        // A sliced clip shows the automation from `offset` on.
+        let (skip, span) = (clip.offset, clip.length);
         let mut points: Vec<(u64, f32)> = Vec::new();
-        if let Some(v) = automation.value_at(0.0) {
+        if let Some(v) = automation.value_at(f64::from(skip)) {
             points.push((start, convert(v)));
         }
         for point in automation
             .points
             .iter()
-            .filter(|p| p.tick > 0 && p.tick < clip.length)
+            .filter(|p| p.tick > skip && p.tick < skip + span)
         {
-            points.push((start + u64::from(point.tick), convert(point.value)));
+            points.push((start + u64::from(point.tick - skip), convert(point.value)));
         }
-        if let Some(v) = automation.value_at(f64::from(clip.length)) {
+        if let Some(v) = automation.value_at(f64::from(skip + span)) {
             points.push((end, convert(v)));
         }
         lanes.push(AutomationLane { target, points });

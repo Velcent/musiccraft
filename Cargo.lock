@@ -1513,6 +1513,7 @@ dependencies = [
  "musiccraft-params",
  "musiccraft-project",
  "musiccraft-samples",
+ "serde_json",
 ]
 
 [[package]]
