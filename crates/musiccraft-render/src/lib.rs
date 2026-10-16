@@ -10,6 +10,7 @@
 mod arp;
 mod bridge;
 mod consolidate;
+mod delivery;
 mod export;
 mod midi_export;
 pub mod plugins;

@@ -54,6 +54,21 @@
   - Older files stored swing per pattern. On load, a project without a global
     swing takes the largest pattern swing.
 
+## Timing and echo
+
+Channel parameters (channel settings → TIMING AND ECHO), applied when the
+sequence is built, after swing and the arpeggiator; they change what the
+channel plays, not the stored notes:
+
+- `time_shift` (-96…96 ticks) moves every note of the channel later
+  (negative: earlier, never before the loop start).
+- `gate` (0…384 ticks, 0 = off) gives every note that fixed length.
+- Note echo: `echo_count` (0–8) repeats each note `echo_time` ticks apart
+  (default 48), each repeat's velocity multiplied by `echo_feed` (0–1,
+  default 0.5) and its key moved by `echo_pitch` semitones (-12…12). Repeats
+  past the loop end, below velocity 1 or outside the key range are dropped.
+  Echoes are never slide notes.
+
 ## Voices: cut groups, mono and polyphony
 
 Channel parameters (`channel.set_param <n> <name> <value>`, undoable; channel
@@ -229,3 +244,6 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   generator listed in the FL Studio online manual's plugin list. Design ours.
 - Built-in sounds: own design; no third-party audio is used.
 - WAV decoding: the RIFF/WAVE format via the `hound` crate.
+- Time shift, gate and note echo are channel settings described in the FL
+  Studio online manual, "Channel settings" (miscellaneous functions: time,
+  echo delay). Units, ranges and rules are our own.

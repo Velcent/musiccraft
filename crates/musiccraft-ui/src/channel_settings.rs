@@ -252,6 +252,43 @@ fn contents(
         });
     });
     ui.add_space(6.0);
+    section(ui, "TIMING AND ECHO", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::TIME_SHIFT,
+                "Shift",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::GATE, "Gate", actions);
+        });
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ECHO_COUNT,
+                "Echoes",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::ECHO_TIME, "Time", actions);
+            param_knob(ui, state, number, channel, inst::ECHO_FEED, "Feed", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ECHO_PITCH,
+                "Pitch",
+                actions,
+            );
+        });
+    });
+    ui.add_space(6.0);
     section(ui, "VOICES", |ui| {
         ui.horizontal(|ui| {
             param_knob(ui, state, number, channel, inst::CUT_GROUP, "Cut", actions);

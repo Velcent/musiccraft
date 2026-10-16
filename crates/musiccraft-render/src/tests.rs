@@ -1461,3 +1461,53 @@ fn midi_export_round_trips_through_import() {
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn time_shift_gate_and_echo_change_what_a_channel_plays() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         note.add 1 4 2 C5 100
+         channel.add_synth
+         note.add 2 4 2 C5 100",
+    );
+    let rows = |s: &Session| -> Vec<(u16, u64, u64, u8, u8)> {
+        build_sequence(s.project())
+            .events()
+            .iter()
+            .map(|e| {
+                (
+                    e.channel,
+                    e.start,
+                    e.length,
+                    e.key,
+                    (e.velocity * 127.0).round() as u8,
+                )
+            })
+            .collect()
+    };
+    run(
+        &mut s,
+        "channel.set_param 1 time_shift -12\nchannel.set_param 1 gate 6",
+    );
+    assert_eq!(rows(&s), [(0, 84, 6, 60, 100), (1, 96, 48, 60, 100)]);
+    run(
+        &mut s,
+        "channel.set_param 1 time_shift 0
+         channel.set_param 1 gate 0
+         channel.set_param 1 echo_count 2
+         channel.set_param 1 echo_time 24
+         channel.set_param 1 echo_feed 0.5
+         channel.set_param 1 echo_pitch 12",
+    );
+    let echoes: Vec<_> = rows(&s).into_iter().filter(|r| r.0 == 0).collect();
+    assert_eq!(
+        echoes,
+        [
+            (0, 96, 48, 60, 100),
+            (0, 120, 48, 72, 50),
+            (0, 144, 48, 84, 25)
+        ]
+    );
+}

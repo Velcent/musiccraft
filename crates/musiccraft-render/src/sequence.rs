@@ -294,12 +294,18 @@ pub(crate) fn midi_events(project: &Project) -> (Vec<NoteEvent>, u64) {
         PlayMode::Pattern => {
             let pattern = project.current_pattern();
             (
-                crate::arp::apply(project, pattern_events(project, pattern)),
+                crate::delivery::apply(
+                    project,
+                    crate::arp::apply(project, pattern_events(project, pattern)),
+                ),
                 u64::from(pattern.length_ticks()),
             )
         }
         PlayMode::Song => (
-            crate::arp::apply(project, song_note_events(project, false)),
+            crate::delivery::apply(
+                project,
+                crate::arp::apply(project, song_note_events(project, false)),
+            ),
             u64::from(project.song_length_ticks()),
         ),
     }
@@ -310,12 +316,15 @@ pub fn build_full_sequence(project: &Project) -> Sequence {
         PlayMode::Pattern => {
             let pattern = project.current_pattern();
             Sequence::new(
-                crate::arp::apply(project, pattern_events(project, pattern)),
+                crate::delivery::apply(
+                    project,
+                    crate::arp::apply(project, pattern_events(project, pattern)),
+                ),
                 u64::from(pattern.length_ticks()),
             )
         }
         PlayMode::Song => Sequence::new(
-            crate::arp::apply(project, song_events(project)),
+            crate::delivery::apply(project, crate::arp::apply(project, song_events(project))),
             u64::from(project.song_length_ticks()),
         )
         .with_automation(song_automation(project)),

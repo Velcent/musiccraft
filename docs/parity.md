@@ -155,3 +155,4 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Limit, LFO, scale levels, flam | `cmd:note.limit` `cmd:note.lfo` `cmd:note.scale_levels` `cmd:note.flam` |
 | Piano roll | Randomizer and chord progressions | `cmd:note.randomize` `cmd:note.chords` |
 | Piano roll | Articulate and claw machine | `cmd:note.articulate` `cmd:note.claw` |
+| Channel rack | Time shift, gate and note echo | `spec:channel-rack.md` `done` |

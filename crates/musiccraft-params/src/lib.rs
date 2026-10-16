@@ -303,6 +303,18 @@ pub mod inst {
     pub const FADE_IN: usize = 81;
     /// Sampler: fade-out time before the note or sample ends, seconds.
     pub const FADE_OUT: usize = 82;
+    /// Moves every note of the channel, ticks (negative is earlier).
+    pub const TIME_SHIFT: usize = 83;
+    /// Fixed note length in ticks (0 = the notes' own lengths).
+    pub const GATE: usize = 84;
+    /// Note echo: repeats of each note (0 = off).
+    pub const ECHO_COUNT: usize = 85;
+    /// Note echo: ticks between repeats.
+    pub const ECHO_TIME: usize = 86;
+    /// Note echo: velocity kept per repeat, 0..1.
+    pub const ECHO_FEED: usize = 87;
+    /// Note echo: semitones added per repeat.
+    pub const ECHO_PITCH: usize = 88;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -390,6 +402,12 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("reverse", 0.0, 1.0, 0.0),
     spec("fade_in", 0.0, 10.0, 0.0, "s"),
     spec("fade_out", 0.0, 10.0, 0.0, "s"),
+    int_spec("time_shift", -96.0, 96.0, 0.0),
+    int_spec("gate", 0.0, 384.0, 0.0),
+    int_spec("echo_count", 0.0, 8.0, 0.0),
+    int_spec("echo_time", 1.0, 384.0, 48.0),
+    spec("echo_feed", 0.0, 1.0, 0.5, ""),
+    int_spec("echo_pitch", -12.0, 12.0, 0.0),
 ];
 
 /// Names of the keys instrument's types, by `keys_type` value.
@@ -1031,6 +1049,8 @@ mod tests {
             (inst::POLY_MAX, "poly_max"),
             (inst::REVERSE, "reverse"),
             (inst::FADE_OUT, "fade_out"),
+            (inst::TIME_SHIFT, "time_shift"),
+            (inst::ECHO_PITCH, "echo_pitch"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }
