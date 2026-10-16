@@ -5,7 +5,8 @@ use egui::{Color32, Pos2, RichText, Sense, Shape, Stroke, pos2, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::music::key_name;
 use musiccraft_project::params::{
-    INSTRUMENT_PARAMS, MOD_DESTS, MOD_SLOTS, MOD_SOURCES, ParamSpec, WAVEFORMS, inst,
+    FM_ALGOS, FM_WAVES, INSTRUMENT_PARAMS, MOD_DESTS, MOD_SLOTS, MOD_SOURCES, ParamSpec, WAVEFORMS,
+    inst,
 };
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME};
 
@@ -658,23 +659,10 @@ fn fm(
         actions,
     );
     ui.add_space(4.0);
+    let six = channel.params.get(inst::FM_ALGO).round() >= 6.0;
     section(ui, "ALGORITHM", |ui| {
         ui.horizontal(|ui| {
-            choice(
-                ui,
-                number,
-                channel,
-                inst::FM_ALGO,
-                &[
-                    "4→3→2→1",
-                    "4→3, 3+2→1",
-                    "4→3 2→1",
-                    "4→1,2,3",
-                    "2→1 +3 +4",
-                    "1+2+3+4",
-                ],
-                actions,
-            );
+            combo(ui, number, channel, inst::FM_ALGO, &FM_ALGOS, actions);
         });
         ui.horizontal(|ui| {
             param_knob(
@@ -683,16 +671,23 @@ fn fm(
                 number,
                 channel,
                 inst::FM_FEEDBACK,
-                "Feedback 4",
+                if six { "Feedback 6" } else { "Feedback 4" },
                 actions,
             );
         });
     });
-    for op in 0..4 {
+    for op in 0..if six { 6 } else { 4 } {
         ui.add_space(4.0);
         section(ui, &format!("OPERATOR {}", op + 1), |ui| {
             ui.horizontal(|ui| {
-                let base = inst::OP1_RATIO + op * 4;
+                combo(ui, number, channel, inst::OP1_WAVE + op, &FM_WAVES, actions);
+            });
+            ui.horizontal(|ui| {
+                let base = if op < 4 {
+                    inst::OP1_RATIO + op * 4
+                } else {
+                    inst::OP5_RATIO + (op - 4) * 4
+                };
                 param_knob(ui, state, number, channel, base, "Ratio", actions);
                 param_knob(ui, state, number, channel, base + 1, "Level", actions);
                 param_knob(ui, state, number, channel, base + 2, "Decay", actions);
@@ -700,6 +695,29 @@ fn fm(
             });
         });
     }
+    ui.add_space(4.0);
+    section(ui, "FILTER", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FM_CUTOFF,
+                "Cutoff",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FM_RESONANCE,
+                "Reso",
+                actions,
+            );
+        });
+    });
     ui.add_space(4.0);
     envelope_section(ui, state, number, channel, actions);
 }

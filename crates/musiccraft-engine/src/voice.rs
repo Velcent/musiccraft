@@ -17,6 +17,40 @@ const DRUM_GAIN: f32 = 0.8;
 const PLUCK_GAIN: f32 = 0.35;
 /// Most partials (and phases) a voice keeps for additive instruments.
 const PARTIALS: usize = 32;
+/// FM operators.
+const FM_OPS: usize = 6;
+/// FM algorithms, by `fm_algo`: for each operator (1 first) a bit mask of the
+/// operators modulating it, the bit mask of carriers (heard operators), and
+/// the operator with feedback.
+const FM_ALGOS: [([u8; FM_OPS], u8, usize); 12] = [
+    ([0b10, 0b100, 0b1000, 0, 0, 0], 0b1, 3),
+    ([0b110, 0, 0b1000, 0, 0, 0], 0b1, 3),
+    ([0b10, 0, 0b1000, 0, 0, 0], 0b101, 3),
+    ([0b1000, 0b1000, 0b1000, 0, 0, 0], 0b111, 3),
+    ([0b10, 0, 0, 0, 0, 0], 0b1101, 3),
+    ([0, 0, 0, 0, 0, 0], 0b1111, 3),
+    ([0b10, 0b100, 0b1000, 0b1_0000, 0b10_0000, 0], 0b1, 5),
+    ([0b10, 0b100, 0, 0b1_0000, 0b10_0000, 0], 0b1001, 5),
+    ([0b10, 0, 0b1000, 0, 0b10_0000, 0], 0b1_0101, 5),
+    ([0b11_1110, 0, 0, 0, 0, 0], 0b1, 5),
+    (
+        [0b10_0000, 0b10_0000, 0b10_0000, 0b10_0000, 0b10_0000, 0],
+        0b1_1111,
+        5,
+    ),
+    ([0, 0, 0, 0, 0, 0], 0b11_1111, 5),
+];
+
+/// An FM operator's waveform at phase `x` (radians): sine, half sine, soft
+/// square or soft saw, all within −1..1.
+fn fm_wave(wave: i32, x: f32) -> f32 {
+    match wave {
+        1 => x.sin().max(0.0) * 2.0 - 0.64,
+        2 => (x.sin() * 3.0).tanh(),
+        3 => (x.sin() + (2.0 * x).sin() * 0.5 + (3.0 * x).sin() / 3.0) * 0.55,
+        _ => x.sin(),
+    }
+}
 /// Most grains sounding at once in one granular voice.
 const GRAINS: usize = 24;
 
@@ -558,14 +592,34 @@ impl Voice {
         left: &mut [f32],
         right: &mut [f32],
     ) {
-        let algo = param(params, inst::FM_ALGO).round() as i32;
+        let algo = (param(params, inst::FM_ALGO).round().max(0.0) as usize).min(FM_ALGOS.len() - 1);
+        let Some(&(modulators, carriers, top)) = FM_ALGOS.get(algo) else {
+            return;
+        };
         let feedback = param(params, inst::FM_FEEDBACK).clamp(0.0, 1.0);
-        let op = |n: usize, field: usize| param(params, inst::OP1_RATIO + (n - 1) * 4 + field);
-        let ratio = [op(1, 0), op(2, 0), op(3, 0), op(4, 0)];
-        let level = [op(1, 1), op(2, 1), op(3, 1), op(4, 1)];
-        let decay = [op(1, 2), op(2, 2), op(3, 2), op(4, 2)].map(|d| d.max(0.005));
-        let sustain = [op(1, 3), op(2, 3), op(3, 3), op(4, 3)];
+        let op = |n: usize, field: usize| {
+            let base = if n < 4 {
+                inst::OP1_RATIO + n * 4
+            } else {
+                inst::OP5_RATIO + (n - 4) * 4
+            };
+            param(params, base + field)
+        };
+        let ratio: [f32; FM_OPS] = std::array::from_fn(|i| op(i, 0));
+        let level: [f32; FM_OPS] = std::array::from_fn(|i| op(i, 1));
+        let decay: [f32; FM_OPS] = std::array::from_fn(|i| op(i, 2).max(0.005));
+        let sustain: [f32; FM_OPS] = std::array::from_fn(|i| op(i, 3));
+        let waves: [i32; FM_OPS] =
+            std::array::from_fn(|i| param(params, inst::OP1_WAVE + i).round() as i32);
+        let carrier_count = carriers.count_ones().max(1) as f32;
+        let cutoff = param(params, inst::FM_CUTOFF);
+        let filtered = cutoff < 19_999.0;
         let sr = self.sample_rate;
+        if filtered {
+            let resonance = param(params, inst::FM_RESONANCE).clamp(0.0, 1.0);
+            self.filter_l.set(cutoff, resonance, sr);
+            self.filter_r.set(cutoff, resonance, sr);
+        }
         let mut hz = key_to_hz(pitch + self.glide);
         let tau = std::f32::consts::TAU;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
@@ -579,37 +633,40 @@ impl Voice {
             let t = self.elapsed as f32 / sr;
             self.elapsed = self.elapsed.saturating_add(1);
             let amp = self.env.next_level() * self.velocity;
-            let mut out_of = [0.0_f32; 4];
+            let mut out_of = [0.0_f32; FM_OPS];
             let env = |i: usize| sustain[i] + (1.0 - sustain[i]) * (-t / decay[i]).exp();
-            // Operators run 4 down to 1 so modulators are ready first.
-            for i in (0..4).rev() {
+            // Modulators always have higher numbers, so running from the top
+            // down has every modulator ready first.
+            for i in (0..FM_OPS).rev() {
+                let mask = modulators.get(i).copied().unwrap_or(0);
+                if level[i] <= 0.0 && carriers & (1 << i) == 0 && mask == 0 {
+                    continue;
+                }
                 let phase = self.phases[i];
                 self.phases[i] = (phase + f64::from(hz * ratio[i] / sr)).fract();
-                let modulation = match (algo, i) {
-                    (0, 0) => out_of[1],
-                    (0, 1) | (1, 2) | (2, 2) => out_of[i + 1],
-                    (0, 2) => out_of[3],
-                    (1, 0) => out_of[1] + out_of[2],
-                    (2, 0) | (4, 0) => out_of[1],
-                    (3, 0..=2) => out_of[3],
-                    (_, 3) => self.fm_prev * feedback,
-                    _ => 0.0,
-                };
-                let value = (phase as f32 * tau + modulation * 4.0).sin() * level[i] * env(i);
-                if i == 3 {
+                let mut modulation: f32 = (0..FM_OPS)
+                    .filter(|m| mask & (1 << m) != 0)
+                    .map(|m| out_of[m])
+                    .sum();
+                if i == top {
+                    modulation += self.fm_prev * feedback;
+                }
+                let x = phase as f32 * tau + modulation * 4.0;
+                let value = fm_wave(waves[i], x) * level[i] * env(i);
+                if i == top {
                     self.fm_prev = value;
                 }
                 out_of[i] = value;
             }
-            let carriers: &[usize] = match algo {
-                2 => &[0, 2],
-                3 => &[0, 1, 2],
-                4 => &[0, 2, 3],
-                5 => &[0, 1, 2, 3],
-                _ => &[0],
-            };
-            let mix: f32 = carriers.iter().map(|c| out_of[*c]).sum::<f32>() / carriers.len() as f32;
-            let sample = mix * amp * SYNTH_GAIN * 1.6;
+            let mix: f32 = (0..FM_OPS)
+                .filter(|c| carriers & (1 << c) != 0)
+                .map(|c| out_of[c])
+                .sum::<f32>()
+                / carrier_count;
+            let mut sample = mix * amp * SYNTH_GAIN * 1.6;
+            if filtered {
+                sample = self.filter_l.process(sample, SvfMode::LowPass);
+            }
             self.emit(l, r, sample);
             if self.env.is_idle() {
                 self.active = false;
@@ -1735,6 +1792,57 @@ mod more_instrument_tests {
             }
             assert!(peak(&out[18_000..]) < 1e-3, "{name} releases");
         }
+    }
+
+    #[test]
+    fn six_operator_algorithms_waves_and_filter() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::SUSTAIN] = 1.0;
+        let four = render(&Instrument::Fm, &params, 57, 9_600, None);
+        // The old algorithms ignore operators 5 and 6.
+        let mut extra = params;
+        extra.instrument[inst::OP5_LEVEL] = 1.0;
+        extra.instrument[inst::OP6_LEVEL] = 1.0;
+        assert_eq!(render(&Instrument::Fm, &extra, 57, 9_600, None), four);
+        let mut outputs = vec![four];
+        for algo in 6..=11 {
+            let mut p = extra;
+            p.instrument[inst::FM_ALGO] = algo as f32;
+            for level in [
+                inst::OP1_LEVEL,
+                inst::OP2_LEVEL,
+                inst::OP3_LEVEL,
+                inst::OP4_LEVEL,
+            ] {
+                p.instrument[level] = 0.7;
+            }
+            let out = render(&Instrument::Fm, &p, 57, 9_600, None);
+            let level = peak(&out);
+            assert!(level > 0.02 && level < 1.0, "algorithm {algo}: {level}");
+            assert!(out.iter().all(|s| s.is_finite()));
+            outputs.push(out);
+        }
+        for (i, a) in outputs.iter().enumerate() {
+            for b in outputs.iter().skip(i + 1) {
+                assert!(a.iter().zip(b).any(|(x, y)| (x - y).abs() > 1e-3));
+            }
+        }
+        let mut square = params;
+        square.instrument[inst::OP1_WAVE] = 2.0;
+        assert_ne!(
+            render(&Instrument::Fm, &square, 57, 2_400, None),
+            outputs[0]
+        );
+        let mut dark = params;
+        dark.instrument[inst::OP1_WAVE] = 3.0;
+        let bright = render(&Instrument::Fm, &dark, 57, 9_600, None);
+        dark.instrument[inst::FM_CUTOFF] = 300.0;
+        let filtered = render(&Instrument::Fm, &dark, 57, 9_600, None);
+        let edges = |x: &[f32]| x.windows(2).map(|w| (w[1] - w[0]).abs()).sum::<f32>();
+        assert!(
+            edges(&filtered) < edges(&bright) * 0.8,
+            "the filter smooths it"
+        );
     }
 
     #[test]

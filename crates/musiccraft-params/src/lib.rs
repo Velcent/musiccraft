@@ -21,7 +21,7 @@ pub const TICKS_PER_BAR: u32 = PPQ * BEATS_PER_BAR;
 /// Capacity of an effect parameter array.
 pub const MAX_EFFECT_PARAMS: usize = 24;
 /// Capacity of an instrument parameter array.
-pub const MAX_INSTRUMENT_PARAMS: usize = 128;
+pub const MAX_INSTRUMENT_PARAMS: usize = 160;
 /// Maximum number of effect slots on one mixer track.
 pub const MAX_EFFECT_SLOTS: usize = 10;
 /// Maximum number of mixer tracks, master included.
@@ -343,6 +343,25 @@ pub mod inst {
     pub const MOD3_SOURCE: usize = 103;
     pub const MOD3_DEST: usize = 104;
     pub const MOD3_AMOUNT: usize = 105;
+    /// FM operators 5 and 6 (ratio, level, decay, sustain), like 1–4.
+    pub const OP5_RATIO: usize = 106;
+    pub const OP5_LEVEL: usize = 107;
+    pub const OP5_DECAY: usize = 108;
+    pub const OP5_SUSTAIN: usize = 109;
+    pub const OP6_RATIO: usize = 110;
+    pub const OP6_LEVEL: usize = 111;
+    pub const OP6_DECAY: usize = 112;
+    pub const OP6_SUSTAIN: usize = 113;
+    /// FM operator waveforms (see `FM_WAVES`), operators 1–6.
+    pub const OP1_WAVE: usize = 114;
+    pub const OP2_WAVE: usize = 115;
+    pub const OP3_WAVE: usize = 116;
+    pub const OP4_WAVE: usize = 117;
+    pub const OP5_WAVE: usize = 118;
+    pub const OP6_WAVE: usize = 119;
+    /// FM output low-pass cutoff, hertz (20 kHz = off), and resonance.
+    pub const FM_CUTOFF: usize = 120;
+    pub const FM_RESONANCE: usize = 121;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -387,7 +406,7 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("wave3", 0.0, 4.0, 2.0),
     spec("osc3_level", 0.0, 1.0, 0.0, ""),
     spec("osc3_coarse", -24.0, 24.0, -12.0, "st"),
-    int_spec("fm_algo", 0.0, 5.0, 0.0),
+    int_spec("fm_algo", 0.0, 11.0, 0.0),
     spec("fm_feedback", 0.0, 1.0, 0.0, ""),
     spec("op1_ratio", 0.25, 16.0, 1.0, ""),
     spec("op1_level", 0.0, 1.0, 1.0, ""),
@@ -453,6 +472,40 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("mod3_source", 0.0, 6.0, 0.0),
     int_spec("mod3_dest", 0.0, 8.0, 0.0),
     spec("mod3_amount", -1.0, 1.0, 0.0, ""),
+    spec("op5_ratio", 0.25, 16.0, 3.0, ""),
+    spec("op5_level", 0.0, 1.0, 0.0, ""),
+    spec("op5_decay", 0.01, 10.0, 1.0, "s"),
+    spec("op5_sustain", 0.0, 1.0, 0.5, ""),
+    spec("op6_ratio", 0.25, 16.0, 4.0, ""),
+    spec("op6_level", 0.0, 1.0, 0.0, ""),
+    spec("op6_decay", 0.01, 10.0, 1.0, "s"),
+    spec("op6_sustain", 0.0, 1.0, 0.5, ""),
+    int_spec("op1_wave", 0.0, 3.0, 0.0),
+    int_spec("op2_wave", 0.0, 3.0, 0.0),
+    int_spec("op3_wave", 0.0, 3.0, 0.0),
+    int_spec("op4_wave", 0.0, 3.0, 0.0),
+    int_spec("op5_wave", 0.0, 3.0, 0.0),
+    int_spec("op6_wave", 0.0, 3.0, 0.0),
+    spec("fm_cutoff", 20.0, 20_000.0, 20_000.0, "Hz"),
+    spec("fm_resonance", 0.0, 1.0, 0.2, ""),
+];
+
+/// Names of the FM operator waveforms, by `opN_wave` value.
+pub const FM_WAVES: [&str; 4] = ["sine", "half sine", "soft square", "soft saw"];
+/// Names of the FM algorithms, by `fm_algo` value (6–11 use six operators).
+pub const FM_ALGOS: [&str; 12] = [
+    "4→3→2→1",
+    "4→3, 3+2→1",
+    "4→3 2→1",
+    "4→1,2,3",
+    "2→1 +3 +4",
+    "1+2+3+4",
+    "6→5→4→3→2→1",
+    "6→5→4 3→2→1",
+    "6→5 4→3 2→1",
+    "2..6→1",
+    "6→1..5",
+    "1..6",
 ];
 
 /// Names of the synth's modulation sources, by `modN_source` value.
@@ -1401,6 +1454,10 @@ mod tests {
             (inst::LFO2_SHAPE, "lfo2_shape"),
             (inst::MOD1_SOURCE, "mod1_source"),
             (inst::MOD3_AMOUNT, "mod3_amount"),
+            (inst::OP5_RATIO, "op5_ratio"),
+            (inst::OP6_SUSTAIN, "op6_sustain"),
+            (inst::OP1_WAVE, "op1_wave"),
+            (inst::FM_RESONANCE, "fm_resonance"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

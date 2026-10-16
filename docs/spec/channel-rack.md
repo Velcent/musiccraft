@@ -161,7 +161,16 @@ Out channels voice their own notes and are never cut.
   tones). Each operator has `opN_ratio` (0.25–16 × the note), `opN_level`,
   `opN_decay` (s) and `opN_sustain`; operator 4 has `fm_feedback`. Tones
   follow the channel envelope; modulators shape the timbre over time.
-  Presets: e-piano, bell, bass, brass, organ, pluck, metallic.
+  Presets: e-piano, bell, bass, brass, organ, pluck, metallic, plus six-operator
+  ones.
+- Six operators: algorithms 6–11 also use operators 5 and 6 (same four
+  parameters each): 6→5→4→3→2→1; two stacks 6→5→4 and 3→2→1; three pairs
+  6→5, 4→3, 2→1; 2–6 all into 1; 6 into each of 1–5; all six as tones.
+  With six operators the feedback is on operator 6. Algorithms 0–5 ignore
+  operators 5 and 6, so older sounds are unchanged.
+- `opN_wave` (operators 1–6): sine, half sine, soft square or soft saw.
+- `fm_cutoff` and `fm_resonance`: a low-pass filter on the output, off at
+  20 kHz.
 
 ## Keys
 

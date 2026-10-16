@@ -82,12 +82,12 @@ new UI editor or large DSP.
 
 - [x] SimSynth / MiniSynth → second filter and a second LFO per synth voice.
 - [x] BooBass → dedicated "bass" synth preset bank with tone/pluck macros.
-- [ ] Fruity DX10 → already covered; add more factory presets of our own.
+- [x] Fruity DX10 → already covered; add more factory presets of our own.
 
 ### Medium
 
 - [ ] DirectWave → multi-sample key and velocity zones in the sampler.
-- [ ] Sytrus / Toxic Biohazard → six FM operators, per-operator filters and
+- [x] Sytrus / Toxic Biohazard → six FM operators, per-operator filters and
   drawn operator waveforms.
 - [ ] Sakura → bowed string excitation and multi-string model for the pluck
   instrument.

@@ -22,7 +22,7 @@ Status:
 | SimSynth, MiniSynth, Sawer, PoiZone, Wasp / Wasp XT, Kepler, GMS | Synth with presets (two filters with series/parallel/split routing, two LFOs, mod envelope, three-slot mod matrix) | covered | |
 | Transistor Bass, BooBass | Synth bass presets ("Acid bass", "Sub bass", "Round bass", "Picked bass", "Fretless") with slide notes | covered | |
 | Fruity DX10 | FM synth (4 operators, 6 algorithms) | covered | |
-| Sytrus, Toxic Biohazard | FM synth | partial | 4 operators instead of 6, no per-operator filters or waveform drawing |
+| Sytrus, Toxic Biohazard | FM synth (6 operators, 12 algorithms, per-operator waveforms, output filter) | partial | One filter on the output rather than per operator; waveforms are picked, not drawn |
 | Morphine, Ogun | Additive synth (harmonic drawbars) | partial | No morphing between spectra, no resynthesis |
 | Harmor, Harmless | Additive synth, synth | partial | No image or audio resynthesis, no blur/prism |
 | FL Keys | Keys: piano | covered | |
