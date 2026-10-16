@@ -540,8 +540,36 @@ fn pan_label(pan: f32) -> String {
 }
 
 /// A parameter name for display: `low_gain` → `Low gain`.
+/// Long labels lose their tail under a knob; these words shorten them.
+const ABBREVIATIONS: [(&str, &str); 5] = [
+    ("threshold", "thr"),
+    ("release", "rel"),
+    ("attack", "att"),
+    ("ceiling", "ceil"),
+    ("makeup", "gain"),
+];
+
+/// Labels longer than this are abbreviated.
+const LABEL_CHARS: usize = 10;
+
 pub(crate) fn pretty(name: &str) -> String {
+    // `left_to_right` style routing names read best as arrows.
+    if let Some((from, to)) = name.split_once("_to_") {
+        let side = |s: &str| match s {
+            "left" => Some("L"),
+            "right" => Some("R"),
+            _ => None,
+        };
+        if let (Some(a), Some(b)) = (side(from), side(to)) {
+            return format!("{a} → {b}");
+        }
+    }
     let mut text = name.replace('_', " ");
+    if text.len() > LABEL_CHARS {
+        for (word, short) in ABBREVIATIONS {
+            text = text.replace(word, short);
+        }
+    }
     if let Some(first) = text.get_mut(0..1) {
         first.make_ascii_uppercase();
     }
@@ -807,9 +835,14 @@ fn graph(
             let points: Vec<Pos2> = (0..=width)
                 .map(|i| {
                     let x = i as f32 / width as f32 * 2.0 - 1.0;
-                    let y = response::shaper(effect.kind, &effect.values, x)
-                        .unwrap_or(x)
-                        .clamp(-1.2, 1.2);
+                    // A drawn curve is shown as drawn, so its points sit on it;
+                    // drive moves the input along it.
+                    let y = if drawn_shape(effect) {
+                        musiccraft_dsp::character::waveshaper_curve(&effect.values, x)
+                    } else {
+                        response::shaper(effect.kind, &effect.values, x).unwrap_or(x)
+                    }
+                    .clamp(-1.2, 1.2);
                     pos2(rect.left() + i as f32, mid.y - y * rect.height() * 0.4)
                 })
                 .collect();
@@ -829,7 +862,7 @@ fn graph(
                     "Input across, output up: straight below the threshold, bending smoothly into it"
                 }
                 EffectKind::Waveshaper if drawn_shape(effect) => {
-                    "Input across, output up: drag a point up or down to draw the curve"
+                    "Input across, output up: drag a point up or down to draw the curve; drive pushes the input further along it"
                 }
                 EffectKind::Waveshaper => {
                     "Input across, output up: the shape picks the curve (pick \"drawn\" to draw your own)"
