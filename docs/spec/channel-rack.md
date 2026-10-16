@@ -193,6 +193,13 @@ Out channels voice their own notes and are never cut.
 - `channel.add_additive [name]`: up to 32 harmonics (`add_partials`) with
   `add_bright` (spectral slope), `add_even` (level of even harmonics),
   `add_inharm` (stretch) and `add_decay` (upper harmonics fade faster).
+- A second spectrum (`add_bright_b`, `add_even_b`, `add_inharm_b`) and a
+  morph between them: `add_morph` (0 the first spectrum, 1 the second),
+  `add_morph_time` (seconds over which each note moves from `add_morph` to
+  the second spectrum; 0 off) and a sine LFO on the position
+  (`add_morph_rate` Hz, `add_morph_depth`). Each harmonic's level and the
+  stretch are interpolated; both spectra are normalized first, so morphing
+  keeps the level.
 
 ## Third oscillator
 

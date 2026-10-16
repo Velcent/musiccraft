@@ -23,7 +23,7 @@ Status:
 | Transistor Bass, BooBass | Synth bass presets ("Acid bass", "Sub bass", "Round bass", "Picked bass", "Fretless") with slide notes | covered | |
 | Fruity DX10 | FM synth (4 operators, 6 algorithms) | covered | |
 | Sytrus, Toxic Biohazard | FM synth (6 operators, 12 algorithms, per-operator waveforms, output filter) | partial | One filter on the output rather than per operator; waveforms are picked, not drawn |
-| Morphine, Ogun | Additive synth (harmonic drawbars) | partial | No morphing between spectra, no resynthesis |
+| Morphine, Ogun | Additive synth (two spectra with a timed and LFO morph) | partial | No resynthesis of samples |
 | Harmor, Harmless | Additive synth, synth | partial | No image or audio resynthesis, no blur/prism |
 | FL Keys | Keys: piano | covered | |
 | (electric piano, organ presets) | Keys: e-piano, organ (9 drawbars) | covered | |

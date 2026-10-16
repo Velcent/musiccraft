@@ -934,6 +934,35 @@ pub const ADDITIVE: &[Preset] = &[
             ("sustain", 1.0),
         ],
     ),
+    preset(
+        "Morph sweep",
+        &[
+            ("add_partials", 24.0),
+            ("add_bright", 0.1),
+            ("add_even", 0.2),
+            ("add_bright_b", 0.9),
+            ("add_even_b", 1.0),
+            ("add_morph_time", 2.0),
+            ("attack", 0.2),
+            ("sustain", 0.9),
+            ("release", 0.8),
+        ],
+    ),
+    preset(
+        "Breathing pad",
+        &[
+            ("add_partials", 20.0),
+            ("add_bright", 0.2),
+            ("add_bright_b", 0.7),
+            ("add_inharm_b", 0.15),
+            ("add_morph", 0.3),
+            ("add_morph_rate", 0.25),
+            ("add_morph_depth", 0.6),
+            ("attack", 0.8),
+            ("sustain", 1.0),
+            ("release", 1.5),
+        ],
+    ),
 ];
 
 const FILTER: &[Preset] = &[

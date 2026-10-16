@@ -368,6 +368,17 @@ pub mod inst {
     pub const PLUCK_STRINGS: usize = 123;
     /// Pluck: detune of the extra strings, cents.
     pub const PLUCK_DETUNE: usize = 124;
+    /// Additive: the second spectrum's slope, even-harmonic level and stretch.
+    pub const ADD_BRIGHT_B: usize = 125;
+    pub const ADD_EVEN_B: usize = 126;
+    pub const ADD_INHARM_B: usize = 127;
+    /// Additive: morph position between the spectra, 0 = first, 1 = second.
+    pub const ADD_MORPH: usize = 128;
+    /// Additive: seconds to morph from `add_morph` to the second spectrum (0 = off).
+    pub const ADD_MORPH_TIME: usize = 129;
+    /// Additive: morph LFO rate (Hz) and depth.
+    pub const ADD_MORPH_RATE: usize = 130;
+    pub const ADD_MORPH_DEPTH: usize = 131;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -497,6 +508,13 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     spec("pluck_bow", 0.0, 1.0, 0.0, ""),
     int_spec("pluck_strings", 1.0, 3.0, 1.0),
     spec("pluck_detune", 0.0, 30.0, 6.0, "cents"),
+    spec("add_bright_b", 0.0, 1.0, 0.5, ""),
+    spec("add_even_b", 0.0, 1.0, 1.0, ""),
+    spec("add_inharm_b", 0.0, 1.0, 0.0, ""),
+    spec("add_morph", 0.0, 1.0, 0.0, ""),
+    spec("add_morph_time", 0.0, 10.0, 0.0, "s"),
+    spec("add_morph_rate", 0.0, 10.0, 0.0, "Hz"),
+    spec("add_morph_depth", 0.0, 1.0, 0.5, ""),
 ];
 
 /// Names of the FM operator waveforms, by `opN_wave` value.
@@ -1469,6 +1487,8 @@ mod tests {
             (inst::FM_RESONANCE, "fm_resonance"),
             (inst::PLUCK_BOW, "pluck_bow"),
             (inst::PLUCK_DETUNE, "pluck_detune"),
+            (inst::ADD_BRIGHT_B, "add_bright_b"),
+            (inst::ADD_MORPH_DEPTH, "add_morph_depth"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

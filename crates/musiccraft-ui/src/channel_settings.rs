@@ -832,6 +832,76 @@ fn additive(
         });
         harmonics_graph(ui, channel);
     });
+    ui.add_space(6.0);
+    section(ui, "MORPH TO SPECTRUM B", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_BRIGHT_B,
+                "Bright B",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_EVEN_B,
+                "Even B",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_INHARM_B,
+                "Stretch B",
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_MORPH,
+                "Morph",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_MORPH_TIME,
+                "Sweep",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_MORPH_RATE,
+                "LFO rate",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_MORPH_DEPTH,
+                "LFO depth",
+                actions,
+            );
+        });
+    });
 }
 
 /// Bars for each harmonic's level.

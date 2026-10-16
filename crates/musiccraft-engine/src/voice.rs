@@ -20,6 +20,26 @@ const PARTIALS: usize = 32;
 /// FM operators.
 const FM_OPS: usize = 6;
 
+/// Normalized harmonic levels of an additive spectrum: a `bright` slope
+/// and an `even` share for even harmonics, summing to 1 over `count`.
+fn additive_spectrum(bright: f32, even: f32, count: usize) -> [f32; PARTIALS] {
+    let slope = 2.0 - 1.6 * bright.clamp(0.0, 1.0);
+    let even = even.clamp(0.0, 1.0);
+    let mut levels: [f32; PARTIALS] = std::array::from_fn(|i| {
+        let n = i + 1;
+        if n > count {
+            0.0
+        } else {
+            (n as f32).powf(-slope) * if n % 2 == 0 { even } else { 1.0 }
+        }
+    });
+    let norm = levels.iter().sum::<f32>().max(1e-3);
+    for level in &mut levels {
+        *level /= norm;
+    }
+    levels
+}
+
 /// How many strings the pluck sounds.
 fn pluck_strings(params: &ChannelParams) -> usize {
     (param(params, inst::PLUCK_STRINGS).round().max(1.0) as usize).min(MAX_STRINGS)
@@ -786,17 +806,25 @@ impl Voice {
         right: &mut [f32],
     ) {
         let count = (param(params, inst::ADD_PARTIALS).round() as usize).clamp(1, PARTIALS);
-        let bright = param(params, inst::ADD_BRIGHT).clamp(0.0, 1.0);
-        let even = param(params, inst::ADD_EVEN).clamp(0.0, 1.0);
-        let inharm = param(params, inst::ADD_INHARM).clamp(0.0, 1.0);
+        let spectrum_a = additive_spectrum(
+            param(params, inst::ADD_BRIGHT),
+            param(params, inst::ADD_EVEN),
+            count,
+        );
+        let spectrum_b = additive_spectrum(
+            param(params, inst::ADD_BRIGHT_B),
+            param(params, inst::ADD_EVEN_B),
+            count,
+        );
+        let inharm_a = param(params, inst::ADD_INHARM).clamp(0.0, 1.0);
+        let inharm_b = param(params, inst::ADD_INHARM_B).clamp(0.0, 1.0);
+        let morph = param(params, inst::ADD_MORPH).clamp(0.0, 1.0);
+        let morph_time = param(params, inst::ADD_MORPH_TIME).max(0.0);
+        let morph_rate = param(params, inst::ADD_MORPH_RATE).max(0.0);
+        let morph_depth = param(params, inst::ADD_MORPH_DEPTH).clamp(0.0, 1.0);
         let fade = param(params, inst::ADD_DECAY).clamp(0.0, 1.0);
         let sr = self.sample_rate;
         let mut hz = key_to_hz(pitch + self.glide);
-        let slope = 2.0 - 1.6 * bright;
-        let norm: f32 = (1..=count)
-            .map(|n| (n as f32).powf(-slope) * if n % 2 == 0 { even } else { 1.0 })
-            .sum::<f32>()
-            .max(1e-3);
         let tau = std::f32::consts::TAU;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
@@ -809,6 +837,16 @@ impl Voice {
             let t = self.elapsed as f32 / sr;
             self.elapsed = self.elapsed.saturating_add(1);
             let amp = self.env.next_level() * self.velocity;
+            // Where between the spectra this frame sits.
+            let mut m = morph;
+            if morph_time > 0.0 {
+                m += (1.0 - morph) * (t / morph_time).min(1.0);
+            }
+            if morph_rate > 0.0 {
+                m += (t * morph_rate * tau).sin() * morph_depth * 0.5;
+            }
+            let m = m.clamp(0.0, 1.0);
+            let inharm = inharm_a + (inharm_b - inharm_a) * m;
             let mut sum = 0.0;
             for n in 1..=count {
                 let nf = n as f32;
@@ -819,11 +857,12 @@ impl Voice {
                 let i = n - 1;
                 let phase = self.phases[i];
                 self.phases[i] = (phase + f64::from(f / sr)).fract();
-                let weight = nf.powf(-slope) * if n % 2 == 0 { even } else { 1.0 };
+                let (a, b) = (spectrum_a[i], spectrum_b[i]);
+                let weight = a + (b - a) * m;
                 let decay = (-t * fade * nf * 1.5).exp();
                 sum += (phase as f32 * tau).sin() * weight * decay;
             }
-            self.emit(l, r, sum / norm * amp * SYNTH_GAIN * 1.6);
+            self.emit(l, r, sum * amp * SYNTH_GAIN * 1.6);
             if self.env.is_idle() {
                 self.active = false;
                 break;
@@ -1830,6 +1869,29 @@ mod more_instrument_tests {
             }
             assert!(peak(&out[18_000..]) < 1e-3, "{name} releases");
         }
+    }
+
+    #[test]
+    fn additive_morphs_between_two_spectra() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::SUSTAIN] = 1.0;
+        params.instrument[inst::ADD_BRIGHT] = 0.0;
+        params.instrument[inst::ADD_BRIGHT_B] = 1.0;
+        let edges = |x: &[f32]| {
+            let level = peak(x).max(1e-6);
+            x.windows(2).map(|w| (w[1] - w[0]).abs()).sum::<f32>() / level
+        };
+        let dark = render(&Instrument::Additive, &params, 57, 9_600, None);
+        params.instrument[inst::ADD_MORPH] = 1.0;
+        let bright = render(&Instrument::Additive, &params, 57, 9_600, None);
+        assert!(edges(&bright[4_800..]) > edges(&dark[4_800..]) * 1.3);
+        // A one-second sweep goes from the first spectrum to the second.
+        params.instrument[inst::ADD_MORPH] = 0.0;
+        params.instrument[inst::ADD_MORPH_TIME] = 1.0;
+        let sweep = render(&Instrument::Additive, &params, 57, 52_800, None);
+        assert!(edges(&sweep[48_000..52_800]) > edges(&sweep[0..4_800]) * 1.3);
+        let hz = pitch_hz(&sweep[2_400..9_600]);
+        assert!((hz - 220.0).abs() < 6.0, "stays in tune: {hz}");
     }
 
     #[test]

@@ -91,7 +91,7 @@ new UI editor or large DSP.
   drawn operator waveforms.
 - [x] Sakura → bowed string excitation and multi-string model for the pluck
   instrument.
-- [ ] Morphine → morphing between two or more additive spectra.
+- [x] Morphine → morphing between two or more additive spectra.
 - [x] Wasp / PoiZone / Sawer → per-oscillator filters and a modulation matrix
   in the synth.
 - [ ] Fruity Envelope / Keyboard / X-Y Controllers → controller channels whose
