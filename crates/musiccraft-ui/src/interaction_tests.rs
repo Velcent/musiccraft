@@ -436,10 +436,20 @@ fn piano_roll_selection_editing() {
     h.session.run_line("edit.redo").unwrap();
     h.settle();
 
-    // Arrow up transposes the selection; Ctrl+B duplicates it to the right.
+    // Plain arrows leave notes alone; Shift+Up transposes the selection a
+    // semitone, Ctrl+Up/Down an octave, Shift+Left/Right a snap step.
     h.hover_roll(10 * step, 60);
     h.key(egui::Key::ArrowUp, Modifiers::NONE);
+    assert_eq!(h.roll_notes(), [(48, 60), (96, 62), (192, 64)]);
+    h.key(egui::Key::ArrowUp, Modifiers::COMMAND);
+    assert_eq!(h.roll_notes(), [(48, 72), (96, 74), (192, 64)]);
+    h.key(egui::Key::ArrowDown, Modifiers::COMMAND);
+    h.key(egui::Key::ArrowRight, Modifiers::SHIFT);
+    h.key(egui::Key::ArrowLeft, Modifiers::SHIFT);
+    assert_eq!(h.roll_notes(), [(48, 60), (96, 62), (192, 64)]);
+    h.key(egui::Key::ArrowUp, Modifiers::SHIFT);
     assert_eq!(h.roll_notes(), [(48, 61), (96, 63), (192, 64)]);
+    // Ctrl+B duplicates the selection to the right.
     h.key(egui::Key::B, Modifiers::COMMAND);
     assert_eq!(h.roll_notes().len(), 5);
     assert!(

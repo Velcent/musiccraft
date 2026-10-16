@@ -112,7 +112,7 @@ of contents; see `docs/clean-room.md`.
 | Channel | Arpeggiator (up, down, up-down, random; rate, octaves, gate) | `spec:piano-roll.md` `done` |
 | Browser | Folders, search, click to preview, drag to rack or playlist | `done` |
 | Transport | Oscilloscope, CPU meter, master volume | `done` |
-| Project | New / open / save / save as | `cmd:project.new` `cmd:project.load` `cmd:project.save` `key:Ctrl+S=ui.save` `key:Ctrl+O=ui.open` `spec:project-file.md` |
+| Project | New / open / save / save as | `cmd:project.new` `cmd:project.load` `cmd:project.save` `cmd:project.save_new_version` `key:Ctrl+S=ui.save` `key:Ctrl+N=ui.save_new_version` `key:Ctrl+O=ui.open` `spec:project-file.md` |
 | Project | Undo / redo | `key:Ctrl+Z=edit.undo` `key:Ctrl+Y=edit.redo` `spec:commands.md` |
 | Project | Export WAV | `cmd:project.export_wav` `key:Ctrl+R=ui.export` |
 | Project | Export stems | `cmd:project.export_stems` |
@@ -120,7 +120,7 @@ of contents; see `docs/clean-room.md`.
 | Project | Export lossy audio (MP3, Ogg) | `todo` |
 | Project | Autosave and crash recovery | `done` |
 | Input | MIDI keyboard plays the selected channel | `done` |
-| Input | Record live notes into patterns | `key:Ctrl+E=ui.toggle_record` `done` |
+| Input | Record live notes into patterns | `key:R=ui.toggle_record` `done` |
 | Input | Computer keyboard as piano | `key:Ctrl+T=ui.typing_keyboard` `done` |
 | Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
 | Scripting | Headless CLI and scripts | `done` |

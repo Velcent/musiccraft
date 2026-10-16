@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use musiccraft_project::Project;
 
@@ -32,6 +32,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "project.save [path]",
             "Save the project as JSON (default: the file it came from).",
             save,
+        ),
+        cmd(
+            "project.save_new_version",
+            "project.save_new_version",
+            "Save a copy as the next numbered version (song.mcproj -> song_2.mcproj) and keep working in it.",
+            save_new_version,
         ),
         cmd(
             "project.load",
@@ -90,14 +96,62 @@ fn save(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
             .map(PathBuf::from)
             .ok_or_else(|| args.invalid("the project has never been saved; give a path"))?,
     };
+    write_project(project, &path)?;
+    Ok(Outcome::done(format!("saved {}", path.display())))
+}
+
+fn save_new_version(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    let current = project
+        .path()
+        .map(PathBuf::from)
+        .ok_or_else(|| args.invalid("the project has never been saved; save it first"))?;
+    let path = next_version_path(&current, |p| p.exists());
+    write_project(project, &path)?;
+    Ok(Outcome::done(format!(
+        "saved new version {}",
+        path.display()
+    )))
+}
+
+/// Writes atomically (temporary file, then rename) and adopts `path`.
+fn write_project(project: &mut Project, path: &Path) -> Result<(), CommandError> {
     let json = project.to_json()?;
     let temp = path.with_extension("mcproj.tmp");
     fs::write(&temp, json)
-        .and_then(|()| fs::rename(&temp, &path))
+        .and_then(|()| fs::rename(&temp, path))
         .map_err(|e| CommandError::Io(format!("cannot save {}: {e}", path.display())))?;
-    let absolute = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    let absolute = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     project.set_path(Some(absolute));
-    Ok(Outcome::done(format!("saved {}", path.display())))
+    Ok(())
+}
+
+/// The first free numbered sibling of `path`: `song.mcproj` becomes
+/// `song_2.mcproj`, `song_2.mcproj` becomes `song_3.mcproj`, skipping names
+/// for which `exists` is true.
+pub(crate) fn next_version_path(path: &Path, exists: impl Fn(&Path) -> bool) -> PathBuf {
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "project".to_owned());
+    let extension = path
+        .extension()
+        .map(|e| e.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "mcproj".to_owned());
+    let (base, mut number) = match stem.rsplit_once('_') {
+        Some((base, n)) if !base.is_empty() => match n.parse::<u32>() {
+            Ok(n) => (base.to_owned(), n.saturating_add(1)),
+            Err(_) => (stem.clone(), 2),
+        },
+        _ => (stem.clone(), 2),
+    };
+    loop {
+        let candidate = path.with_file_name(format!("{base}_{number}.{extension}"));
+        if !exists(&candidate) || number == u32::MAX {
+            return candidate;
+        }
+        number += 1;
+    }
 }
 
 fn load(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
