@@ -694,6 +694,130 @@ fn band_split_moves_the_low_band_to_its_target() {
 }
 
 #[test]
+fn controllers_drive_their_targets() {
+    // A held sine at 120 BPM: one beat is 0.5 s.
+    let level = |script: &str, from: f32, to: f32| {
+        let mut s = sine_session(&format!("note.add 1 0 64 A4\n{script}"));
+        s.run_line("project.set_tempo 120").unwrap();
+        let out = render_slide(&s);
+        let sr = SLIDE_RATE as f32;
+        rms(&out[(from * sr) as usize..(to * sr) as usize])
+    };
+    let open = level("", 0.2, 1.8);
+    // A macro at 0 on the channel volume silences it.
+    let muted = level(
+        "controller.add macro channel:1:volume\ncontroller.set 1 value 0",
+        0.2,
+        1.8,
+    );
+    assert!(open > 0.05 && muted < open * 0.01, "{open} vs {muted}");
+    // A square LFO over 2 beats: loud for the first beat, silent the next.
+    let lfo =
+        "controller.add lfo channel:1:volume\ncontroller.set 1 shape 3\ncontroller.set 1 period 2";
+    let first = level(lfo, 0.1, 0.45);
+    let second = level(lfo, 0.6, 0.95);
+    assert!(first > 0.05 && second < first * 0.05, "{first} vs {second}");
+    // A disabled controller does nothing.
+    let off = level(&format!("{lfo}\ncontroller.set 1 enabled off"), 0.6, 0.95);
+    assert!((off - open).abs() < open * 0.1);
+    // A formula: 0 for the first beat, full for the next.
+    let formula = "controller.add formula channel:1:volume\ncontroller.set 1 expr floor(t)";
+    assert!(level(formula, 0.1, 0.45) < 0.002 && level(formula, 0.6, 0.95) > 0.05);
+}
+
+#[test]
+fn envelope_and_keyboard_controllers_follow_a_channels_notes() {
+    // Channel 1 holds a sine; channel 2, on a muted insert, plays from beat 2
+    // (1 s) to beat 3 and drives channel 1's volume.
+    let level = |kind: &str, extra: &str| {
+        let mut s = sine_session(&format!(
+            "note.add 1 0 64 A4
+             channel.add_synth
+             note.add 2 8 4 C6
+             channel.route 2 2
+             mixer.set_mute 2 on
+             controller.add {kind} channel:1:volume
+             controller.set 1 channel 2
+             {extra}"
+        ));
+        s.run_line("project.set_tempo 120").unwrap();
+        let out = render_slide(&s);
+        let sr = SLIDE_RATE as f32;
+        let at = |a: f32, b: f32| rms(&out[(a * sr) as usize..(b * sr) as usize]);
+        (at(0.2, 0.9), at(1.1, 1.4), at(1.9, 2.4))
+    };
+    let (before, during, after) = level(
+        "envelope",
+        "controller.set 1 attack 0\ncontroller.set 1 sustain 1\ncontroller.set 1 release 0.05",
+    );
+    assert!(
+        before < 0.002 && during > 0.05 && after < 0.002,
+        "{before} {during} {after}"
+    );
+    // C6 (72) between 60 and 84 is halfway; the value holds after the note.
+    let (before, during, after) = level(
+        "keyboard",
+        "controller.set 1 low 60\ncontroller.set 1 high 84",
+    );
+    assert!(before < during, "{before} {during}");
+    assert!((during - after).abs() < during * 0.1, "holds its last key");
+}
+
+#[test]
+fn controller_commands_undo_and_follow_tracks() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         controller.add peak mixer:2:volume
+         controller.set 1 track 3
+         controller.set 1 gain 4
+         controller.set 1 min 1
+         controller.set 1 max 0.2",
+    );
+    let c = &s.project().controllers[0];
+    assert_eq!((c.min, c.max), (1.0, 0.2));
+    assert!(
+        s.run_line("controller.set 1 expr t").is_err(),
+        "peak has no expr"
+    );
+    assert!(s.run_line("controller.add bogus mixer:1:volume").is_err());
+    assert!(
+        s.run_line("mixer.remove_track 3").is_err(),
+        "the peak listens to 3"
+    );
+    assert!(
+        s.run_line("mixer.remove_track 2").is_err(),
+        "the target is on 2"
+    );
+    s.run_line("mixer.remove_track 1").unwrap();
+    let c = &s.project().controllers[0];
+    assert!(matches!(
+        c.kind,
+        musiccraft_project::ControllerKind::Peak { track: 2, .. }
+    ));
+    assert_eq!(
+        c.target,
+        musiccraft_project::AutomationTarget::MixerVolume { track: 1 }
+    );
+    s.run_line("edit.undo").unwrap();
+    s.run_line("edit.undo").unwrap();
+    assert_eq!(
+        s.project().controllers[0].max,
+        1.0,
+        "undo restores the old max"
+    );
+    run(&mut s, "controller.add formula mixer:0:pan");
+    assert!(s.run_line("controller.set 2 expr sin(").is_err());
+    run(
+        &mut s,
+        "controller.set 2 expr 0.5 + 0.5 * tri(bar)\ncontroller.remove 2",
+    );
+    s.run_line("edit.undo").unwrap();
+    assert_eq!(s.project().controllers.len(), 2);
+}
+
+#[test]
 fn send_targets_follow_track_insertion_and_block_removal() {
     let mut s = session();
     run(

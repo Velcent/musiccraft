@@ -88,7 +88,9 @@ pub fn render_with(
             }
         }));
     }
-    let sequence = Sequence::new(events, total_ticks + tail_ticks).with_automation(lanes);
+    let sequence = Sequence::new(events, total_ticks + tail_ticks)
+        .with_automation(lanes)
+        .with_controllers(base.controllers().to_vec());
     let _ = handle.send(EngineMessage::SetSequence(Box::new(sequence)));
     let _ = handle.send(EngineMessage::Play);
 

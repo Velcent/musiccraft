@@ -110,6 +110,7 @@ pub struct Sequence {
     events: Vec<NoteEvent>,
     length: u64,
     automation: Vec<AutomationLane>,
+    controllers: Vec<crate::ControllerLane>,
     loop_start: u64,
     /// Where Stop returns to, when it is not the loop start.
     home: Option<u64>,
@@ -129,6 +130,7 @@ impl Sequence {
             events,
             length,
             automation: Vec::new(),
+            controllers: Vec::new(),
             loop_start: 0,
             home: None,
             pauses: Vec::new(),
@@ -191,6 +193,20 @@ impl Sequence {
         lanes.retain(|lane| !lane.points.is_empty());
         self.automation = lanes;
         self
+    }
+
+    /// Adds controllers (at most [`crate::MAX_CONTROLLERS`] run).
+    #[must_use]
+    pub fn with_controllers(mut self, mut lanes: Vec<crate::ControllerLane>) -> Self {
+        lanes.truncate(crate::MAX_CONTROLLERS);
+        self.controllers = lanes;
+        self
+    }
+
+    /// The controllers.
+    #[must_use]
+    pub fn controllers(&self) -> &[crate::ControllerLane] {
+        &self.controllers
     }
 
     /// The automation lanes.

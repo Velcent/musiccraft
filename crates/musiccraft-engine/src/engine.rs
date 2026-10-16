@@ -170,6 +170,8 @@ pub struct Engine {
     externals: Vec<Option<Box<dyn External>>>,
     /// Beats elapsed on the free-running clock (used while stopped).
     free_beats: f64,
+    /// Running state of each controller of the sequence.
+    controller_states: [crate::controllers::ControllerState; crate::controllers::MAX_CONTROLLERS],
     /// Pitch of each channel's last note, for portamento notes.
     last_keys: Vec<Option<f32>>,
     /// Messages of MIDI Out channels.
@@ -237,6 +239,8 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
         preview: None,
         externals: (0..MAX_EXTERNALS).map(|_| None).collect(),
         free_beats: 0.0,
+        controller_states: [crate::controllers::ControllerState::default();
+            crate::controllers::MAX_CONTROLLERS],
         last_keys: vec![None; PORTA_CHANNELS],
         midi_out,
         start: Start::Now,
@@ -765,10 +769,21 @@ impl Engine {
         let Some(graph) = self.graph.as_deref_mut() else {
             return;
         };
-        if self.playing {
-            if let Some(sequence) = self.sequence.as_deref() {
+        if let Some(sequence) = self.sequence.as_deref() {
+            if self.playing {
                 apply_automation(graph, sequence, self.position);
             }
+            let cx = crate::controllers::ControlContext {
+                beats,
+                seconds: frames as f32 / sample_rate.max(1.0),
+                voices: &self.voices,
+            };
+            crate::controllers::apply_controllers(
+                graph,
+                sequence,
+                &mut self.controller_states,
+                &cx,
+            );
         }
         let Graph { channels, tracks } = graph;
         for node in channels.iter_mut() {
@@ -920,12 +935,18 @@ impl Engine {
 
 /// Writes every automation lane's current value into the graph.
 fn apply_automation(graph: &mut Graph, sequence: &Sequence, position: f64) {
-    use crate::AutomationTarget as T;
     for lane in sequence.automation() {
-        let Some(value) = lane.value_at(position) else {
-            continue;
-        };
-        match lane.target {
+        if let Some(value) = lane.value_at(position) {
+            write_target(graph, lane.target, value);
+        }
+    }
+}
+
+/// Writes `value` (real units) into the parameter `target` names.
+pub(crate) fn write_target(graph: &mut Graph, target: crate::AutomationTarget, value: f32) {
+    use crate::AutomationTarget as T;
+    {
+        match target {
             T::ChannelVolume(c) => {
                 if let Some(node) = graph.channels.get_mut(usize::from(c)) {
                     node.params.volume = value;
@@ -1264,7 +1285,9 @@ fn mix_tracks(
         };
         // Inserts below this one are finished and can key its compressors.
         process_track(track, fx, externals, before, 0, Some((&mut *after, i + 1)));
-        meters.record_peak(i, peak(&track.left, frames), peak(&track.right, frames));
+        let (pl, pr) = (peak(&track.left, frames), peak(&track.right, frames));
+        track.last_peak = pl.max(pr);
+        meters.record_peak(i, pl, pr);
         publish_pitches(i, track, meters);
         if track.params.to_master {
             if let Some(master) = before.first_mut() {
@@ -1283,7 +1306,9 @@ fn mix_tracks(
     }
     if let Some((master, inserts)) = tracks.split_first_mut() {
         process_track(master, fx, externals, inserts, 1, None);
-        meters.record_peak(0, peak(&master.left, frames), peak(&master.right, frames));
+        let (pl, pr) = (peak(&master.left, frames), peak(&master.right, frames));
+        master.last_peak = pl.max(pr);
+        meters.record_peak(0, pl, pr);
         publish_pitches(0, master, meters);
     }
 }
@@ -1330,6 +1355,7 @@ fn process_track(
         effects,
         left,
         right,
+        ..
     } = track;
     let (l, r) = (prefix(left, frames), prefix(right, frames));
     // Invalid samples would otherwise circulate in reverb and delay feedback

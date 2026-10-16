@@ -521,17 +521,17 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
 pub const FM_WAVES: [&str; 4] = ["sine", "half sine", "soft square", "soft saw"];
 /// Names of the FM algorithms, by `fm_algo` value (6–11 use six operators).
 pub const FM_ALGOS: [&str; 12] = [
-    "4→3→2→1",
-    "4→3, 3+2→1",
-    "4→3 2→1",
-    "4→1,2,3",
-    "2→1 +3 +4",
+    "4>3>2>1",
+    "4>3, 3+2>1",
+    "4>3 2>1",
+    "4>1,2,3",
+    "2>1 +3 +4",
     "1+2+3+4",
-    "6→5→4→3→2→1",
-    "6→5→4 3→2→1",
-    "6→5 4→3 2→1",
-    "2..6→1",
-    "6→1..5",
+    "6>5>4>3>2>1",
+    "6>5>4 3>2>1",
+    "6>5 4>3 2>1",
+    "2..6>1",
+    "6>1..5",
     "1..6",
 ];
 

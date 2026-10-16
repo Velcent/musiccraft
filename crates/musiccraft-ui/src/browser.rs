@@ -474,6 +474,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 .show(ui, |ui| {
                     let search = state.browser.search.clone();
                     current_project(ui, frame, &search, actions);
+                    crate::controllers::section(ui, state, frame.project, actions);
                     plugin_database(ui, state, frame, &search, actions);
                     egui::CollapsingHeader::new(heading("Packs"))
                         .default_open(true)

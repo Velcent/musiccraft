@@ -1457,7 +1457,7 @@ fn synth(
             let base = inst::MOD1_SOURCE + slot * 3;
             ui.horizontal(|ui| {
                 combo(ui, number, channel, base, &MOD_SOURCES, actions);
-                ui.label(RichText::new("→").small());
+                ui.label(RichText::new("to").small());
                 combo(ui, number, channel, base + 1, &MOD_DESTS, actions);
                 param_knob(ui, state, number, channel, base + 2, "Amount", actions);
             });

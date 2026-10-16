@@ -550,17 +550,20 @@ pub(crate) fn remap_slots(
     }
 }
 
-/// Every automation target: automation clips' and pattern lanes'.
+/// Every automation target: automation clips', pattern lanes' and
+/// controllers'.
 fn targets_mut(project: &mut Project) -> impl Iterator<Item = &mut AutomationTarget> {
     let lanes = project
         .patterns
         .iter_mut()
         .flat_map(|p| p.automation.iter_mut().map(|l| &mut l.target));
+    let controllers = project.controllers.iter_mut().map(|c| &mut c.target);
     project
         .automations
         .iter_mut()
         .map(|a| &mut a.target)
         .chain(lanes)
+        .chain(controllers)
 }
 
 /// Whether any automation drives something on mixer track `track` (or, with
@@ -571,20 +574,35 @@ pub(crate) fn targets_track(project: &Project, track: usize, slot: Option<usize>
         .iter()
         .flat_map(|p| p.automation.iter().map(|l| &l.target));
     let clips = project.automations.iter().map(|a| &a.target);
-    clips.chain(lanes).any(|target| match target {
-        AutomationTarget::MixerVolume { track: t } | AutomationTarget::MixerPan { track: t } => {
-            slot.is_none() && *t == track
-        }
-        AutomationTarget::EffectParam {
-            track: t, slot: s, ..
-        } => *t == track && slot.is_none_or(|x| x == *s),
-        _ => false,
-    })
+    let controllers = project.controllers.iter().map(|c| &c.target);
+    let listened = slot.is_none()
+        && project.controllers.iter().any(|c| {
+            matches!(c.kind, musiccraft_project::ControllerKind::Peak { track: t, .. } if t == track)
+        });
+    listened
+        || clips
+            .chain(lanes)
+            .chain(controllers)
+            .any(|target| match target {
+                AutomationTarget::MixerVolume { track: t }
+                | AutomationTarget::MixerPan { track: t } => slot.is_none() && *t == track,
+                AutomationTarget::EffectParam {
+                    track: t, slot: s, ..
+                } => *t == track && slot.is_none_or(|x| x == *s),
+                _ => false,
+            })
 }
 
 /// Shifts mixer track numbers in automation targets: tracks at or after
 /// `from` move by `delta`.
 pub(crate) fn shift_tracks(project: &mut Project, from: usize, delta: isize) {
+    for controller in &mut project.controllers {
+        if let musiccraft_project::ControllerKind::Peak { track, .. } = &mut controller.kind {
+            if *track >= from {
+                *track = track.saturating_add_signed(delta);
+            }
+        }
+    }
     for target in targets_mut(project) {
         let track = match target {
             AutomationTarget::MixerVolume { track }

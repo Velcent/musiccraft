@@ -172,3 +172,4 @@ of contents; see `docs/clean-room.md`.
 | Transport | Arm playlist tracks for audio takes; choose the input device | `cmd:playlist.toggle_track_arm` `spec:settings.md` |
 | Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
 | Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |
+| Automation | Controllers: LFO, envelope, keyboard, peak, formula and macro sources driving a parameter | `cmd:controller.add` `cmd:controller.set` `spec:controllers.md` |

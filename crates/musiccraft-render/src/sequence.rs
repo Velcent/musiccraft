@@ -1,4 +1,8 @@
-use musiccraft_engine::{AutomationLane, AutomationTarget as EngineTarget, NoteEvent, Sequence};
+use musiccraft_engine::{
+    AutomationLane, AutomationTarget as EngineTarget, ControllerLane, ControllerSource, Convert,
+    NoteEvent, Sequence,
+};
+use musiccraft_formula::Formula;
 use musiccraft_params::{TICKS_PER_STEP, inst};
 use musiccraft_project::{AutomationTarget, ClipSource, MAX_VOLUME, Pattern, PlayMode, Project};
 
@@ -155,13 +159,10 @@ fn pattern_clip_events(
     }
 }
 
-/// Maps a control position (0..1) to a parameter's real units.
-type Convert = Box<dyn Fn(f32) -> f32>;
-
 /// Converts a control position (0..1) into the target's real units and the
 /// engine's target address. `None` if the target no longer exists.
 fn engine_target(project: &Project, target: &AutomationTarget) -> Option<(EngineTarget, Convert)> {
-    use musiccraft_params::{INSTRUMENT_PARAMS, index_of, volume_from_unit};
+    use musiccraft_params::{INSTRUMENT_PARAMS, index_of};
     let channel = |id| {
         project
             .channel_position(id)
@@ -172,28 +173,26 @@ fn engine_target(project: &Project, target: &AutomationTarget) -> Option<(Engine
             .then(|| u16::try_from(t).ok())
             .flatten()
     };
-    let volume = |v: f32| volume_from_unit(v, MAX_VOLUME);
-    let pan = |v: f32| v * 2.0 - 1.0;
+    let volume = Convert::Volume(MAX_VOLUME);
     Some(match target {
         AutomationTarget::ChannelVolume { channel: id } => {
-            (EngineTarget::ChannelVolume(channel(*id)?), Box::new(volume))
+            (EngineTarget::ChannelVolume(channel(*id)?), volume)
         }
         AutomationTarget::ChannelPan { channel: id } => {
-            (EngineTarget::ChannelPan(channel(*id)?), Box::new(pan))
+            (EngineTarget::ChannelPan(channel(*id)?), Convert::Pan)
         }
         AutomationTarget::ChannelParam { channel: id, param } => {
             let index = index_of(INSTRUMENT_PARAMS, param)?;
-            let spec = INSTRUMENT_PARAMS[index];
             (
                 EngineTarget::ChannelParam(channel(*id)?, u8::try_from(index).ok()?),
-                Box::new(move |v| spec.from_unit(v)),
+                Convert::Spec(INSTRUMENT_PARAMS[index]),
             )
         }
         AutomationTarget::MixerVolume { track: t } => {
-            (EngineTarget::TrackVolume(track(*t)?), Box::new(volume))
+            (EngineTarget::TrackVolume(track(*t)?), volume)
         }
         AutomationTarget::MixerPan { track: t } => {
-            (EngineTarget::TrackPan(track(*t)?), Box::new(pan))
+            (EngineTarget::TrackPan(track(*t)?), Convert::Pan)
         }
         AutomationTarget::EffectParam {
             track: t,
@@ -202,17 +201,89 @@ fn engine_target(project: &Project, target: &AutomationTarget) -> Option<(Engine
         } => {
             let effect = project.mixer.get(*t)?.effects.get(*slot)?;
             let index = index_of(effect.kind.params(), param)?;
-            let spec = effect.kind.params()[index];
             (
                 EngineTarget::EffectParam(
                     track(*t)?,
                     u8::try_from(*slot).ok()?,
                     u8::try_from(index).ok()?,
                 ),
-                Box::new(move |v| spec.from_unit(v)),
+                Convert::Spec(effect.kind.params()[index]),
             )
         }
     })
+}
+
+/// The project's enabled controllers as the engine runs them.
+fn controller_lanes(project: &Project) -> Vec<ControllerLane> {
+    use musiccraft_project::ControllerKind as K;
+    let channel = |id| {
+        project
+            .channel_position(id)
+            .and_then(|i| u16::try_from(i).ok())
+    };
+    project
+        .controllers
+        .iter()
+        .filter(|c| c.enabled)
+        .filter_map(|c| {
+            let (target, convert) = engine_target(project, &c.target)?;
+            let source = match &c.kind {
+                K::Lfo {
+                    shape,
+                    period,
+                    phase,
+                } => ControllerSource::Lfo {
+                    shape: *shape,
+                    period: *period,
+                    phase: *phase,
+                },
+                K::Envelope {
+                    channel: id,
+                    attack,
+                    decay,
+                    sustain,
+                    release,
+                } => ControllerSource::Envelope {
+                    channel: channel(*id)?,
+                    attack: *attack,
+                    decay: *decay,
+                    sustain: *sustain,
+                    release: *release,
+                },
+                K::Keyboard {
+                    channel: id,
+                    low,
+                    high,
+                } => ControllerSource::Keyboard {
+                    channel: channel(*id)?,
+                    low: *low,
+                    high: *high,
+                },
+                K::Peak {
+                    track,
+                    gain,
+                    attack,
+                    release,
+                } => ControllerSource::Peak {
+                    track: u16::try_from(*track)
+                        .ok()
+                        .filter(|t| usize::from(*t) < project.mixer.len())?,
+                    gain: *gain,
+                    attack: *attack,
+                    release: *release,
+                },
+                K::Formula { expr } => ControllerSource::Formula(Formula::parse(expr).ok()?),
+                K::Macro { value } => ControllerSource::Macro(*value),
+            };
+            Some(ControllerLane {
+                target,
+                convert,
+                min: c.min,
+                max: c.max,
+                source,
+            })
+        })
+        .collect()
 }
 
 /// A pattern's automation lanes placed at song tick `at`, keeping only points
@@ -234,7 +305,7 @@ fn pattern_lanes(
                 .points
                 .iter()
                 .filter(|p| (skip..skip + span).contains(&u64::from(p.tick)))
-                .map(|p| (at + u64::from(p.tick) - skip, convert(p.value)))
+                .map(|p| (at + u64::from(p.tick) - skip, convert.apply(p.value)))
                 .collect();
             (!points.is_empty()).then_some(AutomationLane { target, points })
         })
@@ -298,17 +369,20 @@ fn song_automation(project: &Project) -> Vec<AutomationLane> {
         let (skip, span) = (clip.offset, clip.length);
         let mut points: Vec<(u64, f32)> = Vec::new();
         if let Some(v) = automation.value_at(f64::from(skip)) {
-            points.push((start, convert(v)));
+            points.push((start, convert.apply(v)));
         }
         for point in automation
             .points
             .iter()
             .filter(|p| p.tick > skip && p.tick < skip + span)
         {
-            points.push((start + u64::from(point.tick - skip), convert(point.value)));
+            points.push((
+                start + u64::from(point.tick - skip),
+                convert.apply(point.value),
+            ));
         }
         if let Some(v) = automation.value_at(f64::from(skip + span)) {
-            points.push((end, convert(v)));
+            points.push((end, convert.apply(v)));
         }
         lanes.push(AutomationLane { target, points });
     }
@@ -324,8 +398,10 @@ pub fn build_sequence(project: &Project) -> Sequence {
         (PlayMode::Song, Some((start, end))) => {
             let events = full.events().to_vec();
             let lanes = full.automation().to_vec();
+            let controllers = full.controllers().to_vec();
             Sequence::new(events, u64::from(end))
                 .with_automation(lanes)
+                .with_controllers(controllers)
                 .with_loop_start(u64::from(start))
         }
         (PlayMode::Song, None) => {
@@ -387,6 +463,7 @@ pub fn build_full_sequence(project: &Project) -> Sequence {
                 0,
                 u64::from(pattern.length_ticks()),
             ))
+            .with_controllers(controller_lanes(project))
         }
         PlayMode::Song => Sequence::new(
             crate::delivery::apply(project, crate::arp::apply(project, song_events(project))),
@@ -396,6 +473,7 @@ pub fn build_full_sequence(project: &Project) -> Sequence {
             let mut lanes = song_automation(project);
             lanes.extend(song_pattern_lanes(project));
             lanes
-        }),
+        })
+        .with_controllers(controller_lanes(project)),
     }
 }

@@ -288,7 +288,7 @@ fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     args.expect(1, 1)?;
     let index = insert_arg(project, args, 0)?;
     if super::automation::targets_track(project, index, None) {
-        return Err(args.invalid("an automation drives this track; delete the automation first"));
+        return Err(args.invalid("an automation or controller uses this track; delete it first"));
     }
     if sidechains(project)
         .iter()

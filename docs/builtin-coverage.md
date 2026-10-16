@@ -38,7 +38,7 @@ Status:
 | FLEX, Autogun, BeepMap | — | not planned | Preset-player or image-to-sound tools; no equivalent design planned |
 | MIDI Out | MIDI Out channel (`channel.add_midi_out`) | partial | Notes on a MIDI channel to one output port; no controller knobs, program changes or MIDI clock |
 | Patcher | — | not planned | Modular plugin graphs; mixer routing and sends cover the common cases |
-| Fruity Envelope / Keyboard / X-Y controllers, Formula Controller, Peak Controller | Automation clips, synth LFO | partial | No audio-driven (peak) or formula controllers |
+| Fruity Envelope / Keyboard / X-Y controllers, Formula Controller, Peak Controller | Controllers (`controller.add`: lfo, envelope, keyboard, peak, formula, macro), automation clips | covered | One target per controller; an X/Y pad is two macros |
 | Dashboard, Fruity Video Player, ZGameEditor Visualizer | — | not planned | Video and custom-panel tools are outside an audio workstation's core |
 
 ## Effects

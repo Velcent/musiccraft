@@ -209,7 +209,12 @@ pub struct TrackNode {
     pub(crate) effects: Vec<EffectSlot>,
     pub(crate) left: Vec<f32>,
     pub(crate) right: Vec<f32>,
+    /// Louder side's peak in the last block, for peak controllers.
+    pub(crate) last_peak: f32,
 }
+
+/// Most tracks whose peaks controllers can follow.
+pub(crate) const MAX_PEAK_TRACKS: usize = musiccraft_params::MAX_MIXER_TRACKS;
 
 /// Everything the engine renders except the note sequence. Built on the main
 /// thread; every buffer is allocated here so the audio thread never allocates.
@@ -269,6 +274,7 @@ impl Graph {
                 .collect(),
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
+            last_peak: 0.0,
         });
         self.tracks.len() - 1
     }

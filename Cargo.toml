@@ -20,6 +20,7 @@ musiccraft-render = { path = "crates/musiccraft-render" }
 musiccraft-audio = { path = "crates/musiccraft-audio" }
 musiccraft-cli = { path = "crates/musiccraft-cli" }
 musiccraft-clap = { path = "crates/musiccraft-clap" }
+musiccraft-formula = { path = "crates/musiccraft-formula" }
 cpal = "0.18"
 rtrb = "0.4"
 serde = { version = "1", features = ["derive"] }

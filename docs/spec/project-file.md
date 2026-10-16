@@ -17,6 +17,9 @@
 - Clips store their source as `"pattern": <id>`, `"automation": <id>` or
   `"audio": <channel id>`; files from before automation existed load unchanged.
   Clips whose source no longer exists are dropped on load.
+- Controllers are stored under `"controllers"` with their `"kind"` and its
+  settings flattened beside the name, target and range; files without them
+  load with none (see `controllers.md`).
 - Sample paths are stored as given. Relative paths resolve against the project
   file's directory first, then the working directory.
 - `project.save [path]` writes atomically (temporary file, then rename) and

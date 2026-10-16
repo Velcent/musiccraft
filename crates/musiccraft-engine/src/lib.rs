@@ -9,6 +9,7 @@
 //! the audio thread inside a message, and the value it replaces is moved back
 //! through a return queue so that it is dropped on the main thread.
 
+mod controllers;
 mod engine;
 mod external;
 mod graph;
@@ -20,6 +21,7 @@ mod sequence;
 mod strings;
 mod voice;
 
+pub use controllers::{ControllerLane, ControllerSource, Convert, MAX_CONTROLLERS};
 pub use engine::{Engine, EngineHandle, LiveSender, engine_pair};
 pub use external::{External, ExternalTransport, MAX_EXTERNALS};
 pub use graph::{

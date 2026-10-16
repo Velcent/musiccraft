@@ -94,10 +94,10 @@ new UI editor or large DSP.
 - [x] Morphine → morphing between two or more additive spectra.
 - [x] Wasp / PoiZone / Sawer → per-oscillator filters and a modulation matrix
   in the synth.
-- [ ] Fruity Envelope / Keyboard / X-Y Controllers → controller channels whose
+- [x] Fruity Envelope / Keyboard / X-Y Controllers → controller channels whose
   outputs drive parameters like automation.
-- [ ] Peak Controller → a controller driven by an insert's audio level.
-- [ ] Formula Controller → controller driven by a formula of time and inputs.
+- [x] Peak Controller → a controller driven by an insert's audio level.
+- [x] Formula Controller → controller driven by a formula of time and inputs.
 - [ ] MIDI Out → controller knobs, program changes and MIDI clock.
 
 ### Hard
