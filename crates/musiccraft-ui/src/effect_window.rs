@@ -9,7 +9,9 @@ use musiccraft_dsp::modulation::{SYNC_RATE_NAMES, autopan_shape, gate_step_on};
 use musiccraft_dsp::{SvfMode, response};
 use musiccraft_project::EffectSlot;
 use musiccraft_project::params::presets::{self, Preset};
-use musiccraft_project::params::{EffectKind, ParamSpec, index_of};
+use musiccraft_project::params::{
+    EffectKind, ParamSpec, SHAPER_FIRST_POINT, SHAPER_POINTS, index_of,
+};
 
 use crate::hint::Hint;
 use crate::{Action, Frame, UiState, theme, widgets};
@@ -309,8 +311,8 @@ fn knobs(
     ui.horizontal_wrapped(|ui| {
         for (p, spec) in effect.kind.params().iter().enumerate() {
             let value = effect.values[p];
-            if spec.name == "steps" {
-                // Edited by clicking the steps in the graph.
+            if spec.name == "steps" || spec.name.starts_with("point_") {
+                // Edited by clicking the steps or dragging the points in the graph.
                 continue;
             }
             let synced = matches!(
@@ -336,9 +338,15 @@ fn knobs(
                     .copied()
                     .unwrap_or("?")
                     .to_owned(),
-                "shape" if effect.kind == EffectKind::Waveshaper => {
-                    pick(&["tanh", "hard clip", "fold", "sine", "asymmetric", "rectify"])
-                }
+                "shape" if effect.kind == EffectKind::Waveshaper => pick(&[
+                    "tanh",
+                    "hard clip",
+                    "fold",
+                    "sine",
+                    "asymmetric",
+                    "rectify",
+                    "drawn",
+                ]),
                 "shape" => pick(&["sine", "triangle", "square"]),
                 "mode" if effect.kind == EffectKind::Distortion => pick(&["soft", "hard"]),
                 "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
@@ -447,6 +455,12 @@ fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effe
             theme::TEXT,
         );
     }
+}
+
+/// Whether a waveshaper slot uses its drawn curve.
+fn drawn_shape(effect: &EffectSlot) -> bool {
+    effect.kind == EffectKind::Waveshaper
+        && value(effect, "shape").round() as i32 == musiccraft_dsp::character::DRAWN_SHAPE
 }
 
 /// Short label for a pan position: `L`, `C`, `R`, or a percentage.
@@ -737,11 +751,24 @@ fn graph(
             for pair in points.windows(2) {
                 painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
             }
+            if drawn_shape(effect) {
+                for k in 0..SHAPER_POINTS {
+                    let name = effect.kind.params()[SHAPER_FIRST_POINT + k].name;
+                    let x = rect.left() + rect.width() * k as f32 / (SHAPER_POINTS - 1) as f32;
+                    let y = mid.y - value(effect, name) * rect.height() * 0.4;
+                    handles.push((pos2(x, y), None, Some(name)));
+                }
+            }
             hint = match effect.kind {
                 EffectKind::SoftClipper => {
                     "Input across, output up: straight below the threshold, bending smoothly into it"
                 }
-                EffectKind::Waveshaper => "Input across, output up: the shape picks the curve",
+                EffectKind::Waveshaper if drawn_shape(effect) => {
+                    "Input across, output up: drag a point up or down to draw the curve"
+                }
+                EffectKind::Waveshaper => {
+                    "Input across, output up: the shape picks the curve (pick \"drawn\" to draw your own)"
+                }
                 EffectKind::Overdrive => {
                     "Input across, output up: bias makes the curve lopsided (before the tone filter)"
                 }
@@ -1411,6 +1438,12 @@ fn graph(
                         push("threshold", db);
                     }
                     EffectKind::Limiter => push("ceiling", y_db(rect, pointer.y, 6.0, -60.0)),
+                    EffectKind::Waveshaper => {
+                        if let Some(name) = y_param {
+                            let y = (rect.center().y - pointer.y) / (rect.height() * 0.4);
+                            push(name, y.clamp(-1.0, 1.0));
+                        }
+                    }
                     EffectKind::Dynamics => {
                         if let Some(name) = x_param {
                             push(

@@ -73,7 +73,7 @@
 | `bass_boost` | freq Hz, boost dB (low shelf), drive (gentle saturation after the shelf) |
 | `overdrive` | drive dB, tone Hz (low-pass after the clipper), bias (asymmetry, adds even harmonics), mix, output dB |
 | `soft_clipper` | threshold dB, knee (how early the curve bends), output dB; never exceeds the threshold |
-| `waveshaper` | shape (tanh, hard clip, fold, sine, asymmetric, rectify), drive dB, mix, output dB |
+| `waveshaper` | shape (tanh, hard clip, fold, sine, asymmetric, rectify, drawn), drive dB, mix, output dB, point_1 … point_9 (the drawn curve: output levels −1–1 at inputs −1, −0.75, … 1, joined by straight lines and held flat beyond ±1; the defaults draw a straight line, so the drawn shape starts clean). With the drawn shape the window shows the nine points; drag one up or down to bend the curve |
 | `dc_block` | freq Hz (one-pole high-pass that removes DC offset) |
 | `ring_mod` | freq Hz (sine carrier the signal is multiplied by), mix |
 | `freq_shift` | shift Hz (−2000–2000; every frequency moves by the same amount, via a Hilbert transformer), mix |

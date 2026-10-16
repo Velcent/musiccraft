@@ -1027,6 +1027,34 @@ const WAVESHAPER: &[Preset] = &[
     preset("Sine fold", &[("shape", 3.0), ("drive", 12.0)]),
     preset("Asymmetric", &[("shape", 4.0), ("drive", 15.0)]),
     preset("Rectifier", &[("shape", 5.0), ("drive", 6.0), ("mix", 0.5)]),
+    preset(
+        "Drawn: soft knee",
+        &[
+            ("shape", 6.0),
+            ("drive", 6.0),
+            ("point_1", -0.9),
+            ("point_2", -0.85),
+            ("point_3", -0.7),
+            ("point_4", -0.4),
+            ("point_6", 0.4),
+            ("point_7", 0.7),
+            ("point_8", 0.85),
+            ("point_9", 0.9),
+        ],
+    ),
+    preset(
+        "Drawn: stairs",
+        &[
+            ("shape", 6.0),
+            ("drive", 3.0),
+            ("point_2", -1.0),
+            ("point_3", -0.5),
+            ("point_4", -0.5),
+            ("point_6", 0.5),
+            ("point_7", 0.5),
+            ("point_8", 1.0),
+        ],
+    ),
 ];
 
 const DC_BLOCK: &[Preset] = &[preset("Default", &[]), preset("Steep", &[("freq", 30.0)])];

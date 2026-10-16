@@ -587,11 +587,25 @@ const SOFT_CLIPPER_PARAMS: &[ParamSpec] = &[
 ];
 
 const WAVESHAPER_PARAMS: &[ParamSpec] = &[
-    int_spec("shape", 0.0, 5.0, 0.0),
+    int_spec("shape", 0.0, 6.0, 0.0),
     spec("drive", 0.0, 36.0, 12.0, "dB"),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 6.0, -6.0, "dB"),
+    spec("point_1", -1.0, 1.0, -1.0, ""),
+    spec("point_2", -1.0, 1.0, -0.75, ""),
+    spec("point_3", -1.0, 1.0, -0.5, ""),
+    spec("point_4", -1.0, 1.0, -0.25, ""),
+    spec("point_5", -1.0, 1.0, 0.0, ""),
+    spec("point_6", -1.0, 1.0, 0.25, ""),
+    spec("point_7", -1.0, 1.0, 0.5, ""),
+    spec("point_8", -1.0, 1.0, 0.75, ""),
+    spec("point_9", -1.0, 1.0, 1.0, ""),
 ];
+
+/// Number of points of the waveshaper's drawn curve.
+pub const SHAPER_POINTS: usize = 9;
+/// Index of the waveshaper's first drawn-curve point.
+pub const SHAPER_FIRST_POINT: usize = 4;
 
 const DC_BLOCK_PARAMS: &[ParamSpec] = &[spec("freq", 2.0, 40.0, 10.0, "Hz")];
 

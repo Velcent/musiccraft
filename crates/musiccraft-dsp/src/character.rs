@@ -66,16 +66,49 @@ pub fn shape_curve(shape: f32, x: f32) -> f32 {
     }
 }
 
-/// Waveshaper: one of several transfer curves.
-///
-/// Parameters: `[shape, drive dB, mix, output dB]`.
-pub fn waveshaper(left: &mut [f32], right: &mut [f32], p: &[f32]) {
+/// The waveshaper's shape value for the drawn curve.
+pub const DRAWN_SHAPE: i32 = 6;
+
+/// The drawn curve through `points` (outputs at evenly spaced inputs from
+/// −1 to 1), joined by straight lines and flat beyond ±1.
+#[must_use]
+pub fn drawn_curve(points: &[f32], x: f32) -> f32 {
+    let segments = points.len().saturating_sub(1);
+    if segments == 0 {
+        return points.first().copied().unwrap_or(x);
+    }
+    let pos = (x.clamp(-1.0, 1.0) + 1.0) * 0.5 * segments as f32;
+    let i = (pos.floor() as usize).min(segments - 1);
+    let frac = pos - i as f32;
+    let a = points.get(i).copied().unwrap_or(0.0);
+    let b = points.get(i + 1).copied().unwrap_or(a);
+    a + (b - a) * frac
+}
+
+/// The waveshaper's curve for a driven sample, given all its parameters.
+#[must_use]
+pub fn waveshaper_curve(p: &[f32], x: f32) -> f32 {
     let shape = param(p, 0, 0.0);
+    if shape.round() as i32 == DRAWN_SHAPE {
+        let first = musiccraft_params::SHAPER_FIRST_POINT;
+        let points = p
+            .get(first..first + musiccraft_params::SHAPER_POINTS)
+            .unwrap_or(&[]);
+        drawn_curve(points, x)
+    } else {
+        shape_curve(shape, x)
+    }
+}
+
+/// Waveshaper: one of several transfer curves, or a drawn one.
+///
+/// Parameters: `[shape, drive dB, mix, output dB, point 1 … point 9]`.
+pub fn waveshaper(left: &mut [f32], right: &mut [f32], p: &[f32]) {
     let drive = db_to_gain(param(p, 1, 12.0));
     let mix = param(p, 2, 1.0).clamp(0.0, 1.0);
     let output = db_to_gain(param(p, 3, -6.0));
     for s in left.iter_mut().chain(right.iter_mut()) {
-        let wet = shape_curve(shape, *s * drive);
+        let wet = waveshaper_curve(p, *s * drive);
         *s = (*s + (wet - *s) * mix) * output;
     }
 }
@@ -670,6 +703,25 @@ mod tests {
 
     fn rms(x: &[f32]) -> f32 {
         (x.iter().map(|s| s * s).sum::<f32>() / x.len().max(1) as f32).sqrt()
+    }
+
+    #[test]
+    fn drawn_curve_interpolates_and_holds_its_ends() {
+        let identity = [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0];
+        for x in [-0.9, -0.3, 0.0, 0.33, 0.8] {
+            assert!((drawn_curve(&identity, x) - x).abs() < 1e-6);
+        }
+        assert_eq!(drawn_curve(&identity, 3.0), 1.0);
+        assert_eq!(drawn_curve(&identity, -3.0), -1.0);
+        let mut bent = identity;
+        bent[4] = 0.5; // lift the middle
+        assert!((drawn_curve(&bent, 0.0) - 0.5).abs() < 1e-6);
+        assert!((drawn_curve(&bent, 0.125) - 0.375).abs() < 1e-6);
+        let mut p = vec![6.0, 0.0, 1.0, 0.0];
+        p.extend(bent);
+        let (mut l, mut r) = (vec![0.0, 0.125], vec![0.0, 0.0]);
+        waveshaper(&mut l, &mut r, &p);
+        assert!((l[0] - 0.5).abs() < 1e-6 && (l[1] - 0.375).abs() < 1e-6);
     }
 
     #[test]

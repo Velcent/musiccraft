@@ -7,8 +7,8 @@ use std::f32::consts::PI;
 use musiccraft_params::EffectKind;
 
 use crate::character::{
-    Transient, formants, graphic_eq_db, overdrive_curve, parametric_eq_db, shape_curve,
-    soft_clip_curve,
+    Transient, formants, graphic_eq_db, overdrive_curve, parametric_eq_db, soft_clip_curve,
+    waveshaper_curve,
 };
 use crate::{Biquad, ProcessContext, SvfMode, db_to_gain, gain_to_db};
 
@@ -152,7 +152,7 @@ pub fn shaper(kind: EffectKind, params: &[f32], x: f32) -> Option<f32> {
                 * db_to_gain(at(params, 2, 0.0))
         }
         EffectKind::Waveshaper => blend(
-            shape_curve(at(params, 0, 0.0), x * db_to_gain(at(params, 1, 12.0))),
+            waveshaper_curve(params, x * db_to_gain(at(params, 1, 12.0))),
             at(params, 2, 1.0),
             at(params, 3, -6.0),
         ),

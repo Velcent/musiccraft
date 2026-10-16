@@ -57,7 +57,7 @@ Status:
 | Soundgoodizer | `multiband_limiter` "Enhance" presets with the one-knob `amount` | covered | |
 | Transient Processor | `transient` | covered | |
 | Fruity Soft Clipper | `soft_clipper` | covered | |
-| Fruity WaveShaper | `waveshaper` | partial | Six fixed curves; the curve cannot be drawn |
+| Fruity WaveShaper | `waveshaper` | covered | Six fixed curves plus a nine-point drawn curve |
 | Fruity Blood Overdrive, Fast Dist | `overdrive`, `distortion` (soft or hard-threshold mode) | covered | |
 | Fruity Squeeze | `bitcrusher` (with squeeze), `waveshaper` | covered | |
 | Hardcore | `overdrive`, `waveshaper`, `auto_filter`, `chorus` | partial | No single guitar-pedal chain effect |
