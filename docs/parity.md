@@ -62,6 +62,7 @@ of contents; see `docs/clean-room.md`.
 | Playlist | Markers | `cmd:playlist.add_marker` `cmd:playlist.remove_marker` `key:Alt+T=ui.add_marker` |
 | Playlist | Pause and song-loop markers (stop at the end instead of looping) | `cmd:playlist.set_marker_action` `spec:playlist.md` |
 | Mixer | Insert tracks | `cmd:mixer.add_track` `cmd:mixer.remove_track` `spec:mixer.md` |
+| Mixer | Pan law: circular (-3 dB centre) or triangular | `cmd:project.set_pan_law` `spec:mixer.md` |
 | Mixer | Volume / pan / mute / solo | `cmd:mixer.set_volume` `cmd:mixer.set_pan` `cmd:mixer.toggle_mute` `cmd:mixer.toggle_solo` |
 | Mixer | Effect slots: add, remove, reorder, bypass | `cmd:mixer.add_effect` `cmd:mixer.remove_effect` `cmd:mixer.move_effect` `cmd:mixer.toggle_effect` |
 | Mixer | Effect parameters | `cmd:mixer.set_effect_param` |

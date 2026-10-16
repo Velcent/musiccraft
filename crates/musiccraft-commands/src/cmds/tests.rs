@@ -27,6 +27,7 @@ fn fails(s: &mut Session, line: &str) -> CommandError {
 /// Every undoable command, in an order where each line is valid.
 const SCRIPT: &[&str] = &[
     "project.set_tempo 140",
+    "project.set_pan_law triangular",
     "project.rename My Song",
     "channel.add_sampler builtin:kick",
     "channel.add_sampler builtin:snare Snare Drum",
@@ -278,6 +279,21 @@ fn undo_after_switching_patterns_edits_the_original_pattern() {
     run(&mut s, "edit.undo");
     run(&mut s, "edit.undo");
     assert!(s.project().patterns[0].notes.is_empty());
+}
+
+#[test]
+fn pan_law_is_undoable() {
+    use musiccraft_project::PanLaw;
+    let mut s = session();
+    assert_eq!(s.project().pan_law, PanLaw::Circular);
+    run(&mut s, "project.set_pan_law triangular");
+    assert_eq!(s.project().pan_law, PanLaw::Triangular);
+    run(&mut s, "project.set_pan_law triangular");
+    assert_eq!(s.undo_depth(), 1, "the same law records nothing");
+    fails(&mut s, "project.set_pan_law balance");
+    fails(&mut s, "project.set_pan_law");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().pan_law, PanLaw::Circular);
 }
 
 #[test]

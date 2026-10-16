@@ -228,6 +228,36 @@ fn export_command_writes_a_wav() {
 }
 
 #[test]
+fn the_pan_law_reaches_channel_pans_but_not_mixer_pans() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         channel.set_param 1 sustain 1
+         note.add 1 0 16 A5",
+    );
+    let options = RenderOptions {
+        sample_rate: 22_050,
+        loops: 1,
+        max_tail_seconds: 0.0,
+    };
+    let level = |s: &Session| rms(&render(s.project(), options).0);
+    let circular = level(&s);
+    run(&mut s, "project.set_pan_law triangular");
+    let triangular = level(&s);
+    // Centre: -3 dB versus -6 dB.
+    let ratio = triangular / circular;
+    assert!(
+        (ratio - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-3,
+        "{ratio}"
+    );
+    // A mixer pan is a balance: centred, it leaves the level alone; panned
+    // right, the left side keeps only (1 - pan).
+    run(&mut s, "mixer.set_pan 0 0.5");
+    assert!((level(&s) / triangular - 0.5).abs() < 1e-3);
+}
+
+#[test]
 fn pause_keeps_the_playhead_and_stop_rewinds() {
     let mut s = session();
     run(&mut s, "channel.add_sampler builtin:kick");
@@ -384,7 +414,7 @@ fn automation_clip_fades_the_master_in_song_mode() {
     let second = 44_100;
     let early = rms(&out[second / 2..second + second / 2]);
     let late = rms(&out[7 * second + second / 2..8 * second - 100]);
-    assert!(early > 0.05, "early {early}");
+    assert!(early > 0.03, "early {early}");
     assert!(late < early / 5.0, "faded: early {early}, late {late}");
 }
 

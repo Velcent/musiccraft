@@ -25,7 +25,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
     independent slides in a chord).
   - [x] In a chord, the top note sets the pitch offset and every note keeps
     that offset after the slide.
-- [ ] Pan law: a circular default (-3 dB at centre) with a triangular option,
+- [x] Pan law: a circular default (-3 dB at centre) with a triangular option,
   instead of a plain balance control.
 - [ ] Swing: one global swing amount, scaled by a per-channel swing mix
   (default 100%); add a "truncate" option.

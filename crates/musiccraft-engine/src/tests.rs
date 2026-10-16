@@ -1,3 +1,4 @@
+use std::f32::consts::FRAC_1_SQRT_2;
 use std::sync::Arc;
 
 use musiccraft_dsp::{Effect, SampleBuffer};
@@ -9,9 +10,11 @@ const SR: u32 = 48_000;
 /// Frames per beat at 120 BPM and 48 kHz.
 const BEAT: usize = 24_000;
 
+/// Unity-gain channel settings: a centred channel is -3 dB (circular pan
+/// law), so the volume makes up for it.
 fn impulse_params() -> ChannelParams {
     let mut params = ChannelParams {
-        volume: 1.0,
+        volume: std::f32::consts::SQRT_2,
         ..ChannelParams::default()
     };
     params.instrument[inst::ATTACK] = 0.0;
@@ -567,6 +570,38 @@ fn loop_start_is_where_playback_wraps_and_stop_returns() {
         (engine.position_beats() - 3.0).abs() < 1e-9,
         "seeks fold into the loop"
     );
+}
+
+#[test]
+fn channel_pan_follows_the_pan_law() {
+    for (law, pan, expected) in [
+        (PanLaw::Circular, 0.0, (FRAC_1_SQRT_2, FRAC_1_SQRT_2)),
+        (PanLaw::Circular, 1.0, (0.0, 1.0)),
+        (PanLaw::Triangular, 0.0, (0.5, 0.5)),
+        (PanLaw::Triangular, -0.5, (0.75, 0.25)),
+    ] {
+        let (mut engine, _handle) = impulse_engine();
+        let params = ChannelParams {
+            volume: 1.0,
+            pan,
+            pan_law: law,
+            ..impulse_params()
+        };
+        engine.apply(EngineMessage::Channel { channel: 0, params });
+        // Let the gain ramp settle before the note.
+        render_stereo(&mut engine, MAX_BLOCK);
+        engine.apply(EngineMessage::NoteOn {
+            channel: 0,
+            key: 60,
+            velocity: 1.0,
+        });
+        let out = render_stereo(&mut engine, 8);
+        assert!(
+            (out[0] - expected.0).abs() < 1e-5 && (out[1] - expected.1).abs() < 1e-5,
+            "{law:?} at {pan}: {:?}",
+            &out[..2]
+        );
+    }
 }
 
 #[test]

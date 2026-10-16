@@ -225,8 +225,10 @@ fn plugin_instruments_and_effects_render_with_their_parameters() {
     );
     let (left, _, warnings) = render_with(s.project(), options(), Some(&host));
     assert!(warnings.is_empty(), "{warnings:?}");
+    // The tone's 0.25, -3 dB from the centred channel (circular pan law).
+    let tone = 0.25 * std::f32::consts::FRAC_1_SQRT_2;
     let level = peak(&left);
-    assert!((level - 0.25).abs() < 1e-3, "tone level {level}");
+    assert!((level - tone).abs() < 1e-3, "tone level {level}");
     // The note lasts four steps of sixteen; the rest is silent.
     assert!(peak(&left[left.len() / 2..]) < 1e-6);
 
@@ -237,7 +239,7 @@ fn plugin_instruments_and_effects_render_with_their_parameters() {
          channel.set_plugin_param 1 7 2",
     );
     let (left, _, _) = render_with(s.project(), options(), Some(&host));
-    assert!((peak(&left) - 0.25).abs() < 1e-3, "0.25 x 2 x 0.5");
+    assert!((peak(&left) - tone).abs() < 1e-3, "tone x 2 x 0.5");
     assert!(seen.created.load(Ordering::Relaxed) >= 3);
 
     // Without a host, plugins are silent and reported.

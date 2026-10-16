@@ -80,7 +80,8 @@ Hover any control and the hint bar at the top says what it does.
   right-click it for markers. Songs loop by default; right-click the ruler →
   Add pause marker here at the end to stop there instead, or make a marker the
   Song loop point to return to it.
-- **Channel rack**: click steps; knobs for pan and volume (double-click resets);
+- **Channel rack**: click steps; knobs for pan and volume (double-click resets;
+  pan follows the project's circular or triangular pan law);
   click a channel name for its settings. The synth has presets, two
   oscillators with unison and spread, sub, drive, low/band/high-pass filter
   with a live curve, an LFO and an envelope; melodic channels show a mini

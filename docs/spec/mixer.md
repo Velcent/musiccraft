@@ -4,7 +4,8 @@
 
 - Mixer track 0 is the **master**; tracks 1… are **inserts**. New projects have
   eight inserts. At most 128 tracks.
-- Each track has a name, volume (linear 0–1.25, default 1.0), pan (-1–1), mute,
+- Each track has a name, volume (linear 0–1.25, default 1.0), pan (-1–1, a
+  balance), mute,
   solo and up to ten insert effects processed in order. The mixer is a floating
   window (F9) with the strips on the left and the selected track's effect slots
   on the right.
@@ -25,6 +26,19 @@
   `mixer.toggle_solo`, `mixer.set_send`, `mixer.route_to_master`, `mixer.add_effect`, `mixer.remove_effect`,
   `mixer.move_effect`, `mixer.set_effect_param`, `mixer.set_effect_enabled`,
   `mixer.toggle_effect`. Effect slots are numbered from 1. All are undoable.
+- **Pan law** (project setting, `project.set_pan_law <circular|triangular>`,
+  undoable, saved as `"pan_law"`; Settings → Project). It applies to every
+  channel pan. Mixer track pan stays a balance (0 dB at centre; a track
+  carries stereo, and a law at every stage would stack its centre cut), and
+  note pan stays a balance on top of the channel pan. For pan `p` in -1…1:
+  - `circular` (default): left = cos θ, right = sin θ with θ = (p + 1)·π/4.
+    Centre is -3 dB on each side (equal power), a hard pan is 0 dB on its side
+    and silent on the other.
+  - `triangular`: left = (1 − p)/2, right = (1 + p)/2. Centre is -6 dB on each
+    side (equal amplitude), a hard pan is 0 dB on its side.
+  - Project files without `"pan_law"` (saved before it existed, when pan was a
+    balance with 0 dB at centre) load as `circular`, so centred sounds play
+    3 dB quieter than they did.
 - Changing parameters never interrupts audio. Adding, removing or reordering
   effects rebuilds the track's processing and resets effect tails.
 
@@ -162,5 +176,9 @@ Ranges and defaults are defined in `musiccraft-params`.
   YIN method (de Cheveigné and Kawahara, JASA 2002), and the corrector drives
   the same delay-line shifter; the generated impulse responses are
   filtered decaying noise with early reflections, our own.
+- Pan law: the FL Studio online manual, "Project general settings", names a
+  circular (default, -3 dB at centre) and a triangular panning law. The gain
+  formulas are the textbook sine/cosine and linear laws; the triangular
+  formula and the handling of older files are our own choices.
 - Effect windows (preset bar, graph, knobs) follow the common layout of plugin
   windows in pattern-based DAWs; the graphs and factory presets are our own.

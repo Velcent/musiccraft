@@ -21,7 +21,7 @@ pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
     InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MarkerAction,
-    MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, Pattern, PatternId, PlayMode,
+    MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern, PatternId, PlayMode,
     Playlist, PluginRef, PluginSlot, STEP_KEY,
 };
 pub use musiccraft_params as params;
@@ -143,6 +143,9 @@ pub struct Project {
     /// Whether the metronome clicks during playback (never rendered to files).
     #[serde(default)]
     pub metronome: bool,
+    /// How channel and mixer pans split left and right.
+    #[serde(default)]
+    pub pan_law: PanLaw,
     next_id: u32,
     #[serde(skip)]
     path: Option<PathBuf>,
@@ -181,6 +184,7 @@ impl Project {
             playlist: Playlist::default(),
             automations: Vec::new(),
             metronome: false,
+            pan_law: PanLaw::Circular,
             next_id: 2,
             path: None,
         }
@@ -579,6 +583,7 @@ impl PartialEq for Project {
             && self.mixer == other.mixer
             && self.playlist == other.playlist
             && self.metronome == other.metronome
+            && self.pan_law == other.pan_law
             && self.automations == other.automations
     }
 }

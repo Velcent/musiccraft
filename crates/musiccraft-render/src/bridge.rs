@@ -6,7 +6,7 @@ use musiccraft_dsp::convolution::Convolver;
 use musiccraft_dsp::{Effect, SampleBuffer};
 use musiccraft_engine::{
     ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_BLOCK,
-    MAX_EXTERNALS, MAX_SENDS, SendParams, Sequence, TrackParams,
+    MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, TrackParams,
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
 use musiccraft_project::{Channel, MixerTrack, Project, base64};
@@ -105,10 +105,11 @@ fn sample_key(sample: &str, base: Option<&Path>) -> String {
     }
 }
 
-fn channel_params(channel: &Channel) -> ChannelParams {
+fn channel_params(channel: &Channel, pan_law: PanLaw) -> ChannelParams {
     ChannelParams {
         volume: channel.volume,
         pan: channel.pan,
+        pan_law,
         mute: channel.mute,
         track: u16::try_from(channel.mixer_track).unwrap_or(0),
         instrument: channel.params.0,
@@ -180,6 +181,10 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
     let base = project.path().and_then(Path::parent);
     let audible = solo_audible(&project.mixer);
     let sequence = build_sequence(project);
+    let pan_law = match project.pan_law {
+        musiccraft_project::PanLaw::Circular => PanLaw::Circular,
+        musiccraft_project::PanLaw::Triangular => PanLaw::Triangular,
+    };
     Desc {
         structure: Structure {
             channels: project
@@ -241,7 +246,11 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                 })
                 .collect(),
         },
-        channels: project.channels.iter().map(channel_params).collect(),
+        channels: project
+            .channels
+            .iter()
+            .map(|c| channel_params(c, pan_law))
+            .collect(),
         tracks: project
             .mixer
             .iter()

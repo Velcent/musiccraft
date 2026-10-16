@@ -170,8 +170,9 @@ fn renders_a_project_through_the_bridge_and_engine() {
     };
     let (left, _, warnings) = render_with(s.project(), options, Some(&host));
     assert!(warnings.is_empty(), "{warnings:?}");
-    // Level 0.5 x peak, doubled by the gain plugin.
-    let expected = 0.5 * TONE_PEAK * 2.0;
+    // Level 0.5 x peak, -3 dB from the centred channel pan (circular law),
+    // doubled by the gain plugin.
+    let expected = 0.5 * TONE_PEAK * std::f32::consts::FRAC_1_SQRT_2 * 2.0;
     let level = peak(&left);
     assert!((level - expected).abs() < 0.02, "{level} vs {expected}");
     let quarter = left.len() / 4;

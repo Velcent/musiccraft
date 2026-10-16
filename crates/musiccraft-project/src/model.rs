@@ -894,3 +894,34 @@ impl PlayMode {
         }
     }
 }
+
+/// How channel and mixer pans split a signal between left and right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PanLaw {
+    /// Equal power: -3 dB on each side at centre.
+    #[default]
+    Circular,
+    /// Equal amplitude: -6 dB on each side at centre.
+    Triangular,
+}
+
+impl PanLaw {
+    /// Every law, in menu order.
+    pub const ALL: [Self; 2] = [Self::Circular, Self::Triangular];
+
+    /// `circular` or `triangular`.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Circular => "circular",
+            Self::Triangular => "triangular",
+        }
+    }
+
+    /// The law named `label`.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|law| law.label() == label)
+    }
+}

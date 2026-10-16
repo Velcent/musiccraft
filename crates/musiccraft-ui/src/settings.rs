@@ -563,6 +563,28 @@ fn project(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
             ));
         }
     });
+    row(ui, "Pan law", |ui| {
+        for law in musiccraft_project::PanLaw::ALL {
+            let hint = match law {
+                musiccraft_project::PanLaw::Circular => "Equal power: -3 dB on each side at centre",
+                musiccraft_project::PanLaw::Triangular => {
+                    "Equal amplitude: -6 dB on each side at centre"
+                }
+            };
+            let chosen = project.pan_law == law;
+            if ui
+                .selectable_label(chosen, law.label())
+                .on_hover_text(hint)
+                .clicked()
+                && !chosen
+            {
+                actions.push(Action::Run(Invocation::new(
+                    "project.set_pan_law",
+                    [law.label().to_owned()],
+                )));
+            }
+        }
+    });
     row(ui, "File", |ui| {
         ui.label(
             project

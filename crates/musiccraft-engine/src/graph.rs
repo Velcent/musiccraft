@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use musiccraft_dsp::{Effect, SampleBuffer};
+use musiccraft_dsp::{Effect, PanLaw, SampleBuffer};
 use musiccraft_params::{INSTRUMENT_PARAMS, MAX_EFFECT_PARAMS, MAX_INSTRUMENT_PARAMS, defaults};
 
 use crate::MAX_BLOCK;
@@ -10,8 +10,10 @@ use crate::MAX_BLOCK;
 pub struct ChannelParams {
     /// Linear gain.
     pub volume: f32,
-    /// Balance, -1 (left) to 1 (right).
+    /// Pan, -1 (left) to 1 (right).
     pub pan: f32,
+    /// How `pan` splits the channel between left and right.
+    pub pan_law: PanLaw,
     /// Whether the channel is silenced.
     pub mute: bool,
     /// Mixer track that receives this channel (0 = master).
@@ -25,6 +27,7 @@ impl Default for ChannelParams {
         Self {
             volume: 0.8,
             pan: 0.0,
+            pan_law: PanLaw::default(),
             mute: false,
             track: 0,
             instrument: defaults(INSTRUMENT_PARAMS),
@@ -39,7 +42,7 @@ impl ChannelParams {
         if self.mute {
             return (0.0, 0.0);
         }
-        let (l, r) = musiccraft_dsp::pan_gains(self.pan);
+        let (l, r) = self.pan_law.gains(self.pan);
         (self.volume * l, self.volume * r)
     }
 }
