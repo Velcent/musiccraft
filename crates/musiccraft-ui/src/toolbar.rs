@@ -80,8 +80,12 @@ fn file_menu(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) 
     menu_item(ui, state, "Export audio (WAV, FLAC)…", "ui.export", actions);
     menu_item(ui, state, "Export stems…", "ui.export_stems", actions);
     if let Some(path) = state.autosave_path.clone() {
-        if ui.button("Recover autosave").clicked() {
-            actions.push(Action::Run(Invocation::new("project.load", [path])));
+        if ui
+            .button("Recover unsaved work")
+            .hint("Restore the project from the session that did not close properly")
+            .clicked()
+        {
+            actions.push(Action::Run(Invocation::new("project.recover", [path])));
             ui.close();
         }
     }

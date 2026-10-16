@@ -3,7 +3,7 @@
 
 use std::f32::consts::{PI, TAU};
 
-use crate::{ProcessContext, db_to_gain};
+use crate::{ProcessContext, db_to_gain, flush_denormal};
 
 /// Beats per step (or per cycle) by rate index: 1/32, 1/16, 1/8, 1/4, 1/2
 /// note, one bar.
@@ -64,7 +64,7 @@ impl Phaser {
                 let a = (t - 1.0) / (t + 1.0);
                 let mut x = *sample + self.feedback[ch] * feedback;
                 for (x1, y1) in self.state[ch].iter_mut().take(stages) {
-                    let y = a * x + *x1 - a * *y1;
+                    let y = flush_denormal(a * x + *x1 - a * *y1);
                     *x1 = x;
                     *y1 = y;
                     x = y;
@@ -73,7 +73,7 @@ impl Phaser {
                     x = 0.0;
                     self.state[ch] = [(0.0, 0.0); 12];
                 }
-                self.feedback[ch] = x;
+                self.feedback[ch] = flush_denormal(x);
                 *sample += (x - *sample) * mix;
             }
             self.phase = (self.phase + step).fract();
@@ -147,7 +147,11 @@ impl Flanger {
                 let wet = Self::read(line, self.write, base + depth * lfo);
                 let input = *sample + wet * feedback;
                 if let Some(slot) = line.get_mut(self.write) {
-                    *slot = if input.is_finite() { input } else { 0.0 };
+                    *slot = if input.is_finite() {
+                        flush_denormal(input)
+                    } else {
+                        0.0
+                    };
                 }
                 *sample += (wet - *sample) * mix;
             }

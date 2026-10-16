@@ -2,6 +2,8 @@
 //! Jezar at Dreampoint: eight parallel damped combs and four series all-passes per
 //! channel.
 
+use crate::util::flush_denormal;
+
 const COMB_TUNING: [usize; 8] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
 const ALLPASS_TUNING: [usize; 4] = [556, 441, 341, 225];
 const STEREO_SPREAD: usize = 23;
@@ -32,8 +34,8 @@ impl Comb {
             return 0.0;
         };
         let output = *slot;
-        self.store = output * (1.0 - damp) + self.store * damp;
-        *slot = input + self.store * feedback;
+        self.store = flush_denormal(output * (1.0 - damp) + self.store * damp);
+        *slot = flush_denormal(input + self.store * feedback);
         self.index = (self.index + 1) % len;
         output
     }
@@ -59,7 +61,7 @@ impl Allpass {
             return input;
         };
         let buffered = *slot;
-        *slot = input + buffered * 0.5;
+        *slot = flush_denormal(input + buffered * 0.5);
         self.index = (self.index + 1) % len;
         buffered - input
     }
@@ -164,6 +166,31 @@ mod tests {
         assert!(early > 0.0);
         assert!(late < early / 10.0, "early {early}, late {late}");
         assert!(l.iter().chain(&r).all(|s| s.is_finite()));
+    }
+
+    #[test]
+    fn tail_decays_to_exact_silence_without_subnormals() {
+        // A low sample rate keeps the delay lines short, so the tail dies fast.
+        let mut reverb = Reverb::new(8_000.0);
+        let params = [0.5, 0.5, 1.0, 1.0];
+        let subnormal = |x: f32| x != 0.0 && x.abs() < f32::MIN_POSITIVE;
+        let mut l = vec![0.0; 800];
+        let mut r = vec![0.0; 800];
+        l[0] = 1.0;
+        r[0] = 1.0;
+        for _ in 0..600 {
+            reverb.process(&mut l, &mut r, &params);
+            assert!(!l.iter().chain(&r).any(|&x| subnormal(x)));
+            l.fill(0.0);
+            r.fill(0.0);
+        }
+        // After a minute of silence every delay line holds exact zeros.
+        for comb in reverb.combs_l.iter().chain(&reverb.combs_r) {
+            assert!(comb.buffer.iter().all(|&x| x == 0.0) && comb.store == 0.0);
+        }
+        for ap in reverb.allpass_l.iter().chain(&reverb.allpass_r) {
+            assert!(ap.buffer.iter().all(|&x| x == 0.0));
+        }
     }
 
     #[test]

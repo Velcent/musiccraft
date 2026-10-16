@@ -1,4 +1,5 @@
 use crate::effect::ProcessContext;
+use crate::util::flush_denormal;
 
 /// Longest delay time supported, in seconds. The buffer is sized for this.
 const MAX_DELAY_SECONDS: f32 = 4.0;
@@ -56,8 +57,8 @@ impl Delay {
             let read = (self.write + len - delay) % len;
             let dl = self.left.get(read).copied().unwrap_or(0.0);
             let dr = self.right.get(read).copied().unwrap_or(0.0);
-            self.damp_l = dl + (self.damp_l - dl) * damping;
-            self.damp_r = dr + (self.damp_r - dr) * damping;
+            self.damp_l = flush_denormal(dl + (self.damp_l - dl) * damping);
+            self.damp_r = flush_denormal(dr + (self.damp_r - dr) * damping);
             let (fb_l, fb_r) = if ping_pong {
                 (self.damp_r * feedback, self.damp_l * feedback)
             } else {
@@ -69,10 +70,10 @@ impl Delay {
                 (*l, *r)
             };
             if let Some(slot) = self.left.get_mut(self.write) {
-                *slot = in_l + fb_l;
+                *slot = flush_denormal(in_l + fb_l);
             }
             if let Some(slot) = self.right.get_mut(self.write) {
-                *slot = in_r + fb_r;
+                *slot = flush_denormal(in_r + fb_r);
             }
             self.write = (self.write + 1) % len;
             *l += (dl - *l) * mix;
