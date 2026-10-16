@@ -54,7 +54,7 @@
 | --- | --- |
 | `filter` | mode (0 low-pass, 1 band-pass, 2 high-pass), cutoff Hz, resonance, mix |
 | `eq` | low gain/freq (shelf), mid gain/freq/q (peak), high gain/freq (shelf) |
-| `delay` | time in beats (tempo-synced), feedback, mix, ping_pong, damping |
+| `delay` | time in beats (tempo-synced), feedback, mix, ping_pong, damping, offset ms (−20–20: the right side's echoes come this much later, or the left's for negative values), mod_rate Hz and mod_depth ms (a sine LFO, a quarter cycle apart per side, moves the read point for a tape-like wobble; depth 0 is off), and a feedback path where each repeat passes a low cut Hz (one-pole high-pass, off at 20 Hz), diffusion (two all-pass diffusers that smear repeats toward a reverb-like tail, 0 off) and saturation (tanh, 0 off; it never raises the level) |
 | `reverb` | size, damping, width, mix |
 | `chorus` | rate Hz, depth ms, delay ms, mix, voices (1–3 delayed copies per side, their LFOs evenly spaced through the cycle and averaged), tone Hz (one-pole low-pass on the wet signal for a darker, vintage sound; off at its 20 kHz maximum) |
 | `compressor` | threshold dB, ratio, attack ms, release ms, makeup dB, sidechain (0 = off, else the insert whose post-fader output drives detection) |

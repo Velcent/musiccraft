@@ -713,6 +713,37 @@ const DELAY: &[Preset] = &[
             ("damping", 0.7),
         ],
     ),
+    preset(
+        "Tape echo",
+        &[
+            ("time", 0.75),
+            ("feedback", 0.55),
+            ("ping_pong", 0.0),
+            ("damping", 0.5),
+            ("mod_rate", 0.7),
+            ("mod_depth", 1.5),
+            ("low_cut", 150.0),
+            ("saturation", 0.5),
+        ],
+    ),
+    preset(
+        "Diffused",
+        &[
+            ("feedback", 0.6),
+            ("diffusion", 0.7),
+            ("mix", 0.35),
+            ("low_cut", 250.0),
+        ],
+    ),
+    preset(
+        "Wide slap",
+        &[
+            ("time", 0.25),
+            ("feedback", 0.1),
+            ("ping_pong", 0.0),
+            ("offset", 15.0),
+        ],
+    ),
 ];
 
 const REVERB: &[Preset] = &[

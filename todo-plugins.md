@@ -49,7 +49,7 @@ new UI editor or large DSP.
   points as parameters, dragged in the effect window).
 - [x] Fruity Love Philter → drawn per-target envelope shapes for
   `auto_filter` (beyond one LFO and the envelope follower).
-- [ ] Fruity Delay 3 → modulation, diffusion and a feedback filter for
+- [x] Fruity Delay 3 → modulation, diffusion and a feedback filter for
   `delay`.
 - [ ] Luxeverb → a higher-density reverb (FDN design) with modulation and
   early reflections as a second reverb kind.

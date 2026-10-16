@@ -956,6 +956,12 @@ const DELAY_PARAMS: &[ParamSpec] = &[
     spec("mix", 0.0, 1.0, 0.3, ""),
     int_spec("ping_pong", 0.0, 1.0, 1.0),
     spec("damping", 0.0, 1.0, 0.3, ""),
+    spec("offset", -20.0, 20.0, 0.0, "ms"),
+    spec("mod_rate", 0.05, 5.0, 0.5, "Hz"),
+    spec("mod_depth", 0.0, 10.0, 0.0, "ms"),
+    spec("low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("diffusion", 0.0, 0.9, 0.0, ""),
+    spec("saturation", 0.0, 1.0, 0.0, ""),
 ];
 
 const REVERB_PARAMS: &[ParamSpec] = &[

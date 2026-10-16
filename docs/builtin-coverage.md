@@ -62,7 +62,7 @@ Status:
 | Fruity Squeeze | `bitcrusher` (with squeeze), `waveshaper` | covered | |
 | Hardcore | `overdrive`, `waveshaper`, `auto_filter`, `chorus` | partial | No single guitar-pedal chain effect |
 | Effector | Separate effects | partial | No all-in-one effect |
-| Fruity Delay 2 / 3 | `delay` | covered | |
+| Fruity Delay 2 / 3 | `delay` (offset, modulation, feedback low cut, diffusion, saturation) | covered | |
 | Fruity Delay Bank, Multiband Delay | `multi_tap` (per-tap pan, low cut and high cut) | covered | Four taps |
 | Fruity Reeverb 2, Luxeverb | `reverb` | covered | |
 | Fruity Convolver | `convolution` (files or generated rooms) | covered | |
