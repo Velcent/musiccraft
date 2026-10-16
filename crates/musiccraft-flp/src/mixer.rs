@@ -354,6 +354,24 @@ impl<'a> Insert<'a> {
         Some(out)
     }
 
+    /// The routing flags: one per insert in mixer order (master first),
+    /// set where this insert sends to that one.
+    #[must_use]
+    pub fn routing(&self) -> Option<&'a [bool]> {
+        match &self.events.first(id::ROUTING)?.value {
+            Value::InsertRouting(flags) => Some(flags),
+            _ => None,
+        }
+    }
+
+    /// The level of the route to insert `target` (the parameter record
+    /// `RouteVolStart + target`), 0–12800, if the file has one.
+    #[must_use]
+    pub fn route_level(&self, target: usize) -> Option<i64> {
+        let record = u8::try_from(usize::from(param::ROUTE_VOL_START) + target).ok()?;
+        self.own(record)
+    }
+
     /// The effect slots (only when the insert has parameter records, as in
     /// PyFLP).
     #[must_use]

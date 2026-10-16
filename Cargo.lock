@@ -1463,6 +1463,7 @@ dependencies = [
 name = "musiccraft-commands"
 version = "0.2.0"
 dependencies = [
+ "musiccraft-flp",
  "musiccraft-formula",
  "musiccraft-project",
  "serde",

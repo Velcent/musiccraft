@@ -151,6 +151,7 @@ of contents; see `docs/clean-room.md`.
 | Project | Export FLAC (lossless) | `cmd:project.export_flac` |
 | Project | Export lossy audio (MP3, Ogg) | `todo` |
 | Project | Autosave and crash recovery | `done` |
+| Project | Import FL Studio projects (.flp) | `cmd:project.import_flp` `spec:flp-import.md` |
 | Input | MIDI keyboard plays the selected channel | `done` |
 | Input | Record live notes into patterns | `cmd:record.toggle` `key:R=record.toggle` `spec:recording.md` |
 | Input | Recording count-in | `cmd:record.toggle_count_in` `key:Ctrl+P=record.toggle_count_in` |

@@ -909,6 +909,119 @@ fn save_and_load_round_trip() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+fn flp_asset(name: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../musiccraft-flp/tests/assets")
+        .join(name);
+    format!("\"{}\"", path.display())
+}
+
+#[test]
+fn import_flp_converts_pyflps_test_project() {
+    use musiccraft_project::{ClipSource, Instrument};
+    let mut s = session();
+    run(&mut s, "project.set_tempo 101");
+    let outcome = s
+        .run_line(&format!(
+            "project.import_flp {}",
+            flp_asset("FL 20.8.4.flp")
+        ))
+        .expect("imports")
+        .message;
+    assert!(
+        outcome.contains("replaced “BooBass” (now a synth)"),
+        "{outcome}"
+    );
+    assert!(outcome.contains("automation clip"), "{outcome}");
+    assert_eq!(s.undo_depth(), 0);
+    let p = s.project();
+    assert_eq!(p.name(), "PyFLP Test FLP");
+    assert!((p.tempo_bpm() - 69.42).abs() < 1e-9);
+    assert!(p.path().is_none());
+    // 19 channels, less the automation clip.
+    assert_eq!(p.channels.len(), 18);
+    let by_name = |name: &str| p.channels.iter().find(|c| c.name == name).expect(name);
+    assert_eq!(by_name("Zero Volume").volume, 0.0);
+    assert_eq!(by_name("Full Volume").volume, 1.0);
+    assert_eq!(by_name("100% L").pan, -1.0);
+    assert_eq!(by_name("100% R").pan, 1.0);
+    assert!(by_name("Disabled").mute);
+    assert!(matches!(
+        &by_name("22in Kick").instrument,
+        Instrument::Sampler { sample } if sample.ends_with("22in Kick.wav")
+    ));
+    assert!(matches!(
+        by_name("Layer").instrument,
+        Instrument::Layer { .. }
+    ));
+    // Channel routing and insert numbers agree.
+    let routed = by_name("Instrument track").mixer_track;
+    assert_eq!(p.mixer[routed].name, "Instrument track");
+    // Inserts carry their settings.
+    let insert = |name: &str| p.mixer.iter().find(|m| m.name == name).expect(name);
+    assert_eq!(p.mixer[0].name, "Master");
+    assert_eq!(insert("Zero Volume").volume, 0.0);
+    assert_eq!(insert("100% L").pan, -1.0);
+    assert_eq!(insert("100% mono").separation, -1.0);
+    assert_eq!(insert("100% separated").separation, 1.0);
+    assert!(insert("Swap LR").swap_sides);
+    assert!(insert("Invert Polarity").phase_invert);
+    assert!(insert("Disabled").mute);
+    assert!(!insert("No routes").to_master);
+    // The MIDI pattern's 44 notes (4 more belong to the automation clip's
+    // channel, which is not imported) and the playlist.
+    let midi = p.patterns.iter().find(|x| x.name == "MIDI").expect("MIDI");
+    assert_eq!(midi.notes.len(), 44);
+    // The first track is unnamed (as PyFLP reads it), then "Enabled",
+    // then "Disabled".
+    assert_eq!(p.playlist.track_name(1), "Enabled");
+    assert_eq!(p.playlist.track_name(2), "Disabled");
+    assert_eq!(
+        p.playlist.muted_tracks.iter().copied().collect::<Vec<_>>(),
+        [2]
+    );
+    assert_eq!(p.playlist.loop_range, Some((3840, 5376)));
+    assert!(
+        p.playlist
+            .clips
+            .iter()
+            .any(|c| matches!(c.source, ClipSource::Audio(_)))
+    );
+}
+
+#[test]
+fn import_flp_scales_ticks_to_96_ppq() {
+    // PyFLP's multi-channel pattern project.
+    let mut s = session();
+    run(
+        &mut s,
+        &format!(
+            "project.import_flp {}",
+            flp_asset("patterns/multi-channel.flp")
+        ),
+    );
+    let p = s.project();
+    assert!(!p.patterns.is_empty());
+    for note in p.patterns.iter().flat_map(|x| &x.notes) {
+        assert!(note.length >= 1);
+        assert!(p.channel_position(note.channel).is_some());
+    }
+}
+
+#[test]
+fn import_flp_refuses_files_pyflp_refuses() {
+    let mut s = session();
+    for file in [
+        "corrupted/invalid-header-magic.flp",
+        "corrupted/invalid-ppq.flp",
+        "corrupted/invalid-format.flp",
+    ] {
+        let err = fails(&mut s, &format!("project.import_flp {}", flp_asset(file)));
+        assert!(err.to_string().contains("cannot import"), "{err}");
+    }
+    fails(&mut s, "project.import_flp /no/such/file.flp");
+}
+
 #[test]
 fn recover_loads_a_backup_without_adopting_its_path() {
     let dir = std::env::temp_dir().join(format!("musiccraft-recover-{}", std::process::id()));

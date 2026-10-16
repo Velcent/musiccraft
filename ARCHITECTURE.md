@@ -12,7 +12,7 @@
 
 ```
 musiccraft-app ──► musiccraft-ui ──► musiccraft-commands ──► musiccraft-project ──► musiccraft-params
-      │                                     ▲                                         ▲
+      │                                     ▲    └──► musiccraft-flp                  ▲
       ├──► musiccraft-render ───────────────┤                                         │
       │        ├──► musiccraft-engine ──► musiccraft-dsp ─────────────────────────────┤
       │        └──► musiccraft-samples ──► musiccraft-dsp                              │
@@ -28,7 +28,8 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-formula` | The formula controllers' expression language: parsing on the main thread, allocation-free evaluation on the audio thread. No dependencies. |
 | `musiccraft-params` | Shared tables: timing (PPQ), instrument and effect parameter specs, built-in sound names. No logic. |
 | `musiccraft-project` | Project data model and JSON file format. No audio, no UI. |
-| `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`. |
+| `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`; converts FL Studio projects for `project.import_flp`. |
+| `musiccraft-flp` | Reads FL Studio projects and presets: a Rust port of PyFLP (GPL-3.0), tested against PyFLP on PyFLP's own test files. No dependencies; safe code. |
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects (incl. a small radix-2 FFT for convolution and the analyzer), sample buffers. Allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voices, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |

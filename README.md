@@ -126,6 +126,10 @@ Hover any control and the hint bar at the top says what it does.
   the playhead, which steps on). In song mode, moving a knob while recording
   writes automation.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
+- **FL Studio projects**: `project.import_flp song.flp` converts tempo,
+  channels, patterns and notes, the playlist and the mixer. FL's own plugins
+  become synths and VST3 plugins carry over without their settings; the
+  message lists what was left out (see `docs/spec/flp-import.md`).
 - **MIDI Out channels** (rack → More instruments) send their notes to
   external gear on a MIDI channel; pick the output port in Settings → MIDI.
 - **Plugins (CLAP and VST3)**: instruments and effects from `~/.clap`,
