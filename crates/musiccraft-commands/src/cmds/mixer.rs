@@ -154,13 +154,13 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
     ]
 }
 
-/// Sidechain sources of every effect that has one, as (track, slot,
-/// parameter index, source).
+/// Tracks named by effect parameters (sidechain sources and send targets),
+/// as (track, slot, parameter index, named track).
 fn sidechains(project: &Project) -> Vec<(usize, usize, usize, usize)> {
     let mut out = Vec::new();
     for (t, track) in project.mixer.iter().enumerate() {
         for (s, effect) in track.effects.iter().enumerate() {
-            let Some(index) = effect.kind.sidechain_index() else {
+            let Some(index) = effect.kind.track_ref_index() else {
                 continue;
             };
             let source = effect.values.get(index).copied().unwrap_or(0.0).round() as usize;
@@ -172,7 +172,7 @@ fn sidechains(project: &Project) -> Vec<(usize, usize, usize, usize)> {
     out
 }
 
-/// Shifts sidechain sources at or after `from` by `delta`.
+/// Shifts sidechain sources and send targets at or after `from` by `delta`.
 fn shift_sidechains(project: &mut Project, from: usize, delta: isize) {
     for (t, s, index, source) in sidechains(project) {
         if source >= from {
@@ -250,7 +250,9 @@ fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
         .iter()
         .any(|(_, _, _, source)| *source == index)
     {
-        return Err(args.invalid("an effect uses this track as its sidechain; change it first"));
+        return Err(args.invalid(
+            "an effect uses this track as its sidechain or send target; change it first",
+        ));
     }
     shift_sidechains(project, index + 1, -1);
     let track = project.mixer.remove(index);
@@ -641,6 +643,12 @@ fn set_effect_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
             return Err(args.invalid(
                 "a sidechain comes from a lower-numbered insert (or any insert for the master)",
             ));
+        }
+    }
+    if effect.kind.send_target_index() == Some(param) && value >= 0.5 {
+        let target = value as usize;
+        if index == 0 || target <= index || target >= project_tracks {
+            return Err(args.invalid("a send effect feeds a higher-numbered insert"));
         }
     }
     let previous = std::mem::replace(&mut effect.values[param], value);

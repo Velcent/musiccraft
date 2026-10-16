@@ -1254,7 +1254,7 @@ fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals
             continue;
         };
         // Inserts below this one are finished and can key its compressors.
-        process_track(track, fx, externals, before, 0);
+        process_track(track, fx, externals, before, 0, Some((&mut *after, i + 1)));
         meters.record_peak(i, peak(&track.left, frames), peak(&track.right, frames));
         publish_pitches(i, track, meters);
         if track.params.to_master {
@@ -1273,7 +1273,7 @@ fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals
         }
     }
     if let Some((master, inserts)) = tracks.split_first_mut() {
-        process_track(master, fx, externals, inserts, 1);
+        process_track(master, fx, externals, inserts, 1, None);
         meters.record_peak(0, peak(&master.left, frames), peak(&master.right, frames));
         publish_pitches(0, master, meters);
     }
@@ -1299,12 +1299,15 @@ fn publish_pitches(index: usize, track: &TrackNode, meters: &Meters) {
 
 /// Runs a track's effects and fader. `keys` are already-processed tracks that
 /// may feed effect sidechains; `keys[i]` is mixer track `i + key_offset`.
+/// `later` holds the tracks a send effect may feed, `later.0[j]` being mixer
+/// track `j + later.1`; the master has none.
 fn process_track(
     track: &mut TrackNode,
     fx: FxContext,
     externals: &mut Externals,
     keys: &[TrackNode],
     key_offset: usize,
+    mut later: Option<(&mut [TrackNode], usize)>,
 ) {
     let FxContext {
         frames,
@@ -1328,6 +1331,12 @@ fn process_track(
             if let Some(Some(external)) = externals.get_mut(usize::from(index)) {
                 external.process(l, r, &transport);
                 scrub(l, r);
+            }
+            continue;
+        }
+        if slot.effect.kind() == EffectKind::Send {
+            if let Some((tracks, offset)) = later.as_mut() {
+                send(l, r, &slot.params.values, tracks, *offset);
             }
             continue;
         }
@@ -1363,6 +1372,31 @@ fn process_track(
     *gains = to;
     scale_ramped(l, from.0, to.0);
     scale_ramped(r, from.1, to.1);
+}
+
+/// A send effect: adds this point of the chain to its target track, panned
+/// and scaled, then scales what continues down the chain by `dry`.
+/// Parameters: `[target, level, pan, dry]`.
+fn send(l: &mut [f32], r: &mut [f32], p: &[f32], tracks: &mut [TrackNode], offset: usize) {
+    let param = |i: usize, default: f32| p.get(i).copied().unwrap_or(default);
+    let target = param(0, 0.0).round();
+    let dest = (target >= 0.5)
+        .then(|| (target as usize).checked_sub(offset))
+        .flatten()
+        .and_then(|j| tracks.get_mut(j));
+    if let Some(dest) = dest {
+        let level = param(1, 1.0).clamp(0.0, 1.25);
+        let pan = param(2, 0.0).clamp(-1.0, 1.0);
+        let (gl, gr) = ((1.0 - pan).min(1.0) * level, (1.0 + pan).min(1.0) * level);
+        add_scaled(&mut dest.left, l, gl, l.len());
+        add_scaled(&mut dest.right, r, gr, r.len());
+    }
+    let dry = param(3, 1.0).clamp(0.0, 1.0);
+    if dry < 1.0 {
+        for sample in l.iter_mut().chain(r.iter_mut()) {
+            *sample *= dry;
+        }
+    }
 }
 
 /// Replaces non-finite samples with silence. Returns whether any were found.

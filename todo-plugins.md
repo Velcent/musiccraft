@@ -40,7 +40,7 @@ new UI editor or large DSP.
   bucket-brigade style low-pass on the wet path.
 - [x] Vintage Phaser → `phaser` gains a "warm" option (soft saturation in the
   feedback loop).
-- [ ] Fruity Send → per-insert send level as an effect (currently only mixer
+- [x] Fruity Send → per-insert send level as an effect (currently only mixer
   routing sends).
 
 ### Medium

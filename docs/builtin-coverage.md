@@ -79,7 +79,7 @@ Status:
 | Gross Beat | `gate`, `stutter` | partial | No drawn time/volume envelopes |
 | Fruity Scratcher | — | not planned | Turntable simulation |
 | Frequency Splitter | — | not planned | Splitting into separate mixer tracks; `multiband` covers band processing |
-| Fruity Send, Fruity Mute 2 | Mixer sends and mute | covered | |
+| Fruity Send, Fruity Mute 2 | `send` effect (mid-chain send with dry control), mixer sends and mute | covered | |
 | Fruity Spectroman, Wave Candy | Spectrum analyzer, toolbar oscilloscope | covered | |
 | Fruity dB Meter | Mixer meters | covered | |
 | Tuner | `tuner` | covered | |

@@ -329,6 +329,8 @@ fn knobs(
             let text = match spec.name {
                 "sidechain" if value < 0.5 => "off".to_owned(),
                 "sidechain" => format!("from {value:.0}"),
+                "target" if value < 0.5 => "off".to_owned(),
+                "target" => format!("to {value:.0}"),
                 "rate" | "slice" | "every" if synced => SYNC_RATE_NAMES
                     .get(value.round() as usize)
                     .copied()
@@ -1335,6 +1337,7 @@ fn graph(
         }
         // Drawn by `crate::tuner` instead.
         EffectKind::Plugin | EffectKind::PitchCorrect | EffectKind::Tuner => {}
+        EffectKind::Send => {}
     }
 
     let dragging = state

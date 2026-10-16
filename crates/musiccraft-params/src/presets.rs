@@ -1472,6 +1472,12 @@ const MULTIBAND_LIMITER: &[Preset] = &[
     ),
 ];
 
+const SEND: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Half", &[("level", 0.5)]),
+    preset("Send only", &[("dry", 0.0)]),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1514,6 +1520,7 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::Dynamics => DYNAMICS,
         EffectKind::StereoShaper => STEREO_SHAPER,
         EffectKind::MultibandLimiter => MULTIBAND_LIMITER,
+        EffectKind::Send => SEND,
         EffectKind::Plugin => &[],
     }
 }

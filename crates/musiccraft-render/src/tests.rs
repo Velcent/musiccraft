@@ -621,6 +621,52 @@ fn sidechained_compressor_ducks_on_each_kick() {
 }
 
 #[test]
+fn send_effect_feeds_its_target_from_mid_chain() {
+    let level = |script: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_sampler builtin:kick
+                 step.toggle 1 0
+                 channel.route 1 1
+                 mixer.add_effect 1 send
+                 mixer.set_effect_param 1 1 dry 0
+                 {script}"
+            ),
+        );
+        let options = RenderOptions {
+            max_tail_seconds: 0.0,
+            ..RenderOptions::default()
+        };
+        rms(&render(s.project(), options).0[..20_000])
+    };
+    let off = level("");
+    let sent = level("mixer.set_effect_param 1 1 target 2");
+    let muted_target = level("mixer.set_effect_param 1 1 target 2\nmixer.toggle_mute 2");
+    assert!(off < 1e-6, "dry 0 and no target: silence, got {off}");
+    assert!(sent > 0.01, "the kick reaches the master through insert 2");
+    assert!(
+        muted_target < 1e-6,
+        "only through insert 2, got {muted_target}"
+    );
+}
+
+#[test]
+fn send_targets_follow_track_insertion_and_block_removal() {
+    let mut s = session();
+    run(
+        &mut s,
+        "mixer.add_effect 1 send
+         mixer.set_effect_param 1 1 target 3",
+    );
+    assert!(s.run_line("mixer.set_effect_param 1 1 target 1").is_err());
+    assert!(s.run_line("mixer.remove_track 3").is_err());
+    s.run_line("mixer.remove_track 2").unwrap();
+    assert_eq!(s.project().mixer[1].effects[0].values[0], 2.0);
+}
+
+#[test]
 fn flac_export_is_valid_and_smaller_than_wav() {
     let dir = std::env::temp_dir().join(format!("musiccraft-flacx-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();

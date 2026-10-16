@@ -98,6 +98,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Multi-tap delay and stutter | `fx:multi_tap` `fx:stutter` |
 | Effects | Multiband compressor | `fx:multiband` |
 | Effects | Multiband limiter with a one-knob amount | `fx:multiband_limiter` |
+| Effects | Send effect (mid-chain send to another insert) | `fx:send` |
 | Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |
 | Effects | Pitch shifter | `fx:pitch_shift` |
 | Effects | Convolution reverb with impulse files or generated rooms | `fx:convolution` `cmd:mixer.set_effect_file` |

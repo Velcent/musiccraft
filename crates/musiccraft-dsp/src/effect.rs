@@ -166,6 +166,8 @@ pub enum Effect {
     StereoShaper(StereoShaper),
     /// Three-band limiter with a master ceiling.
     MultibandLimiter(MultibandLimiter),
+    /// Sends a copy of the audio at this point in the chain to a higher-numbered insert; routed by the engine.
+    Send,
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -215,6 +217,7 @@ impl Effect {
             EffectKind::Dynamics => Self::Dynamics(Dynamics::default()),
             EffectKind::StereoShaper => Self::StereoShaper(StereoShaper::new(sample_rate)),
             EffectKind::MultibandLimiter => Self::MultibandLimiter(MultibandLimiter::default()),
+            EffectKind::Send => Self::Send,
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -261,6 +264,7 @@ impl Effect {
             Self::Dynamics(_) => EffectKind::Dynamics,
             Self::StereoShaper(_) => EffectKind::StereoShaper,
             Self::MultibandLimiter(_) => EffectKind::MultibandLimiter,
+            Self::Send => EffectKind::Send,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -325,6 +329,7 @@ impl Effect {
             Self::Dynamics(fx) => fx.process(left, right, params, ctx),
             Self::StereoShaper(fx) => fx.process(left, right, params, ctx),
             Self::MultibandLimiter(fx) => fx.process(left, right, params, ctx),
+            Self::Send => {}
             Self::Passthrough => {}
         }
     }
@@ -349,6 +354,7 @@ impl Effect {
             Self::Reverb(fx) => fx.reset(),
             Self::Compressor(fx) => fx.reset(),
             Self::Distortion
+            | Self::Send
             | Self::Passthrough
             | Self::Stereo
             | Self::Autopan

@@ -516,13 +516,15 @@ pub enum EffectKind {
     StereoShaper,
     /// Three-band limiter with a master ceiling.
     MultibandLimiter,
+    /// Sends a copy of the audio at this point in the chain to a higher-numbered insert; routed by the engine.
+    Send,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 38] = [
+pub const EFFECT_KINDS: [EffectKind; 39] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -554,6 +556,7 @@ pub const EFFECT_KINDS: [EffectKind; 38] = [
     EffectKind::Gate,
     EffectKind::Autopan,
     EffectKind::Stereo,
+    EffectKind::Send,
     EffectKind::StereoShaper,
     EffectKind::DcBlock,
     EffectKind::Distortion,
@@ -667,6 +670,13 @@ const MULTIBAND_LIMITER_PARAMS: &[ParamSpec] = &[
     spec("release", 5.0, 1_000.0, 100.0, "ms"),
     spec("amount", 0.0, 1.0, 1.0, ""),
     spec("ceiling", -12.0, 0.0, -0.3, "dB"),
+];
+
+const SEND_PARAMS: &[ParamSpec] = &[
+    int_spec("target", 0.0, 127.0, 0.0),
+    spec("level", 0.0, 1.25, 1.0, ""),
+    spec("pan", -1.0, 1.0, 0.0, ""),
+    spec("dry", 0.0, 1.0, 1.0, ""),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -998,6 +1008,7 @@ impl EffectKind {
             Self::Dynamics => "dynamics",
             Self::StereoShaper => "stereo_shaper",
             Self::MultibandLimiter => "multiband_limiter",
+            Self::Send => "send",
             Self::Plugin => "plugin",
         }
     }
@@ -1050,6 +1061,7 @@ impl EffectKind {
             Self::Dynamics => DYNAMICS_PARAMS,
             Self::StereoShaper => STEREO_SHAPER_PARAMS,
             Self::MultibandLimiter => MULTIBAND_LIMITER_PARAMS,
+            Self::Send => SEND_PARAMS,
             Self::Plugin => &[],
         }
     }
@@ -1059,6 +1071,20 @@ impl EffectKind {
     #[must_use]
     pub fn sidechain_index(self) -> Option<usize> {
         self.params().iter().position(|p| p.name == "sidechain")
+    }
+
+    /// Index of the `target` parameter (the insert a send effect feeds), for
+    /// effects that have one.
+    #[must_use]
+    pub fn send_target_index(self) -> Option<usize> {
+        self.params().iter().position(|p| p.name == "target")
+    }
+
+    /// Index of the parameter naming another mixer track (a sidechain source
+    /// or a send target), for effects that have one.
+    #[must_use]
+    pub fn track_ref_index(self) -> Option<usize> {
+        self.sidechain_index().or_else(|| self.send_target_index())
     }
 
     /// Default parameter values for this effect.
