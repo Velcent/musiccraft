@@ -88,7 +88,9 @@ pub fn render_with(
             }
         }));
     }
-    let sequence = Sequence::new(events, total_ticks + tail_ticks).with_automation(lanes);
+    let sequence = Sequence::new(events, total_ticks + tail_ticks)
+        .with_automation(lanes)
+        .with_controllers(base.controllers().to_vec());
     let _ = handle.send(EngineMessage::SetSequence(Box::new(sequence)));
     let _ = handle.send(EngineMessage::Play);
 
@@ -446,5 +448,6 @@ pub fn register_with(
     registry.register(Box::new(ExportFlacCommand { host: host.clone() }))?;
     registry.register(Box::new(crate::ConsolidateCommand { host: host.clone() }))?;
     registry.register(Box::new(crate::ExportMidiCommand))?;
+    registry.register(Box::new(crate::SampleEditCommand))?;
     registry.register(Box::new(crate::plugins::PluginListCommand { host }))
 }

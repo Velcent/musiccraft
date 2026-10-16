@@ -54,16 +54,20 @@
 | --- | --- |
 | `filter` | mode (0 low-pass, 1 band-pass, 2 high-pass), cutoff Hz, resonance, mix |
 | `eq` | low gain/freq (shelf), mid gain/freq/q (peak), high gain/freq (shelf) |
-| `delay` | time in beats (tempo-synced), feedback, mix, ping_pong, damping |
+| `delay` | time in beats (tempo-synced), feedback, mix, ping_pong, damping, offset ms (−20–20: the right side's echoes come this much later, or the left's for negative values), mod_rate Hz and mod_depth ms (a sine LFO, a quarter cycle apart per side, moves the read point for a tape-like wobble; depth 0 is off), and a feedback path where each repeat passes a low cut Hz (one-pole high-pass, off at 20 Hz), diffusion (two all-pass diffusers that smear repeats toward a reverb-like tail, 0 off) and saturation (tanh, 0 off; it never raises the level) |
 | `reverb` | size, damping, width, mix |
-| `chorus` | rate Hz, depth ms, delay ms, mix |
+| `hall_reverb` | predelay ms (0–200), decay s (time for the tail to fall 60 dB), size (scales every delay length, 0.5×–1.5×), damping Hz (one-pole low-pass inside the loop; lower is darker and shortens highs), low cut Hz (high-pass on the wet signal), early (level of six early reflections after the predelay, alternating sides), mod_depth and mod_rate Hz (slow sine modulation of the line lengths, which smooths metallic ringing), width (0 mono wet – 1 full stereo), mix. An eight-line feedback delay network with Householder mixing; each line's loop gain is set so the tail falls 60 dB in the decay time |
+| `chorus` | rate Hz, depth ms, delay ms, mix, voices (1–3 delayed copies per side, their LFOs evenly spaced through the cycle and averaged), tone Hz (one-pole low-pass on the wet signal for a darker, vintage sound; off at its 20 kHz maximum) |
 | `compressor` | threshold dB, ratio, attack ms, release ms, makeup dB, sidechain (0 = off, else the insert whose post-fader output drives detection) |
 | `limiter` | input gain dB, ceiling dB, release ms (instant attack; output never exceeds the ceiling) |
-| `distortion` | drive dB, mix, output dB |
-| `phaser` | rate Hz, depth, feedback, stages (2–12 all-pass stages), mix |
+| `distortion` | drive dB, mix, output dB, mode (0 soft: tanh; 1 hard: the driven signal is clipped flat at the threshold, then scaled back to full level), threshold dB (hard mode only, −24–0) |
+| `phaser` | rate Hz, depth, feedback, stages (2–12 all-pass stages), mix, warm (0–1: tanh saturation in the feedback loop, which rounds off the resonant peaks; 0 is off) |
 | `flanger` | rate Hz, depth ms, delay ms, feedback (−0.95–0.95), mix |
-| `bitcrusher` | bits (1–16), downsample (hold every 1–32 samples), mix, output dB |
+| `bitcrusher` | bits (1–16), downsample (hold every 1–32 samples), mix, output dB, squeeze (0–1: before quantizing, each held sample's level is raised to the power 1 − 0.9 × squeeze, which pushes quiet detail up toward full level for a gritty, squashed sound; 0 is off) |
 | `stereo` | width (0 mono – 2 extra wide, mid/side), balance, invert left, invert right |
+| `stereo_shaper` | left_to_left, right_to_left, left_to_right, right_to_right (−1–1; each output side is a mix of both inputs, so swapping sides, mono from one side and polarity flips are all settings), delay ms (−20–20: positive delays the right side, negative the left, for Haas widening), output dB |
+| `send` | target (0 = off, else a higher-numbered insert), level (0–1.25), pan (balance of the sent copy), dry (0–1, share of the audio that continues down this track's chain). Adds the audio as it is at this point of the chain to the target insert's input, so effects after the send are not heard on the copy. A send on the master, or one naming the same or a lower insert, is refused. Inserting or removing tracks renumbers targets; removing a target track is refused |
+| `band_split` | low/mid and mid/high crossover Hz (the `multiband` split; the bands sum flat), low_target, mid_target, high_target (0 = the band stays on this track, else a higher-numbered insert that receives it instead). Lets each band get its own effects and fader. Targets follow the `send` rules |
 | `gate` | rate (1/32 note – 1 bar per step), duty (open share of a step), depth, smooth ms, steps (16-step on/off pattern as a number, bit 0 = first step) |
 | `autopan` | rate (1/32 note – 1 bar per cycle), depth, shape (sine, triangle, square) |
 | `graphic_eq` | seven peak bands at 63, 160, 400, 1k, 2.5k, 6.3k, 16k Hz (±18 dB each), output dB |
@@ -71,22 +75,32 @@
 | `bass_boost` | freq Hz, boost dB (low shelf), drive (gentle saturation after the shelf) |
 | `overdrive` | drive dB, tone Hz (low-pass after the clipper), bias (asymmetry, adds even harmonics), mix, output dB |
 | `soft_clipper` | threshold dB, knee (how early the curve bends), output dB; never exceeds the threshold |
-| `waveshaper` | shape (tanh, hard clip, fold, sine, asymmetric, rectify), drive dB, mix, output dB |
+| `waveshaper` | shape (tanh, hard clip, fold, sine, asymmetric, rectify, drawn), drive dB, mix, output dB, point_1 … point_9 (the drawn curve: output levels −1–1 at inputs −1, −0.75, … 1, joined by straight lines and held flat beyond ±1; the defaults draw a straight line, so the drawn shape starts clean). With the drawn shape the window shows the nine points; drag one up or down to bend the curve |
+| `guitar_chain` | a fixed pedal chain in one insert: compress (0–1; threshold −6 to −40 dB, ratio 1–8 and make-up 0–12 dB together; 0 is off), drive dB (0 is off) and drive_type (soft tanh, hard clip, fuzz: asymmetric and sputtering near silence), bass / mid / treble dB (shelf at 120 Hz, peak at 700 Hz, shelf at 3.2 kHz), chorus (0–1 depth of a fixed chorus, 0 off), cabinet (off, small: 110 Hz – 5 kHz with a 1.8 kHz bump, large: 70 Hz – 3.8 kHz with a 120 Hz bump), output dB, mix. The chorus follows the wet/dry mix. The window shows the chain with the stages that are on lit |
 | `dc_block` | freq Hz (one-pole high-pass that removes DC offset) |
 | `ring_mod` | freq Hz (sine carrier the signal is multiplied by), mix |
 | `freq_shift` | shift Hz (−2000–2000; every frequency moves by the same amount, via a Hilbert transformer), mix |
 | `formant` | vowel (0 a – 4 u, fractional values morph), shift semitones, resonance, mix |
-| `auto_filter` | mode, cutoff Hz, resonance, rate (tempo-synced LFO), depth octaves, envelope octaves (input level opens or closes the filter), mix |
+| `auto_filter` | mode, cutoff Hz, resonance, rate (tempo-synced LFO), depth octaves, envelope octaves (input level opens or closes the filter), mix, lfo_shape (sine, triangle, saw up, saw down, square, drawn), step_1 … step_8 (the drawn shape: eight levels −1–1 evenly spaced through one cycle, joined by straight lines that wrap from the last back to the first), volume (0–1: the same shape also dips the level, by this much at its lowest point), pan (−1–1: the shape also moves the sound, to the right at its highest point for positive values). The window draws the shape under the response; with the drawn shape drag its points up or down |
+| `dynamics` | an all-in-one chain of noise gate → compressor → limiter: gate_threshold dB (at its minimum, −100, the gate is off), gate_attack / gate_hold / gate_release ms, gate_range dB; comp_threshold dB, comp_ratio (1 = off), comp_attack / comp_release ms, comp_makeup dB; limit_gain dB (before the limiter), limit_ceiling dB, limit_release ms. Each stage behaves exactly like the separate `noise_gate`, `compressor` and `limiter`; by default only the limiter acts. Its window draws the combined static curve; drag the knee for the compressor threshold and the right-hand point for the ceiling |
 | `noise_gate` | threshold dB, attack ms, hold ms, release ms, range dB (attenuation while closed) |
 | `transient` | attack (−1 soften – 1 boost), sustain (−1–1), output dB; from the difference of a fast and a slow envelope |
-| `multi_tap` | four taps of time (beats) and level, alternating left/right, feedback, mix, damping |
+| `multi_tap` | four taps of time (beats) and level, feedback, mix, damping; per tap a pan (−1 left – 1 right, constant power; defaults alternate hard left/right), a low cut Hz (one-pole high-pass, off at its 20 Hz minimum) and a high cut Hz (one-pole low-pass, off at its 20 kHz maximum). Older projects keep their sound because the new parameters default to the old behaviour |
 | `multiband` | low/mid and mid/high crossover Hz (Linkwitz–Riley, bands sum flat), threshold dB / ratio / gain dB per band, attack ms, release ms, output dB |
-| `vocoder` | sidechain (the modulator, e.g. a voice; this insert's audio is the carrier), bandwidth, attack ms, release ms, shift semitones (moves the carrier bands), noise (hiss mixed into the carrier for consonants), mix, output dB; 16 bands 120 Hz–7.5 kHz. Without a sidechain only the dry share passes |
+| `multiband_limiter` | low/mid and mid/high crossover Hz (the same split as `multiband`), per band drive dB (gain into the band's limiter), ceiling dB (the band's peak never exceeds it) and level dB (after the limiter), release ms (all limiters), amount (0–1, scales every band's drive, so one knob goes from untouched to fully driven), ceiling dB (a master peak limiter after the bands are summed; the output never exceeds it). With default settings audio below the master ceiling passes unchanged. Its "Enhance" presets give a one-knob loudness enhancer through `amount` |
+| `vocoder` | sidechain (the modulator, e.g. a voice; this insert's audio is the carrier), bandwidth, attack ms, release ms, shift semitones (moves the carrier bands), noise (hiss mixed into the carrier for consonants), mix, output dB, bands (4–64, default 16), low and high Hz (the band centres are log-spaced between them, default 120 Hz–7.5 kHz). More bands are made narrower and their make-up gain lower, so the level stays similar. Without a sidechain only the dry share passes |
 | `pitch_shift` | pitch semitones (−24–24), fine cents, window ms (longer is smoother, shorter tracks transients better), mix |
-| `pitch_correct` | key (C–B), scale (chromatic, major, minor, harmonic minor, major pentatonic, minor pentatonic), speed ms (how quickly the pitch glides to the target; 0 snaps at once for a hard-tuned sound), amount (share of the distance to the target note that is corrected), reference Hz (the frequency of A4, 415–466), mix. For one voice or instrument at a time; see *Pitch correction and tuner* |
+| `pitch_correct` | key (C–B), scale (chromatic, major, minor, harmonic minor, major pentatonic, minor pentatonic), speed ms (how quickly the pitch glides to the target; 0 snaps at once for a hard-tuned sound), amount (share of the distance to the target note that is corrected), reference Hz (the frequency of A4, 415–466), mix, follow (0 off, else a channel's rack number: while that channel holds a note, its highest held note is the target instead of the scale; with nothing held the scale applies. Moving channels keeps following the same channel, and removing a followed channel is refused), harmony_1 and harmony_2 (−12–12 semitones, 0 off: extra voices that follow the corrected pitch at that interval), harmony_level. For one voice or instrument at a time; see *Pitch correction and tuner* |
 | `tuner` | reference Hz (the frequency of A4). Leaves audio untouched; its window shows the note heard |
+| `multi_fx` | block (off, low-pass, high-pass, drive, crush, ring mod, phaser, flanger, chorus, reverb, width, tremolo, freq shift, fold), x and y (0–1, the block's two controls: cutoff/resonance, drive/mix, bits/rate, pitch/mix, speed/feedback, speed/depth, size/mix, width/balance, shift/mix), mix, output dB. The window is an X/Y pad: drag the point to play both controls at once. Picking another block clears the old one's tail |
+| `fx_chain` | four stages of block, x and y (the same blocks as `multi_fx`) processed in order, then mix and output dB. The window shows the four stages; empty stages are off |
+| `beat_shaper` | cycle (1 beat, 2 beats, 1 bar, 2 bars; follows the song position like the gate), time_mode (steps: each point holds for its eighth of the cycle; ramps: lines join the points, wrapping to the first), time_1 … time_8 (how far behind the input playback runs, as a share of the cycle: 0 is live, a held value repeats earlier audio, a ramp rising as fast as time freezes it, steeper ramps play backwards), volume_1 … volume_8 (levels joined by lines), mix. Jumps in time crossfade over 3 ms; history reaches back at most 8 seconds. The window shows both envelopes; drag their points |
+| `scratch` | hold (off: audio passes and is recorded; on: the last span is frozen like a record under a hand), position (0–1 through the held span: automate or drag it to scratch by hand), span beats (1/16 – 8 beats, at most 8 seconds), pattern (manual, baby: forward and back, chirp: the return cut, tear: the forward stroke in three jerks, transform: a baby scratch chopped eight times), rate (pattern cycle, 1/32 note – 1 bar, synced like the gate), depth (how far a pattern moves the record), inertia ms (how quickly the platter follows; longer is heavier), mix. Presets pick a pattern but never switch hold on |
 | `stutter` | slice (1/32 note – 1 bar), every (period, 1/32 note – 1 bar), portion (share at the end of each period that repeats), decay (level of each repeat relative to the last), mix |
 | `convolution` | mix, predelay ms, low cut Hz, high cut Hz, output dB; the impulse response is chosen with `mixer.set_effect_file` |
+
+The `send` effect's `target` and the band splitter's targets follow the same
+renumbering rules as sidechain sources (below).
 
 Effects with a `sidechain` parameter (the compressor and the vocoder) read the
 post-fader output of the insert it names: a lower-numbered insert, or any insert
@@ -109,6 +123,30 @@ time with the beat) and a free-running clock at the project tempo while
 stopped. The gate's window shows the 16 steps; clicking one turns it on or off.
 
 Ranges and defaults are defined in `musiccraft-params`.
+
+## Effect rack
+
+- The `rack` effect holds up to four parallel **branches** inside one slot,
+  each a chain of up to six built-in effects with their own settings. The
+  slot's input feeds every branch; each branch's output is scaled by
+  `branchN_level` (0–1.25) and placed by `branchN_pan` (balance, −1–1), the
+  branches are summed with `dry` (0–1) of the input, and `output` dB scales
+  the result. An empty branch is silent, so a new rack (with `dry` at its
+  default of 1) passes its input unchanged until effects are added.
+- Branch effects may be any built-in effect except the ones the engine
+  routes (`send`, `band_split`), plugins and racks themselves. Inside a
+  rack, effects have no sidechain and follow no channel (those parameters
+  are refused and hidden).
+- Commands (undoable): `mixer.rack_add <track> <slot> <branch> <kind>`
+  appends an effect to a branch; `mixer.rack_remove <track> <slot> <branch>
+  <n>` and `mixer.rack_insert … <n> <json>` (undo) remove and restore one;
+  `mixer.rack_param <track> <slot> <branch> <n> <param> <value>` sets a
+  parameter; `mixer.rack_enable <track> <slot> <branch> <n> <on|off>`
+  bypasses one. Changing a branch's effects rebuilds the track (tails
+  reset); changing their parameters does not.
+- The rack's window shows the four branches as rows of effect boxes; each
+  branch has an "Add" menu, and each effect expands into its knobs and a
+  bypass and remove button. Branch effect parameters are not automatable.
 
 ## Pitch correction and tuner
 
@@ -174,7 +212,8 @@ Ranges and defaults are defined in `musiccraft-params`.
   all-pass Hilbert transformer coefficients; vowel formant frequencies are
   textbook averages (Peterson & Barney style tables). The range of effect types
   (graphic and parametric EQ, gate, transient processing, multi-tap delay,
-  waveshaping, frequency shifting) mirrors the categories in the FL Studio
+  waveshaping, frequency shifting, an all-in-one dynamics unit, a stereo
+  mixing matrix) mirrors the categories in the FL Studio
   manual's effects list; the designs are ours. Convolution is uniformly
   partitioned overlap-save (textbook); the vocoder is a classic channel
   vocoder (band-pass filter banks and envelope followers); the pitch shifter is
@@ -191,3 +230,7 @@ Ranges and defaults are defined in `musiccraft-params`.
 - Track stereo separation, phase invert and swap left/right are mixer track
   properties described in the FL Studio online manual, "Mixer" (track
   properties). The mid/side formula is textbook; the ranges are our own.
+- The effect rack takes the idea of building parallel effect graphs inside
+  one plugin slot from the FL Studio online manual's description of
+  Patcher; the fixed four-branch layout, the parameters and the commands are
+  our own design.

@@ -154,25 +154,69 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
     ]
 }
 
-/// Sidechain sources of every effect that has one, as (track, slot,
-/// parameter index, source).
+/// Tracks named by effect parameters (sidechain sources and send targets),
+/// as (track, slot, parameter index, named track).
 fn sidechains(project: &Project) -> Vec<(usize, usize, usize, usize)> {
     let mut out = Vec::new();
     for (t, track) in project.mixer.iter().enumerate() {
         for (s, effect) in track.effects.iter().enumerate() {
-            let Some(index) = effect.kind.sidechain_index() else {
-                continue;
-            };
-            let source = effect.values.get(index).copied().unwrap_or(0.0).round() as usize;
-            if source > 0 {
-                out.push((t, s, index, source));
+            for index in effect.kind.track_ref_indices() {
+                let source = effect.values.get(index).copied().unwrap_or(0.0).round() as usize;
+                if source > 0 {
+                    out.push((t, s, index, source));
+                }
             }
         }
     }
     out
 }
 
-/// Shifts sidechain sources at or after `from` by `delta`.
+/// Effects that follow a channel, as (track, slot, parameter index, rack
+/// position counted from 1).
+pub(super) fn channel_followers(project: &Project) -> Vec<(usize, usize, usize, usize)> {
+    let mut out = Vec::new();
+    for (t, track) in project.mixer.iter().enumerate() {
+        for (s, effect) in track.effects.iter().enumerate() {
+            if let Some(index) = effect.kind.channel_ref_index() {
+                let position = effect.values.get(index).copied().unwrap_or(0.0).round() as usize;
+                if position > 0 {
+                    out.push((t, s, index, position));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Runs `change` (which reorders channels) and moves every followed channel
+/// position along with its channel; a followed channel that is gone stops
+/// being followed.
+pub(super) fn keeping_followers<T>(
+    project: &mut Project,
+    change: impl FnOnce(&mut Project) -> T,
+) -> T {
+    let followed: Vec<_> = channel_followers(project)
+        .into_iter()
+        .map(|(t, s, i, position)| (t, s, i, project.channels.get(position - 1).map(|c| c.id)))
+        .collect();
+    let out = change(project);
+    for (t, s, i, id) in followed {
+        let position = id
+            .and_then(|id| project.channel_position(id))
+            .map_or(0, |p| p + 1);
+        if let Some(value) = project
+            .mixer
+            .get_mut(t)
+            .and_then(|track| track.effects.get_mut(s))
+            .and_then(|e| e.values.get_mut(i))
+        {
+            *value = position as f32;
+        }
+    }
+    out
+}
+
+/// Shifts sidechain sources and send targets at or after `from` by `delta`.
 fn shift_sidechains(project: &mut Project, from: usize, delta: isize) {
     for (t, s, index, source) in sidechains(project) {
         if source >= from {
@@ -244,13 +288,15 @@ fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     args.expect(1, 1)?;
     let index = insert_arg(project, args, 0)?;
     if super::automation::targets_track(project, index, None) {
-        return Err(args.invalid("an automation drives this track; delete the automation first"));
+        return Err(args.invalid("an automation or controller uses this track; delete it first"));
     }
     if sidechains(project)
         .iter()
         .any(|(_, _, _, source)| *source == index)
     {
-        return Err(args.invalid("an effect uses this track as its sidechain; change it first"));
+        return Err(args.invalid(
+            "an effect uses this track as its sidechain or send target; change it first",
+        ));
     }
     shift_sidechains(project, index + 1, -1);
     let track = project.mixer.remove(index);
@@ -641,6 +687,12 @@ fn set_effect_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
             return Err(args.invalid(
                 "a sidechain comes from a lower-numbered insert (or any insert for the master)",
             ));
+        }
+    }
+    if effect.kind.is_send_target(param) && value >= 0.5 {
+        let target = value as usize;
+        if index == 0 || target <= index || target >= project_tracks {
+            return Err(args.invalid("a send effect feeds a higher-numbered insert"));
         }
     }
     let previous = std::mem::replace(&mut effect.values[param], value);

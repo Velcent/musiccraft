@@ -262,6 +262,131 @@ pub const SYNTH: &[Preset] = &[
             ("lfo_rate", 0.2),
         ],
     ),
+    preset(
+        "Dual filter pad",
+        &[
+            ("wave1", 1.0),
+            ("wave2", 1.0),
+            ("detune", 9.0),
+            ("osc_mix", 0.5),
+            ("cutoff", 1_800.0),
+            ("filter2_type", 3.0),
+            ("cutoff2", 250.0),
+            ("attack", 0.6),
+            ("sustain", 0.8),
+            ("release", 1.2),
+            ("unison", 3.0),
+            ("spread", 18.0),
+            ("mod1_source", 2.0),
+            ("mod1_dest", 1.0),
+            ("mod1_amount", 0.2),
+            ("lfo2_rate", 0.3),
+        ],
+    ),
+    preset(
+        "Triangle wobble",
+        &[
+            ("wave1", 1.0),
+            ("wave2", 2.0),
+            ("detune", -1200.0),
+            ("osc_mix", 0.5),
+            ("cutoff", 300.0),
+            ("resonance", 0.35),
+            ("drive", 0.15),
+            ("sustain", 0.6),
+            ("lfo2_rate", 4.0),
+            ("lfo2_shape", 1.0),
+            ("mod1_source", 2.0),
+            ("mod1_dest", 1.0),
+            ("mod1_amount", 0.6),
+        ],
+    ),
+    preset(
+        "Split stab",
+        &[
+            ("wave1", 2.0),
+            ("wave2", 1.0),
+            ("osc_mix", 0.5),
+            ("cutoff", 900.0),
+            ("filter2_type", 2.0),
+            ("cutoff2", 2_500.0),
+            ("resonance2", 0.5),
+            ("filter_routing", 2.0),
+            ("decay", 0.3),
+            ("sustain", 0.0),
+            ("release", 0.2),
+            ("env2_attack", 0.0),
+            ("env2_decay", 0.25),
+            ("mod1_source", 3.0),
+            ("mod1_dest", 2.0),
+            ("mod1_amount", 0.7),
+        ],
+    ),
+    preset(
+        "Random bleeps",
+        &[
+            ("wave1", 2.0),
+            ("osc_mix", 0.0),
+            ("cutoff", 4_000.0),
+            ("sustain", 0.9),
+            ("lfo2_rate", 8.0),
+            ("lfo2_shape", 4.0),
+            ("mod1_source", 2.0),
+            ("mod1_dest", 0.0),
+            ("mod1_amount", 0.5),
+        ],
+    ),
+    preset(
+        "Round bass",
+        &[
+            ("wave1", 0.0),
+            ("wave2", 3.0),
+            ("osc_mix", 0.3),
+            ("cutoff", 900.0),
+            ("decay", 0.4),
+            ("sustain", 0.5),
+            ("release", 0.1),
+            ("sub", 0.5),
+            ("mod1_source", 4.0),
+            ("mod1_dest", 1.0),
+            ("mod1_amount", 0.3),
+        ],
+    ),
+    preset(
+        "Picked bass",
+        &[
+            ("wave1", 1.0),
+            ("osc_mix", 0.0),
+            ("cutoff", 400.0),
+            ("resonance", 0.2),
+            ("env_amount", 3.0),
+            ("decay", 0.15),
+            ("sustain", 0.3),
+            ("release", 0.08),
+            ("sub", 0.3),
+            ("env2_attack", 0.0),
+            ("env2_decay", 0.04),
+            ("mod1_source", 3.0),
+            ("mod1_dest", 0.0),
+            ("mod1_amount", 0.05),
+        ],
+    ),
+    preset(
+        "Fretless",
+        &[
+            ("wave1", 3.0),
+            ("osc_mix", 0.0),
+            ("cutoff", 1_200.0),
+            ("sustain", 0.8),
+            ("release", 0.2),
+            ("glide", 0.12),
+            ("sub", 0.4),
+            ("mod1_source", 1.0),
+            ("mod1_dest", 0.0),
+            ("mod1_amount", 0.02),
+            ("lfo_rate", 5.0),
+        ],
+    ),
 ];
 
 /// Drum synth presets. Types: 0 kick, 1 snare, 2 hat, 3 tom, 4 clap.
@@ -373,6 +498,42 @@ pub const PLUCK: &[Preset] = &[
             ("pluck_decay", 0.3),
             ("pluck_damping", 0.8),
             ("pluck_tone", 0.5),
+        ],
+    ),
+    preset(
+        "Bowed cello",
+        &[
+            ("pluck_decay", 1.5),
+            ("pluck_damping", 0.6),
+            ("pluck_tone", 0.3),
+            ("pluck_bow", 0.8),
+            ("attack", 0.15),
+            ("sustain", 1.0),
+            ("release", 0.3),
+        ],
+    ),
+    preset(
+        "Twelve-string",
+        &[
+            ("pluck_decay", 3.5),
+            ("pluck_damping", 0.25),
+            ("pluck_tone", 0.7),
+            ("pluck_strings", 3.0),
+            ("pluck_detune", 5.0),
+        ],
+    ),
+    preset(
+        "Bowed ensemble",
+        &[
+            ("pluck_decay", 2.0),
+            ("pluck_damping", 0.5),
+            ("pluck_tone", 0.4),
+            ("pluck_bow", 0.6),
+            ("pluck_strings", 3.0),
+            ("pluck_detune", 9.0),
+            ("attack", 0.3),
+            ("sustain", 1.0),
+            ("release", 0.6),
         ],
     ),
 ];
@@ -545,6 +706,139 @@ pub const FM: &[Preset] = &[
             ("decay", 2.0),
         ],
     ),
+    preset(
+        "Six-op e-piano",
+        &[
+            ("fm_algo", 8.0),
+            ("op1_level", 1.0),
+            ("op1_decay", 1.8),
+            ("op1_sustain", 0.3),
+            ("op2_ratio", 1.0),
+            ("op2_level", 0.4),
+            ("op2_decay", 0.5),
+            ("op2_sustain", 0.1),
+            ("op3_ratio", 1.0),
+            ("op3_level", 0.7),
+            ("op3_decay", 2.0),
+            ("op3_sustain", 0.2),
+            ("op4_ratio", 14.0),
+            ("op4_level", 0.2),
+            ("op4_decay", 0.1),
+            ("op4_sustain", 0.0),
+            ("op5_ratio", 2.0),
+            ("op5_level", 0.3),
+            ("op5_decay", 1.0),
+            ("op5_sustain", 0.2),
+            ("op6_ratio", 1.0),
+            ("op6_level", 0.25),
+            ("op6_decay", 0.8),
+            ("op6_sustain", 0.1),
+        ],
+    ),
+    preset(
+        "Glass bell",
+        &[
+            ("fm_algo", 7.0),
+            ("op1_level", 0.9),
+            ("op1_decay", 3.0),
+            ("op1_sustain", 0.0),
+            ("op2_ratio", 3.5),
+            ("op2_level", 0.5),
+            ("op2_decay", 2.0),
+            ("op2_sustain", 0.0),
+            ("op3_ratio", 7.0),
+            ("op3_level", 0.3),
+            ("op3_decay", 1.0),
+            ("op3_sustain", 0.0),
+            ("op4_level", 0.6),
+            ("op4_ratio", 2.0),
+            ("op4_decay", 2.5),
+            ("op4_sustain", 0.0),
+            ("op5_ratio", 5.0),
+            ("op5_level", 0.4),
+            ("op5_decay", 1.5),
+            ("op5_sustain", 0.0),
+            ("op6_ratio", 9.0),
+            ("op6_level", 0.2),
+            ("op6_decay", 0.6),
+            ("op6_sustain", 0.0),
+            ("release", 1.5),
+        ],
+    ),
+    preset(
+        "Growl bass",
+        &[
+            ("fm_algo", 6.0),
+            ("op1_ratio", 0.5),
+            ("op1_level", 0.55),
+            ("op1_wave", 2.0),
+            ("op2_ratio", 1.0),
+            ("op2_level", 0.6),
+            ("op3_ratio", 1.0),
+            ("op3_level", 0.5),
+            ("op4_ratio", 2.0),
+            ("op4_level", 0.4),
+            ("op5_ratio", 1.0),
+            ("op5_level", 0.3),
+            ("op6_ratio", 3.0),
+            ("op6_level", 0.2),
+            ("fm_feedback", 0.4),
+            ("fm_cutoff", 1_800.0),
+            ("fm_resonance", 0.15),
+            ("sustain", 0.8),
+            ("release", 0.1),
+        ],
+    ),
+    preset(
+        "Soft brass",
+        &[
+            ("fm_algo", 9.0),
+            ("op1_level", 1.0),
+            ("op1_wave", 3.0),
+            ("op2_ratio", 1.0),
+            ("op2_level", 0.4),
+            ("op2_decay", 0.3),
+            ("op2_sustain", 0.6),
+            ("op3_ratio", 2.0),
+            ("op3_level", 0.2),
+            ("op4_ratio", 3.0),
+            ("op4_level", 0.15),
+            ("op5_ratio", 1.0),
+            ("op5_level", 0.2),
+            ("op6_ratio", 4.0),
+            ("op6_level", 0.1),
+            ("fm_cutoff", 4_000.0),
+            ("attack", 0.06),
+            ("sustain", 0.9),
+            ("release", 0.2),
+        ],
+    ),
+    preset(
+        "Drawbar FM organ",
+        &[
+            ("fm_algo", 11.0),
+            ("op1_ratio", 0.5),
+            ("op1_level", 0.8),
+            ("op2_ratio", 1.0),
+            ("op2_level", 0.8),
+            ("op3_ratio", 1.5),
+            ("op3_level", 0.5),
+            ("op4_ratio", 2.0),
+            ("op4_level", 0.6),
+            ("op5_ratio", 3.0),
+            ("op5_level", 0.4),
+            ("op6_ratio", 4.0),
+            ("op6_level", 0.3),
+            ("op1_sustain", 1.0),
+            ("op2_sustain", 1.0),
+            ("op3_sustain", 1.0),
+            ("op4_sustain", 1.0),
+            ("op5_sustain", 1.0),
+            ("op6_sustain", 1.0),
+            ("sustain", 1.0),
+            ("release", 0.05),
+        ],
+    ),
 ];
 
 /// Keys presets (types: 0 piano, 1 electric piano, 2 organ).
@@ -640,6 +934,35 @@ pub const ADDITIVE: &[Preset] = &[
             ("sustain", 1.0),
         ],
     ),
+    preset(
+        "Morph sweep",
+        &[
+            ("add_partials", 24.0),
+            ("add_bright", 0.1),
+            ("add_even", 0.2),
+            ("add_bright_b", 0.9),
+            ("add_even_b", 1.0),
+            ("add_morph_time", 2.0),
+            ("attack", 0.2),
+            ("sustain", 0.9),
+            ("release", 0.8),
+        ],
+    ),
+    preset(
+        "Breathing pad",
+        &[
+            ("add_partials", 20.0),
+            ("add_bright", 0.2),
+            ("add_bright_b", 0.7),
+            ("add_inharm_b", 0.15),
+            ("add_morph", 0.3),
+            ("add_morph_rate", 0.25),
+            ("add_morph_depth", 0.6),
+            ("attack", 0.8),
+            ("sustain", 1.0),
+            ("release", 1.5),
+        ],
+    ),
 ];
 
 const FILTER: &[Preset] = &[
@@ -713,6 +1036,37 @@ const DELAY: &[Preset] = &[
             ("damping", 0.7),
         ],
     ),
+    preset(
+        "Tape echo",
+        &[
+            ("time", 0.75),
+            ("feedback", 0.55),
+            ("ping_pong", 0.0),
+            ("damping", 0.5),
+            ("mod_rate", 0.7),
+            ("mod_depth", 1.5),
+            ("low_cut", 150.0),
+            ("saturation", 0.5),
+        ],
+    ),
+    preset(
+        "Diffused",
+        &[
+            ("feedback", 0.6),
+            ("diffusion", 0.7),
+            ("mix", 0.35),
+            ("low_cut", 250.0),
+        ],
+    ),
+    preset(
+        "Wide slap",
+        &[
+            ("time", 0.25),
+            ("feedback", 0.1),
+            ("ping_pong", 0.0),
+            ("offset", 15.0),
+        ],
+    ),
 ];
 
 const REVERB: &[Preset] = &[
@@ -783,6 +1137,24 @@ const DISTORTION: &[Preset] = &[
     preset("Warm", &[("drive", 6.0), ("mix", 0.5), ("output", -2.0)]),
     preset("Crunch", &[("drive", 18.0), ("output", -6.0)]),
     preset("Fuzz", &[("drive", 36.0), ("output", -12.0)]),
+    preset(
+        "Hard clip",
+        &[
+            ("mode", 1.0),
+            ("drive", 6.0),
+            ("threshold", -6.0),
+            ("output", -6.0),
+        ],
+    ),
+    preset(
+        "Square-ish",
+        &[
+            ("mode", 1.0),
+            ("drive", 24.0),
+            ("threshold", -18.0),
+            ("output", -12.0),
+        ],
+    ),
 ];
 
 const CHORUS: &[Preset] = &[
@@ -798,6 +1170,21 @@ const CHORUS: &[Preset] = &[
     preset(
         "Vibrato",
         &[("rate", 5.0), ("depth", 3.0), ("delay", 7.0), ("mix", 1.0)],
+    ),
+    preset(
+        "Vintage ensemble",
+        &[
+            ("rate", 0.6),
+            ("depth", 3.5),
+            ("delay", 14.0),
+            ("mix", 0.5),
+            ("voices", 3.0),
+            ("tone", 6_000.0),
+        ],
+    ),
+    preset(
+        "Dark duo",
+        &[("voices", 2.0), ("tone", 3_000.0), ("mix", 0.45)],
     ),
 ];
 
@@ -838,6 +1225,16 @@ const PHASER: &[Preset] = &[
             ("feedback", 0.85),
             ("stages", 12.0),
             ("mix", 0.6),
+        ],
+    ),
+    preset(
+        "Vintage",
+        &[
+            ("rate", 0.3),
+            ("depth", 0.8),
+            ("feedback", 0.7),
+            ("stages", 4.0),
+            ("warm", 0.8),
         ],
     ),
 ];
@@ -883,6 +1280,15 @@ const BITCRUSHER: &[Preset] = &[
     preset(
         "Destroyed",
         &[("bits", 3.0), ("downsample", 16.0), ("output", -6.0)],
+    ),
+    preset(
+        "Squeezed",
+        &[
+            ("bits", 10.0),
+            ("downsample", 1.0),
+            ("squeeze", 0.6),
+            ("output", -6.0),
+        ],
     ),
 ];
 
@@ -975,6 +1381,34 @@ const WAVESHAPER: &[Preset] = &[
     preset("Sine fold", &[("shape", 3.0), ("drive", 12.0)]),
     preset("Asymmetric", &[("shape", 4.0), ("drive", 15.0)]),
     preset("Rectifier", &[("shape", 5.0), ("drive", 6.0), ("mix", 0.5)]),
+    preset(
+        "Drawn: soft knee",
+        &[
+            ("shape", 6.0),
+            ("drive", 6.0),
+            ("point_1", -0.9),
+            ("point_2", -0.85),
+            ("point_3", -0.7),
+            ("point_4", -0.4),
+            ("point_6", 0.4),
+            ("point_7", 0.7),
+            ("point_8", 0.85),
+            ("point_9", 0.9),
+        ],
+    ),
+    preset(
+        "Drawn: stairs",
+        &[
+            ("shape", 6.0),
+            ("drive", 3.0),
+            ("point_2", -1.0),
+            ("point_3", -0.5),
+            ("point_4", -0.5),
+            ("point_6", 0.5),
+            ("point_7", 0.5),
+            ("point_8", 1.0),
+        ],
+    ),
 ];
 
 const DC_BLOCK: &[Preset] = &[preset("Default", &[]), preset("Steep", &[("freq", 30.0)])];
@@ -1035,6 +1469,40 @@ const AUTO_FILTER: &[Preset] = &[
             ("cutoff", 800.0),
         ],
     ),
+    preset(
+        "Sidechain pump",
+        &[
+            ("cutoff", 20_000.0),
+            ("depth", 0.0),
+            ("lfo_shape", 2.0),
+            ("volume", 0.8),
+        ],
+    ),
+    preset(
+        "Drawn wah",
+        &[
+            ("mode", 1.0),
+            ("resonance", 0.7),
+            ("lfo_shape", 5.0),
+            ("step_1", -1.0),
+            ("step_2", 1.0),
+            ("step_3", -0.5),
+            ("step_4", 0.5),
+            ("step_5", -1.0),
+            ("step_6", 1.0),
+            ("step_7", 0.0),
+            ("step_8", -0.5),
+        ],
+    ),
+    preset(
+        "Moving pan",
+        &[
+            ("depth", 1.0),
+            ("lfo_shape", 1.0),
+            ("pan", 0.8),
+            ("rate", 4.0),
+        ],
+    ),
 ];
 
 const NOISE_GATE: &[Preset] = &[
@@ -1081,6 +1549,27 @@ const MULTI_TAP: &[Preset] = &[
     preset(
         "Wash",
         &[("feedback", 0.7), ("damping", 0.6), ("mix", 0.45)],
+    ),
+    preset(
+        "Fading lo-fi",
+        &[
+            ("tap1_high_cut", 8_000.0),
+            ("tap2_high_cut", 4_000.0),
+            ("tap3_high_cut", 2_000.0),
+            ("tap4_high_cut", 1_000.0),
+            ("tap3_low_cut", 200.0),
+            ("tap4_low_cut", 400.0),
+        ],
+    ),
+    preset(
+        "Sweep across",
+        &[
+            ("tap1_pan", -1.0),
+            ("tap2_pan", -0.33),
+            ("tap3_pan", 0.33),
+            ("tap4_pan", 1.0),
+            ("feedback", 0.0),
+        ],
     ),
 ];
 
@@ -1198,6 +1687,11 @@ const VOCODER: &[Preset] = &[
     preset("Whisper", &[("noise", 0.8), ("bandwidth", 0.3)]),
     preset("Deep", &[("shift", -5.0)]),
     preset("Chipmunk", &[("shift", 7.0)]),
+    preset("Fine (48 bands)", &[("bands", 48.0), ("bandwidth", 0.7)]),
+    preset(
+        "Coarse (8 bands)",
+        &[("bands", 8.0), ("low", 200.0), ("high", 5_000.0)],
+    ),
 ];
 
 const PITCH_SHIFT: &[Preset] = &[
@@ -1221,6 +1715,15 @@ const PITCH_CORRECT: &[Preset] = &[
     preset("Gentle", &[("speed", 120.0), ("amount", 0.6)]),
     preset("C major", &[("scale", 1.0), ("speed", 10.0)]),
     preset("A minor", &[("key", 9.0), ("scale", 2.0), ("speed", 10.0)]),
+    preset("Thirds", &[("harmony_1", 4.0), ("harmony_level", 0.6)]),
+    preset(
+        "Choir",
+        &[
+            ("harmony_1", 7.0),
+            ("harmony_2", -5.0),
+            ("harmony_level", 0.5),
+        ],
+    ),
 ];
 
 const TUNER: &[Preset] = &[
@@ -1255,6 +1758,369 @@ const CONVOLUTION: &[Preset] = &[
         &[("mix", 0.6), ("predelay", 40.0), ("low_cut", 200.0)],
     ),
     preset("Dark", &[("mix", 0.35), ("high_cut", 3_000.0)]),
+];
+
+const DYNAMICS: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Glue",
+        &[
+            ("comp_threshold", -18.0),
+            ("comp_ratio", 2.0),
+            ("comp_attack", 30.0),
+            ("comp_release", 200.0),
+            ("comp_makeup", 2.0),
+        ],
+    ),
+    preset(
+        "Loud",
+        &[
+            ("comp_threshold", -12.0),
+            ("comp_ratio", 4.0),
+            ("comp_attack", 5.0),
+            ("comp_makeup", 3.0),
+            ("limit_gain", 6.0),
+            ("limit_ceiling", -0.1),
+        ],
+    ),
+    preset(
+        "Tight drums",
+        &[
+            ("gate_threshold", -40.0),
+            ("gate_hold", 10.0),
+            ("gate_release", 60.0),
+            ("comp_threshold", -20.0),
+            ("comp_ratio", 3.0),
+            ("comp_attack", 15.0),
+            ("comp_release", 80.0),
+        ],
+    ),
+    preset(
+        "Clean vocal",
+        &[
+            ("gate_threshold", -50.0),
+            ("gate_range", -20.0),
+            ("comp_threshold", -24.0),
+            ("comp_ratio", 3.0),
+            ("comp_makeup", 6.0),
+        ],
+    ),
+];
+
+const STEREO_SHAPER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Swap sides",
+        &[
+            ("left_to_left", 0.0),
+            ("right_to_left", 1.0),
+            ("left_to_right", 1.0),
+            ("right_to_right", 0.0),
+        ],
+    ),
+    preset(
+        "Mono",
+        &[
+            ("left_to_left", 0.5),
+            ("right_to_left", 0.5),
+            ("left_to_right", 0.5),
+            ("right_to_right", 0.5),
+        ],
+    ),
+    preset(
+        "Left only",
+        &[("left_to_right", 1.0), ("right_to_right", 0.0)],
+    ),
+    preset("Haas wide", &[("delay", 12.0)]),
+    preset(
+        "Wider",
+        &[
+            ("left_to_left", 0.8),
+            ("right_to_left", -0.3),
+            ("left_to_right", -0.3),
+            ("right_to_right", 0.8),
+        ],
+    ),
+];
+
+const MULTIBAND_LIMITER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Enhance",
+        &[
+            ("low_drive", 6.0),
+            ("low_ceiling", -6.0),
+            ("mid_drive", 4.0),
+            ("mid_ceiling", -6.0),
+            ("high_drive", 6.0),
+            ("high_ceiling", -8.0),
+            ("high_level", 2.0),
+            ("amount", 0.5),
+        ],
+    ),
+    preset(
+        "Enhance hard",
+        &[
+            ("low_drive", 12.0),
+            ("low_ceiling", -9.0),
+            ("mid_drive", 9.0),
+            ("mid_ceiling", -9.0),
+            ("high_drive", 12.0),
+            ("high_ceiling", -10.0),
+            ("high_level", 3.0),
+            ("release", 60.0),
+        ],
+    ),
+    preset(
+        "Warm loud",
+        &[
+            ("low_drive", 8.0),
+            ("low_ceiling", -6.0),
+            ("low_level", 2.0),
+            ("mid_drive", 5.0),
+            ("mid_ceiling", -6.0),
+            ("high_level", -2.0),
+            ("release", 150.0),
+        ],
+    ),
+    preset(
+        "Tame lows",
+        &[
+            ("low_ceiling", -12.0),
+            ("low_level", 4.0),
+            ("low_freq", 120.0),
+        ],
+    ),
+    preset(
+        "Brickwall",
+        &[
+            ("mid_drive", 6.0),
+            ("low_drive", 6.0),
+            ("high_drive", 6.0),
+            ("ceiling", -1.0),
+        ],
+    ),
+];
+
+const SEND: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Half", &[("level", 0.5)]),
+    preset("Send only", &[("dry", 0.0)]),
+];
+
+const HALL_REVERB: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Small room",
+        &[
+            ("decay", 0.6),
+            ("size", 0.2),
+            ("predelay", 5.0),
+            ("early", 0.7),
+        ],
+    ),
+    preset(
+        "Concert hall",
+        &[
+            ("decay", 3.5),
+            ("size", 0.85),
+            ("predelay", 30.0),
+            ("damping", 5_000.0),
+        ],
+    ),
+    preset(
+        "Huge space",
+        &[
+            ("decay", 12.0),
+            ("size", 1.0),
+            ("predelay", 60.0),
+            ("mod_depth", 0.6),
+            ("mix", 0.4),
+        ],
+    ),
+    preset(
+        "Bright plate",
+        &[
+            ("decay", 1.8),
+            ("size", 0.4),
+            ("damping", 14_000.0),
+            ("early", 0.1),
+            ("low_cut", 250.0),
+        ],
+    ),
+    preset("Dark", &[("damping", 2_000.0), ("decay", 3.0)]),
+];
+
+const GUITAR_CHAIN: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Clean",
+        &[
+            ("drive", 0.0),
+            ("compress", 0.5),
+            ("chorus", 0.4),
+            ("output", 0.0),
+        ],
+    ),
+    preset(
+        "Crunch",
+        &[
+            ("drive", 24.0),
+            ("mid", 3.0),
+            ("treble", 2.0),
+            ("output", -9.0),
+        ],
+    ),
+    preset(
+        "High gain",
+        &[
+            ("drive", 40.0),
+            ("drive_type", 1.0),
+            ("bass", 4.0),
+            ("mid", -5.0),
+            ("treble", 4.0),
+            ("cabinet", 2.0),
+            ("output", -12.0),
+        ],
+    ),
+    preset(
+        "Fuzz",
+        &[
+            ("drive", 36.0),
+            ("drive_type", 2.0),
+            ("treble", -3.0),
+            ("output", -10.0),
+        ],
+    ),
+];
+
+const MULTI_FX: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Sweep down", &[("block", 1.0), ("x", 0.2), ("y", 0.6)]),
+    preset("Thin out", &[("block", 2.0), ("x", 0.6), ("y", 0.3)]),
+    preset("Lo-fi", &[("block", 4.0), ("x", 0.6), ("y", 0.3)]),
+    preset("Robot", &[("block", 5.0), ("x", 0.25), ("y", 0.8)]),
+    preset("Wash", &[("block", 9.0), ("x", 0.9), ("y", 0.6)]),
+];
+
+const FX_CHAIN: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Dirty space",
+        &[
+            ("stage1_block", 4.0),
+            ("stage1_x", 0.5),
+            ("stage1_y", 0.2),
+            ("stage2_block", 7.0),
+            ("stage2_x", 0.2),
+            ("stage2_y", 0.7),
+            ("stage3_block", 9.0),
+            ("stage3_x", 0.8),
+            ("stage3_y", 0.4),
+        ],
+    ),
+    preset(
+        "Radio",
+        &[
+            ("stage1_block", 2.0),
+            ("stage1_x", 0.45),
+            ("stage1_y", 0.3),
+            ("stage2_block", 1.0),
+            ("stage2_x", 0.65),
+            ("stage2_y", 0.3),
+            ("stage3_block", 3.0),
+            ("stage3_x", 0.4),
+            ("stage3_y", 0.6),
+        ],
+    ),
+    preset(
+        "Swirl",
+        &[
+            ("stage1_block", 6.0),
+            ("stage1_x", 0.3),
+            ("stage1_y", 0.6),
+            ("stage2_block", 8.0),
+            ("stage2_x", 0.4),
+            ("stage2_y", 0.5),
+            ("stage3_block", 10.0),
+            ("stage3_x", 0.75),
+            ("stage3_y", 0.5),
+        ],
+    ),
+];
+
+const BEAT_SHAPER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Half repeat",
+        &[
+            ("time_5", 0.5),
+            ("time_6", 0.5),
+            ("time_7", 0.5),
+            ("time_8", 0.5),
+        ],
+    ),
+    preset(
+        "Tape stop",
+        &[
+            ("time_mode", 1.0),
+            ("time_5", 0.0),
+            ("time_6", 0.15),
+            ("time_7", 0.32),
+            ("time_8", 0.45),
+        ],
+    ),
+    preset(
+        "Stutter end",
+        &[("time_7", 0.125), ("time_8", 0.25), ("cycle", 1.0)],
+    ),
+    preset(
+        "Pump",
+        &[
+            ("volume_1", 0.0),
+            ("volume_2", 0.6),
+            ("volume_3", 0.0),
+            ("volume_4", 0.6),
+            ("volume_5", 0.0),
+            ("volume_6", 0.6),
+            ("volume_7", 0.0),
+            ("volume_8", 0.6),
+        ],
+    ),
+    preset(
+        "Gate halves",
+        &[
+            ("volume_2", 0.0),
+            ("volume_4", 0.0),
+            ("volume_6", 0.0),
+            ("volume_8", 0.0),
+        ],
+    ),
+];
+
+const BAND_SPLIT: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Bass split", &[("low_freq", 120.0), ("high_freq", 6_000.0)]),
+    preset(
+        "Vocal split",
+        &[("low_freq", 300.0), ("high_freq", 4_000.0)],
+    ),
+];
+
+const SCRATCH: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Baby scratch", &[("pattern", 1.0), ("depth", 0.5)]),
+    preset("Chirps", &[("pattern", 2.0), ("rate", 2.0), ("depth", 0.3)]),
+    preset("Tear", &[("pattern", 3.0), ("depth", 0.6)]),
+    preset(
+        "Transformer",
+        &[("pattern", 4.0), ("rate", 4.0), ("depth", 0.4)],
+    ),
+];
+
+const RACK: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Wide pair", &[("branch1_pan", -0.8), ("branch2_pan", 0.8)]),
 ];
 
 /// Presets for a built-in effect.
@@ -1296,6 +2162,18 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::Convolution => CONVOLUTION,
         EffectKind::PitchCorrect => PITCH_CORRECT,
         EffectKind::Tuner => TUNER,
+        EffectKind::Dynamics => DYNAMICS,
+        EffectKind::StereoShaper => STEREO_SHAPER,
+        EffectKind::MultibandLimiter => MULTIBAND_LIMITER,
+        EffectKind::Send => SEND,
+        EffectKind::HallReverb => HALL_REVERB,
+        EffectKind::GuitarChain => GUITAR_CHAIN,
+        EffectKind::MultiFx => MULTI_FX,
+        EffectKind::FxChain => FX_CHAIN,
+        EffectKind::BeatShaper => BEAT_SHAPER,
+        EffectKind::BandSplit => BAND_SPLIT,
+        EffectKind::Scratch => SCRATCH,
+        EffectKind::Rack => RACK,
         EffectKind::Plugin => &[],
     }
 }

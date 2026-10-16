@@ -4,12 +4,18 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
+use musiccraft_dsp::beat::{BEAT_CYCLE_NAMES, BEAT_POINTS, FIRST_TIME, FIRST_VOLUME};
+use musiccraft_dsp::blocks::{BLOCK_CONTROLS, BLOCK_NAMES, CHAIN_STAGES};
 use musiccraft_dsp::character::GRAPHIC_BANDS;
 use musiccraft_dsp::modulation::{SYNC_RATE_NAMES, autopan_shape, gate_step_on};
+use musiccraft_dsp::scratch::SCRATCH_PATTERNS;
 use musiccraft_dsp::{SvfMode, response};
 use musiccraft_project::EffectSlot;
 use musiccraft_project::params::presets::{self, Preset};
-use musiccraft_project::params::{EffectKind, ParamSpec, index_of};
+use musiccraft_project::params::{
+    EffectKind, LFO_FIRST_STEP, LFO_SHAPES, LFO_STEPS, ParamSpec, SHAPER_FIRST_POINT,
+    SHAPER_POINTS, index_of,
+};
 
 use crate::hint::Hint;
 use crate::{Action, Frame, UiState, theme, widgets};
@@ -181,6 +187,8 @@ fn contents(
             .find(|(t, s, _)| *t == track && *s == slot)
             .map(|(_, _, hz)| *hz);
         crate::tuner::show(ui, effect, detected, GRAPH);
+    } else if effect.kind == EffectKind::Rack {
+        crate::rack_view::show(ui, state, track, slot, effect, actions);
     } else {
         graph(ui, state, track, slot, effect, sample_rate, actions);
     }
@@ -298,6 +306,34 @@ fn preset_bar(
     });
 }
 
+/// Which effect a row of knobs edits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KnobTarget {
+    /// Effect `slot` (0-based) of mixer `track`.
+    Slot(usize, usize),
+    /// Effect `n` of `branch` (both 0-based) of the rack in `slot` of `track`.
+    Rack(usize, usize, usize, usize),
+}
+
+impl KnobTarget {
+    fn set(self, name: &str, value: f32) -> Invocation {
+        match self {
+            Self::Slot(track, slot) => set_param(track, slot, name, value),
+            Self::Rack(track, slot, branch, n) => Invocation::new(
+                "mixer.rack_param",
+                [
+                    track.to_string(),
+                    (slot + 1).to_string(),
+                    (branch + 1).to_string(),
+                    (n + 1).to_string(),
+                    name.to_owned(),
+                    format!("{value}"),
+                ],
+            ),
+        }
+    }
+}
+
 fn knobs(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -306,16 +342,41 @@ fn knobs(
     effect: &EffectSlot,
     actions: &mut Vec<Action>,
 ) {
+    knob_row(ui, state, KnobTarget::Slot(track, slot), effect, actions);
+}
+
+/// An effect's knobs (the ones its graph does not edit).
+pub(crate) fn knob_row(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    target: KnobTarget,
+    effect: &EffectSlot,
+    actions: &mut Vec<Action>,
+) {
     ui.horizontal_wrapped(|ui| {
         for (p, spec) in effect.kind.params().iter().enumerate() {
             let value = effect.values[p];
-            if spec.name == "steps" {
-                // Edited by clicking the steps in the graph.
+            let drawn_beat = effect.kind == EffectKind::BeatShaper
+                && ((spec.name.starts_with("time_") && spec.name != "time_mode")
+                    || spec.name.starts_with("volume_"));
+            let in_rack = matches!(target, KnobTarget::Rack(..));
+            let routed = Some(p) == effect.kind.channel_ref_index()
+                || effect.kind.track_ref_indices().any(|i| i == p);
+            if (in_rack && routed)
+                || spec.name == "steps"
+                || spec.name.starts_with("point_")
+                || spec.name.starts_with("step_")
+                || drawn_beat
+            {
+                // Edited by clicking the steps or dragging the points in the graph.
                 continue;
             }
             let synced = matches!(
                 effect.kind,
-                EffectKind::Gate | EffectKind::Autopan | EffectKind::AutoFilter
+                EffectKind::Gate
+                    | EffectKind::Autopan
+                    | EffectKind::AutoFilter
+                    | EffectKind::Scratch
             );
             let synced = synced
                 || (effect.kind == EffectKind::Stutter && matches!(spec.name, "slice" | "every"));
@@ -329,15 +390,38 @@ fn knobs(
             let text = match spec.name {
                 "sidechain" if value < 0.5 => "off".to_owned(),
                 "sidechain" => format!("from {value:.0}"),
+                "follow" if value < 0.5 => "off".to_owned(),
+                "follow" => format!("ch {value:.0}"),
+                "harmony_1" | "harmony_2" if value.abs() < 0.5 => "off".to_owned(),
+                "harmony_1" | "harmony_2" => format!("{value:+.0} st"),
+                "target" if value < 0.5 => "off".to_owned(),
+                "target" => format!("to {value:.0}"),
+                name if name.ends_with("_target") && value < 0.5 => "stays".to_owned(),
+                name if name.ends_with("_target") => format!("to {value:.0}"),
                 "rate" | "slice" | "every" if synced => SYNC_RATE_NAMES
                     .get(value.round() as usize)
                     .copied()
                     .unwrap_or("?")
                     .to_owned(),
-                "shape" if effect.kind == EffectKind::Waveshaper => {
-                    pick(&["tanh", "hard clip", "fold", "sine", "asymmetric", "rectify"])
-                }
+                "shape" if effect.kind == EffectKind::Waveshaper => pick(&[
+                    "tanh",
+                    "hard clip",
+                    "fold",
+                    "sine",
+                    "asymmetric",
+                    "rectify",
+                    "drawn",
+                ]),
                 "shape" => pick(&["sine", "triangle", "square"]),
+                "lfo_shape" => pick(&LFO_SHAPES),
+                "mode" if effect.kind == EffectKind::Distortion => pick(&["soft", "hard"]),
+                "drive_type" => pick(&["soft", "hard", "fuzz"]),
+                "cycle" => pick(&BEAT_CYCLE_NAMES),
+                "pattern" => pick(&SCRATCH_PATTERNS),
+                "hold" => if value >= 0.5 { "held" } else { "off" }.to_owned(),
+                "time_mode" => pick(&["steps", "ramps"]),
+                name if name.ends_with("block") => pick(&BLOCK_NAMES),
+                "cabinet" => pick(&["off", "small", "large"]),
                 "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
                 "key" => pick(&musiccraft_project::params::NOTE_NAMES),
                 "scale" => {
@@ -354,7 +438,7 @@ fn knobs(
                     if value.fract() < 0.05 || i == next {
                         letters[i].to_owned()
                     } else {
-                        format!("{}→{}", letters[i], letters[next])
+                        format!("{}>{}", letters[i], letters[next])
                     }
                 }
                 "invert_left" | "invert_right" => {
@@ -371,11 +455,13 @@ fn knobs(
                 spec.min < 0.0 && spec.max > 0.0,
                 &text,
             );
-            crate::automation::menu(
-                &out.response,
-                &format!("mixer:{track}:{}:{}", slot + 1, spec.name),
-                actions,
-            );
+            if let KnobTarget::Slot(track, slot) = target {
+                crate::automation::menu(
+                    &out.response,
+                    &format!("mixer:{track}:{}:{}", slot + 1, spec.name),
+                    actions,
+                );
+            }
             if out.started {
                 state.begin_gesture();
             }
@@ -383,7 +469,7 @@ fn knobs(
                 let new = crate::channel_settings::from_unit(spec, t);
                 if new != value {
                     actions.push(Action::Coalesced(
-                        set_param(track, slot, spec.name, new),
+                        target.set(spec.name, new),
                         state.gesture(),
                     ));
                 }
@@ -392,9 +478,226 @@ fn knobs(
     });
 }
 
+/// The stereo shaper's matrix: a line from each input to each output whose
+/// thickness is the gain (red when inverted), and the delayed side marked.
+fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effect: &EffectSlot) {
+    let inputs = [
+        pos2(rect.left() + rect.width() * 0.25, rect.top() + 18.0),
+        pos2(rect.left() + rect.width() * 0.75, rect.top() + 18.0),
+    ];
+    let outputs = [
+        pos2(inputs[0].x, rect.bottom() - 18.0),
+        pos2(inputs[1].x, rect.bottom() - 18.0),
+    ];
+    let routes = [
+        (0, 0, "left_to_left"),
+        (1, 0, "right_to_left"),
+        (0, 1, "left_to_right"),
+        (1, 1, "right_to_right"),
+    ];
+    for (from, to, name) in routes {
+        let gain = value(effect, name);
+        if gain.abs() < 0.01 {
+            continue;
+        }
+        let tint = if gain < 0.0 { theme::DANGER } else { color };
+        painter.line_segment(
+            [inputs[from], outputs[to]],
+            Stroke::new(1.0 + gain.abs() * 4.0, tint),
+        );
+    }
+    let delay = value(effect, "delay");
+    for (i, label) in ["L", "R"].into_iter().enumerate() {
+        let font = egui::FontId::proportional(11.0);
+        painter.text(
+            inputs[i],
+            egui::Align2::CENTER_BOTTOM,
+            label,
+            font.clone(),
+            theme::TEXT,
+        );
+        let late = (i == 1 && delay > 0.0) || (i == 0 && delay < 0.0);
+        let text = if late {
+            format!("{label} +{:.1} ms", delay.abs())
+        } else {
+            label.to_owned()
+        };
+        painter.text(
+            outputs[i],
+            egui::Align2::CENTER_TOP,
+            text,
+            font,
+            theme::TEXT,
+        );
+    }
+}
+
+/// The beat shaper's time strip (top) and volume strip (bottom).
+fn beat_strips(rect: Rect) -> (Rect, Rect) {
+    let half = rect.height() * 0.5;
+    (
+        Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + half - 2.0)),
+        Rect::from_min_max(pos2(rect.left(), rect.top() + half + 2.0), rect.max),
+    )
+}
+
+/// A row of boxes joined by arrows, one per stage of a chain; stages that
+/// are on are filled.
+fn chain_diagram(painter: &egui::Painter, rect: Rect, color: Color32, stages: &[(&str, bool)]) {
+    let n = stages.len().max(1) as f32;
+    let cell = rect.width() / n;
+    let mid = rect.center().y;
+    for (i, (name, on)) in stages.iter().enumerate() {
+        let left = rect.left() + cell * i as f32;
+        let block = Rect::from_center_size(pos2(left + cell * 0.5, mid), vec2(cell * 0.7, 34.0));
+        if *on {
+            painter.rect_filled(block, 4.0, color.gamma_multiply(0.7));
+        }
+        painter.rect_stroke(
+            block,
+            4.0,
+            Stroke::new(1.0, color),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            block.center(),
+            egui::Align2::CENTER_CENTER,
+            *name,
+            egui::FontId::proportional(11.0),
+            if *on {
+                theme::BACKGROUND
+            } else {
+                theme::TEXT_DIM
+            },
+        );
+        if i + 1 < stages.len() {
+            let from = pos2(block.right(), mid);
+            let to = pos2(left + cell * 1.15, mid);
+            painter.line_segment([from, to], Stroke::new(1.0, theme::TEXT_DIM));
+        }
+    }
+}
+
+/// The band at the bottom of the auto filter's graph that shows its LFO.
+fn lfo_strip_rect(rect: Rect) -> Rect {
+    Rect::from_min_max(
+        pos2(rect.left(), rect.bottom() - rect.height() * 0.3),
+        rect.max,
+    )
+}
+
+/// The LFO level (−1–1) at height `y` in the LFO strip.
+fn lfo_strip_value(rect: Rect, y: f32) -> f32 {
+    let strip = lfo_strip_rect(rect).shrink2(vec2(0.0, 4.0));
+    (1.0 - 2.0 * (y - strip.top()) / strip.height().max(1.0)).clamp(-1.0, 1.0)
+}
+
+/// Draws one cycle of the auto filter's LFO, with the drawn shape's points as
+/// handles.
+fn lfo_strip(
+    painter: &egui::Painter,
+    rect: Rect,
+    color: Color32,
+    effect: &EffectSlot,
+    handles: &mut Vec<(Pos2, Option<&'static str>, Option<&'static str>)>,
+) {
+    let strip = lfo_strip_rect(rect);
+    painter.rect_filled(strip, 0.0, theme::PANEL_DARK.gamma_multiply(0.85));
+    let inner = strip.shrink2(vec2(0.0, 4.0));
+    let y = |v: f32| inner.center().y - v * inner.height() * 0.5;
+    let shape = value(effect, "lfo_shape");
+    let steps: Vec<f32> = (0..LFO_STEPS)
+        .map(|k| {
+            effect
+                .values
+                .get(LFO_FIRST_STEP + k)
+                .copied()
+                .unwrap_or(0.0)
+        })
+        .collect();
+    let width = strip.width().max(1.0) as usize;
+    let points: Vec<Pos2> = (0..=width)
+        .map(|i| {
+            let phase = i as f32 / width as f32;
+            let v = musiccraft_dsp::character::lfo_shape(shape, &steps, phase);
+            pos2(strip.left() + i as f32, y(v))
+        })
+        .collect();
+    for pair in points.windows(2) {
+        painter.line_segment(
+            [pair[0], pair[1]],
+            Stroke::new(1.5, color.gamma_multiply(0.8)),
+        );
+    }
+    if shape.round() as usize == LFO_SHAPES.len() - 1 {
+        for (k, v) in steps.iter().enumerate() {
+            let name = effect.kind.params()[LFO_FIRST_STEP + k].name;
+            let x = strip.left() + strip.width() * k as f32 / LFO_STEPS as f32;
+            handles.push((pos2(x, y(*v)), None, Some(name)));
+        }
+    }
+}
+
+/// Whether a waveshaper slot uses its drawn curve.
+fn drawn_shape(effect: &EffectSlot) -> bool {
+    effect.kind == EffectKind::Waveshaper
+        && value(effect, "shape").round() as i32 == musiccraft_dsp::character::DRAWN_SHAPE
+}
+
+/// Short label for a pan position: `L`, `C`, `R`, or a percentage.
+fn pan_label(pan: f32) -> String {
+    match pan {
+        p if p <= -0.99 => "L".to_owned(),
+        p if p >= 0.99 => "R".to_owned(),
+        p if p.abs() < 0.01 => "C".to_owned(),
+        p if p < 0.0 => format!("{:.0}L", -p * 100.0),
+        p => format!("{:.0}R", p * 100.0),
+    }
+}
+
 /// A parameter name for display: `low_gain` → `Low gain`.
+/// Long labels lose their tail under a knob; these words shorten them.
+const ABBREVIATIONS: [(&str, &str); 5] = [
+    ("threshold", "thr"),
+    ("release", "rel"),
+    ("attack", "att"),
+    ("ceiling", "ceil"),
+    ("makeup", "gain"),
+];
+
+/// Labels longer than this are abbreviated.
+const LABEL_CHARS: usize = 10;
+
 pub(crate) fn pretty(name: &str) -> String {
+    // `left_to_right` style routing names read best as arrows.
+    if let Some((from, to)) = name.split_once("_to_") {
+        let side = |s: &str| match s {
+            "left" => Some("L"),
+            "right" => Some("R"),
+            _ => None,
+        };
+        if let (Some(a), Some(b)) = (side(from), side(to)) {
+            return format!("{a} > {b}");
+        }
+    }
+    // `stage2_block` → `S2 block`.
+    // `branch3_pan` → `B3 pan`.
+    let name = match name
+        .strip_prefix("stage")
+        .or_else(|| name.strip_prefix("branch"))
+    {
+        Some(rest) if rest.starts_with(|c: char| c.is_ascii_digit()) => {
+            let letter = if name.starts_with('s') { 's' } else { 'b' };
+            format!("{letter}{rest}")
+        }
+        _ => name.to_owned(),
+    };
     let mut text = name.replace('_', " ");
+    if text.len() > LABEL_CHARS {
+        for (word, short) in ABBREVIATIONS {
+            text = text.replace(word, short);
+        }
+    }
     if let Some(first) = text.get_mut(0..1) {
         first.make_ascii_uppercase();
     }
@@ -567,7 +870,10 @@ fn graph(
                 hint = "Drag the point: left/right sets the cutoff, up/down the resonance";
             }
         }
-        EffectKind::Compressor | EffectKind::Limiter | EffectKind::NoiseGate => {
+        EffectKind::Compressor
+        | EffectKind::Limiter
+        | EffectKind::NoiseGate
+        | EffectKind::Dynamics => {
             let (top, bottom) = (6.0, -60.0);
             let map = |db_in: f32, db_out: f32| {
                 pos2(
@@ -596,6 +902,8 @@ fn graph(
                     response::compressor_db(&effect.values, db)
                 } else if effect.kind == EffectKind::NoiseGate {
                     response::noise_gate_db(&effect.values, db).max(bottom)
+                } else if effect.kind == EffectKind::Dynamics {
+                    response::dynamics_db(&effect.values, db).max(bottom)
                 } else {
                     response::limiter_db(&effect.values, db)
                 }
@@ -615,6 +923,20 @@ fn graph(
                 let threshold = value(effect, "threshold");
                 handles.push((map(threshold, transfer(threshold)), Some("threshold"), None));
                 hint = "Input level across, output level up. Drag the knee to set the threshold";
+            } else if effect.kind == EffectKind::Dynamics {
+                let threshold = value(effect, "comp_threshold");
+                handles.push((
+                    map(threshold, transfer(threshold)),
+                    Some("comp_threshold"),
+                    None,
+                ));
+                let ceiling = value(effect, "limit_ceiling");
+                handles.push((
+                    pos2(rect.right() - 12.0, db_y(rect, ceiling, top, bottom)),
+                    None,
+                    Some("limit_ceiling"),
+                ));
+                hint = "Gate, compressor and limiter combined. Drag the knee for the compressor threshold, the right point for the ceiling";
             } else {
                 let ceiling = value(effect, "ceiling");
                 handles.push((
@@ -641,20 +963,38 @@ fn graph(
             let points: Vec<Pos2> = (0..=width)
                 .map(|i| {
                     let x = i as f32 / width as f32 * 2.0 - 1.0;
-                    let y = response::shaper(effect.kind, &effect.values, x)
-                        .unwrap_or(x)
-                        .clamp(-1.2, 1.2);
+                    // A drawn curve is shown as drawn, so its points sit on it;
+                    // drive moves the input along it.
+                    let y = if drawn_shape(effect) {
+                        musiccraft_dsp::character::waveshaper_curve(&effect.values, x)
+                    } else {
+                        response::shaper(effect.kind, &effect.values, x).unwrap_or(x)
+                    }
+                    .clamp(-1.2, 1.2);
                     pos2(rect.left() + i as f32, mid.y - y * rect.height() * 0.4)
                 })
                 .collect();
             for pair in points.windows(2) {
                 painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
             }
+            if drawn_shape(effect) {
+                for k in 0..SHAPER_POINTS {
+                    let name = effect.kind.params()[SHAPER_FIRST_POINT + k].name;
+                    let x = rect.left() + rect.width() * k as f32 / (SHAPER_POINTS - 1) as f32;
+                    let y = mid.y - value(effect, name) * rect.height() * 0.4;
+                    handles.push((pos2(x, y), None, Some(name)));
+                }
+            }
             hint = match effect.kind {
                 EffectKind::SoftClipper => {
                     "Input across, output up: straight below the threshold, bending smoothly into it"
                 }
-                EffectKind::Waveshaper => "Input across, output up: the shape picks the curve",
+                EffectKind::Waveshaper if drawn_shape(effect) => {
+                    "Input across, output up: drag a point up or down to draw the curve; drive pushes the input further along it"
+                }
+                EffectKind::Waveshaper => {
+                    "Input across, output up: the shape picks the curve (pick \"drawn\" to draw your own)"
+                }
                 EffectKind::Overdrive => {
                     "Input across, output up: bias makes the curve lopsided (before the tone filter)"
                 }
@@ -822,6 +1162,10 @@ fn graph(
             }
             hint = "Lines show how far apart left and right sit; red means phase inverted";
         }
+        EffectKind::StereoShaper => {
+            stereo_shaper_graph(&painter, rect, color, effect);
+            hint = "Where each output side's sound comes from (red is phase inverted); the delay shifts one side later";
+        }
         EffectKind::Reverb | EffectKind::Chorus | EffectKind::Phaser | EffectKind::Flanger => {
             let points: Vec<Pos2> = if effect.kind == EffectKind::Reverb {
                 let size = value(effect, "size");
@@ -860,6 +1204,41 @@ fn graph(
             } else {
                 "The sweep over two seconds: rate is speed, depth is height"
             };
+        }
+        EffectKind::HallReverb => {
+            let predelay = value(effect, "predelay") * 0.001;
+            let decay = value(effect, "decay").max(0.1);
+            let early = value(effect, "early");
+            let span = (decay * 1.5).clamp(1.0, 20.0) + predelay;
+            // A square-root time axis leaves room for the early reflections.
+            let x = |t: f32| rect.left() + rect.width() * (t / span).max(0.0).sqrt();
+            let level_y = |level: f32| rect.bottom() - level * rect.height() * 0.9;
+            for (i, ms) in [7.1_f32, 11.3, 17.9, 23.3, 31.7, 39.1].iter().enumerate() {
+                let scale = 0.5 + value(effect, "size");
+                let t = predelay + ms * scale * 0.001;
+                let level = early * (0.84 - i as f32 * 0.1);
+                painter.line_segment(
+                    [pos2(x(t), rect.bottom()), pos2(x(t), level_y(level))],
+                    Stroke::new(2.0, theme::HIGHLIGHT.gamma_multiply(0.8)),
+                );
+            }
+            // A 60 dB fall over `decay` seconds, drawn on a 60 dB scale.
+            let points = (0..=width)
+                .map(|i| {
+                    let t = span * (i as f32 / width as f32).powi(2);
+                    let db = if t < predelay {
+                        -60.0
+                    } else {
+                        -60.0 * (t - predelay) / decay
+                    };
+                    pos2(
+                        rect.left() + i as f32,
+                        level_y(((db + 60.0) / 60.0).max(0.0)),
+                    )
+                })
+                .collect();
+            curve(&painter, rect, color, points);
+            hint = "Early reflections (orange) after the predelay, then the tail falling 60 dB over the decay time (time stretched near the start)";
         }
         EffectKind::GraphicEq
         | EffectKind::ParametricEq
@@ -936,7 +1315,12 @@ fn graph(
                         rect.bottom() - rect.height() * (0.15 + 0.7 * res),
                     );
                     handles.push((at, Some("cutoff"), Some("resonance")));
-                    hint = "The filter at rest; the LFO and the input level sweep it from here. Drag to set cutoff and resonance";
+                    lfo_strip(&painter, rect, color, effect, &mut handles);
+                    hint = if value(effect, "lfo_shape").round() as usize == LFO_SHAPES.len() - 1 {
+                        "The filter at rest, and below it one cycle of the drawn LFO: drag its points up or down"
+                    } else {
+                        "The filter at rest; the LFO (shape below) and the input level sweep it from here. Drag to set cutoff and resonance"
+                    };
                 }
                 _ => hint = "The vowel's three formant peaks; the vowel knob morphs a-e-i-o-u",
             }
@@ -967,7 +1351,7 @@ fn graph(
                 painter.text(
                     pos2(x + 4.0, y),
                     egui::Align2::LEFT_TOP,
-                    if tap % 2 == 1 { "L" } else { "R" },
+                    pan_label(value(effect, &format!("tap{tap}_pan"))),
                     egui::FontId::proportional(10.0),
                     theme::TEXT_DIM,
                 );
@@ -976,7 +1360,7 @@ fn graph(
                 let l = names.get((tap - 1) * 2 + 1).map(|s| s.name);
                 handles.push((pos2(x, y), t, l));
             }
-            hint = "Four echoes over four beats: drag a tap sideways for its time, up or down for its level";
+            hint = "Four echoes over four beats: drag a tap sideways for its time, up or down for its level; each tap's pan and filters are on the knobs";
         }
         EffectKind::RingMod | EffectKind::FreqShift => {
             frequency_grid(&painter, rect);
@@ -1063,10 +1447,81 @@ fn graph(
             handles.push((pos2(freq_x(rect, f2), mid), Some("high_freq"), None));
             hint = "Three bands with their own compressors; drag the points to move the crossovers. Lines show each band's gain; brighter shading compresses harder";
         }
+        EffectKind::BandSplit => {
+            frequency_grid(&painter, rect);
+            let (f1, f2) = (value(effect, "low_freq"), value(effect, "high_freq"));
+            let edges = [F_LOW, f1, f2, F_HIGH];
+            for (band, name) in ["low", "mid", "high"].iter().enumerate() {
+                let (a, b) = (freq_x(rect, edges[band]), freq_x(rect, edges[band + 1]));
+                let target = value(effect, &format!("{name}_target")).round();
+                let fill = if target >= 0.5 { 0.45 } else { 0.12 };
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(a, rect.top()), pos2(b, rect.bottom())),
+                    0.0,
+                    color.gamma_multiply(fill),
+                );
+                let text = if target >= 0.5 {
+                    format!("{name} > insert {target:.0}")
+                } else {
+                    format!("{name} stays")
+                };
+                painter.text(
+                    pos2((a + b) * 0.5, rect.top() + 4.0),
+                    egui::Align2::CENTER_TOP,
+                    text,
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT,
+                );
+            }
+            let mid = rect.center().y;
+            handles.push((pos2(freq_x(rect, f1), mid), Some("low_freq"), None));
+            handles.push((pos2(freq_x(rect, f2), mid), Some("high_freq"), None));
+            hint = "Three bands; a band with a target insert leaves this track for it. Drag the points to move the crossovers";
+        }
+        EffectKind::MultibandLimiter => {
+            frequency_grid(&painter, rect);
+            let (f1, f2) = (value(effect, "low_freq"), value(effect, "high_freq"));
+            let (top, bottom) = (6.0, -24.0);
+            let edges = [F_LOW, f1, f2, F_HIGH];
+            let amount = value(effect, "amount");
+            for (band, name) in ["low", "mid", "high"].iter().enumerate() {
+                let (a, b) = (freq_x(rect, edges[band]), freq_x(rect, edges[band + 1]));
+                let drive = value(effect, &format!("{name}_drive")) * amount;
+                let fill = color.gamma_multiply((0.1 + drive / 40.0).clamp(0.1, 0.7));
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(a, rect.top()), pos2(b, rect.bottom())),
+                    0.0,
+                    fill,
+                );
+                let ceiling = db_y(rect, value(effect, &format!("{name}_ceiling")), top, bottom);
+                painter.line_segment(
+                    [pos2(a, ceiling), pos2(b, ceiling)],
+                    Stroke::new(2.0, color),
+                );
+                painter.text(
+                    pos2((a + b) * 0.5, rect.top() + 4.0),
+                    egui::Align2::CENTER_TOP,
+                    format!("{name} +{drive:.0} dB"),
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT,
+                );
+            }
+            let master = db_y(rect, value(effect, "ceiling"), top, bottom);
+            painter.line_segment(
+                [pos2(rect.left(), master), pos2(rect.right(), master)],
+                Stroke::new(1.0, theme::DANGER),
+            );
+            let mid = rect.center().y;
+            handles.push((pos2(freq_x(rect, f1), mid), Some("low_freq"), None));
+            handles.push((pos2(freq_x(rect, f2), mid), Some("high_freq"), None));
+            hint = "Three bands, each driven into its own ceiling (lines); brighter shading drives harder. The red line is the master ceiling; drag the points to move the crossovers";
+        }
         EffectKind::Vocoder => {
             frequency_grid(&painter, rect);
             let shift = 2.0_f32.powf(value(effect, "shift") / 12.0);
-            for f in musiccraft_dsp::creative::vocoder_freqs() {
+            let (bands, low, high) = musiccraft_dsp::creative::vocoder_layout(&effect.values);
+            for f in (0..bands).map(|i| musiccraft_dsp::creative::vocoder_freq(i, bands, low, high))
+            {
                 let x = freq_x(rect, f);
                 let xs = freq_x(rect, (f * shift).min(F_HIGH));
                 painter.line_segment(
@@ -1208,6 +1663,186 @@ fn graph(
         }
         // Drawn by `crate::tuner` instead.
         EffectKind::Plugin | EffectKind::PitchCorrect | EffectKind::Tuner => {}
+        EffectKind::Rack => {}
+        EffectKind::BeatShaper => {
+            let (time_strip, volume_strip) = beat_strips(rect);
+            let ramps = value(effect, "time_mode") >= 0.5;
+            let specs = effect.kind.params();
+            // Time grows downward (further back), volume upward, so at their
+            // defaults (live, full level) the two rows of points sit apart.
+            for (strip, first, ramped, down, label) in [
+                (
+                    time_strip,
+                    FIRST_TIME,
+                    ramps,
+                    true,
+                    "time (down = further back)",
+                ),
+                (volume_strip, FIRST_VOLUME, true, false, "volume"),
+            ] {
+                painter.rect_stroke(
+                    strip,
+                    0.0,
+                    Stroke::new(1.0, theme::GRID_LINE),
+                    egui::StrokeKind::Inside,
+                );
+                let points: Vec<f32> = (0..BEAT_POINTS)
+                    .map(|k| effect.values.get(first + k).copied().unwrap_or(0.0))
+                    .collect();
+                let inner = strip.shrink2(vec2(0.0, 4.0));
+                let y = |v: f32| {
+                    if down {
+                        inner.top() + v * inner.height()
+                    } else {
+                        inner.bottom() - v * inner.height()
+                    }
+                };
+                let line: Vec<Pos2> = (0..=width)
+                    .map(|i| {
+                        let phase = i as f32 / width as f32;
+                        let v = musiccraft_dsp::beat::envelope(&points, phase.min(0.9999), ramped);
+                        pos2(strip.left() + i as f32, y(v))
+                    })
+                    .collect();
+                for pair in line.windows(2) {
+                    painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
+                }
+                for (k, v) in points.iter().enumerate() {
+                    let x = strip.left() + strip.width() * k as f32 / BEAT_POINTS as f32;
+                    handles.push((pos2(x, y(*v)), None, specs.get(first + k).map(|s| s.name)));
+                }
+                painter.text(
+                    pos2(strip.right() - 4.0, strip.bottom() - 2.0),
+                    egui::Align2::RIGHT_BOTTOM,
+                    label,
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT_DIM,
+                );
+            }
+            hint = "One cycle, left to right. Top: how far behind playback runs (hold to repeat, ramp down to slow or stop); bottom: volume. Drag the points";
+        }
+        EffectKind::Scratch => {
+            let held = value(effect, "hold") >= 0.5;
+            let pattern = value(effect, "pattern");
+            let depth = value(effect, "depth");
+            let position = value(effect, "position");
+            let record = Rect::from_min_max(
+                pos2(rect.left() + 8.0, rect.top() + 10.0),
+                pos2(rect.right() - 8.0, rect.top() + 30.0),
+            );
+            painter.rect_filled(
+                record,
+                3.0,
+                color.gamma_multiply(if held { 0.5 } else { 0.15 }),
+            );
+            painter.text(
+                record.center(),
+                egui::Align2::CENTER_CENTER,
+                if held {
+                    "held span"
+                } else {
+                    "recording (turn hold on to freeze)"
+                },
+                egui::FontId::proportional(10.0),
+                theme::TEXT,
+            );
+            // One cycle of the play point's movement, time down the graph.
+            let lane = Rect::from_min_max(
+                pos2(record.left(), record.bottom() + 6.0),
+                pos2(record.right(), rect.bottom() - 4.0),
+            );
+            let steps = lane.height().max(1.0) as usize;
+            let points: Vec<Pos2> = (0..=steps)
+                .map(|i| {
+                    let phase = i as f32 / steps as f32;
+                    let at = if pattern.round() as i32 == 0 {
+                        position
+                    } else {
+                        (position
+                            + musiccraft_dsp::scratch::scratch_pattern(pattern, phase).0 * depth)
+                            .min(1.0)
+                    };
+                    pos2(lane.left() + lane.width() * at, lane.top() + i as f32)
+                })
+                .collect();
+            for pair in points.windows(2) {
+                painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
+            }
+            let needle = pos2(record.left() + record.width() * position, record.center().y);
+            handles.push((needle, Some("position"), None));
+            hint = "The held stretch of audio, start to end; drag the needle (or automate position) to scratch. The line shows a pattern's movement over one cycle";
+        }
+        EffectKind::MultiFx => {
+            let block = value(effect, "block").round().max(0.0) as usize;
+            let (x_name, y_name) = BLOCK_CONTROLS.get(block).copied().unwrap_or(("", ""));
+            for i in 1..4 {
+                let t = i as f32 / 4.0;
+                let x = rect.left() + rect.width() * t;
+                let y = rect.top() + rect.height() * t;
+                painter.line_segment(
+                    [pos2(x, rect.top()), pos2(x, rect.bottom())],
+                    Stroke::new(1.0, theme::GRID_LINE),
+                );
+                painter.line_segment(
+                    [pos2(rect.left(), y), pos2(rect.right(), y)],
+                    Stroke::new(1.0, theme::GRID_LINE),
+                );
+            }
+            let font = egui::FontId::proportional(10.0);
+            painter.text(
+                pos2(rect.right() - 4.0, rect.bottom() - 4.0),
+                egui::Align2::RIGHT_BOTTOM,
+                format!("X: {x_name}"),
+                font.clone(),
+                theme::TEXT_DIM,
+            );
+            painter.text(
+                pos2(rect.left() + 4.0, rect.top() + 4.0),
+                egui::Align2::LEFT_TOP,
+                format!("Y: {y_name}"),
+                font,
+                theme::TEXT_DIM,
+            );
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                BLOCK_NAMES.get(block).copied().unwrap_or("?"),
+                egui::FontId::proportional(16.0),
+                color.gamma_multiply(0.5),
+            );
+            let at = pos2(
+                rect.left() + rect.width() * value(effect, "x"),
+                rect.bottom() - rect.height() * value(effect, "y"),
+            );
+            handles.push((at, Some("x"), Some("y")));
+            hint = "Drag the point: across and up play the block's two controls";
+        }
+        EffectKind::FxChain => {
+            let stages: Vec<(&str, bool)> = (1..=CHAIN_STAGES)
+                .map(|s| {
+                    let block = value(effect, &format!("stage{s}_block")).round().max(0.0) as usize;
+                    (BLOCK_NAMES.get(block).copied().unwrap_or("?"), block > 0)
+                })
+                .collect();
+            chain_diagram(&painter, rect, color, &stages);
+            hint =
+                "Four blocks in series, left to right; each stage's X and Y knobs play its block";
+        }
+        EffectKind::GuitarChain => {
+            let tone_on = ["bass", "mid", "treble"]
+                .iter()
+                .any(|n| value(effect, n).abs() > 0.05);
+            let stages = [
+                ("Comp", value(effect, "compress") > 0.0),
+                ("Drive", value(effect, "drive") > 0.0),
+                ("Tone", tone_on),
+                ("Cab", value(effect, "cabinet") >= 0.5),
+                ("Chorus", value(effect, "chorus") > 0.0),
+            ];
+            chain_diagram(&painter, rect, color, &stages);
+            hint = "The pedal chain, left to right; lit stages are on. Set a stage's knob to zero to switch it off";
+        }
+        EffectKind::Send => {}
     }
 
     let dragging = state
@@ -1281,6 +1916,47 @@ fn graph(
                         push("threshold", db);
                     }
                     EffectKind::Limiter => push("ceiling", y_db(rect, pointer.y, 6.0, -60.0)),
+                    EffectKind::Scratch => {
+                        let left = rect.left() + 8.0;
+                        push(
+                            "position",
+                            (pointer.x - left) / (rect.width() - 16.0).max(1.0),
+                        );
+                    }
+                    EffectKind::MultiFx => {
+                        push("x", (pointer.x - rect.left()) / rect.width());
+                        push("y", (rect.bottom() - pointer.y) / rect.height());
+                    }
+                    EffectKind::BeatShaper => {
+                        if let Some(name) = y_param {
+                            let (time_strip, volume_strip) = beat_strips(rect);
+                            let h = |strip: Rect| strip.shrink2(vec2(0.0, 4.0));
+                            if name.starts_with("time_") {
+                                let inner = h(time_strip);
+                                push(name, (pointer.y - inner.top()) / inner.height().max(1.0));
+                            } else {
+                                let inner = h(volume_strip);
+                                push(name, (inner.bottom() - pointer.y) / inner.height().max(1.0));
+                            }
+                        }
+                    }
+                    EffectKind::Waveshaper => {
+                        if let Some(name) = y_param {
+                            let y = (rect.center().y - pointer.y) / (rect.height() * 0.4);
+                            push(name, y.clamp(-1.0, 1.0));
+                        }
+                    }
+                    EffectKind::Dynamics => {
+                        if let Some(name) = x_param {
+                            push(
+                                name,
+                                -60.0 + 66.0 * (pointer.x - rect.left()) / rect.width(),
+                            );
+                        }
+                        if let Some(name) = y_param {
+                            push(name, y_db(rect, pointer.y, 6.0, -60.0));
+                        }
+                    }
                     EffectKind::MultiTap => {
                         if let Some(name) = x_param {
                             push(name, (pointer.x - rect.left()) / rect.width() * TAP_SPAN);
@@ -1298,6 +1974,9 @@ fn graph(
                             Some("resonance") => {
                                 let t = (rect.bottom() - pointer.y) / rect.height();
                                 push("resonance", ((t - 0.15) / 0.7).clamp(0.0, 1.0));
+                            }
+                            Some(name) if name.starts_with("step_") => {
+                                push(name, lfo_strip_value(rect, pointer.y));
                             }
                             Some(name) => push(name, y_db(rect, pointer.y, top, bottom)),
                             None => {}

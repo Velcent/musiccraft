@@ -242,13 +242,19 @@ impl PitchDetector {
 }
 
 /// Pitch corrector: detects the pitch of a monophonic voice or instrument
-/// and pulls it toward the nearest note of a scale.
+/// and pulls it toward the nearest note of a scale, or toward the note a
+/// followed channel plays; up to two harmony voices sing along.
 ///
-/// Parameters: `[key, scale, speed ms, amount, reference Hz, mix]`.
+/// Parameters: `[key, scale, speed ms, amount, reference Hz, mix, follow,
+/// harmony 1 st, harmony 2 st, harmony level]`. The engine passes the
+/// followed channel's note with [`PitchCorrector::set_follow`].
 #[derive(Debug, Clone)]
 pub struct PitchCorrector {
     detector: PitchDetector,
     shifter: PitchShifter,
+    harmonies: [PitchShifter; 2],
+    /// The followed channel's highest held note (MIDI number), if any.
+    follow: Option<f32>,
     /// Current correction in semitones.
     shift: f32,
     /// Correction the current estimate asks for, in semitones.
@@ -264,6 +270,11 @@ impl PitchCorrector {
         Self {
             detector: PitchDetector::new(sample_rate),
             shifter: PitchShifter::new(sample_rate),
+            harmonies: [
+                PitchShifter::new(sample_rate),
+                PitchShifter::new(sample_rate),
+            ],
+            follow: None,
             shift: 0.0,
             target: 0.0,
             window: 0.0,
@@ -274,6 +285,10 @@ impl PitchCorrector {
     pub fn reset(&mut self) {
         self.detector.reset();
         self.shifter.reset();
+        for h in &mut self.harmonies {
+            h.reset();
+        }
+        self.follow = None;
         self.shift = 0.0;
         self.target = 0.0;
         self.window = 0.0;
@@ -283,6 +298,11 @@ impl PitchCorrector {
     #[must_use]
     pub fn detected(&self) -> Option<f32> {
         self.detector.pitch()
+    }
+
+    /// Sets the note (MIDI number) the followed channel holds, or `None`.
+    pub fn set_follow(&mut self, note: Option<u8>) {
+        self.follow = note.map(f32::from);
     }
 
     /// The correction currently applied, in semitones.
@@ -301,6 +321,14 @@ impl PitchCorrector {
         let amount = param(p, 3, 1.0).clamp(0.0, 1.0);
         let reference = param(p, 4, 440.0);
         let mix = param(p, 5, 1.0).clamp(0.0, 1.0);
+        let follow = if param(p, 6, 0.0) >= 0.5 {
+            self.follow
+        } else {
+            None
+        };
+        let intervals = [param(p, 7, 0.0).round(), param(p, 8, 0.0).round()];
+        let harmony_level = param(p, 9, 0.7).clamp(0.0, 1.0);
+        let harmonies_on = intervals.iter().any(|i| *i != 0.0) && harmony_level > 0.0;
         let sample_rate = ctx.sample_rate.max(1.0);
         // One-pole glide per chunk; a speed of 0 snaps at once.
         let chunk_ms = CHUNK as f32 * 1_000.0 / sample_rate;
@@ -318,7 +346,8 @@ impl PitchCorrector {
             // between two notes do not wobble.
             if let Some(hz) = self.detector.pitch().filter(|_| updated) {
                 let note = hz_to_note(hz, reference);
-                self.target = (nearest_in_scale(note, key, mask) - note) * amount;
+                let goal = follow.unwrap_or_else(|| nearest_in_scale(note, key, mask));
+                self.target = (goal - note) * amount;
             }
             self.shift += (self.target - self.shift) * glide;
             // Two periods of the voice make a smooth window.
@@ -332,10 +361,39 @@ impl PitchCorrector {
             }
             self.window += (wanted - self.window) * 0.1;
             let ratio = 2.0_f32.powf(self.shift / 12.0);
+            // Harmonies are shifted from the uncorrected voice by the
+            // correction plus their interval.
+            let mut dry = [[0.0_f32; CHUNK]; 2];
+            if harmonies_on {
+                for (d, s) in dry.iter_mut().zip([&*l, &*r]) {
+                    for (a, b) in d.iter_mut().zip(s.iter()) {
+                        *a = *b;
+                    }
+                }
+            }
             // The shifted copy fades in over the first 10 cents of correction,
             // so notes already in tune pass through untouched.
             let wet = mix * (self.shift.abs() / 0.1).min(1.0);
             self.shifter.shift(l, r, ratio, self.window, wet);
+            if harmonies_on {
+                for (harmony, interval) in self.harmonies.iter_mut().zip(intervals) {
+                    if interval == 0.0 {
+                        continue;
+                    }
+                    let mut voice = dry;
+                    let [vl, vr] = &mut voice;
+                    let n = l.len().min(CHUNK);
+                    let (vl, vr) = (&mut vl[..n], &mut vr[..n]);
+                    let ratio = 2.0_f32.powf((self.shift + interval) / 12.0);
+                    harmony.shift(vl, vr, ratio, self.window, 1.0);
+                    for (out, v) in l.iter_mut().zip(vl.iter()) {
+                        *out += v * harmony_level * mix;
+                    }
+                    for (out, v) in r.iter_mut().zip(vr.iter()) {
+                        *out += v * harmony_level * mix;
+                    }
+                }
+            }
         }
     }
 }
@@ -399,6 +457,22 @@ mod tests {
                 0.4 * t.sin() + 0.2 * (2.0 * t).sin() + 0.1 * (3.0 * t).sin()
             })
             .collect()
+    }
+
+    #[test]
+    fn harmony_voice_sings_an_octave_up() {
+        let sr = ctx().sample_rate;
+        let mut fx = PitchCorrector::new(sr);
+        // No correction (amount 0), so what the effect adds is the harmony
+        // alone: an octave up at full level.
+        let p = [0.0, 0.0, 0.0, 0.0, 440.0, 1.0, 0.0, 12.0, 0.0, 1.0];
+        let dry = tone(220.0, 48_000);
+        let (mut l, mut r) = (dry.clone(), dry.clone());
+        fx.process(&mut l, &mut r, &p, ctx());
+        let harmony: Vec<f32> = l.iter().zip(&dry).map(|(a, b)| a - b).collect();
+        let hz = detect(&harmony[24_000..], sr).unwrap_or(0.0);
+        // The crossfading read heads blur the estimate a little.
+        assert!((hz - 440.0).abs() < 25.0, "harmony at {hz}");
     }
 
     fn detect(signal: &[f32], sample_rate: f32) -> Option<f32> {

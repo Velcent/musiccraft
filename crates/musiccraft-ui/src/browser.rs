@@ -128,6 +128,13 @@ fn item(ui: &mut egui::Ui, label: &str, dragged: Dragged, actions: &mut Vec<Acti
                 )));
                 ui.close();
             }
+            if ui.button("Add as resynth (play its harmonics)").clicked() {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.add_resynth",
+                    [sample.clone()],
+                )));
+                ui.close();
+            }
         });
     }
     if response.double_clicked() {
@@ -225,7 +232,7 @@ fn plugin_database(
                     {
                         actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
                     }
-                    let more: [(&str, &str, Invocation); 8] = [
+                    let more: [(&str, &str, Invocation); 9] = [
                         (
                             "FM synth",
                             "Four-operator FM synth",
@@ -255,6 +262,11 @@ fn plugin_database(
                             "Drum kit",
                             "16-pad sample kit",
                             Invocation::bare("channel.add_kit"),
+                        ),
+                        (
+                            "Zone sampler",
+                            "Several samples mapped to key and velocity zones",
+                            Invocation::bare("channel.add_zones"),
                         ),
                         (
                             "Layer",
@@ -363,6 +375,18 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::Convolution => "Convolution reverb",
         K::PitchCorrect => "Pitch corrector",
         K::Tuner => "Tuner",
+        K::Dynamics => "Dynamics",
+        K::StereoShaper => "Stereo shaper",
+        K::MultibandLimiter => "Multiband limiter",
+        K::Send => "Send",
+        K::HallReverb => "Hall reverb",
+        K::GuitarChain => "Guitar chain",
+        K::MultiFx => "X/Y multi-effect",
+        K::FxChain => "Effect chain",
+        K::BeatShaper => "Beat shaper",
+        K::BandSplit => "Band splitter",
+        K::Scratch => "Scratch",
+        K::Rack => "Effect rack",
         K::Plugin => "Plugin",
     }
 }
@@ -463,6 +487,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 .show(ui, |ui| {
                     let search = state.browser.search.clone();
                     current_project(ui, frame, &search, actions);
+                    crate::controllers::section(ui, state, frame.project, actions);
                     plugin_database(ui, state, frame, &search, actions);
                     egui::CollapsingHeader::new(heading("Packs"))
                         .default_open(true)

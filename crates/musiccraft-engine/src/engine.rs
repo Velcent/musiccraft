@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use musiccraft_dsp::ProcessContext;
+use musiccraft_dsp::mastering::BandSplitter;
 use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR, inst};
 use rtrb::{Consumer, Producer, RingBuffer};
 
@@ -164,11 +165,17 @@ pub struct Engine {
     voices: Vec<Voice>,
     voice_counter: u64,
     metronome: bool,
+    /// Whether MIDI clock and start/stop go to the MIDI output.
+    midi_clock: bool,
+    /// Whether the transport was playing at the last block, for start/stop.
+    clock_was_playing: bool,
     click: Click,
     preview: Option<Box<crate::Preview>>,
     externals: Vec<Option<Box<dyn External>>>,
     /// Beats elapsed on the free-running clock (used while stopped).
     free_beats: f64,
+    /// Running state of each controller of the sequence.
+    controller_states: [crate::controllers::ControllerState; crate::controllers::MAX_CONTROLLERS],
     /// Pitch of each channel's last note, for portamento notes.
     last_keys: Vec<Option<f32>>,
     /// Messages of MIDI Out channels.
@@ -232,10 +239,14 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
             .collect(),
         voice_counter: 0,
         metronome: false,
+        midi_clock: false,
+        clock_was_playing: false,
         click: Click::default(),
         preview: None,
         externals: (0..MAX_EXTERNALS).map(|_| None).collect(),
         free_beats: 0.0,
+        controller_states: [crate::controllers::ControllerState::default();
+            crate::controllers::MAX_CONTROLLERS],
         last_keys: vec![None; PORTA_CHANNELS],
         midi_out,
         start: Start::Now,
@@ -459,6 +470,28 @@ impl Engine {
                     slot.params = params;
                 }
             }
+            EngineMessage::RackEffect {
+                track,
+                slot,
+                branch,
+                index,
+                params,
+            } => {
+                if let Some(musiccraft_dsp::Effect::Rack(rack)) = self
+                    .graph
+                    .as_deref_mut()
+                    .and_then(|g| g.tracks.get_mut(usize::from(track)))
+                    .and_then(|t| t.effects.get_mut(usize::from(slot)))
+                    .map(|s| &mut s.effect)
+                {
+                    rack.set(
+                        usize::from(branch),
+                        usize::from(index),
+                        params.enabled,
+                        params.values,
+                    );
+                }
+            }
             EngineMessage::NoteOn {
                 channel,
                 key,
@@ -467,6 +500,13 @@ impl Engine {
             EngineMessage::NoteOff { channel, key } => self.live_note_off(channel, key),
             EngineMessage::AllNotesOff => self.release_all(true),
             EngineMessage::SetMetronome(on) => self.metronome = on,
+            EngineMessage::SetMidiClock(on) => {
+                if !on && self.clock_was_playing {
+                    self.midi_out.realtime(crate::midi_out::STOP, 0);
+                }
+                self.midi_clock = on;
+                self.clock_was_playing = on && self.playing;
+            }
             EngineMessage::PlayPreview(preview) => {
                 if let Some(old) = self.preview.replace(preview) {
                     self.discard(Garbage::Preview(old));
@@ -741,6 +781,17 @@ impl Engine {
             position_beats: self.position_beats(),
             sample_rate: self.sample_rate,
         };
+        if self.midi_clock && self.playing != self.clock_was_playing {
+            let byte = if !self.playing {
+                crate::midi_out::STOP
+            } else if self.position <= 0.0 {
+                crate::midi_out::START
+            } else {
+                crate::midi_out::CONTINUE
+            };
+            self.midi_out.realtime(byte, 0);
+            self.clock_was_playing = self.playing;
+        }
         if self.playing {
             self.schedule(frames);
             self.frames_played += frames as u64;
@@ -764,11 +815,23 @@ impl Engine {
         let Some(graph) = self.graph.as_deref_mut() else {
             return;
         };
-        if self.playing {
-            if let Some(sequence) = self.sequence.as_deref() {
+        if let Some(sequence) = self.sequence.as_deref() {
+            if self.playing {
                 apply_automation(graph, sequence, self.position);
             }
+            let cx = crate::controllers::ControlContext {
+                beats,
+                seconds: frames as f32 / sample_rate.max(1.0),
+                voices: &self.voices,
+            };
+            crate::controllers::apply_controllers(
+                graph,
+                sequence,
+                &mut self.controller_states,
+                &cx,
+            );
         }
+        send_midi_controls(graph, &mut self.midi_out);
         let Graph { channels, tracks } = graph;
         for node in channels.iter_mut() {
             clear(&mut node.left, frames);
@@ -811,6 +874,7 @@ impl Engine {
             frames,
             ctx,
             transport,
+            voices: &self.voices,
         };
         mix_tracks(tracks, fx, &mut self.externals, &self.meters);
         if let Some(master) = tracks.first_mut() {
@@ -844,6 +908,19 @@ impl Engine {
                 .and_then(|seq| seq.next_pause(position, stop));
             if let Some(at) = pause {
                 stop = at;
+            }
+            if self.midi_clock {
+                // 24 clocks per quarter note.
+                let step = f64::from(PPQ) / 24.0;
+                let mut tick = (position / step).ceil() * step;
+                while tick < stop {
+                    let offset = done + (tick - position) / tpf;
+                    self.midi_out.realtime(
+                        crate::midi_out::CLOCK,
+                        (offset - 1e-6).ceil().max(0.0) as u32,
+                    );
+                    tick += step;
+                }
             }
             if self.metronome {
                 let ppq = f64::from(PPQ);
@@ -918,12 +995,64 @@ impl Engine {
 
 /// Writes every automation lane's current value into the graph.
 fn apply_automation(graph: &mut Graph, sequence: &Sequence, position: f64) {
-    use crate::AutomationTarget as T;
     for lane in sequence.automation() {
-        let Some(value) = lane.value_at(position) else {
+        if let Some(value) = lane.value_at(position) {
+            write_target(graph, lane.target, value);
+        }
+    }
+}
+
+/// MIDI Out channels send each control change and their program when its
+/// value differs from what they last sent (muted channels send nothing).
+fn send_midi_controls(graph: &mut Graph, midi_out: &mut MidiOut) {
+    use musiccraft_params::MIDI_CCS;
+    for node in &mut graph.channels {
+        let Instrument::MidiOut(midi_channel) = node.instrument else {
             continue;
         };
-        match lane.target {
+        if node.params.mute {
+            continue;
+        }
+        let value = |i: usize| {
+            node.params
+                .instrument
+                .get(i)
+                .copied()
+                .unwrap_or(-1.0)
+                .round()
+        };
+        for k in 0..MIDI_CCS {
+            let cc = value(inst::MIDI_CC1 + k);
+            if !(0.0..=127.0).contains(&cc) {
+                continue;
+            }
+            let cc = cc as u8;
+            let number = value(inst::MIDI_CC1_NUMBER + k).clamp(0.0, 127.0) as u8;
+            if let Some(sent) = node.midi_sent.get_mut(k) {
+                if *sent != cc {
+                    *sent = cc;
+                    midi_out.control(midi_channel, number, cc);
+                }
+            }
+        }
+        let program = value(inst::MIDI_PROGRAM);
+        if (1.0..=128.0).contains(&program) {
+            let program = (program - 1.0) as u8;
+            if let Some(sent) = node.midi_sent.get_mut(MIDI_CCS) {
+                if *sent != program {
+                    *sent = program;
+                    midi_out.program(midi_channel, program);
+                }
+            }
+        }
+    }
+}
+
+/// Writes `value` (real units) into the parameter `target` names.
+pub(crate) fn write_target(graph: &mut Graph, target: crate::AutomationTarget, value: f32) {
+    use crate::AutomationTarget as T;
+    {
+        match target {
             T::ChannelVolume(c) => {
                 if let Some(node) = graph.channels.get_mut(usize::from(c)) {
                     node.params.volume = value;
@@ -1237,16 +1366,23 @@ fn scale_ramped(buffer: &mut [f32], from: f32, to: f32) {
 
 /// What effect processing needs to know about the current block.
 #[derive(Clone, Copy)]
-struct FxContext {
+struct FxContext<'a> {
     frames: usize,
     ctx: ProcessContext,
     transport: ExternalTransport,
+    /// The voices, for effects that follow a channel's notes.
+    voices: &'a [Voice],
 }
 
 /// Processes inserts in index order, then the master. Sends only go to
 /// higher-numbered inserts, so every track has received all of its input by the
 /// time it is processed.
-fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals, meters: &Meters) {
+fn mix_tracks(
+    tracks: &mut [TrackNode],
+    fx: FxContext<'_>,
+    externals: &mut Externals,
+    meters: &Meters,
+) {
     let frames = fx.frames;
     for i in 1..tracks.len() {
         let (before, rest) = tracks.split_at_mut(i);
@@ -1254,8 +1390,10 @@ fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals
             continue;
         };
         // Inserts below this one are finished and can key its compressors.
-        process_track(track, fx, externals, before, 0);
-        meters.record_peak(i, peak(&track.left, frames), peak(&track.right, frames));
+        process_track(track, fx, externals, before, 0, Some((&mut *after, i + 1)));
+        let (pl, pr) = (peak(&track.left, frames), peak(&track.right, frames));
+        track.last_peak = pl.max(pr);
+        meters.record_peak(i, pl, pr);
         publish_pitches(i, track, meters);
         if track.params.to_master {
             if let Some(master) = before.first_mut() {
@@ -1273,8 +1411,10 @@ fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals
         }
     }
     if let Some((master, inserts)) = tracks.split_first_mut() {
-        process_track(master, fx, externals, inserts, 1);
-        meters.record_peak(0, peak(&master.left, frames), peak(&master.right, frames));
+        process_track(master, fx, externals, inserts, 1, None);
+        let (pl, pr) = (peak(&master.left, frames), peak(&master.right, frames));
+        master.last_peak = pl.max(pr);
+        meters.record_peak(0, pl, pr);
         publish_pitches(0, master, meters);
     }
 }
@@ -1299,17 +1439,21 @@ fn publish_pitches(index: usize, track: &TrackNode, meters: &Meters) {
 
 /// Runs a track's effects and fader. `keys` are already-processed tracks that
 /// may feed effect sidechains; `keys[i]` is mixer track `i + key_offset`.
+/// `later` holds the tracks a send effect may feed, `later.0[j]` being mixer
+/// track `j + later.1`; the master has none.
 fn process_track(
     track: &mut TrackNode,
-    fx: FxContext,
+    fx: FxContext<'_>,
     externals: &mut Externals,
     keys: &[TrackNode],
     key_offset: usize,
+    mut later: Option<(&mut [TrackNode], usize)>,
 ) {
     let FxContext {
         frames,
         ctx,
         transport,
+        voices,
     } = fx;
     let TrackNode {
         params,
@@ -1317,6 +1461,7 @@ fn process_track(
         effects,
         left,
         right,
+        ..
     } = track;
     let (l, r) = (prefix(left, frames), prefix(right, frames));
     // Invalid samples would otherwise circulate in reverb and delay feedback
@@ -1328,6 +1473,24 @@ fn process_track(
             if let Some(Some(external)) = externals.get_mut(usize::from(index)) {
                 external.process(l, r, &transport);
                 scrub(l, r);
+            }
+            continue;
+        }
+        if let musiccraft_dsp::Effect::PitchCorrect(corrector) = &mut slot.effect {
+            corrector.set_follow(followed_note(&slot.params.values, voices));
+        }
+        if let musiccraft_dsp::Effect::BandSplit(splitter) = &mut slot.effect {
+            match later.as_mut() {
+                Some((tracks, offset)) => {
+                    band_split(l, r, &slot.params.values, splitter, tracks, *offset, ctx);
+                }
+                None => splitter.process(l, r, &slot.params.values, ctx),
+            }
+            continue;
+        }
+        if slot.effect.kind() == EffectKind::Send {
+            if let Some((tracks, offset)) = later.as_mut() {
+                send(l, r, &slot.params.values, tracks, *offset);
             }
             continue;
         }
@@ -1363,6 +1526,97 @@ fn process_track(
     *gains = to;
     scale_ramped(l, from.0, to.0);
     scale_ramped(r, from.1, to.1);
+}
+
+/// A send effect: adds this point of the chain to its target track, panned
+/// and scaled, then scales what continues down the chain by `dry`.
+/// Parameters: `[target, level, pan, dry]`.
+fn send(l: &mut [f32], r: &mut [f32], p: &[f32], tracks: &mut [TrackNode], offset: usize) {
+    let param = |i: usize, default: f32| p.get(i).copied().unwrap_or(default);
+    let target = param(0, 0.0).round();
+    let dest = (target >= 0.5)
+        .then(|| (target as usize).checked_sub(offset))
+        .flatten()
+        .and_then(|j| tracks.get_mut(j));
+    if let Some(dest) = dest {
+        let level = param(1, 1.0).clamp(0.0, 1.25);
+        let pan = param(2, 0.0).clamp(-1.0, 1.0);
+        let (gl, gr) = ((1.0 - pan).min(1.0) * level, (1.0 + pan).min(1.0) * level);
+        add_scaled(&mut dest.left, l, gl, l.len());
+        add_scaled(&mut dest.right, r, gr, r.len());
+    }
+    let dry = param(3, 1.0).clamp(0.0, 1.0);
+    if dry < 1.0 {
+        for sample in l.iter_mut().chain(r.iter_mut()) {
+            *sample *= dry;
+        }
+    }
+}
+
+/// The highest held key on the channel a pitch corrector follows (its
+/// `follow` parameter, a rack position counted from 1; 0 is off).
+fn followed_note(values: &[f32], voices: &[Voice]) -> Option<u8> {
+    let follow = EffectKind::PitchCorrect
+        .channel_ref_index()
+        .and_then(|i| values.get(i))
+        .copied()
+        .unwrap_or(0.0)
+        .round();
+    if follow < 0.5 {
+        return None;
+    }
+    let channel = follow as usize - 1;
+    voices
+        .iter()
+        .filter(|v| v.held() && usize::from(v.channel) == channel)
+        .map(|v| v.key)
+        .max()
+}
+
+/// The band splitter: each band with a valid target insert is added to that
+/// insert's input; bands without one stay on this track.
+/// Parameters: `[low Hz, high Hz, low target, mid target, high target]`.
+fn band_split(
+    l: &mut [f32],
+    r: &mut [f32],
+    p: &[f32],
+    splitter: &mut BandSplitter,
+    tracks: &mut [TrackNode],
+    offset: usize,
+    ctx: ProcessContext,
+) {
+    splitter.prepare(p, ctx.sample_rate);
+    // Index into `tracks` of each band's target, if it has a valid one.
+    let targets: [Option<usize>; 3] = std::array::from_fn(|b| {
+        let target = p.get(2 + b).copied().unwrap_or(0.0).round();
+        (target >= 0.5)
+            .then(|| (target as usize).checked_sub(offset))
+            .flatten()
+            .filter(|j| *j < tracks.len())
+    });
+    for (i, (sl, sr)) in l.iter_mut().zip(r.iter_mut()).enumerate() {
+        let bands = splitter.frame(*sl, *sr);
+        let mut keep = [0.0_f32; 2];
+        for (band, target) in bands.iter().zip(targets) {
+            let dest = target.and_then(|j| tracks.get_mut(j));
+            match dest {
+                Some(dest) => {
+                    if let Some(d) = dest.left.get_mut(i) {
+                        *d += band[0];
+                    }
+                    if let Some(d) = dest.right.get_mut(i) {
+                        *d += band[1];
+                    }
+                }
+                None => {
+                    keep[0] += band[0];
+                    keep[1] += band[1];
+                }
+            }
+        }
+        *sl = keep[0];
+        *sr = keep[1];
+    }
 }
 
 /// Replaces non-finite samples with silence. Returns whether any were found.

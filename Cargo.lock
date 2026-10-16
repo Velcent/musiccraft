@@ -1455,6 +1455,7 @@ dependencies = [
 name = "musiccraft-commands"
 version = "0.1.0"
 dependencies = [
+ "musiccraft-formula",
  "musiccraft-project",
  "serde",
  "serde_json",
@@ -1472,9 +1473,14 @@ name = "musiccraft-engine"
 version = "0.1.0"
 dependencies = [
  "musiccraft-dsp",
+ "musiccraft-formula",
  "musiccraft-params",
  "rtrb",
 ]
+
+[[package]]
+name = "musiccraft-formula"
+version = "0.1.0"
 
 [[package]]
 name = "musiccraft-mcp"
@@ -1510,6 +1516,7 @@ dependencies = [
  "musiccraft-commands",
  "musiccraft-dsp",
  "musiccraft-engine",
+ "musiccraft-formula",
  "musiccraft-params",
  "musiccraft-project",
  "musiccraft-samples",

@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use musiccraft_dsp::convolution::Convolver;
+use musiccraft_dsp::rack::{Rack, RackItem};
 use musiccraft_dsp::{Effect, SampleBuffer};
 use musiccraft_engine::{
     ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_BLOCK,
@@ -28,8 +29,12 @@ enum Source {
     Additive,
     /// A resolved sample reference played as grains.
     Granular(String),
+    /// A resolved sample reference to resynthesize.
+    Resynth(String),
     /// Resolved pad sample references (empty for an empty pad).
     Kit(Vec<String>),
+    /// Zones with resolved sample references.
+    Zones(Vec<musiccraft_project::SampleZone>),
     /// Channel positions the layer plays.
     Layer(Vec<u16>),
     /// A plugin in this engine slot (`None`: not running).
@@ -39,8 +44,17 @@ enum Source {
 }
 
 /// What a rebuild depends on for one effect slot: its kind, the engine slot
-/// of a plugin, and the file it loads.
-type SlotShape = (EffectKind, Option<u16>, Option<String>);
+/// of a plugin, the file it loads, and an effect rack's branch effects (kind
+/// and file).
+type SlotShape = (
+    EffectKind,
+    Option<u16>,
+    Option<String>,
+    Vec<Vec<(EffectKind, Option<String>)>>,
+);
+
+/// Settings of one effect inside a rack: (track, slot, branch, position).
+type RackParams = ((u16, u8, u8, u8), EffectParams);
 
 /// The parts of a project that require a new [`Graph`] when they change.
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +85,8 @@ struct Desc {
     channels: Vec<ChannelParams>,
     tracks: Vec<TrackParams>,
     effects: Vec<Vec<EffectParams>>,
+    /// Every rack branch effect, in track, slot, branch and position order.
+    racks: Vec<RackParams>,
     sequence: Sequence,
     tempo: f64,
     playing: bool,
@@ -231,6 +247,9 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     musiccraft_project::Instrument::Granular { sample } => {
                         Source::Granular(sample_key(sample, base))
                     }
+                    musiccraft_project::Instrument::Resynth { sample } => {
+                        Source::Resynth(sample_key(sample, base))
+                    }
                     musiccraft_project::Instrument::Kit { pads } => Source::Kit(
                         pads.iter()
                             .map(|p| {
@@ -239,6 +258,15 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                                 } else {
                                     sample_key(p, base)
                                 }
+                            })
+                            .collect(),
+                    ),
+                    musiccraft_project::Instrument::Zones { zones } => Source::Zones(
+                        zones
+                            .iter()
+                            .map(|z| musiccraft_project::SampleZone {
+                                sample: sample_key(&z.sample, base),
+                                ..z.clone()
                             })
                             .collect(),
                     ),
@@ -268,7 +296,12 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                                 .plugin
                                 .as_ref()
                                 .and_then(|p| slots.get(&p.instance).copied());
-                            (e.kind, slot, e.file.clone())
+                            let branches = e
+                                .branches
+                                .iter()
+                                .map(|b| b.iter().map(|c| (c.kind, c.file.clone())).collect())
+                                .collect();
+                            (e.kind, slot, e.file.clone(), branches)
                         })
                         .collect()
                 })
@@ -298,6 +331,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     .collect()
             })
             .collect(),
+        racks: rack_params(project),
         sequence,
         tempo: project.tempo_bpm(),
         playing: project.transport().is_playing(),
@@ -306,6 +340,31 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
         start: start_mode(project),
         stop_at_end: project.is_armed() && !project.record.loop_record,
     }
+}
+
+fn rack_params(project: &Project) -> Vec<RackParams> {
+    let small = |i: usize| u8::try_from(i).unwrap_or(u8::MAX);
+    let mut out = Vec::new();
+    for (t, track) in project.mixer.iter().enumerate() {
+        for (s, slot) in track.effects.iter().enumerate() {
+            for (b, branch) in slot.branches.iter().enumerate() {
+                for (i, e) in branch.iter().enumerate() {
+                    let at = (
+                        u16::try_from(t).unwrap_or(u16::MAX),
+                        small(s),
+                        small(b),
+                        small(i),
+                    );
+                    let params = EffectParams {
+                        enabled: e.enabled,
+                        values: e.values,
+                    };
+                    out.push((at, params));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Keeps an engine in step with a project. Lives on the main thread.
@@ -322,6 +381,8 @@ pub struct Bridge {
     /// The project's transport requests already acted on; `None` before the
     /// first sync.
     requests: Option<Requests>,
+    /// Resynthesis analyses by sample key, so rebuilding is cheap.
+    harmonics: BTreeMap<String, Arc<musiccraft_dsp::resynth::HarmonicTable>>,
 }
 
 impl Bridge {
@@ -336,6 +397,7 @@ impl Bridge {
             live: BTreeMap::new(),
             failed: BTreeMap::new(),
             requests: None,
+            harmonics: BTreeMap::new(),
         }
     }
 
@@ -552,6 +614,21 @@ impl Bridge {
         }
     }
 
+    /// The harmonic analysis of a sample (measured once, then cached).
+    fn harmonics(
+        &mut self,
+        key: &str,
+        warnings: &mut Vec<String>,
+    ) -> Arc<musiccraft_dsp::resynth::HarmonicTable> {
+        if let Some(table) = self.harmonics.get(key) {
+            return Arc::clone(table);
+        }
+        let buffer = self.load(key, warnings);
+        let table = Arc::new(musiccraft_dsp::resynth::HarmonicTable::analyze(&buffer));
+        self.harmonics.insert(key.to_owned(), Arc::clone(&table));
+        table
+    }
+
     /// A built-in effect, with its file loaded (the convolution reverb's
     /// impulse response).
     fn effect(
@@ -560,6 +637,24 @@ impl Bridge {
         warnings: &mut Vec<String>,
     ) -> Effect {
         let sr = self.sample_rate as f32;
+        if slot.kind == EffectKind::Rack {
+            let branches = std::array::from_fn(|b| {
+                slot.branches
+                    .get(b)
+                    .into_iter()
+                    .flatten()
+                    // Racks do not nest, and engine-routed effects and
+                    // plugins cannot run inside one.
+                    .filter(|c| c.kind.allowed_in_rack())
+                    .map(|c| RackItem {
+                        effect: self.effect(c, warnings),
+                        enabled: c.enabled,
+                        values: c.values,
+                    })
+                    .collect()
+            });
+            return Effect::Rack(Box::new(Rack::new(branches)));
+        }
         if slot.kind != EffectKind::Convolution {
             return Effect::new(slot.kind, sr);
         }
@@ -586,9 +681,23 @@ impl Bridge {
                 Source::Keys => Instrument::Keys,
                 Source::Additive => Instrument::Additive,
                 Source::Granular(key) => Instrument::Granular(self.load(key, warnings)),
+                Source::Resynth(key) => Instrument::Resynth(self.harmonics(key, warnings)),
                 Source::Kit(keys) => Instrument::Kit(
                     keys.iter()
                         .map(|k| (!k.is_empty()).then(|| self.load(k, warnings)))
+                        .collect(),
+                ),
+                Source::Zones(zones) => Instrument::Zones(
+                    zones
+                        .iter()
+                        .map(|z| musiccraft_engine::Zone {
+                            buffer: self.load(&z.sample, warnings),
+                            low: z.low,
+                            high: z.high,
+                            root: z.root,
+                            vel_low: z.vel_low,
+                            vel_high: z.vel_high,
+                        })
                         .collect(),
                 ),
                 Source::Layer(children) => Instrument::Layer(children.clone()),
@@ -618,7 +727,7 @@ impl Bridge {
                 graph.add_track(*params, effects);
             }
             let slots = desc.structure.tracks.get(i).into_iter().flatten();
-            for (s, (_, external, _)) in slots.enumerate() {
+            for (s, (_, external, _, _)) in slots.enumerate() {
                 if let Some(external) = external {
                     graph.attach_external(i, s, *external);
                 }
@@ -673,6 +782,18 @@ impl Bridge {
                             params: *now,
                         });
                     }
+                }
+            }
+            for ((now_at, now), (_, before)) in desc.racks.iter().zip(&prev.racks) {
+                if now != before || stopped {
+                    let (track, slot, branch, index) = *now_at;
+                    messages.push(EngineMessage::RackEffect {
+                        track,
+                        slot,
+                        branch,
+                        index,
+                        params: *now,
+                    });
                 }
             }
         }

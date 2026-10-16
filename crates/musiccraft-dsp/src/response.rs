@@ -7,8 +7,8 @@ use std::f32::consts::PI;
 use musiccraft_params::EffectKind;
 
 use crate::character::{
-    Transient, formants, graphic_eq_db, overdrive_curve, parametric_eq_db, shape_curve,
-    soft_clip_curve,
+    Transient, formants, graphic_eq_db, overdrive_curve, parametric_eq_db, soft_clip_curve,
+    waveshaper_curve,
 };
 use crate::{Biquad, ProcessContext, SvfMode, db_to_gain, gain_to_db};
 
@@ -69,14 +69,18 @@ pub fn limiter_db(params: &[f32], input_db: f32) -> f32 {
     (input_db + param(0, 0.0)).min(param(1, -0.3))
 }
 
-/// Output sample of the distortion for an input sample: `[drive, mix, output]`.
+/// Output sample of the distortion for an input sample:
+/// `[drive, mix, output, mode, threshold]`.
 #[must_use]
 pub fn distortion_shape(params: &[f32], x: f32) -> f32 {
     let param = |i: usize, default: f32| params.get(i).copied().unwrap_or(default);
     let drive = db_to_gain(param(0, 12.0));
     let mix = param(1, 1.0).clamp(0.0, 1.0);
     let output = db_to_gain(param(2, -6.0));
-    (x + ((x * drive).tanh() - x) * mix) * output
+    let hard = param(3, 0.0) >= 0.5;
+    let threshold = db_to_gain(param(4, -6.0).min(0.0));
+    let wet = crate::dynamics::distortion_curve(hard, threshold, x * drive);
+    (x + (wet - x) * mix) * output
 }
 
 fn at(params: &[f32], i: usize, default: f32) -> f32 {
@@ -148,7 +152,7 @@ pub fn shaper(kind: EffectKind, params: &[f32], x: f32) -> Option<f32> {
                 * db_to_gain(at(params, 2, 0.0))
         }
         EffectKind::Waveshaper => blend(
-            shape_curve(at(params, 0, 0.0), x * db_to_gain(at(params, 1, 12.0))),
+            waveshaper_curve(params, x * db_to_gain(at(params, 1, 12.0))),
             at(params, 2, 1.0),
             at(params, 3, -6.0),
         ),
@@ -165,6 +169,20 @@ pub fn noise_gate_db(params: &[f32], input_db: f32) -> f32 {
     } else {
         input_db + at(params, 4, -80.0)
     }
+}
+
+/// Output level (dB) of the dynamics chain's static curve: the gate (when
+/// on), then the compressor, then the limiter.
+#[must_use]
+pub fn dynamics_db(params: &[f32], input_db: f32) -> f32 {
+    use crate::toolbox::Dynamics;
+    let gated = if Dynamics::gate_on(params) {
+        noise_gate_db(Dynamics::gate_params(params), input_db)
+    } else {
+        input_db
+    };
+    let compressed = compressor_db(Dynamics::compressor_params(params), gated);
+    limiter_db(Dynamics::limiter_params(params), compressed)
 }
 
 /// A drum-like hit's level envelope before and after the transient shaper,

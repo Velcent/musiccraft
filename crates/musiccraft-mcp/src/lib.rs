@@ -329,11 +329,15 @@ impl Server {
                 musiccraft_project::Instrument::Keys => "keys".to_owned(),
                 musiccraft_project::Instrument::Additive => "additive".to_owned(),
                 musiccraft_project::Instrument::Granular { sample } => format!("granular {sample}"),
+                musiccraft_project::Instrument::Resynth { sample } => format!("resynth {sample}"),
                 musiccraft_project::Instrument::Kit { pads } => {
                     format!(
                         "kit ({} pads)",
                         pads.iter().filter(|p| !p.is_empty()).count()
                     )
+                }
+                musiccraft_project::Instrument::Zones { zones } => {
+                    format!("zone sampler ({} zones)", zones.len())
                 }
                 musiccraft_project::Instrument::Layer { channels } => {
                     format!("layer of {} channels", channels.len())

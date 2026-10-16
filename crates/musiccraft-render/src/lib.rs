@@ -14,6 +14,7 @@ mod delivery;
 mod export;
 mod midi_export;
 pub mod plugins;
+mod sample_edit;
 mod sequence;
 
 pub use bridge::{Bridge, SyncReport};
@@ -27,6 +28,7 @@ pub use plugins::{
     LivePlugin, PluginEvent, PluginFactory, PluginHost, PluginInfo, PluginInstance, PluginKind,
     PluginParam, PluginRequest,
 };
+pub use sample_edit::SampleEditCommand;
 pub use sequence::{build_full_sequence, build_sequence};
 
 use musiccraft_commands::Registry;

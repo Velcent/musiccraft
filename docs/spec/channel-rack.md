@@ -151,7 +151,14 @@ Out channels voice their own notes and are never cut.
   a burst of noise circulating in a tuned, damped delay line). Parameters:
   `pluck_decay` (time to fade by 60 dB, 0.1–10 s), `pluck_damping` (0
   bright to 1 dark), `pluck_tone` (brightness of the initial burst). Ending
-  the note damps the string quickly. Presets: guitar, harp, bass, muted.
+  the note damps the string quickly. Presets: guitar, harp, bass, muted,
+  bowed and twelve-string.
+- `pluck_bow` (0–1) bows the string: while the note is held, low-passed
+  noise (brightness from `pluck_tone`, level following the channel
+  envelope) keeps feeding the string, so it sustains; releasing stops the
+  bow and the string damps as usual. `pluck_strings` (1–3) sounds extra
+  strings `pluck_detune` cents above and below the note (each with its own
+  burst), mixed at equal power.
 
 ## FM synth
 
@@ -161,7 +168,16 @@ Out channels voice their own notes and are never cut.
   tones). Each operator has `opN_ratio` (0.25–16 × the note), `opN_level`,
   `opN_decay` (s) and `opN_sustain`; operator 4 has `fm_feedback`. Tones
   follow the channel envelope; modulators shape the timbre over time.
-  Presets: e-piano, bell, bass, brass, organ, pluck, metallic.
+  Presets: e-piano, bell, bass, brass, organ, pluck, metallic, plus six-operator
+  ones.
+- Six operators: algorithms 6–11 also use operators 5 and 6 (same four
+  parameters each): 6→5→4→3→2→1; two stacks 6→5→4 and 3→2→1; three pairs
+  6→5, 4→3, 2→1; 2–6 all into 1; 6 into each of 1–5; all six as tones.
+  With six operators the feedback is on operator 6. Algorithms 0–5 ignore
+  operators 5 and 6, so older sounds are unchanged.
+- `opN_wave` (operators 1–6): sine, half sine, soft square or soft saw.
+- `fm_cutoff` and `fm_resonance`: a low-pass filter on the output, off at
+  20 kHz.
 
 ## Keys
 
@@ -177,6 +193,13 @@ Out channels voice their own notes and are never cut.
 - `channel.add_additive [name]`: up to 32 harmonics (`add_partials`) with
   `add_bright` (spectral slope), `add_even` (level of even harmonics),
   `add_inharm` (stretch) and `add_decay` (upper harmonics fade faster).
+- A second spectrum (`add_bright_b`, `add_even_b`, `add_inharm_b`) and a
+  morph between them: `add_morph` (0 the first spectrum, 1 the second),
+  `add_morph_time` (seconds over which each note moves from `add_morph` to
+  the second spectrum; 0 off) and a sine LFO on the position
+  (`add_morph_rate` Hz, `add_morph_depth`). Each harmonic's level and the
+  stretch are interpolated; both spectra are normalized first, so morphing
+  keeps the level.
 
 ## Third oscillator
 
@@ -191,6 +214,39 @@ Out channels voice their own notes and are never cut.
   position range), `gran_pitch_rand` (random detune, semitones) and
   `gran_scan` (how fast the position moves while held, −2…2 × real time).
   Pitch follows the key around `root_key`.
+
+## Resynth
+
+- `channel.add_resynth <sample> [name]` measures the sample's harmonics once
+  (when the channel is built): the median pitch it hears is its fundamental
+  (220 Hz if it hears none), and Hann-windowed spectra up to 512 times along
+  the sample give the level of harmonics 1–32 (the strongest bin within two
+  of each harmonic), normalized to the loudest. Notes play those levels as
+  sines on the note's own harmonics, so any sample becomes a pitched
+  instrument that keeps its tone changing over time.
+- `resyn_speed` (0 freezes, 1 as recorded, up to 4), `resyn_position`
+  (start, 0–1 of the sample), `resyn_blur` (0–1: levels follow the analysis
+  over up to half a second, smearing changes), `resyn_loop` (hold the last
+  frame or loop), and from the additive synth `add_partials` and
+  `add_inharm` (stretches the harmonics apart). Levels update every 32
+  samples. `channel.set_sample` changes the sample. Browser samples offer
+  "Add as resynth" in their right-click menu.
+
+## Zone sampler
+
+- `channel.add_zones [name]` adds a sampler that plays several samples, each
+  in a **zone**: a key range (`low`–`high`), a velocity range (`vel_low`–
+  `vel_high`, 1–127) and the `root` key at which the sample plays at its
+  recorded pitch. A note plays the first zone (in list order) whose ranges
+  contain its key and velocity; when none does it is silent. One-shot,
+  fades, reverse, envelope and pitch work as on the sampler.
+- `channel.add_zone <channel> <sample> [low] [high] [root]` appends a zone
+  (defaults: the whole keyboard, root C5 = 60, all velocities);
+  `channel.remove_zone <channel> <zone>`, `channel.insert_zone <channel>
+  <zone> <json>` (undo) and `channel.set_zone <channel> <zone>
+  <low|high|root|vel_low|vel_high|sample> <value>` edit them. All undoable.
+- The editor lists the zones with their sample and ranges as dragged
+  numbers, a delete button per zone and "Add zone…" (asks for a sample).
 
 ## Drum kit
 
@@ -225,6 +281,17 @@ Out channels voice their own notes and are never cut.
   Settings → MIDI (none by default). Timing is accurate to about one audio
   buffer. Offline renders and exports leave MIDI Out channels silent and
   send nothing.
+- Eight control-change knobs (`midi_cc1` … `midi_cc8`, 0–127; −1, the
+  default, sends nothing) with their controller numbers (`midi_cc1_number`
+  …, defaults 1, 7, 10, 11, 71, 74, 91, 93) and `midi_program` (0 none,
+  1–128). The engine sends a control change or program change whenever the
+  value differs from the last one it sent (and again after the channels are
+  rebuilt), so automation and controllers drive external gear; a muted
+  channel sends none.
+- **MIDI clock** (Settings → MIDI, off by default): while playing, 24 clock
+  messages per quarter note go to the MIDI output, with Start when playback
+  begins at the song start, Continue when it resumes elsewhere and Stop when
+  it stops or pauses.
 
 ## Built-in sounds
 

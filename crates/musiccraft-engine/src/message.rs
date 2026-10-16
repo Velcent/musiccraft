@@ -41,6 +41,19 @@ pub enum EngineMessage {
         /// New settings.
         params: EffectParams,
     },
+    /// Update the settings of one effect inside an effect rack.
+    RackEffect {
+        /// Track index (0 = master).
+        track: u16,
+        /// Slot of the rack on the track.
+        slot: u8,
+        /// Branch of the rack.
+        branch: u8,
+        /// Position of the effect on the branch.
+        index: u8,
+        /// New settings.
+        params: EffectParams,
+    },
     /// Start a held note outside the sequence (preview, MIDI input).
     NoteOn {
         /// Channel index.
@@ -61,6 +74,8 @@ pub enum EngineMessage {
     AllNotesOff,
     /// Turn the beat click on or off.
     SetMetronome(bool),
+    /// Send MIDI clock and start/stop to the MIDI output while playing.
+    SetMidiClock(bool),
     /// Replace the channel/mixer graph. Voices are silenced.
     SetGraph(Box<Graph>),
     /// Replace the note sequence.

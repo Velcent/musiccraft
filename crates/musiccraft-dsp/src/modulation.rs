@@ -31,7 +31,7 @@ fn beats_per_sample(ctx: ProcessContext) -> f64 {
 /// Phaser: a chain of first-order all-pass filters whose corner sweeps
 /// between 200 Hz and 4 kHz, mixed with the dry signal.
 ///
-/// Parameters: `[rate Hz, depth, feedback, stages, mix]`.
+/// Parameters: `[rate Hz, depth, feedback, stages, mix, warm]`.
 #[derive(Debug, Clone, Default)]
 pub struct Phaser {
     /// Per channel: all-pass states (input and output memories).
@@ -54,6 +54,7 @@ impl Phaser {
         let feedback = param(p, 2, 0.5).clamp(0.0, 0.9);
         let stages = (param(p, 3, 6.0).round() as usize).clamp(2, 12);
         let mix = param(p, 4, 0.5).clamp(0.0, 1.0);
+        let warm = 1.0 + 3.0 * param(p, 5, 0.0).clamp(0.0, 1.0);
         let step = rate / sr;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             for (ch, sample) in [l, r].into_iter().enumerate() {
@@ -73,7 +74,11 @@ impl Phaser {
                     x = 0.0;
                     self.state[ch] = [(0.0, 0.0); 12];
                 }
-                self.feedback[ch] = flush_denormal(x);
+                self.feedback[ch] = if warm > 1.0 {
+                    flush_denormal((x * warm).tanh() / warm)
+                } else {
+                    flush_denormal(x)
+                };
                 *sample += (x - *sample) * mix;
             }
             self.phase = (self.phase + step).fract();
@@ -163,7 +168,7 @@ impl Flanger {
 
 /// Bitcrusher: fewer bits and a lower effective sample rate.
 ///
-/// Parameters: `[bits, downsample, mix, output dB]`.
+/// Parameters: `[bits, downsample, mix, output dB, squeeze]`.
 #[derive(Debug, Clone, Default)]
 pub struct Bitcrusher {
     held: [f32; 2],
@@ -182,13 +187,19 @@ impl Bitcrusher {
         let hold = (param(p, 1, 4.0).round() as u32).clamp(1, 32);
         let mix = param(p, 2, 1.0).clamp(0.0, 1.0);
         let output = db_to_gain(param(p, 3, 0.0));
+        let power = 1.0 - 0.9 * param(p, 4, 0.0).clamp(0.0, 1.0);
         let levels = 2.0_f32.powf(bits - 1.0);
+        let crush = |x: f32| {
+            let squeezed = if power < 1.0 {
+                x.signum() * x.abs().min(4.0).powf(power)
+            } else {
+                x
+            };
+            (squeezed * levels).round() / levels
+        };
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if self.counter == 0 {
-                self.held = [
-                    (*l * levels).round() / levels,
-                    (*r * levels).round() / levels,
-                ];
+                self.held = [crush(*l), crush(*r)];
             }
             self.counter = (self.counter + 1) % hold;
             *l = (*l + (self.held[0] - *l) * mix) * output;
@@ -349,6 +360,19 @@ mod tests {
     }
 
     #[test]
+    fn warm_phaser_saturates_its_feedback() {
+        let run = |warm: f32| {
+            let (mut l, mut r) = tone(24_000);
+            let mut phaser = Phaser::default();
+            phaser.process(&mut l, &mut r, &[1.0, 1.0, 0.9, 12.0, 0.5, warm], ctx());
+            l
+        };
+        let (cold, warm) = (run(0.0), run(1.0));
+        assert!(warm.iter().all(|s| s.is_finite() && s.abs() < 2.0));
+        assert!(cold.iter().zip(&warm).any(|(a, b)| (a - b).abs() > 1e-3));
+    }
+
+    #[test]
     fn bitcrusher_quantizes_and_holds() {
         let mut l: Vec<f32> = (0..8).map(|i| i as f32 * 0.1).collect();
         let mut r = l.clone();
@@ -356,6 +380,19 @@ mod tests {
         // Two bits: levels at multiples of 0.5; held for four samples.
         assert_eq!(&l[..4], &[0.0; 4]);
         assert!(l[4..].iter().all(|s| (*s - 0.5).abs() < 1e-6), "{l:?}");
+    }
+
+    #[test]
+    fn bitcrusher_squeeze_lifts_quiet_detail() {
+        let run = |squeeze: f32| {
+            let mut l = vec![0.04, -0.04];
+            let mut r = l.clone();
+            Bitcrusher::default().process(&mut l, &mut r, &[16.0, 1.0, 1.0, 0.0, squeeze]);
+            l
+        };
+        assert!((run(0.0)[0] - 0.04).abs() < 1e-4, "off leaves it alone");
+        let squeezed = run(1.0);
+        assert!(squeezed[0] > 0.5 && squeezed[1] < -0.5, "{squeezed:?}");
     }
 
     #[test]

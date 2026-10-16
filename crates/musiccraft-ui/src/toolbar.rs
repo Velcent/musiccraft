@@ -145,6 +145,7 @@ fn add_menu(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
                 ("Organ", "channel.add_keys organ"),
                 ("Additive", "channel.add_additive"),
                 ("Drum kit (16 pads)", "channel.add_kit"),
+                ("Zone sampler", "channel.add_zones"),
                 ("Layer", "channel.add_layer"),
                 ("MIDI Out", "channel.add_midi_out"),
             ] {

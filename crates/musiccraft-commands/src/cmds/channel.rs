@@ -61,6 +61,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             add_granular,
         ),
         cmd(
+            "channel.add_resynth",
+            "channel.add_resynth <sample> [name]",
+            "Add a channel that measures a sample's harmonics and plays them back at any pitch.",
+            add_resynth,
+        ),
+        cmd(
             "channel.add_kit",
             "channel.add_kit [name]",
             "Add a 16-pad drum kit (pads 1-8 start with the built-in sounds).",
@@ -231,7 +237,7 @@ pub(super) fn check_sample(
         .map_or_else(|| sample.to_owned(), |s| s.to_string_lossy().into_owned()))
 }
 
-fn push_channel(project: &mut Project, channel: Channel) -> Outcome {
+pub(super) fn push_channel(project: &mut Project, channel: Channel) -> Outcome {
     let name = channel.name.clone();
     project.channels.push(channel);
     let number = project.channels.len();
@@ -307,7 +313,7 @@ fn add_pluck(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     ))
 }
 
-fn name_or(args: &Args<'_>, from: usize, default: &str) -> Result<String, CommandError> {
+pub(super) fn name_or(args: &Args<'_>, from: usize, default: &str) -> Result<String, CommandError> {
     if args.len() > from {
         args.rest(from)
     } else {
@@ -397,6 +403,24 @@ fn add_keys(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
         channel.params.0[musiccraft_project::params::inst::SUSTAIN] = 1.0;
         channel.params.0[musiccraft_project::params::inst::RELEASE] = 0.05;
     }
+    Ok(push_channel(project, channel))
+}
+
+fn add_resynth(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, usize::MAX)?;
+    let sample = args.str(0)?;
+    let default_name = check_sample(project, args, sample)?;
+    let name = name_or(args, 1, &format!("{default_name} resynth"))?;
+    let id = ChannelId(project.alloc_id());
+    let mut channel = Channel::new(
+        id,
+        name,
+        Instrument::Resynth {
+            sample: sample.to_owned(),
+        },
+    );
+    channel.params.0[musiccraft_project::params::inst::SUSTAIN] = 1.0;
+    channel.params.0[musiccraft_project::params::inst::ADD_PARTIALS] = 32.0;
     Ok(push_channel(project, channel))
 }
 
@@ -544,7 +568,13 @@ struct ChannelSnapshot {
 fn remove(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, 1)?;
     let index = channel_arg(project, args, 0)?;
-    let channel = project.channels.remove(index);
+    if super::mixer::channel_followers(project)
+        .iter()
+        .any(|(_, _, _, position)| *position == index + 1)
+    {
+        return Err(args.invalid("a pitch corrector follows this channel; change it first"));
+    }
+    let channel = super::mixer::keeping_followers(project, |p| p.channels.remove(index));
     let mut notes = Vec::new();
     for pattern in &mut project.patterns {
         let id = pattern.id;
@@ -606,7 +636,7 @@ fn insert(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         }
     }
     let name = channel.name.clone();
-    project.channels.insert(position - 1, channel);
+    super::mixer::keeping_followers(project, |p| p.channels.insert(position - 1, channel));
     project.playlist.clips.extend(snapshot.clips);
     project.playlist.sort_clips();
     Ok(Outcome::undoable(
@@ -626,7 +656,7 @@ fn clone(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
     }
     copy.name = format!("{} copy", copy.name);
     let position = index + 2;
-    project.channels.insert(index + 1, copy);
+    super::mixer::keeping_followers(project, |p| p.channels.insert(index + 1, copy));
     Ok(Outcome::undoable(
         format!("cloned channel {} to {position}", index + 1),
         Invocation::new("channel.remove", [position.to_string()]),
@@ -637,8 +667,10 @@ fn move_channel(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     args.expect(2, 2)?;
     let from = channel_arg(project, args, 0)?;
     let to = channel_arg(project, args, 1)?;
-    let channel = project.channels.remove(from);
-    project.channels.insert(to, channel);
+    super::mixer::keeping_followers(project, |p| {
+        let channel = p.channels.remove(from);
+        p.channels.insert(to, channel);
+    });
     Ok(Outcome::undoable(
         format!("moved channel {} to {}", from + 1, to + 1),
         Invocation::new(args.name(), [(to + 1).to_string(), (from + 1).to_string()]),
@@ -846,7 +878,9 @@ fn set_sample(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     let sample = args.str(1)?;
     check_sample(project, args, sample)?;
     let current = match &mut project.channels[index].instrument {
-        Instrument::Sampler { sample } | Instrument::Granular { sample } => sample,
+        Instrument::Sampler { sample }
+        | Instrument::Granular { sample }
+        | Instrument::Resynth { sample } => sample,
         _ => return Err(args.invalid(format!("channel {} does not play a sample", index + 1))),
     };
     let previous = std::mem::replace(current, sample.to_owned());

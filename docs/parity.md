@@ -93,14 +93,29 @@ of contents; see `docs/clean-room.md`.
 | Effects | DC remover, ring modulator, frequency shifter | `fx:dc_block` `fx:ring_mod` `fx:freq_shift` |
 | Effects | Vowel (formant) filter and LFO/envelope auto filter | `fx:formant` `fx:auto_filter` |
 | Effects | Noise gate and transient shaper | `fx:noise_gate` `fx:transient` |
+| Effects | All-in-one dynamics (gate, compressor, limiter) | `fx:dynamics` |
+| Effects | Stereo shaper (mixing matrix, inter-channel delay) | `fx:stereo_shaper` |
 | Effects | Multi-tap delay and stutter | `fx:multi_tap` `fx:stutter` |
 | Effects | Multiband compressor | `fx:multiband` |
+| Effects | Multiband limiter with a one-knob amount | `fx:multiband_limiter` |
+| Effects | Hall reverb (feedback delay network, early reflections) | `fx:hall_reverb` |
+| Effects | Guitar pedal chain (compressor, drive, tone, chorus, cabinet) | `fx:guitar_chain` |
+| Effects | X/Y multi-effect and four-stage effect chain | `fx:multi_fx` `fx:fx_chain` |
+| Effects | Beat shaper (drawn time and volume envelopes) | `fx:beat_shaper` |
+| Effects | Scratch (held span, automatable position, patterns) | `fx:scratch` |
+| Effects | Send effect (mid-chain send to another insert) | `fx:send` |
+| Effects | Effect rack (parallel chains of effects in one slot) | `fx:rack` `cmd:mixer.rack_add` |
+| Effects | Band splitter (three bands to separate inserts) | `fx:band_split` |
 | Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |
 | Effects | Pitch shifter | `fx:pitch_shift` |
 | Effects | Convolution reverb with impulse files or generated rooms | `fx:convolution` `cmd:mixer.set_effect_file` |
 | Effects | Spectrum analyzer | `done` |
 | Effects | Pitch correction and tuner | `fx:pitch_correct` `fx:tuner` `spec:mixer.md` |
+| Generators | Sample editor: trim, cut, fades, gain, normalize, reverse, time-stretch, pitch-shift, tune | `cmd:sample.edit` `spec:sample-editor.md` |
+| Generators | Resynthesis of a sample's harmonics | `cmd:channel.add_resynth` `spec:channel-rack.md` |
+| Generators | Zone sampler (samples on key and velocity zones) | `cmd:channel.add_zones` `cmd:channel.add_zone` `cmd:channel.set_zone` `spec:channel-rack.md` |
 | Generators | MIDI out to external gear | `cmd:channel.add_midi_out` `cmd:channel.set_midi_channel` `spec:channel-rack.md` |
+| Generators | MIDI out control changes, program change and MIDI clock | `cmd:channel.set_param` `spec:channel-rack.md` |
 | Instruments | Subtractive synth with unison, sub, drive, filter types, LFO and presets | `cmd:channel.add_synth` `spec:piano-roll.md` |
 | Instruments | Drum synth (kick, snare, hat, tom, clap) with presets | `cmd:channel.add_drum` `spec:channel-rack.md` |
 | Instruments | Plucked string with presets | `cmd:channel.add_pluck` `spec:channel-rack.md` |
@@ -162,3 +177,4 @@ of contents; see `docs/clean-room.md`.
 | Transport | Arm playlist tracks for audio takes; choose the input device | `cmd:playlist.toggle_track_arm` `spec:settings.md` |
 | Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
 | Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |
+| Automation | Controllers: LFO, envelope, keyboard, peak, formula and macro sources driving a parameter | `cmd:controller.add` `cmd:controller.set` `spec:controllers.md` |

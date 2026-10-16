@@ -66,16 +66,49 @@ pub fn shape_curve(shape: f32, x: f32) -> f32 {
     }
 }
 
-/// Waveshaper: one of several transfer curves.
-///
-/// Parameters: `[shape, drive dB, mix, output dB]`.
-pub fn waveshaper(left: &mut [f32], right: &mut [f32], p: &[f32]) {
+/// The waveshaper's shape value for the drawn curve.
+pub const DRAWN_SHAPE: i32 = 6;
+
+/// The drawn curve through `points` (outputs at evenly spaced inputs from
+/// −1 to 1), joined by straight lines and flat beyond ±1.
+#[must_use]
+pub fn drawn_curve(points: &[f32], x: f32) -> f32 {
+    let segments = points.len().saturating_sub(1);
+    if segments == 0 {
+        return points.first().copied().unwrap_or(x);
+    }
+    let pos = (x.clamp(-1.0, 1.0) + 1.0) * 0.5 * segments as f32;
+    let i = (pos.floor() as usize).min(segments - 1);
+    let frac = pos - i as f32;
+    let a = points.get(i).copied().unwrap_or(0.0);
+    let b = points.get(i + 1).copied().unwrap_or(a);
+    a + (b - a) * frac
+}
+
+/// The waveshaper's curve for a driven sample, given all its parameters.
+#[must_use]
+pub fn waveshaper_curve(p: &[f32], x: f32) -> f32 {
     let shape = param(p, 0, 0.0);
+    if shape.round() as i32 == DRAWN_SHAPE {
+        let first = musiccraft_params::SHAPER_FIRST_POINT;
+        let points = p
+            .get(first..first + musiccraft_params::SHAPER_POINTS)
+            .unwrap_or(&[]);
+        drawn_curve(points, x)
+    } else {
+        shape_curve(shape, x)
+    }
+}
+
+/// Waveshaper: one of several transfer curves, or a drawn one.
+///
+/// Parameters: `[shape, drive dB, mix, output dB, point 1 … point 9]`.
+pub fn waveshaper(left: &mut [f32], right: &mut [f32], p: &[f32]) {
     let drive = db_to_gain(param(p, 1, 12.0));
     let mix = param(p, 2, 1.0).clamp(0.0, 1.0);
     let output = db_to_gain(param(p, 3, -6.0));
     for s in left.iter_mut().chain(right.iter_mut()) {
-        let wet = shape_curve(shape, *s * drive);
+        let wet = waveshaper_curve(p, *s * drive);
         *s = (*s + (wet - *s) * mix) * output;
     }
 }
@@ -300,10 +333,39 @@ impl Formant {
     }
 }
 
+/// The auto filter's LFO at `phase` (0..1 through a cycle), from −1 to 1:
+/// sine, triangle, saw up, saw down, square, or the drawn `steps` (evenly
+/// spaced through the cycle, joined by lines that wrap around).
+#[must_use]
+pub fn lfo_shape(shape: f32, steps: &[f32], phase: f32) -> f32 {
+    let phase = phase.rem_euclid(1.0);
+    match shape.round() as i32 {
+        1 => 4.0 * ((phase + 0.75).rem_euclid(1.0) - 0.5).abs() - 1.0,
+        2 => phase * 2.0 - 1.0,
+        3 => 1.0 - phase * 2.0,
+        4 => {
+            if phase < 0.5 {
+                1.0
+            } else {
+                -1.0
+            }
+        }
+        5 if !steps.is_empty() => {
+            let pos = phase * steps.len() as f32;
+            let i = (pos.floor() as usize).min(steps.len() - 1);
+            let a = steps.get(i).copied().unwrap_or(0.0);
+            let b = steps.get((i + 1) % steps.len()).copied().unwrap_or(a);
+            a + (b - a) * (pos - i as f32)
+        }
+        _ => (phase * TAU).sin(),
+    }
+}
+
 /// Auto filter: a resonant filter swept by a tempo-synced LFO and by the
-/// input's own level.
+/// input's own level; the LFO can also move the volume and pan.
 ///
-/// Parameters: `[mode, cutoff Hz, resonance, rate, lfo depth oct, envelope oct, mix]`.
+/// Parameters: `[mode, cutoff Hz, resonance, rate, lfo depth oct, envelope
+/// oct, mix, lfo shape, step 1 … step 8, volume depth, pan depth]`.
 #[derive(Debug, Clone, Default)]
 pub struct AutoFilter {
     filters: [Svf; 2],
@@ -323,6 +385,13 @@ impl AutoFilter {
         let depth = param(p, 4, 2.0);
         let envelope = param(p, 5, 0.0);
         let mix = param(p, 6, 1.0).clamp(0.0, 1.0);
+        let shape = param(p, 7, 0.0);
+        let first = musiccraft_params::LFO_FIRST_STEP;
+        let steps = p
+            .get(first..first + musiccraft_params::LFO_STEPS)
+            .unwrap_or(&[]);
+        let volume = param(p, 16, 0.0).clamp(0.0, 1.0);
+        let pan = param(p, 17, 0.0).clamp(-1.0, 1.0);
         let sr = ctx.sample_rate.max(1.0);
         let beats_per_sample = ctx.tempo_bpm / 60.0 / f64::from(sr);
         let release = (-1.0 / (0.08 * sr)).exp();
@@ -330,9 +399,9 @@ impl AutoFilter {
         for (i, (l, r)) in left.iter_mut().zip(right.iter_mut()).enumerate() {
             let level = (*l).abs().max((*r).abs());
             self.follower = level.max(self.follower * release);
+            let lfo = lfo_shape(shape, steps, (beats / rate).fract() as f32);
             // Coefficients change every 16 samples; that is plenty for a sweep.
             if i % 16 == 0 {
-                let lfo = ((beats / rate).fract() as f32 * TAU).sin();
                 let octaves = lfo * depth + envelope * self.follower.min(1.0) * 4.0;
                 let f = cutoff * 2.0_f32.powf(octaves);
                 for filter in &mut self.filters {
@@ -344,6 +413,12 @@ impl AutoFilter {
             let wr = self.filters[1].process(*r, mode);
             *l += (wl - *l) * mix;
             *r += (wr - *r) * mix;
+            if volume > 0.0 || pan != 0.0 {
+                let gain = 1.0 - volume * (1.0 - lfo) * 0.5;
+                let place = pan * lfo;
+                *l *= gain * (1.0 - place).min(1.0);
+                *r *= gain * (1.0 + place).min(1.0);
+            }
         }
     }
 }
@@ -415,15 +490,37 @@ impl Transient {
     }
 }
 
-/// Four-tap tempo-synced delay with feedback, damping and alternating sides.
+/// Four-tap tempo-synced delay with feedback, damping, and a pan and
+/// low/high cut per tap.
 ///
 /// Parameters: `[tap1 beats, tap1 level, …, tap4 beats, tap4 level,
-/// feedback, mix, damping]`.
+/// feedback, mix, damping, tap1–4 pan, tap1–4 low cut Hz, tap1–4 high cut
+/// Hz]`.
 #[derive(Debug, Clone)]
 pub struct MultiTap {
     lines: [Vec<f32>; 2],
     write: usize,
     damp: [f32; 2],
+    /// Per tap: the low-cut filter's low-pass state and the high-cut state.
+    tone: [[f32; 2]; 4],
+}
+
+/// A multi-tap delay tap's settings for one block.
+#[derive(Debug, Clone, Copy)]
+struct Tap {
+    delay: usize,
+    gains: [f32; 2],
+    /// One-pole coefficients; `None` when the filter is off.
+    low_cut: Option<f32>,
+    high_cut: Option<f32>,
+}
+
+/// Lowest low cut and highest high cut: at these the filters are off.
+const TAP_LOW_CUT_OFF: f32 = 20.0;
+const TAP_HIGH_CUT_OFF: f32 = 20_000.0;
+
+fn one_pole(freq: f32, sample_rate: f32) -> f32 {
+    1.0 - (-TAU * freq / sample_rate.max(1.0)).exp()
 }
 
 impl MultiTap {
@@ -435,6 +532,7 @@ impl MultiTap {
             lines: [vec![0.0; len], vec![0.0; len]],
             write: 0,
             damp: [0.0; 2],
+            tone: [[0.0; 2]; 4],
         }
     }
 
@@ -443,6 +541,8 @@ impl MultiTap {
         for line in &mut self.lines {
             line.fill(0.0);
         }
+        self.damp = [0.0; 2];
+        self.tone = [[0.0; 2]; 4];
     }
 
     /// Processes a block in place.
@@ -452,28 +552,41 @@ impl MultiTap {
             return;
         }
         let samples_per_beat = 60.0 / ctx.tempo_bpm.max(1.0) as f32 * ctx.sample_rate;
-        let taps: [(usize, f32); 4] = std::array::from_fn(|t| {
+        let sr = ctx.sample_rate;
+        let taps: [Tap; 4] = std::array::from_fn(|t| {
             let beats = param(p, t * 2, [0.5, 0.75, 1.0, 1.5][t]);
-            let delay = ((beats * samples_per_beat) as usize).clamp(1, len - 1);
-            (
-                delay,
-                param(p, t * 2 + 1, [0.6, 0.45, 0.3, 0.2][t]).clamp(0.0, 1.0),
-            )
+            let level = param(p, t * 2 + 1, [0.6, 0.45, 0.3, 0.2][t]).clamp(0.0, 1.0);
+            let pan = param(p, 11 + t, if t % 2 == 0 { -1.0 } else { 1.0 }).clamp(-1.0, 1.0);
+            let angle = (pan + 1.0) * PI * 0.25;
+            let low = param(p, 15 + t, TAP_LOW_CUT_OFF);
+            let high = param(p, 19 + t, TAP_HIGH_CUT_OFF);
+            Tap {
+                delay: ((beats * samples_per_beat) as usize).clamp(1, len - 1),
+                gains: [angle.cos() * level, angle.sin() * level],
+                low_cut: (low > TAP_LOW_CUT_OFF).then(|| one_pole(low, sr)),
+                high_cut: (high < TAP_HIGH_CUT_OFF).then(|| one_pole(high, sr)),
+            }
         });
         let feedback = param(p, 8, 0.3).clamp(0.0, 0.9);
         let mix = param(p, 9, 0.35).clamp(0.0, 1.0);
         let damping = param(p, 10, 0.3).clamp(0.0, 0.95);
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             let mut wet = [0.0_f32; 2];
-            for (t, (delay, level)) in taps.iter().enumerate() {
-                let side = t % 2;
-                let read = (self.write + len - delay) % len;
-                let mono = (self.lines[0].get(read).copied().unwrap_or(0.0)
+            for (tap, tone) in taps.iter().zip(self.tone.iter_mut()) {
+                let read = (self.write + len - tap.delay) % len;
+                let mut mono = (self.lines[0].get(read).copied().unwrap_or(0.0)
                     + self.lines[1].get(read).copied().unwrap_or(0.0))
                     * 0.5;
-                if let Some(w) = wet.get_mut(side) {
-                    *w += mono * level;
+                if let Some(a) = tap.low_cut {
+                    tone[0] = flush_denormal(tone[0] + (mono - tone[0]) * a);
+                    mono -= tone[0];
                 }
+                if let Some(a) = tap.high_cut {
+                    tone[1] = flush_denormal(tone[1] + (mono - tone[1]) * a);
+                    mono = tone[1];
+                }
+                wet[0] += mono * tap.gains[0];
+                wet[1] += mono * tap.gains[1];
             }
             for (ch, (input, w)) in [*l, *r].into_iter().zip(wet).enumerate() {
                 self.damp[ch] =
@@ -635,6 +748,71 @@ mod tests {
     }
 
     #[test]
+    fn drawn_curve_interpolates_and_holds_its_ends() {
+        let identity = [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0];
+        for x in [-0.9, -0.3, 0.0, 0.33, 0.8] {
+            assert!((drawn_curve(&identity, x) - x).abs() < 1e-6);
+        }
+        assert_eq!(drawn_curve(&identity, 3.0), 1.0);
+        assert_eq!(drawn_curve(&identity, -3.0), -1.0);
+        let mut bent = identity;
+        bent[4] = 0.5; // lift the middle
+        assert!((drawn_curve(&bent, 0.0) - 0.5).abs() < 1e-6);
+        assert!((drawn_curve(&bent, 0.125) - 0.375).abs() < 1e-6);
+        let mut p = vec![6.0, 0.0, 1.0, 0.0];
+        p.extend(bent);
+        let (mut l, mut r) = (vec![0.0, 0.125], vec![0.0, 0.0]);
+        waveshaper(&mut l, &mut r, &p);
+        assert!((l[0] - 0.5).abs() < 1e-6 && (l[1] - 0.375).abs() < 1e-6);
+    }
+
+    #[test]
+    fn lfo_shapes_have_their_textbook_points() {
+        let near = |a: f32, b: f32| (a - b).abs() < 1e-5;
+        assert!(
+            near(lfo_shape(0.0, &[], 0.25), 1.0),
+            "sine peaks at a quarter"
+        );
+        for (phase, want) in [(0.0, 0.0), (0.25, 1.0), (0.5, 0.0), (0.75, -1.0)] {
+            assert!(
+                near(lfo_shape(1.0, &[], phase), want),
+                "triangle at {phase}"
+            );
+        }
+        assert!(near(lfo_shape(2.0, &[], 0.75), 0.5) && near(lfo_shape(3.0, &[], 0.75), -0.5));
+        assert!(near(lfo_shape(4.0, &[], 0.1), 1.0) && near(lfo_shape(4.0, &[], 0.6), -1.0));
+        let steps = [0.0, 1.0, 0.0, -1.0];
+        assert!(near(lfo_shape(5.0, &steps, 0.125), 0.5));
+        assert!(
+            near(lfo_shape(5.0, &steps, 0.875), -0.5),
+            "wraps back to the first"
+        );
+    }
+
+    #[test]
+    fn auto_filter_lfo_can_move_volume_and_pan() {
+        let mut p = musiccraft_params::EffectKind::AutoFilter.defaults();
+        p[1] = 20_000.0; // filter wide open
+        p[2] = 0.0;
+        p[4] = 0.0; // no sweep
+        p[7] = 4.0; // square: up for half a cycle, down for the rest
+        p[3] = 3.0; // a quarter note per cycle: 24_000 samples at 120 BPM
+        p[16] = 1.0;
+        p[17] = 1.0;
+        let mut fx = AutoFilter::default();
+        let (mut l, mut r) = (vec![0.5; 24_000], vec![0.5; 24_000]);
+        fx.process(&mut l, &mut r, &p, ctx());
+        // Up half: full level, panned right; down half: silent.
+        assert!(
+            l[6_000].abs() < 0.05 && r[6_000] > 0.4,
+            "{} {}",
+            l[6_000],
+            r[6_000]
+        );
+        assert!(l[18_000].abs() < 1e-3 && r[18_000].abs() < 1e-3);
+    }
+
+    #[test]
     fn curves_are_bounded_and_shaped() {
         for shape in 0..6 {
             for i in -40..=40 {
@@ -764,5 +942,63 @@ mod tests {
         let (mut l, mut r) = (vec![0.5; 48_000], vec![0.5; 48_000]);
         dc.process(&mut l, &mut r, &[20.0], ctx());
         assert!(l[47_000].abs() < 0.01, "DC removed");
+    }
+
+    fn tap_params(extra: &[(usize, f32)]) -> Vec<f32> {
+        let mut p = musiccraft_params::EffectKind::MultiTap.defaults().to_vec();
+        // One tap at a quarter beat (125 ms at 120 BPM), no feedback, all wet.
+        for (i, v) in [
+            (1, 1.0),
+            (3, 0.0),
+            (5, 0.0),
+            (7, 0.0),
+            (0, 0.25),
+            (8, 0.0),
+            (9, 1.0),
+        ] {
+            p[i] = v;
+        }
+        for (i, v) in extra {
+            p[*i] = *v;
+        }
+        p
+    }
+
+    #[test]
+    fn multi_tap_pan_places_each_tap() {
+        // Default pan: tap 1 hard left, as before per-tap pan existed.
+        let mut taps = MultiTap::new(48_000.0);
+        let (mut l, mut r) = (vec![0.0; 7_000], vec![0.0; 7_000]);
+        l[0] = 1.0;
+        r[0] = 1.0;
+        taps.process(&mut l, &mut r, &tap_params(&[]), ctx());
+        assert!((l[6_000] - 1.0).abs() < 1e-6 && r[6_000].abs() < 1e-6);
+        // Centred: equal power on both sides.
+        let mut taps = MultiTap::new(48_000.0);
+        let (mut l, mut r) = (vec![0.0; 7_000], vec![0.0; 7_000]);
+        l[0] = 1.0;
+        r[0] = 1.0;
+        taps.process(&mut l, &mut r, &tap_params(&[(11, 0.0)]), ctx());
+        assert!((l[6_000] - r[6_000]).abs() < 1e-6);
+        assert!((l[6_000] - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn multi_tap_filters_shape_only_their_tap() {
+        let echo_level = |extra: &[(usize, f32)], hz: f32| {
+            let mut taps = MultiTap::new(48_000.0);
+            let mut l = sine(hz, 24_000, 0.5);
+            let mut r = l.clone();
+            let dry = l.clone();
+            taps.process(&mut l, &mut r, &tap_params(extra), ctx());
+            let wet: Vec<f32> = l.iter().zip(&dry).map(|(o, d)| o - d).collect();
+            wet[12_000..].iter().fold(0.0_f32, |m, s| m.max(s.abs()))
+        };
+        let open = echo_level(&[], 8_000.0);
+        let cut = echo_level(&[(19, 1_000.0)], 8_000.0);
+        assert!(open > 0.4 && cut < open * 0.2, "high cut: {open} vs {cut}");
+        let low_open = echo_level(&[], 60.0);
+        let low_cut = echo_level(&[(15, 1_500.0)], 60.0);
+        assert!(low_cut < low_open * 0.1, "low cut: {low_open} vs {low_cut}");
     }
 }

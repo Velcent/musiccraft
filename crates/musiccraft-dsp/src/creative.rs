@@ -46,21 +46,21 @@ impl Crossover {
 /// One channel's three-way split. The low band also passes through the upper
 /// crossover's all-pass so all three stay in phase and sum flat.
 #[derive(Debug, Clone, Default)]
-struct Split {
+pub(crate) struct Split {
     lower: Crossover,
     upper: Crossover,
     align: Crossover,
 }
 
 impl Split {
-    fn set(&mut self, f1: f32, f2: f32, sample_rate: f32) {
+    pub(crate) fn set(&mut self, f1: f32, f2: f32, sample_rate: f32) {
         let f2 = f2.max(f1 * 1.1);
         self.lower.set(f1, sample_rate);
         self.upper.set(f2, sample_rate);
         self.align.set(f2, sample_rate);
     }
 
-    fn process(&mut self, x: f32) -> [f32; 3] {
+    pub(crate) fn process(&mut self, x: f32) -> [f32; 3] {
         let (low, rest) = self.lower.process(x);
         let (mid, high) = self.upper.process(rest);
         let (a, b) = self.align.process(low);
@@ -123,25 +123,48 @@ impl MultibandCompressor {
 /// Number of vocoder bands.
 pub const VOCODER_BANDS: usize = 16;
 
-/// Centre frequencies of the vocoder bands, log-spaced 120 Hz – 7.5 kHz.
+/// Most vocoder bands.
+pub const MAX_VOCODER_BANDS: usize = 64;
+
+/// The vocoder's band count and range from its parameters: `(bands, low Hz,
+/// high Hz)`.
 #[must_use]
-pub fn vocoder_freqs() -> [f32; VOCODER_BANDS] {
-    std::array::from_fn(|i| {
-        120.0 * (7_500.0_f32 / 120.0).powf(i as f32 / (VOCODER_BANDS - 1) as f32)
-    })
+pub fn vocoder_layout(p: &[f32]) -> (usize, f32, f32) {
+    let bands =
+        (param(p, 8, VOCODER_BANDS as f32).round().max(2.0) as usize).min(MAX_VOCODER_BANDS);
+    let low = param(p, 9, 120.0).clamp(20.0, 2_000.0);
+    let high = param(p, 10, 7_500.0).clamp(low * 2.0, 20_000.0);
+    (bands, low, high)
+}
+
+/// Centre frequency of band `i` of `bands`, log-spaced from `low` to `high`.
+#[must_use]
+pub fn vocoder_freq(i: usize, bands: usize, low: f32, high: f32) -> f32 {
+    low * (high / low).powf(i as f32 / (bands.max(2) - 1) as f32)
 }
 
 /// Channel vocoder: this track is the carrier (usually a synth); the
 /// sidechain is the modulator (usually a voice) whose band levels shape it.
 ///
 /// Parameters: `[sidechain, bandwidth, attack ms, release ms, shift st, noise,
-/// mix, output dB]`.
-#[derive(Debug, Clone, Default)]
+/// mix, output dB, bands, low Hz, high Hz]`.
+#[derive(Debug, Clone)]
 pub struct Vocoder {
-    analysis: [Svf; VOCODER_BANDS],
-    synthesis: [[Svf; VOCODER_BANDS]; 2],
-    envelopes: [f32; VOCODER_BANDS],
+    analysis: [Svf; MAX_VOCODER_BANDS],
+    synthesis: [[Svf; MAX_VOCODER_BANDS]; 2],
+    envelopes: [f32; MAX_VOCODER_BANDS],
     seed: u32,
+}
+
+impl Default for Vocoder {
+    fn default() -> Self {
+        Self {
+            analysis: std::array::from_fn(|_| Svf::default()),
+            synthesis: std::array::from_fn(|_| std::array::from_fn(|_| Svf::default())),
+            envelopes: [0.0; MAX_VOCODER_BANDS],
+            seed: 0,
+        }
+    }
 }
 
 impl Vocoder {
@@ -163,20 +186,22 @@ impl Vocoder {
         let noise = param(p, 5, 0.1).clamp(0.0, 1.0);
         let mix = param(p, 6, 1.0).clamp(0.0, 1.0);
         let output = db_to_gain(param(p, 7, 0.0));
-        let freqs = vocoder_freqs();
-        for (f, band) in freqs.iter().zip(&mut self.analysis) {
-            band.set(*f, q, sr);
+        let (bands, low, high) = vocoder_layout(p);
+        // More bands are narrower, so they overlap about as much as 16 do.
+        let q = (1.0 - (1.0 - q) * (VOCODER_BANDS as f32 / bands as f32).sqrt()).min(0.99);
+        for (i, band) in self.analysis.iter_mut().take(bands).enumerate() {
+            band.set(vocoder_freq(i, bands, low, high), q, sr);
         }
         for bank in &mut self.synthesis {
-            for (f, band) in freqs.iter().zip(bank.iter_mut()) {
-                band.set(*f * shift, q, sr);
+            for (i, band) in bank.iter_mut().take(bands).enumerate() {
+                band.set(vocoder_freq(i, bands, low, high) * shift, q, sr);
             }
         }
         if self.seed == 0 {
             self.seed = 0x9e37_79b9;
         }
         // Band-pass gain shrinks as the bands narrow; make up for it.
-        let makeup = 4.0 + q * 10.0;
+        let makeup = (4.0 + q * 10.0) * (VOCODER_BANDS as f32 / bands as f32).sqrt();
         for (i, (l, r)) in left.iter_mut().zip(right.iter_mut()).enumerate() {
             let modulator = key
                 .map(|(kl, kr)| {
@@ -192,6 +217,7 @@ impl Vocoder {
                 .analysis
                 .iter_mut()
                 .zip(&mut self.envelopes)
+                .take(bands)
                 .enumerate()
             {
                 let level = band.process(modulator, SvfMode::BandPass).abs();
@@ -462,6 +488,31 @@ mod tests {
         Vocoder::default().process_keyed(&mut l, &mut r, &p, ctx(), None);
         assert!(loud > 0.05, "vocoded: {loud}");
         assert!(rms(&l[12_000..]) < 0.01, "silent without a modulator");
+    }
+
+    #[test]
+    fn vocoder_band_count_keeps_a_similar_level() {
+        let carrier: Vec<f32> = (0..24_000)
+            .map(|i| ((i % 200) as f32 / 100.0) - 1.0)
+            .collect();
+        let voice = sine(500.0, 24_000, 0.5);
+        let level = |bands: f32| {
+            let mut vocoder = Vocoder::default();
+            let p = [
+                1.0, 0.5, 5.0, 60.0, 0.0, 0.0, 1.0, 0.0, bands, 120.0, 7_500.0,
+            ];
+            let (mut l, mut r) = (carrier.clone(), carrier.clone());
+            vocoder.process_keyed(&mut l, &mut r, &p, ctx(), Some((&voice, &voice)));
+            assert!(l.iter().all(|s| s.is_finite()));
+            rms(&l[12_000..])
+        };
+        let (few, standard, many) = (level(4.0), level(16.0), level(64.0));
+        for got in [few, many] {
+            assert!(
+                got > standard * 0.25 && got < standard * 4.0,
+                "{few} {standard} {many}"
+            );
+        }
     }
 
     #[test]

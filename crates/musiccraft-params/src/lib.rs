@@ -21,9 +21,13 @@ pub const TICKS_PER_BAR: u32 = PPQ * BEATS_PER_BAR;
 /// Capacity of an effect parameter array.
 pub const MAX_EFFECT_PARAMS: usize = 24;
 /// Capacity of an instrument parameter array.
-pub const MAX_INSTRUMENT_PARAMS: usize = 96;
+pub const MAX_INSTRUMENT_PARAMS: usize = 160;
 /// Maximum number of effect slots on one mixer track.
 pub const MAX_EFFECT_SLOTS: usize = 10;
+/// Parallel branches an effect rack holds.
+pub const RACK_BRANCHES: usize = 4;
+/// Effects one effect-rack branch holds.
+pub const RACK_BRANCH_EFFECTS: usize = 6;
 /// Maximum number of mixer tracks, master included.
 pub const MAX_MIXER_TRACKS: usize = 128;
 
@@ -315,6 +319,83 @@ pub mod inst {
     pub const ECHO_FEED: usize = 87;
     /// Note echo: semitones added per repeat.
     pub const ECHO_PITCH: usize = 88;
+    /// Second filter: 0 off, 1 low-pass, 2 band-pass, 3 high-pass.
+    pub const FILTER2_TYPE: usize = 89;
+    /// Second filter cutoff, hertz.
+    pub const CUTOFF2: usize = 90;
+    /// Second filter resonance, 0..1.
+    pub const RESONANCE2: usize = 91;
+    /// 0 series, 1 parallel, 2 split (osc 1 and sub to filter 1, osc 2 and 3 to filter 2).
+    pub const FILTER_ROUTING: usize = 92;
+    /// Second LFO rate, hertz.
+    pub const LFO2_RATE: usize = 93;
+    /// Second LFO shape: sine, triangle, saw, square, random steps.
+    pub const LFO2_SHAPE: usize = 94;
+    /// Modulation envelope attack, seconds.
+    pub const ENV2_ATTACK: usize = 95;
+    /// Modulation envelope decay, seconds.
+    pub const ENV2_DECAY: usize = 96;
+    /// Modulation slot 1 source (see `MOD_SOURCES`).
+    pub const MOD1_SOURCE: usize = 97;
+    /// Modulation slot 1 destination (see `MOD_DESTS`).
+    pub const MOD1_DEST: usize = 98;
+    /// Modulation slot 1 amount, -1..1.
+    pub const MOD1_AMOUNT: usize = 99;
+    pub const MOD2_SOURCE: usize = 100;
+    pub const MOD2_DEST: usize = 101;
+    pub const MOD2_AMOUNT: usize = 102;
+    pub const MOD3_SOURCE: usize = 103;
+    pub const MOD3_DEST: usize = 104;
+    pub const MOD3_AMOUNT: usize = 105;
+    /// FM operators 5 and 6 (ratio, level, decay, sustain), like 1–4.
+    pub const OP5_RATIO: usize = 106;
+    pub const OP5_LEVEL: usize = 107;
+    pub const OP5_DECAY: usize = 108;
+    pub const OP5_SUSTAIN: usize = 109;
+    pub const OP6_RATIO: usize = 110;
+    pub const OP6_LEVEL: usize = 111;
+    pub const OP6_DECAY: usize = 112;
+    pub const OP6_SUSTAIN: usize = 113;
+    /// FM operator waveforms (see `FM_WAVES`), operators 1–6.
+    pub const OP1_WAVE: usize = 114;
+    pub const OP2_WAVE: usize = 115;
+    pub const OP3_WAVE: usize = 116;
+    pub const OP4_WAVE: usize = 117;
+    pub const OP5_WAVE: usize = 118;
+    pub const OP6_WAVE: usize = 119;
+    /// FM output low-pass cutoff, hertz (20 kHz = off), and resonance.
+    pub const FM_CUTOFF: usize = 120;
+    pub const FM_RESONANCE: usize = 121;
+    /// Pluck: bowing (continuous excitation while held), 0..1.
+    pub const PLUCK_BOW: usize = 122;
+    /// Pluck: strings sounding together, 1..3.
+    pub const PLUCK_STRINGS: usize = 123;
+    /// Pluck: detune of the extra strings, cents.
+    pub const PLUCK_DETUNE: usize = 124;
+    /// Additive: the second spectrum's slope, even-harmonic level and stretch.
+    pub const ADD_BRIGHT_B: usize = 125;
+    pub const ADD_EVEN_B: usize = 126;
+    pub const ADD_INHARM_B: usize = 127;
+    /// Additive: morph position between the spectra, 0 = first, 1 = second.
+    pub const ADD_MORPH: usize = 128;
+    /// Additive: seconds to morph from `add_morph` to the second spectrum (0 = off).
+    pub const ADD_MORPH_TIME: usize = 129;
+    /// Additive: morph LFO rate (Hz) and depth.
+    pub const ADD_MORPH_RATE: usize = 130;
+    pub const ADD_MORPH_DEPTH: usize = 131;
+    /// MIDI Out: eight control-change values (-1 = not sent), then their
+    /// controller numbers, then the program (0 = none, else 1..128).
+    pub const MIDI_CC1: usize = 132;
+    pub const MIDI_CC1_NUMBER: usize = 140;
+    pub const MIDI_PROGRAM: usize = 148;
+    /// Resynth: playback speed through the analysis (0 freezes, 1 as recorded).
+    pub const RESYN_SPEED: usize = 149;
+    /// Resynth: start position, 0..1 of the sample.
+    pub const RESYN_POSITION: usize = 150;
+    /// Resynth: smears the harmonic levels over time, 0..1.
+    pub const RESYN_BLUR: usize = 151;
+    /// Resynth: 1 = loop the analysis instead of holding its last frame.
+    pub const RESYN_LOOP: usize = 152;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -359,7 +440,7 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("wave3", 0.0, 4.0, 2.0),
     spec("osc3_level", 0.0, 1.0, 0.0, ""),
     spec("osc3_coarse", -24.0, 24.0, -12.0, "st"),
-    int_spec("fm_algo", 0.0, 5.0, 0.0),
+    int_spec("fm_algo", 0.0, 11.0, 0.0),
     spec("fm_feedback", 0.0, 1.0, 0.0, ""),
     spec("op1_ratio", 0.25, 16.0, 1.0, ""),
     spec("op1_level", 0.0, 1.0, 1.0, ""),
@@ -408,7 +489,111 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     int_spec("echo_time", 1.0, 384.0, 48.0),
     spec("echo_feed", 0.0, 1.0, 0.5, ""),
     int_spec("echo_pitch", -12.0, 12.0, 0.0),
+    int_spec("filter2_type", 0.0, 3.0, 0.0),
+    spec("cutoff2", 20.0, 20_000.0, 2_000.0, "Hz"),
+    spec("resonance2", 0.0, 1.0, 0.2, ""),
+    int_spec("filter_routing", 0.0, 2.0, 0.0),
+    spec("lfo2_rate", 0.05, 20.0, 2.0, "Hz"),
+    int_spec("lfo2_shape", 0.0, 4.0, 0.0),
+    spec("env2_attack", 0.0, 10.0, 0.01, "s"),
+    spec("env2_decay", 0.01, 10.0, 0.5, "s"),
+    int_spec("mod1_source", 0.0, 6.0, 0.0),
+    int_spec("mod1_dest", 0.0, 8.0, 0.0),
+    spec("mod1_amount", -1.0, 1.0, 0.0, ""),
+    int_spec("mod2_source", 0.0, 6.0, 0.0),
+    int_spec("mod2_dest", 0.0, 8.0, 0.0),
+    spec("mod2_amount", -1.0, 1.0, 0.0, ""),
+    int_spec("mod3_source", 0.0, 6.0, 0.0),
+    int_spec("mod3_dest", 0.0, 8.0, 0.0),
+    spec("mod3_amount", -1.0, 1.0, 0.0, ""),
+    spec("op5_ratio", 0.25, 16.0, 3.0, ""),
+    spec("op5_level", 0.0, 1.0, 0.0, ""),
+    spec("op5_decay", 0.01, 10.0, 1.0, "s"),
+    spec("op5_sustain", 0.0, 1.0, 0.5, ""),
+    spec("op6_ratio", 0.25, 16.0, 4.0, ""),
+    spec("op6_level", 0.0, 1.0, 0.0, ""),
+    spec("op6_decay", 0.01, 10.0, 1.0, "s"),
+    spec("op6_sustain", 0.0, 1.0, 0.5, ""),
+    int_spec("op1_wave", 0.0, 3.0, 0.0),
+    int_spec("op2_wave", 0.0, 3.0, 0.0),
+    int_spec("op3_wave", 0.0, 3.0, 0.0),
+    int_spec("op4_wave", 0.0, 3.0, 0.0),
+    int_spec("op5_wave", 0.0, 3.0, 0.0),
+    int_spec("op6_wave", 0.0, 3.0, 0.0),
+    spec("fm_cutoff", 20.0, 20_000.0, 20_000.0, "Hz"),
+    spec("fm_resonance", 0.0, 1.0, 0.2, ""),
+    spec("pluck_bow", 0.0, 1.0, 0.0, ""),
+    int_spec("pluck_strings", 1.0, 3.0, 1.0),
+    spec("pluck_detune", 0.0, 30.0, 6.0, "cents"),
+    spec("add_bright_b", 0.0, 1.0, 0.5, ""),
+    spec("add_even_b", 0.0, 1.0, 1.0, ""),
+    spec("add_inharm_b", 0.0, 1.0, 0.0, ""),
+    spec("add_morph", 0.0, 1.0, 0.0, ""),
+    spec("add_morph_time", 0.0, 10.0, 0.0, "s"),
+    spec("add_morph_rate", 0.0, 10.0, 0.0, "Hz"),
+    spec("add_morph_depth", 0.0, 1.0, 0.5, ""),
+    int_spec("midi_cc1", -1.0, 127.0, -1.0),
+    int_spec("midi_cc2", -1.0, 127.0, -1.0),
+    int_spec("midi_cc3", -1.0, 127.0, -1.0),
+    int_spec("midi_cc4", -1.0, 127.0, -1.0),
+    int_spec("midi_cc5", -1.0, 127.0, -1.0),
+    int_spec("midi_cc6", -1.0, 127.0, -1.0),
+    int_spec("midi_cc7", -1.0, 127.0, -1.0),
+    int_spec("midi_cc8", -1.0, 127.0, -1.0),
+    int_spec("midi_cc1_number", 0.0, 127.0, 1.0),
+    int_spec("midi_cc2_number", 0.0, 127.0, 7.0),
+    int_spec("midi_cc3_number", 0.0, 127.0, 10.0),
+    int_spec("midi_cc4_number", 0.0, 127.0, 11.0),
+    int_spec("midi_cc5_number", 0.0, 127.0, 71.0),
+    int_spec("midi_cc6_number", 0.0, 127.0, 74.0),
+    int_spec("midi_cc7_number", 0.0, 127.0, 91.0),
+    int_spec("midi_cc8_number", 0.0, 127.0, 93.0),
+    int_spec("midi_program", 0.0, 128.0, 0.0),
+    spec("resyn_speed", 0.0, 4.0, 1.0, ""),
+    spec("resyn_position", 0.0, 1.0, 0.0, ""),
+    spec("resyn_blur", 0.0, 1.0, 0.0, ""),
+    int_spec("resyn_loop", 0.0, 1.0, 0.0),
 ];
+
+/// Number of MIDI Out control-change knobs.
+pub const MIDI_CCS: usize = 8;
+
+/// Names of the FM operator waveforms, by `opN_wave` value.
+pub const FM_WAVES: [&str; 4] = ["sine", "half sine", "soft square", "soft saw"];
+/// Names of the FM algorithms, by `fm_algo` value (6–11 use six operators).
+pub const FM_ALGOS: [&str; 12] = [
+    "4>3>2>1",
+    "4>3, 3+2>1",
+    "4>3 2>1",
+    "4>1,2,3",
+    "2>1 +3 +4",
+    "1+2+3+4",
+    "6>5>4>3>2>1",
+    "6>5>4 3>2>1",
+    "6>5 4>3 2>1",
+    "2..6>1",
+    "6>1..5",
+    "1..6",
+];
+
+/// Names of the synth's modulation sources, by `modN_source` value.
+pub const MOD_SOURCES: [&str; 7] = [
+    "off", "LFO 1", "LFO 2", "mod env", "velocity", "key", "amp env",
+];
+/// Names of the synth's modulation destinations, by `modN_dest` value.
+pub const MOD_DESTS: [&str; 9] = [
+    "pitch",
+    "cutoff",
+    "cutoff 2",
+    "resonance",
+    "osc mix",
+    "volume",
+    "pan",
+    "detune",
+    "osc 3",
+];
+/// Number of modulation slots.
+pub const MOD_SLOTS: usize = 3;
 
 /// Names of the keys instrument's types, by `keys_type` value.
 pub const KEYS_TYPES: [&str; 3] = ["piano", "epiano", "organ"];
@@ -510,13 +695,37 @@ pub enum EffectKind {
     PitchCorrect,
     /// Shows the detected pitch; leaves audio untouched.
     Tuner,
+    /// Noise gate, compressor and limiter in series.
+    Dynamics,
+    /// Left/right mixing matrix with an inter-channel delay.
+    StereoShaper,
+    /// Three-band limiter with a master ceiling.
+    MultibandLimiter,
+    /// Sends a copy of the audio at this point in the chain to a higher-numbered insert; routed by the engine.
+    Send,
+    /// Dense feedback-delay-network reverb with early reflections.
+    HallReverb,
+    /// Compressor, drive, tone stack, chorus and cabinet in one insert.
+    GuitarChain,
+    /// One of several effect blocks played with an X/Y pad.
+    MultiFx,
+    /// Four X/Y effect blocks in series in one insert.
+    FxChain,
+    /// Drawn time and volume envelopes over a tempo-synced cycle.
+    BeatShaper,
+    /// Splits the audio into three bands sent to other inserts; routed by the engine.
+    BandSplit,
+    /// Freezes recent audio and moves the play point through it like a record.
+    Scratch,
+    /// Up to four parallel chains of built-in effects in one insert.
+    Rack,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 35] = [
+pub const EFFECT_KINDS: [EffectKind; 47] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -526,7 +735,13 @@ pub const EFFECT_KINDS: [EffectKind; 35] = [
     EffectKind::Delay,
     EffectKind::MultiTap,
     EffectKind::Stutter,
+    EffectKind::BeatShaper,
+    EffectKind::Scratch,
+    EffectKind::Rack,
+    EffectKind::MultiFx,
+    EffectKind::FxChain,
     EffectKind::Reverb,
+    EffectKind::HallReverb,
     EffectKind::Convolution,
     EffectKind::Chorus,
     EffectKind::Phaser,
@@ -539,17 +754,23 @@ pub const EFFECT_KINDS: [EffectKind; 35] = [
     EffectKind::Vocoder,
     EffectKind::Compressor,
     EffectKind::Multiband,
+    EffectKind::MultibandLimiter,
     EffectKind::Limiter,
+    EffectKind::Dynamics,
     EffectKind::NoiseGate,
     EffectKind::Transient,
     EffectKind::SoftClipper,
     EffectKind::Gate,
     EffectKind::Autopan,
     EffectKind::Stereo,
+    EffectKind::Send,
+    EffectKind::BandSplit,
+    EffectKind::StereoShaper,
     EffectKind::DcBlock,
     EffectKind::Distortion,
     EffectKind::Overdrive,
     EffectKind::Waveshaper,
+    EffectKind::GuitarChain,
     EffectKind::BassBoost,
     EffectKind::Bitcrusher,
 ];
@@ -575,11 +796,25 @@ const SOFT_CLIPPER_PARAMS: &[ParamSpec] = &[
 ];
 
 const WAVESHAPER_PARAMS: &[ParamSpec] = &[
-    int_spec("shape", 0.0, 5.0, 0.0),
+    int_spec("shape", 0.0, 6.0, 0.0),
     spec("drive", 0.0, 36.0, 12.0, "dB"),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 6.0, -6.0, "dB"),
+    spec("point_1", -1.0, 1.0, -1.0, ""),
+    spec("point_2", -1.0, 1.0, -0.75, ""),
+    spec("point_3", -1.0, 1.0, -0.5, ""),
+    spec("point_4", -1.0, 1.0, -0.25, ""),
+    spec("point_5", -1.0, 1.0, 0.0, ""),
+    spec("point_6", -1.0, 1.0, 0.25, ""),
+    spec("point_7", -1.0, 1.0, 0.5, ""),
+    spec("point_8", -1.0, 1.0, 0.75, ""),
+    spec("point_9", -1.0, 1.0, 1.0, ""),
 ];
+
+/// Number of points of the waveshaper's drawn curve.
+pub const SHAPER_POINTS: usize = 9;
+/// Index of the waveshaper's first drawn-curve point.
+pub const SHAPER_FIRST_POINT: usize = 4;
 
 const DC_BLOCK_PARAMS: &[ParamSpec] = &[spec("freq", 2.0, 40.0, 10.0, "Hz")];
 
@@ -608,7 +843,25 @@ const AUTO_FILTER_PARAMS: &[ParamSpec] = &[
     spec("depth", 0.0, 4.0, 2.0, "oct"),
     spec("envelope", -4.0, 4.0, 0.0, "oct"),
     spec("mix", 0.0, 1.0, 1.0, ""),
+    int_spec("lfo_shape", 0.0, 5.0, 0.0),
+    spec("step_1", -1.0, 1.0, 0.0, ""),
+    spec("step_2", -1.0, 1.0, 0.7, ""),
+    spec("step_3", -1.0, 1.0, 1.0, ""),
+    spec("step_4", -1.0, 1.0, 0.7, ""),
+    spec("step_5", -1.0, 1.0, 0.0, ""),
+    spec("step_6", -1.0, 1.0, -0.7, ""),
+    spec("step_7", -1.0, 1.0, -1.0, ""),
+    spec("step_8", -1.0, 1.0, -0.7, ""),
+    spec("volume", 0.0, 1.0, 0.0, ""),
+    spec("pan", -1.0, 1.0, 0.0, ""),
 ];
+
+/// Number of points of the auto filter's drawn LFO shape.
+pub const LFO_STEPS: usize = 8;
+/// Index of the auto filter's first drawn LFO point.
+pub const LFO_FIRST_STEP: usize = 8;
+/// Names of the auto filter's LFO shapes, by `lfo_shape` value.
+pub const LFO_SHAPES: [&str; 6] = ["sine", "triangle", "saw up", "saw down", "square", "drawn"];
 
 const NOISE_GATE_PARAMS: &[ParamSpec] = &[
     spec("threshold", -80.0, 0.0, -40.0, "dB"),
@@ -616,6 +869,160 @@ const NOISE_GATE_PARAMS: &[ParamSpec] = &[
     spec("hold", 0.0, 500.0, 20.0, "ms"),
     spec("release", 1.0, 2_000.0, 100.0, "ms"),
     spec("range", -80.0, 0.0, -80.0, "dB"),
+];
+
+const DYNAMICS_PARAMS: &[ParamSpec] = &[
+    spec("gate_threshold", -100.0, 0.0, -100.0, "dB"),
+    spec("gate_attack", 0.01, 50.0, 1.0, "ms"),
+    spec("gate_hold", 0.0, 500.0, 20.0, "ms"),
+    spec("gate_release", 1.0, 2_000.0, 100.0, "ms"),
+    spec("gate_range", -80.0, 0.0, -80.0, "dB"),
+    spec("comp_threshold", -60.0, 0.0, -12.0, "dB"),
+    spec("comp_ratio", 1.0, 20.0, 1.0, ":1"),
+    spec("comp_attack", 0.1, 200.0, 10.0, "ms"),
+    spec("comp_release", 5.0, 2_000.0, 120.0, "ms"),
+    spec("comp_makeup", 0.0, 24.0, 0.0, "dB"),
+    spec("limit_gain", 0.0, 24.0, 0.0, "dB"),
+    spec("limit_ceiling", -12.0, 0.0, -0.3, "dB"),
+    spec("limit_release", 10.0, 1_000.0, 80.0, "ms"),
+];
+
+const STEREO_SHAPER_PARAMS: &[ParamSpec] = &[
+    spec("left_to_left", -1.0, 1.0, 1.0, ""),
+    spec("right_to_left", -1.0, 1.0, 0.0, ""),
+    spec("left_to_right", -1.0, 1.0, 0.0, ""),
+    spec("right_to_right", -1.0, 1.0, 1.0, ""),
+    spec("delay", -20.0, 20.0, 0.0, "ms"),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const MULTIBAND_LIMITER_PARAMS: &[ParamSpec] = &[
+    spec("low_freq", 40.0, 1_000.0, 200.0, "Hz"),
+    spec("high_freq", 500.0, 16_000.0, 2_500.0, "Hz"),
+    spec("low_drive", 0.0, 24.0, 0.0, "dB"),
+    spec("low_ceiling", -24.0, 0.0, 0.0, "dB"),
+    spec("low_level", -18.0, 12.0, 0.0, "dB"),
+    spec("mid_drive", 0.0, 24.0, 0.0, "dB"),
+    spec("mid_ceiling", -24.0, 0.0, 0.0, "dB"),
+    spec("mid_level", -18.0, 12.0, 0.0, "dB"),
+    spec("high_drive", 0.0, 24.0, 0.0, "dB"),
+    spec("high_ceiling", -24.0, 0.0, 0.0, "dB"),
+    spec("high_level", -18.0, 12.0, 0.0, "dB"),
+    spec("release", 5.0, 1_000.0, 100.0, "ms"),
+    spec("amount", 0.0, 1.0, 1.0, ""),
+    spec("ceiling", -12.0, 0.0, -0.3, "dB"),
+];
+
+const SEND_PARAMS: &[ParamSpec] = &[
+    int_spec("target", 0.0, 127.0, 0.0),
+    spec("level", 0.0, 1.25, 1.0, ""),
+    spec("pan", -1.0, 1.0, 0.0, ""),
+    spec("dry", 0.0, 1.0, 1.0, ""),
+];
+
+const HALL_REVERB_PARAMS: &[ParamSpec] = &[
+    spec("predelay", 0.0, 200.0, 20.0, "ms"),
+    spec("decay", 0.2, 20.0, 2.5, "s"),
+    spec("size", 0.0, 1.0, 0.6, ""),
+    spec("damping", 500.0, 20_000.0, 6_000.0, "Hz"),
+    spec("low_cut", 20.0, 1_000.0, 100.0, "Hz"),
+    spec("early", 0.0, 1.0, 0.4, ""),
+    spec("mod_depth", 0.0, 1.0, 0.3, ""),
+    spec("mod_rate", 0.05, 3.0, 0.4, "Hz"),
+    spec("width", 0.0, 1.0, 1.0, ""),
+    spec("mix", 0.0, 1.0, 0.3, ""),
+];
+
+const GUITAR_CHAIN_PARAMS: &[ParamSpec] = &[
+    spec("compress", 0.0, 1.0, 0.3, ""),
+    spec("drive", 0.0, 48.0, 18.0, "dB"),
+    int_spec("drive_type", 0.0, 2.0, 0.0),
+    spec("bass", -12.0, 12.0, 0.0, "dB"),
+    spec("mid", -12.0, 12.0, 0.0, "dB"),
+    spec("treble", -12.0, 12.0, 0.0, "dB"),
+    spec("chorus", 0.0, 1.0, 0.0, ""),
+    int_spec("cabinet", 0.0, 2.0, 1.0),
+    spec("output", -24.0, 6.0, -6.0, "dB"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const MULTI_FX_PARAMS: &[ParamSpec] = &[
+    int_spec("block", 0.0, 13.0, 1.0),
+    spec("x", 0.0, 1.0, 0.5, ""),
+    spec("y", 0.0, 1.0, 0.5, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const FX_CHAIN_PARAMS: &[ParamSpec] = &[
+    int_spec("stage1_block", 0.0, 13.0, 3.0),
+    spec("stage1_x", 0.0, 1.0, 0.3, ""),
+    spec("stage1_y", 0.0, 1.0, 1.0, ""),
+    int_spec("stage2_block", 0.0, 13.0, 1.0),
+    spec("stage2_x", 0.0, 1.0, 0.6, ""),
+    spec("stage2_y", 0.0, 1.0, 0.3, ""),
+    int_spec("stage3_block", 0.0, 13.0, 0.0),
+    spec("stage3_x", 0.0, 1.0, 0.5, ""),
+    spec("stage3_y", 0.0, 1.0, 0.5, ""),
+    int_spec("stage4_block", 0.0, 13.0, 0.0),
+    spec("stage4_x", 0.0, 1.0, 0.5, ""),
+    spec("stage4_y", 0.0, 1.0, 0.5, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const BEAT_SHAPER_PARAMS: &[ParamSpec] = &[
+    int_spec("cycle", 0.0, 3.0, 2.0),
+    int_spec("time_mode", 0.0, 1.0, 0.0),
+    spec("time_1", 0.0, 1.0, 0.0, ""),
+    spec("time_2", 0.0, 1.0, 0.0, ""),
+    spec("time_3", 0.0, 1.0, 0.0, ""),
+    spec("time_4", 0.0, 1.0, 0.0, ""),
+    spec("time_5", 0.0, 1.0, 0.0, ""),
+    spec("time_6", 0.0, 1.0, 0.0, ""),
+    spec("time_7", 0.0, 1.0, 0.0, ""),
+    spec("time_8", 0.0, 1.0, 0.0, ""),
+    spec("volume_1", 0.0, 1.0, 1.0, ""),
+    spec("volume_2", 0.0, 1.0, 1.0, ""),
+    spec("volume_3", 0.0, 1.0, 1.0, ""),
+    spec("volume_4", 0.0, 1.0, 1.0, ""),
+    spec("volume_5", 0.0, 1.0, 1.0, ""),
+    spec("volume_6", 0.0, 1.0, 1.0, ""),
+    spec("volume_7", 0.0, 1.0, 1.0, ""),
+    spec("volume_8", 0.0, 1.0, 1.0, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const BAND_SPLIT_PARAMS: &[ParamSpec] = &[
+    spec("low_freq", 40.0, 1_000.0, 200.0, "Hz"),
+    spec("high_freq", 500.0, 16_000.0, 2_500.0, "Hz"),
+    int_spec("low_target", 0.0, 127.0, 0.0),
+    int_spec("mid_target", 0.0, 127.0, 0.0),
+    int_spec("high_target", 0.0, 127.0, 0.0),
+];
+
+const SCRATCH_PARAMS: &[ParamSpec] = &[
+    int_spec("hold", 0.0, 1.0, 0.0),
+    spec("position", 0.0, 1.0, 0.0, ""),
+    spec("span", 0.0625, 8.0, 1.0, "beats"),
+    int_spec("pattern", 0.0, 4.0, 0.0),
+    int_spec("rate", 0.0, 5.0, 3.0),
+    spec("depth", 0.0, 1.0, 1.0, ""),
+    spec("inertia", 0.1, 200.0, 5.0, "ms"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const RACK_PARAMS: &[ParamSpec] = &[
+    spec("dry", 0.0, 1.0, 1.0, ""),
+    spec("branch1_level", 0.0, 1.25, 1.0, ""),
+    spec("branch1_pan", -1.0, 1.0, 0.0, ""),
+    spec("branch2_level", 0.0, 1.25, 1.0, ""),
+    spec("branch2_pan", -1.0, 1.0, 0.0, ""),
+    spec("branch3_level", 0.0, 1.25, 1.0, ""),
+    spec("branch3_pan", -1.0, 1.0, 0.0, ""),
+    spec("branch4_level", 0.0, 1.25, 1.0, ""),
+    spec("branch4_pan", -1.0, 1.0, 0.0, ""),
+    spec("output", -24.0, 12.0, 0.0, "dB"),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -636,6 +1043,18 @@ const MULTI_TAP_PARAMS: &[ParamSpec] = &[
     spec("feedback", 0.0, 0.9, 0.3, ""),
     spec("mix", 0.0, 1.0, 0.35, ""),
     spec("damping", 0.0, 0.95, 0.3, ""),
+    spec("tap1_pan", -1.0, 1.0, -1.0, ""),
+    spec("tap2_pan", -1.0, 1.0, 1.0, ""),
+    spec("tap3_pan", -1.0, 1.0, -1.0, ""),
+    spec("tap4_pan", -1.0, 1.0, 1.0, ""),
+    spec("tap1_low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("tap2_low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("tap3_low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("tap4_low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("tap1_high_cut", 500.0, 20_000.0, 20_000.0, "Hz"),
+    spec("tap2_high_cut", 500.0, 20_000.0, 20_000.0, "Hz"),
+    spec("tap3_high_cut", 500.0, 20_000.0, 20_000.0, "Hz"),
+    spec("tap4_high_cut", 500.0, 20_000.0, 20_000.0, "Hz"),
 ];
 
 const GRAPHIC_EQ_PARAMS: &[ParamSpec] = &[
@@ -720,6 +1139,9 @@ const VOCODER_PARAMS: &[ParamSpec] = &[
     spec("noise", 0.0, 1.0, 0.1, ""),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 12.0, 0.0, "dB"),
+    int_spec("bands", 4.0, 64.0, 16.0),
+    spec("low", 40.0, 1_000.0, 120.0, "Hz"),
+    spec("high", 2_000.0, 16_000.0, 7_500.0, "Hz"),
 ];
 
 const PITCH_SHIFT_PARAMS: &[ParamSpec] = &[
@@ -736,6 +1158,10 @@ const PITCH_CORRECT_PARAMS: &[ParamSpec] = &[
     spec("amount", 0.0, 1.0, 1.0, ""),
     spec("reference", 415.0, 466.0, 440.0, "Hz"),
     spec("mix", 0.0, 1.0, 1.0, ""),
+    int_spec("follow", 0.0, 999.0, 0.0),
+    int_spec("harmony_1", -12.0, 12.0, 0.0),
+    int_spec("harmony_2", -12.0, 12.0, 0.0),
+    spec("harmony_level", 0.0, 1.0, 0.7, ""),
 ];
 
 const TUNER_PARAMS: &[ParamSpec] = &[spec("reference", 415.0, 466.0, 440.0, "Hz")];
@@ -788,6 +1214,7 @@ const PHASER_PARAMS: &[ParamSpec] = &[
     spec("feedback", 0.0, 0.9, 0.5, ""),
     int_spec("stages", 2.0, 12.0, 6.0),
     spec("mix", 0.0, 1.0, 0.5, ""),
+    spec("warm", 0.0, 1.0, 0.0, ""),
 ];
 
 const FLANGER_PARAMS: &[ParamSpec] = &[
@@ -803,6 +1230,7 @@ const BITCRUSHER_PARAMS: &[ParamSpec] = &[
     int_spec("downsample", 1.0, 32.0, 4.0),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 6.0, 0.0, "dB"),
+    spec("squeeze", 0.0, 1.0, 0.0, ""),
 ];
 
 const STEREO_PARAMS: &[ParamSpec] = &[
@@ -849,6 +1277,12 @@ const DELAY_PARAMS: &[ParamSpec] = &[
     spec("mix", 0.0, 1.0, 0.3, ""),
     int_spec("ping_pong", 0.0, 1.0, 1.0),
     spec("damping", 0.0, 1.0, 0.3, ""),
+    spec("offset", -20.0, 20.0, 0.0, "ms"),
+    spec("mod_rate", 0.05, 5.0, 0.5, "Hz"),
+    spec("mod_depth", 0.0, 10.0, 0.0, "ms"),
+    spec("low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("diffusion", 0.0, 0.9, 0.0, ""),
+    spec("saturation", 0.0, 1.0, 0.0, ""),
 ];
 
 const REVERB_PARAMS: &[ParamSpec] = &[
@@ -872,6 +1306,8 @@ const CHORUS_PARAMS: &[ParamSpec] = &[
     spec("depth", 0.0, 10.0, 3.0, "ms"),
     spec("delay", 5.0, 30.0, 12.0, "ms"),
     spec("mix", 0.0, 1.0, 0.4, ""),
+    int_spec("voices", 1.0, 3.0, 1.0),
+    spec("tone", 500.0, 20_000.0, 20_000.0, "Hz"),
 ];
 
 const LIMITER_PARAMS: &[ParamSpec] = &[
@@ -884,6 +1320,8 @@ const DISTORTION_PARAMS: &[ParamSpec] = &[
     spec("drive", 0.0, 48.0, 12.0, "dB"),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 6.0, -6.0, "dB"),
+    int_spec("mode", 0.0, 1.0, 0.0),
+    spec("threshold", -24.0, 0.0, -6.0, "dB"),
 ];
 
 impl EffectKind {
@@ -926,6 +1364,18 @@ impl EffectKind {
             Self::Convolution => "convolution",
             Self::PitchCorrect => "pitch_correct",
             Self::Tuner => "tuner",
+            Self::Dynamics => "dynamics",
+            Self::StereoShaper => "stereo_shaper",
+            Self::MultibandLimiter => "multiband_limiter",
+            Self::Send => "send",
+            Self::HallReverb => "hall_reverb",
+            Self::GuitarChain => "guitar_chain",
+            Self::MultiFx => "multi_fx",
+            Self::FxChain => "fx_chain",
+            Self::BeatShaper => "beat_shaper",
+            Self::BandSplit => "band_split",
+            Self::Scratch => "scratch",
+            Self::Rack => "rack",
             Self::Plugin => "plugin",
         }
     }
@@ -975,6 +1425,18 @@ impl EffectKind {
             Self::Convolution => CONVOLUTION_PARAMS,
             Self::PitchCorrect => PITCH_CORRECT_PARAMS,
             Self::Tuner => TUNER_PARAMS,
+            Self::Dynamics => DYNAMICS_PARAMS,
+            Self::StereoShaper => STEREO_SHAPER_PARAMS,
+            Self::MultibandLimiter => MULTIBAND_LIMITER_PARAMS,
+            Self::Send => SEND_PARAMS,
+            Self::HallReverb => HALL_REVERB_PARAMS,
+            Self::GuitarChain => GUITAR_CHAIN_PARAMS,
+            Self::MultiFx => MULTI_FX_PARAMS,
+            Self::FxChain => FX_CHAIN_PARAMS,
+            Self::BeatShaper => BEAT_SHAPER_PARAMS,
+            Self::BandSplit => BAND_SPLIT_PARAMS,
+            Self::Scratch => SCRATCH_PARAMS,
+            Self::Rack => RACK_PARAMS,
             Self::Plugin => &[],
         }
     }
@@ -984,6 +1446,39 @@ impl EffectKind {
     #[must_use]
     pub fn sidechain_index(self) -> Option<usize> {
         self.params().iter().position(|p| p.name == "sidechain")
+    }
+
+    /// Whether this effect can run inside an effect rack: every built-in
+    /// effect except the ones the engine routes, plugins and racks.
+    #[must_use]
+    pub fn allowed_in_rack(self) -> bool {
+        !matches!(
+            self,
+            Self::Send | Self::BandSplit | Self::Plugin | Self::Rack
+        )
+    }
+
+    /// Whether parameter `index` names an insert this effect feeds (the send's
+    /// `target`, the band splitter's `low_target` …).
+    #[must_use]
+    pub fn is_send_target(self, index: usize) -> bool {
+        self.params()
+            .get(index)
+            .is_some_and(|p| p.name == "target" || p.name.ends_with("_target"))
+    }
+
+    /// Index of the parameter naming a channel by its rack position (the
+    /// pitch corrector's `follow`), for effects that have one.
+    #[must_use]
+    pub fn channel_ref_index(self) -> Option<usize> {
+        self.params().iter().position(|p| p.name == "follow")
+    }
+
+    /// Indices of the parameters naming other mixer tracks: sidechain
+    /// sources and send targets.
+    pub fn track_ref_indices(self) -> impl Iterator<Item = usize> {
+        let sidechain = self.sidechain_index();
+        (0..self.params().len()).filter(move |&i| Some(i) == sidechain || self.is_send_target(i))
     }
 
     /// Default parameter values for this effect.
@@ -1051,6 +1546,23 @@ mod tests {
             (inst::FADE_OUT, "fade_out"),
             (inst::TIME_SHIFT, "time_shift"),
             (inst::ECHO_PITCH, "echo_pitch"),
+            (inst::FILTER2_TYPE, "filter2_type"),
+            (inst::LFO2_SHAPE, "lfo2_shape"),
+            (inst::MOD1_SOURCE, "mod1_source"),
+            (inst::MOD3_AMOUNT, "mod3_amount"),
+            (inst::OP5_RATIO, "op5_ratio"),
+            (inst::OP6_SUSTAIN, "op6_sustain"),
+            (inst::OP1_WAVE, "op1_wave"),
+            (inst::FM_RESONANCE, "fm_resonance"),
+            (inst::PLUCK_BOW, "pluck_bow"),
+            (inst::PLUCK_DETUNE, "pluck_detune"),
+            (inst::ADD_BRIGHT_B, "add_bright_b"),
+            (inst::ADD_MORPH_DEPTH, "add_morph_depth"),
+            (inst::MIDI_CC1, "midi_cc1"),
+            (inst::MIDI_CC1_NUMBER, "midi_cc1_number"),
+            (inst::MIDI_PROGRAM, "midi_program"),
+            (inst::RESYN_SPEED, "resyn_speed"),
+            (inst::RESYN_LOOP, "resyn_loop"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

@@ -3,6 +3,7 @@
 mod automation;
 mod channel;
 mod clip_edit;
+mod controller;
 mod mixer;
 mod note_gen;
 mod note_tools;
@@ -11,8 +12,10 @@ mod pattern;
 mod playlist;
 mod plugin;
 mod project;
+mod rack;
 mod record;
 mod transport;
+mod zones;
 
 #[cfg(test)]
 mod tests;
@@ -30,10 +33,13 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(note_gen::commands());
     commands.extend(pattern::commands());
     commands.extend(mixer::commands());
+    commands.extend(rack::commands());
     commands.extend(playlist::commands());
     commands.extend(clip_edit::commands());
     commands.extend(automation::commands());
+    commands.extend(controller::commands());
     commands.extend(plugin::commands());
     commands.extend(record::commands());
+    commands.extend(zones::commands());
     commands
 }

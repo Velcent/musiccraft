@@ -17,7 +17,8 @@
   start again at the new rate. If a request cannot be met the device default
   is used and the reason is shown.
 - **MIDI**: input port — automatic (first real device), none, or a named
-  port; output port for MIDI Out channels — none or a named port; a refresh
+  port; output port for MIDI Out channels — none or a named port; whether to
+  send MIDI clock with start and stop on that port (off by default); a refresh
   button re-lists ports. The typing keyboard toggle lives here
   as well as on the toolbar.
 - **General**: interface scale (75–200 %), hint bar on/off, autosave on/off,

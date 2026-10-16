@@ -25,6 +25,7 @@ xtask ──► commands, render, ui (keymap) ───────────�
 
 | Crate | Responsibility |
 | --- | --- |
+| `musiccraft-formula` | The formula controllers' expression language: parsing on the main thread, allocation-free evaluation on the audio thread. No dependencies. |
 | `musiccraft-params` | Shared tables: timing (PPQ), instrument and effect parameter specs, built-in sound names. No logic. |
 | `musiccraft-project` | Project data model and JSON file format. No audio, no UI. |
 | `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`. |

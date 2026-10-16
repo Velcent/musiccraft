@@ -1,6 +1,8 @@
 use musiccraft_dsp::{Adsr, AdsrParams, Oscillator, Svf, SvfMode, Waveform, key_to_hz, pan_gains};
 use musiccraft_params::inst;
 
+use crate::modmatrix::{ModSources, ModState, SynthMods};
+use crate::strings::{KsString, MAX_STRINGS};
 use crate::{ChannelParams, Instrument};
 
 /// Output level of one synth voice at full velocity, leaving headroom for chords.
@@ -10,12 +12,70 @@ const FILTER_UPDATE_INTERVAL: u32 = 32;
 /// Most unison voices per note.
 const MAX_UNISON: usize = 7;
 /// Length of each voice's string delay line (lowest pluck ~12 Hz at 48 kHz).
-const STRING_LEN: usize = 4096;
 /// Output level of the drum synth and pluck at full velocity.
 const DRUM_GAIN: f32 = 0.8;
 const PLUCK_GAIN: f32 = 0.35;
 /// Most partials (and phases) a voice keeps for additive instruments.
 const PARTIALS: usize = 32;
+/// FM operators.
+const FM_OPS: usize = 6;
+
+/// Normalized harmonic levels of an additive spectrum: a `bright` slope
+/// and an `even` share for even harmonics, summing to 1 over `count`.
+fn additive_spectrum(bright: f32, even: f32, count: usize) -> [f32; PARTIALS] {
+    let slope = 2.0 - 1.6 * bright.clamp(0.0, 1.0);
+    let even = even.clamp(0.0, 1.0);
+    let mut levels: [f32; PARTIALS] = std::array::from_fn(|i| {
+        let n = i + 1;
+        if n > count {
+            0.0
+        } else {
+            (n as f32).powf(-slope) * if n % 2 == 0 { even } else { 1.0 }
+        }
+    });
+    let norm = levels.iter().sum::<f32>().max(1e-3);
+    for level in &mut levels {
+        *level /= norm;
+    }
+    levels
+}
+
+/// How many strings the pluck sounds.
+fn pluck_strings(params: &ChannelParams) -> usize {
+    (param(params, inst::PLUCK_STRINGS).round().max(1.0) as usize).min(MAX_STRINGS)
+}
+/// FM algorithms, by `fm_algo`: for each operator (1 first) a bit mask of the
+/// operators modulating it, the bit mask of carriers (heard operators), and
+/// the operator with feedback.
+const FM_ALGOS: [([u8; FM_OPS], u8, usize); 12] = [
+    ([0b10, 0b100, 0b1000, 0, 0, 0], 0b1, 3),
+    ([0b110, 0, 0b1000, 0, 0, 0], 0b1, 3),
+    ([0b10, 0, 0b1000, 0, 0, 0], 0b101, 3),
+    ([0b1000, 0b1000, 0b1000, 0, 0, 0], 0b111, 3),
+    ([0b10, 0, 0, 0, 0, 0], 0b1101, 3),
+    ([0, 0, 0, 0, 0, 0], 0b1111, 3),
+    ([0b10, 0b100, 0b1000, 0b1_0000, 0b10_0000, 0], 0b1, 5),
+    ([0b10, 0b100, 0, 0b1_0000, 0b10_0000, 0], 0b1001, 5),
+    ([0b10, 0, 0b1000, 0, 0b10_0000, 0], 0b1_0101, 5),
+    ([0b11_1110, 0, 0, 0, 0, 0], 0b1, 5),
+    (
+        [0b10_0000, 0b10_0000, 0b10_0000, 0b10_0000, 0b10_0000, 0],
+        0b1_1111,
+        5,
+    ),
+    ([0, 0, 0, 0, 0, 0], 0b11_1111, 5),
+];
+
+/// An FM operator's waveform at phase `x` (radians): sine, half sine, soft
+/// square or soft saw, all within −1..1.
+fn fm_wave(wave: i32, x: f32) -> f32 {
+    match wave {
+        1 => x.sin().max(0.0) * 2.0 - 0.64,
+        2 => (x.sin() * 3.0).tanh(),
+        3 => (x.sin() + (2.0 * x).sin() * 0.5 + (3.0 * x).sin() / 3.0) * 0.55,
+        _ => x.sin(),
+    }
+}
 /// Most grains sounding at once in one granular voice.
 const GRAINS: usize = 24;
 
@@ -36,6 +96,8 @@ pub(crate) fn glides(instrument: &Instrument) -> bool {
         instrument,
         Instrument::Synth
             | Instrument::Sampler(_)
+            | Instrument::Zones(_)
+            | Instrument::Resynth(_)
             | Instrument::Fm
             | Instrument::Keys
             | Instrument::Additive
@@ -104,6 +166,15 @@ pub(crate) struct Voice {
     lfo_phase: f32,
     filter_l: Svf,
     filter_r: Svf,
+    filter2_l: Svf,
+    filter2_r: Svf,
+    /// Second LFO and modulation envelope.
+    mod_state: ModState,
+    /// The matrix's latest output, and the gain and pan it currently
+    /// applies (ramped toward the latest output between updates).
+    mods: SynthMods,
+    mod_gain: f32,
+    mod_pan: f32,
     filter_countdown: u32,
     /// Frames since the voice started sounding (drum synth).
     elapsed: u32,
@@ -112,10 +183,11 @@ pub(crate) struct Voice {
     noise: u32,
     /// Plucked-string delay line, its write position, the delay in frames,
     /// the last read sample and the loudest output of the current period.
-    string: Vec<f32>,
-    string_write: usize,
-    string_delay: f32,
-    string_last: f32,
+    strings: [KsString; MAX_STRINGS],
+    /// Low-passed noise that bows the strings.
+    bow_noise: f32,
+    /// Resynth: the (blurred) harmonic levels now playing.
+    resyn_levels: [f32; PARTIALS],
     string_peak: f32,
     string_count: u32,
     sample_pos: f64,
@@ -168,13 +240,18 @@ impl Voice {
             lfo_phase: 0.0,
             filter_l: Svf::new(),
             filter_r: Svf::new(),
+            filter2_l: Svf::new(),
+            filter2_r: Svf::new(),
+            mod_state: ModState::default(),
+            mods: SynthMods::default(),
+            mod_gain: 1.0,
+            mod_pan: 0.0,
             elapsed: 0,
             drum_phase: 0.0,
             noise: 0x9E37_79B9,
-            string: vec![0.0; STRING_LEN],
-            string_write: 0,
-            string_delay: 100.0,
-            string_last: 0.0,
+            strings: std::array::from_fn(|_| KsString::new()),
+            bow_noise: 0.0,
+            resyn_levels: [0.0; PARTIALS],
             string_peak: 0.0,
             string_count: 0,
             phases: [0.0; PARTIALS],
@@ -233,7 +310,7 @@ impl Voice {
         self.delay = start.delay;
         self.gate = start.gate;
         self.age = age;
-        self.one_shot = (matches!(instrument, Instrument::Sampler(_))
+        self.one_shot = (matches!(instrument, Instrument::Sampler(_) | Instrument::Zones(_))
             && param(params, inst::ONE_SHOT) >= 0.5
             && !start.live)
             || matches!(instrument, Instrument::DrumSynth);
@@ -245,6 +322,17 @@ impl Voice {
         match instrument {
             Instrument::DrumSynth => self.start_drum(params),
             Instrument::Pluck => self.start_pluck(params, start.key),
+            Instrument::Resynth(table) => {
+                let start = param(params, inst::RESYN_POSITION).clamp(0.0, 1.0) * table.duration();
+                let looped = param(params, inst::RESYN_LOOP) >= 0.5;
+                self.resyn_levels = table.at(start, looped);
+            }
+            Instrument::Zones(zones) => {
+                self.pad = zones
+                    .iter()
+                    .position(|z| z.plays(start.key, start.velocity))
+                    .unwrap_or(usize::MAX);
+            }
             Instrument::Kit(_) => {
                 let root = param(params, inst::ROOT_KEY).round() as i32;
                 self.pad = (i32::from(start.key) - root).rem_euclid(16) as usize;
@@ -269,6 +357,15 @@ impl Voice {
         self.lfo_phase = 0.0;
         self.filter_l.reset();
         self.filter_r.reset();
+        self.filter2_l.reset();
+        self.filter2_r.reset();
+        self.mod_state.start();
+        self.mods = SynthMods {
+            gain: 1.0,
+            ..SynthMods::default()
+        };
+        self.mod_gain = 1.0;
+        self.mod_pan = 0.0;
         self.filter_countdown = 0;
         self.sample_pos = 0.0;
         if let Instrument::Granular(buffer) = instrument {
@@ -278,6 +375,17 @@ impl Voice {
         self.slice_end = None;
         self.reverse = false;
         self.sample_frames = 0.0;
+        if let Instrument::Zones(zones) = instrument {
+            // A reversed zone plays from its end, like the sampler.
+            if let Some(zone) = zones.get(self.pad) {
+                self.reverse = param(params, inst::REVERSE) >= 0.5;
+                self.sample_pos = if self.reverse {
+                    zone.buffer.len() as f64 - 1.0
+                } else {
+                    0.0
+                };
+            }
+        }
         if let Instrument::Sampler(buffer) = instrument {
             let slices = param(params, inst::SLICES).round().max(1.0) as i32;
             // A sliced audio clip starts part-way; a reversed sample plays
@@ -416,14 +524,23 @@ impl Voice {
                 } else {
                     pitch
                 };
-                self.render_sample(buffer, params, pitch, left, right, sample_rate);
+                let root = param(params, inst::ROOT_KEY);
+                self.render_sample(buffer, params, pitch, root, left, right, sample_rate);
             }
+            Instrument::Zones(zones) => match zones.get(self.pad) {
+                Some(zone) => {
+                    let root = f32::from(zone.root);
+                    self.render_sample(&zone.buffer, params, pitch, root, left, right, sample_rate);
+                }
+                None => self.active = false,
+            },
             Instrument::Kit(pads) => {
                 // Pads play at their own pitch.
                 let pitch = param(params, inst::ROOT_KEY) + param(params, inst::PITCH);
                 match pads.get(self.pad) {
                     Some(Some(buffer)) => {
-                        self.render_sample(buffer, params, pitch, left, right, sample_rate);
+                        let root = param(params, inst::ROOT_KEY);
+                        self.render_sample(buffer, params, pitch, root, left, right, sample_rate);
                     }
                     _ => self.active = false,
                 }
@@ -434,6 +551,7 @@ impl Voice {
             Instrument::Fm => self.render_fm(params, pitch, left, right),
             Instrument::Keys => self.render_keys(params, pitch, left, right),
             Instrument::Additive => self.render_additive(params, pitch, left, right),
+            Instrument::Resynth(table) => self.render_resynth(table, params, pitch, left, right),
             // Layers forward notes; they never sound themselves.
             Instrument::Layer(_) => self.active = false,
             // External instruments never get voices; see `engine::trigger`.
@@ -446,18 +564,19 @@ impl Voice {
         }
     }
 
-    /// Plays `buffer` from the current position at `pitch` relative to the
-    /// root key (sampler, slices and kit pads).
+    /// Plays `buffer` from the current position at `pitch` relative to
+    /// `root` (sampler, slices, zones and kit pads).
+    #[allow(clippy::too_many_arguments)]
     fn render_sample(
         &mut self,
         buffer: &musiccraft_dsp::SampleBuffer,
         params: &ChannelParams,
         pitch: f32,
+        root: f32,
         left: &mut [f32],
         right: &mut [f32],
         sample_rate: f32,
     ) {
-        let root = param(params, inst::ROOT_KEY);
         let rate = buffer.sample_rate() / f64::from(sample_rate);
         let step_for = |glide: f32| rate * 2.0_f64.powf(f64::from(pitch + glide - root) / 12.0);
         let mut step = step_for(self.glide);
@@ -533,14 +652,34 @@ impl Voice {
         left: &mut [f32],
         right: &mut [f32],
     ) {
-        let algo = param(params, inst::FM_ALGO).round() as i32;
+        let algo = (param(params, inst::FM_ALGO).round().max(0.0) as usize).min(FM_ALGOS.len() - 1);
+        let Some(&(modulators, carriers, top)) = FM_ALGOS.get(algo) else {
+            return;
+        };
         let feedback = param(params, inst::FM_FEEDBACK).clamp(0.0, 1.0);
-        let op = |n: usize, field: usize| param(params, inst::OP1_RATIO + (n - 1) * 4 + field);
-        let ratio = [op(1, 0), op(2, 0), op(3, 0), op(4, 0)];
-        let level = [op(1, 1), op(2, 1), op(3, 1), op(4, 1)];
-        let decay = [op(1, 2), op(2, 2), op(3, 2), op(4, 2)].map(|d| d.max(0.005));
-        let sustain = [op(1, 3), op(2, 3), op(3, 3), op(4, 3)];
+        let op = |n: usize, field: usize| {
+            let base = if n < 4 {
+                inst::OP1_RATIO + n * 4
+            } else {
+                inst::OP5_RATIO + (n - 4) * 4
+            };
+            param(params, base + field)
+        };
+        let ratio: [f32; FM_OPS] = std::array::from_fn(|i| op(i, 0));
+        let level: [f32; FM_OPS] = std::array::from_fn(|i| op(i, 1));
+        let decay: [f32; FM_OPS] = std::array::from_fn(|i| op(i, 2).max(0.005));
+        let sustain: [f32; FM_OPS] = std::array::from_fn(|i| op(i, 3));
+        let waves: [i32; FM_OPS] =
+            std::array::from_fn(|i| param(params, inst::OP1_WAVE + i).round() as i32);
+        let carrier_count = carriers.count_ones().max(1) as f32;
+        let cutoff = param(params, inst::FM_CUTOFF);
+        let filtered = cutoff < 19_999.0;
         let sr = self.sample_rate;
+        if filtered {
+            let resonance = param(params, inst::FM_RESONANCE).clamp(0.0, 1.0);
+            self.filter_l.set(cutoff, resonance, sr);
+            self.filter_r.set(cutoff, resonance, sr);
+        }
         let mut hz = key_to_hz(pitch + self.glide);
         let tau = std::f32::consts::TAU;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
@@ -554,37 +693,40 @@ impl Voice {
             let t = self.elapsed as f32 / sr;
             self.elapsed = self.elapsed.saturating_add(1);
             let amp = self.env.next_level() * self.velocity;
-            let mut out_of = [0.0_f32; 4];
+            let mut out_of = [0.0_f32; FM_OPS];
             let env = |i: usize| sustain[i] + (1.0 - sustain[i]) * (-t / decay[i]).exp();
-            // Operators run 4 down to 1 so modulators are ready first.
-            for i in (0..4).rev() {
+            // Modulators always have higher numbers, so running from the top
+            // down has every modulator ready first.
+            for i in (0..FM_OPS).rev() {
+                let mask = modulators.get(i).copied().unwrap_or(0);
+                if level[i] <= 0.0 && carriers & (1 << i) == 0 && mask == 0 {
+                    continue;
+                }
                 let phase = self.phases[i];
                 self.phases[i] = (phase + f64::from(hz * ratio[i] / sr)).fract();
-                let modulation = match (algo, i) {
-                    (0, 0) => out_of[1],
-                    (0, 1) | (1, 2) | (2, 2) => out_of[i + 1],
-                    (0, 2) => out_of[3],
-                    (1, 0) => out_of[1] + out_of[2],
-                    (2, 0) | (4, 0) => out_of[1],
-                    (3, 0..=2) => out_of[3],
-                    (_, 3) => self.fm_prev * feedback,
-                    _ => 0.0,
-                };
-                let value = (phase as f32 * tau + modulation * 4.0).sin() * level[i] * env(i);
-                if i == 3 {
+                let mut modulation: f32 = (0..FM_OPS)
+                    .filter(|m| mask & (1 << m) != 0)
+                    .map(|m| out_of[m])
+                    .sum();
+                if i == top {
+                    modulation += self.fm_prev * feedback;
+                }
+                let x = phase as f32 * tau + modulation * 4.0;
+                let value = fm_wave(waves[i], x) * level[i] * env(i);
+                if i == top {
                     self.fm_prev = value;
                 }
                 out_of[i] = value;
             }
-            let carriers: &[usize] = match algo {
-                2 => &[0, 2],
-                3 => &[0, 1, 2],
-                4 => &[0, 2, 3],
-                5 => &[0, 1, 2, 3],
-                _ => &[0],
-            };
-            let mix: f32 = carriers.iter().map(|c| out_of[*c]).sum::<f32>() / carriers.len() as f32;
-            let sample = mix * amp * SYNTH_GAIN * 1.6;
+            let mix: f32 = (0..FM_OPS)
+                .filter(|c| carriers & (1 << c) != 0)
+                .map(|c| out_of[c])
+                .sum::<f32>()
+                / carrier_count;
+            let mut sample = mix * amp * SYNTH_GAIN * 1.6;
+            if filtered {
+                sample = self.filter_l.process(sample, SvfMode::LowPass);
+            }
             self.emit(l, r, sample);
             if self.env.is_idle() {
                 self.active = false;
@@ -702,17 +844,25 @@ impl Voice {
         right: &mut [f32],
     ) {
         let count = (param(params, inst::ADD_PARTIALS).round() as usize).clamp(1, PARTIALS);
-        let bright = param(params, inst::ADD_BRIGHT).clamp(0.0, 1.0);
-        let even = param(params, inst::ADD_EVEN).clamp(0.0, 1.0);
-        let inharm = param(params, inst::ADD_INHARM).clamp(0.0, 1.0);
+        let spectrum_a = additive_spectrum(
+            param(params, inst::ADD_BRIGHT),
+            param(params, inst::ADD_EVEN),
+            count,
+        );
+        let spectrum_b = additive_spectrum(
+            param(params, inst::ADD_BRIGHT_B),
+            param(params, inst::ADD_EVEN_B),
+            count,
+        );
+        let inharm_a = param(params, inst::ADD_INHARM).clamp(0.0, 1.0);
+        let inharm_b = param(params, inst::ADD_INHARM_B).clamp(0.0, 1.0);
+        let morph = param(params, inst::ADD_MORPH).clamp(0.0, 1.0);
+        let morph_time = param(params, inst::ADD_MORPH_TIME).max(0.0);
+        let morph_rate = param(params, inst::ADD_MORPH_RATE).max(0.0);
+        let morph_depth = param(params, inst::ADD_MORPH_DEPTH).clamp(0.0, 1.0);
         let fade = param(params, inst::ADD_DECAY).clamp(0.0, 1.0);
         let sr = self.sample_rate;
         let mut hz = key_to_hz(pitch + self.glide);
-        let slope = 2.0 - 1.6 * bright;
-        let norm: f32 = (1..=count)
-            .map(|n| (n as f32).powf(-slope) * if n % 2 == 0 { even } else { 1.0 })
-            .sum::<f32>()
-            .max(1e-3);
         let tau = std::f32::consts::TAU;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
@@ -725,6 +875,16 @@ impl Voice {
             let t = self.elapsed as f32 / sr;
             self.elapsed = self.elapsed.saturating_add(1);
             let amp = self.env.next_level() * self.velocity;
+            // Where between the spectra this frame sits.
+            let mut m = morph;
+            if morph_time > 0.0 {
+                m += (1.0 - morph) * (t / morph_time).min(1.0);
+            }
+            if morph_rate > 0.0 {
+                m += (t * morph_rate * tau).sin() * morph_depth * 0.5;
+            }
+            let m = m.clamp(0.0, 1.0);
+            let inharm = inharm_a + (inharm_b - inharm_a) * m;
             let mut sum = 0.0;
             for n in 1..=count {
                 let nf = n as f32;
@@ -735,11 +895,79 @@ impl Voice {
                 let i = n - 1;
                 let phase = self.phases[i];
                 self.phases[i] = (phase + f64::from(f / sr)).fract();
-                let weight = nf.powf(-slope) * if n % 2 == 0 { even } else { 1.0 };
+                let (a, b) = (spectrum_a[i], spectrum_b[i]);
+                let weight = a + (b - a) * m;
                 let decay = (-t * fade * nf * 1.5).exp();
                 sum += (phase as f32 * tau).sin() * weight * decay;
             }
-            self.emit(l, r, sum / norm * amp * SYNTH_GAIN * 1.6);
+            self.emit(l, r, sum * amp * SYNTH_GAIN * 1.6);
+            if self.env.is_idle() {
+                self.active = false;
+                break;
+            }
+        }
+    }
+
+    /// Resynthesis: the table's harmonic levels, read at `resyn_speed` from
+    /// `resyn_position` and smoothed by `resyn_blur`, played as sines on the
+    /// note's harmonics (stretched by `add_inharm`).
+    fn render_resynth(
+        &mut self,
+        table: &musiccraft_dsp::resynth::HarmonicTable,
+        params: &ChannelParams,
+        pitch: f32,
+        left: &mut [f32],
+        right: &mut [f32],
+    ) {
+        let count = (param(params, inst::ADD_PARTIALS).round() as usize).clamp(1, PARTIALS);
+        let inharm = param(params, inst::ADD_INHARM).clamp(0.0, 1.0);
+        let speed = param(params, inst::RESYN_SPEED).clamp(0.0, 4.0);
+        let start = param(params, inst::RESYN_POSITION).clamp(0.0, 1.0) * table.duration();
+        let blur = param(params, inst::RESYN_BLUR).clamp(0.0, 1.0);
+        let looped = param(params, inst::RESYN_LOOP) >= 0.5;
+        let sr = self.sample_rate;
+        let interval = FILTER_UPDATE_INTERVAL as f32 / sr;
+        // Blur 1 smooths levels over about half a second.
+        let follow = if blur > 0.0 {
+            1.0 - (-interval / (blur * 0.5)).exp()
+        } else {
+            1.0
+        };
+        let norm = 1.0 / table.peak_sum.max(1e-3);
+        let mut hz = key_to_hz(pitch + self.glide);
+        let tau = std::f32::consts::TAU;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            if !self.advance_gate() {
+                continue;
+            }
+            if self.glide != 0.0 {
+                self.step_glide();
+                hz = key_to_hz(pitch + self.glide);
+            }
+            if self.filter_countdown == 0 {
+                let t = start + self.elapsed as f32 / sr * speed;
+                let target = table.at(t, looped);
+                for (level, want) in self.resyn_levels.iter_mut().zip(target) {
+                    *level += (want - *level) * follow;
+                }
+                self.filter_countdown = FILTER_UPDATE_INTERVAL;
+            }
+            self.filter_countdown -= 1;
+            self.elapsed = self.elapsed.saturating_add(1);
+            let amp = self.env.next_level() * self.velocity;
+            let mut sum = 0.0;
+            for n in 1..=count {
+                let nf = n as f32;
+                let f = hz * nf * (1.0 + inharm * 0.02 * (nf - 1.0));
+                if f > sr * 0.45 {
+                    break;
+                }
+                let i = n - 1;
+                let phase = self.phases[i];
+                self.phases[i] = (phase + f64::from(f / sr)).fract();
+                sum += (phase as f32 * tau).sin() * self.resyn_levels[i];
+            }
+            self.emit(l, r, sum * norm * amp * SYNTH_GAIN * 1.6);
             if self.env.is_idle() {
                 self.active = false;
                 break;
@@ -918,77 +1146,79 @@ impl Voice {
     fn start_pluck(&mut self, params: &ChannelParams, key: u8) {
         let tone = param(params, inst::PLUCK_TONE).clamp(0.0, 1.0);
         let hz = key_to_hz(f32::from(key) + param(params, inst::PITCH)).max(1.0);
-        self.string_delay = (self.sample_rate / hz).clamp(2.0, (STRING_LEN - 4) as f32);
-        let mut smooth = 0.0;
+        let count = pluck_strings(params);
+        let detune = param(params, inst::PLUCK_DETUNE);
         let coeff = 0.05 + 0.95 * tone;
-        for i in 0..STRING_LEN {
-            let n = self.next_noise();
-            smooth += (n - smooth) * coeff;
-            if let Some(slot) = self.string.get_mut(i) {
-                *slot = if (i as f32) < self.string_delay {
-                    smooth
-                } else {
-                    0.0
-                };
+        let mut noise = self.noise;
+        for (k, string) in self.strings.iter_mut().enumerate() {
+            if k >= count {
+                string.clear();
+                continue;
             }
+            // Extra strings sit `detune` cents above and below the note.
+            let cents = match k {
+                1 => detune,
+                2 => -detune,
+                _ => 0.0,
+            };
+            let delay = self.sample_rate / (hz * 2.0_f32.powf(cents / 1_200.0));
+            let mut smooth = 0.0;
+            string.excite(delay, || {
+                noise ^= noise << 13;
+                noise ^= noise >> 17;
+                noise ^= noise << 5;
+                let n = noise as f32 / u32::MAX as f32 * 2.0 - 1.0;
+                smooth += (n - smooth) * coeff;
+                smooth
+            });
         }
-        self.string_write = self.string_delay.ceil() as usize % STRING_LEN;
-        self.string_last = 0.0;
+        self.noise = noise;
+        self.bow_noise = 0.0;
         self.string_peak = 1.0;
         self.string_count = 0;
     }
 
-    /// The string's output `delay` frames back.
-    fn string_read(&self, delay: f32) -> f32 {
-        let len = STRING_LEN as f32;
-        let position = (self.string_write as f32 - delay).rem_euclid(len);
-        let whole = position as usize;
-        let frac = position - whole as f32;
-        let a = self.string.get(whole % STRING_LEN).copied().unwrap_or(0.0);
-        let b = self
-            .string
-            .get((whole + 1) % STRING_LEN)
-            .copied()
-            .unwrap_or(0.0);
-        a + (b - a) * frac
-    }
-
-    /// Plucked string (Karplus-Strong): the burst circulates through a damped
-    /// delay tuned to the note.
+    /// Plucked (or bowed) strings (Karplus-Strong): the burst circulates
+    /// through damped delays tuned to the note; bowing keeps feeding them
+    /// noise while the note is held.
     fn render_pluck(&mut self, params: &ChannelParams, left: &mut [f32], right: &mut [f32]) {
         let damping = param(params, inst::PLUCK_DAMPING).clamp(0.0, 1.0) * 0.5;
         let sr = self.sample_rate;
-        let period = self.string_delay;
+        let count = pluck_strings(params);
+        let period = self.strings.first().map_or(100.0, |s| s.delay);
         let sustain = 0.001_f32.powf(period / (param(params, inst::PLUCK_DECAY).max(0.05) * sr));
         let release = 0.001_f32.powf(period / (0.08 * sr));
+        let bow = param(params, inst::PLUCK_BOW).clamp(0.0, 1.0);
+        let bow_tone = 0.05 + 0.95 * param(params, inst::PLUCK_TONE).clamp(0.0, 1.0);
+        let norm = 1.0 / (count as f32).sqrt();
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
                 continue;
             }
-            // The damping filter delays by `damping` frames; shorten the
-            // line to match so the pitch stays true.
-            let read = self.string_read((period - damping).max(1.0));
-            let filtered = read * (1.0 - damping) + self.string_last * damping;
-            self.string_last = read;
-            let feedback = if self.env.is_releasing() {
-                release
+            let releasing = self.env.is_releasing();
+            let feedback = if releasing { release } else { sustain };
+            let inject = if bow > 0.0 && !releasing {
+                let level = self.env.next_level();
+                let n = self.next_noise();
+                self.bow_noise += (n - self.bow_noise) * bow_tone;
+                self.bow_noise * bow * level * 0.03
             } else {
-                sustain
+                0.0
             };
-            if let Some(slot) = self.string.get_mut(self.string_write) {
-                // Each sample passes once per period, so the per-period
-                // factor applies directly.
-                *slot = filtered * feedback;
+            let mut read = 0.0;
+            for string in self.strings.iter_mut().take(count) {
+                read += string.step(damping, feedback, inject);
             }
-            self.string_write = (self.string_write + 1) % STRING_LEN;
+            read *= norm;
             let out = read * self.velocity * PLUCK_GAIN;
             *l += out * self.pan.0;
             *r += out * self.pan.1;
-            // Stop once a whole period stays below -80 dB.
+            // Stop once a whole period stays below -80 dB (a held, bowed
+            // string keeps going).
             self.string_peak = self.string_peak.max(read.abs());
             self.string_count += 1;
             if self.string_count as f32 >= period {
-                if self.string_peak < 1e-4 {
+                if self.string_peak < 1e-4 && (bow == 0.0 || releasing) {
                     self.active = false;
                     break;
                 }
@@ -1035,6 +1265,16 @@ impl Voice {
         let drive = param(params, inst::DRIVE).clamp(0.0, 1.0);
         let drive_gain = 1.0 + drive * 8.0;
         let drive_norm = 1.0 / drive_gain.tanh();
+        let mode2 = match param(params, inst::FILTER2_TYPE).round() as i32 {
+            1 => Some(SvfMode::LowPass),
+            2 => Some(SvfMode::BandPass),
+            3 => Some(SvfMode::HighPass),
+            _ => None,
+        };
+        let cutoff2 = param(params, inst::CUTOFF2);
+        let resonance2 = param(params, inst::RESONANCE2).clamp(0.0, 1.0);
+        let routing = param(params, inst::FILTER_ROUTING).round() as i32;
+        let ramp = 1.0 / FILTER_UPDATE_INTERVAL as f32;
         // Unison voices sit evenly across -1..1; the stack is normalized so
         // more voices are not louder.
         let position = |i: usize| {
@@ -1054,9 +1294,32 @@ impl Voice {
             self.step_glide();
             let level = self.env.next_level();
             if self.filter_countdown == 0 {
-                lfo = (self.lfo_phase * std::f32::consts::TAU).sin() * lfo_depth;
+                let lfo_raw = (self.lfo_phase * std::f32::consts::TAU).sin();
+                lfo = lfo_raw * lfo_depth;
+                let sources = ModSources {
+                    lfo1: lfo_raw,
+                    velocity: self.velocity,
+                    key: ((pitch - 60.0) / 24.0).clamp(-1.0, 1.0),
+                    amp_env: level,
+                };
+                let mut noise = self.noise;
+                self.mods = self.mod_state.update(
+                    params,
+                    sources,
+                    FILTER_UPDATE_INTERVAL,
+                    sample_rate,
+                    || {
+                        noise ^= noise << 13;
+                        noise ^= noise >> 17;
+                        noise ^= noise << 5;
+                        noise as f32 / u32::MAX as f32 * 2.0 - 1.0
+                    },
+                );
+                self.noise = noise;
+                let mods = self.mods;
                 let vibrato = if lfo_target == 0 { lfo * 2.0 } else { 0.0 };
-                let base = f64::from(key_to_hz(pitch + self.glide + vibrato));
+                let base = f64::from(key_to_hz(pitch + self.glide + vibrato + mods.pitch));
+                let detune = detune * 2.0_f64.powf(f64::from(mods.detune) / 1200.0);
                 for i in 0..unison {
                     let cents = f64::from(spread * position(i));
                     let hz = base * 2.0_f64.powf(cents / 1200.0);
@@ -1068,24 +1331,38 @@ impl Voice {
                 self.sub.set_frequency(base * 0.5, sr);
                 self.osc3.set_frequency(base * osc3_ratio, sr);
                 let lfo_octaves = if lfo_target == 1 { lfo * 3.0 } else { 0.0 };
-                let modulated = cutoff * 2.0_f32.powf(env_amount * level + lfo_octaves);
+                let modulated =
+                    cutoff * 2.0_f32.powf(env_amount * level + lfo_octaves + mods.cutoff);
+                let resonance = (resonance + mods.resonance).clamp(0.0, 1.0);
                 self.filter_l.set(modulated, resonance, sample_rate);
                 self.filter_r.set(modulated, resonance, sample_rate);
+                if mode2.is_some() {
+                    let f2 = cutoff2 * 2.0_f32.powf(mods.cutoff2);
+                    self.filter2_l.set(f2, resonance2, sample_rate);
+                    self.filter2_r.set(f2, resonance2, sample_rate);
+                }
                 self.filter_countdown = FILTER_UPDATE_INTERVAL;
             }
+            self.mod_gain += (self.mods.gain - self.mod_gain) * ramp;
+            self.mod_pan += (self.mods.pan.clamp(-1.0, 1.0) - self.mod_pan) * ramp;
+            let mix = (mix + self.mods.osc_mix).clamp(0.0, 1.0);
+            let osc3_level = (osc3_level + self.mods.osc3).clamp(0.0, 1.0);
             self.filter_countdown -= 1;
             self.lfo_phase = (self.lfo_phase + lfo_step).fract();
-            let (mut sum_l, mut sum_r) = (0.0, 0.0);
+            // Group A is oscillator 1 and the sub, group B oscillators 2
+            // and 3; the split routing filters them separately.
+            let (mut a_l, mut a_r, mut b_l, mut b_r) = (0.0, 0.0, 0.0, 0.0);
             for i in 0..unison {
                 let (Some(a), Some(b)) = (self.osc1.get_mut(i), self.osc2.get_mut(i)) else {
                     continue;
                 };
-                let a = a.next_sample(wave1);
-                let b = b.next_sample(wave2);
-                let sample = (a + (b - a) * mix) * norm;
+                let a = a.next_sample(wave1) * (1.0 - mix) * norm;
+                let b = b.next_sample(wave2) * mix * norm;
                 let p = position(i);
-                sum_l += sample * (1.0 - p);
-                sum_r += sample * (1.0 + p);
+                a_l += a * (1.0 - p);
+                a_r += a * (1.0 + p);
+                b_l += b * (1.0 - p);
+                b_r += b * (1.0 + p);
             }
             let sub = self.sub.next_sample(Waveform::Sine) * sub_level;
             let third = if osc3_level > 0.0 {
@@ -1093,19 +1370,52 @@ impl Voice {
             } else {
                 0.0
             };
-            let (mut raw_l, mut raw_r) = (sum_l + sub + third, sum_r + sub + third);
+            let mut groups = [a_l + sub, a_r + sub, b_l + third, b_r + third];
             if drive > 0.001 {
-                raw_l = (raw_l * drive_gain).tanh() * drive_norm;
-                raw_r = (raw_r * drive_gain).tanh() * drive_norm;
+                for x in &mut groups {
+                    *x = (*x * drive_gain).tanh() * drive_norm;
+                }
             }
+            let [a_l, a_r, b_l, b_r] = groups;
             let tremolo = if lfo_target == 2 {
                 1.0 - (0.5 + 0.5 * lfo) * lfo_depth
             } else {
                 1.0
             };
-            let gain = level * self.velocity * SYNTH_GAIN * tremolo;
-            *l += self.filter_l.process(raw_l, mode) * gain * self.pan.0;
-            *r += self.filter_r.process(raw_r, mode) * gain * self.pan.1;
+            let gain = level * self.velocity * SYNTH_GAIN * tremolo * self.mod_gain;
+            let (out_l, out_r) = match mode2 {
+                None => (
+                    self.filter_l.process(a_l + b_l, mode),
+                    self.filter_r.process(a_r + b_r, mode),
+                ),
+                Some(mode2) => match routing {
+                    1 => (
+                        (self.filter_l.process(a_l + b_l, mode)
+                            + self.filter2_l.process(a_l + b_l, mode2))
+                            * 0.5,
+                        (self.filter_r.process(a_r + b_r, mode)
+                            + self.filter2_r.process(a_r + b_r, mode2))
+                            * 0.5,
+                    ),
+                    2 => (
+                        self.filter_l.process(a_l, mode) + self.filter2_l.process(b_l, mode2),
+                        self.filter_r.process(a_r, mode) + self.filter2_r.process(b_r, mode2),
+                    ),
+                    _ => (
+                        self.filter2_l
+                            .process(self.filter_l.process(a_l + b_l, mode), mode2),
+                        self.filter2_r
+                            .process(self.filter_r.process(a_r + b_r, mode), mode2),
+                    ),
+                },
+            };
+            let (pan_l, pan_r) = if self.mod_pan == 0.0 {
+                (1.0, 1.0)
+            } else {
+                ((1.0 - self.mod_pan).min(1.0), (1.0 + self.mod_pan).min(1.0))
+            };
+            *l += out_l * gain * self.pan.0 * pan_l;
+            *r += out_r * gain * self.pan.1 * pan_r;
             if self.env.is_idle() {
                 self.active = false;
                 break;
@@ -1266,6 +1576,66 @@ mod tests {
             assert!(diff > 1.0, "parameter {index} made no difference");
             assert!(out.iter().all(|s| s.is_finite() && s.abs() < 2.0));
         }
+    }
+
+    #[test]
+    fn second_filter_routings_and_matrix_change_the_sound() {
+        let base = ChannelParams::default();
+        let (reference, _) = render_synth_note(&base);
+        let mut with_filter2 = base;
+        with_filter2.instrument[inst::FILTER2_TYPE] = 1.0;
+        with_filter2.instrument[inst::CUTOFF2] = 300.0;
+        let cases: [(&[(usize, f32)], &str); 4] = [
+            (&[], "series"),
+            (&[(inst::FILTER_ROUTING, 1.0)], "parallel"),
+            (
+                &[(inst::FILTER_ROUTING, 2.0), (inst::OSC_MIX, 0.5)],
+                "split",
+            ),
+            (
+                &[
+                    (inst::MOD1_SOURCE, 4.0),
+                    (inst::MOD1_DEST, 0.0),
+                    (inst::MOD1_AMOUNT, 1.0),
+                ],
+                "velocity to pitch",
+            ),
+        ];
+        let mut outputs = Vec::new();
+        for (changes, name) in cases {
+            let mut params = with_filter2;
+            for (i, v) in changes {
+                params.instrument[*i] = *v;
+            }
+            let (out, _) = render_synth_note(&params);
+            let diff: f32 = out.iter().zip(&reference).map(|(a, b)| (a - b).abs()).sum();
+            assert!(diff > 1.0, "{name} made no difference");
+            assert!(out.iter().all(|s| s.is_finite() && s.abs() < 2.0), "{name}");
+            outputs.push(out);
+        }
+        // Each routing sounds different from the others.
+        for (i, a) in outputs.iter().enumerate() {
+            for b in outputs.iter().skip(i + 1) {
+                assert!(a.iter().zip(b).any(|(x, y)| (x - y).abs() > 1e-3));
+            }
+        }
+    }
+
+    #[test]
+    fn matrix_pitch_from_velocity_raises_an_octave() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::WAVE1] = 0.0;
+        params.instrument[inst::OSC_MIX] = 0.0;
+        params.instrument[inst::CUTOFF] = 20_000.0;
+        params.instrument[inst::SUSTAIN] = 1.0;
+        let (plain, _) = render_synth_note(&params);
+        params.instrument[inst::MOD1_SOURCE] = 4.0;
+        params.instrument[inst::MOD1_DEST] = 0.0;
+        params.instrument[inst::MOD1_AMOUNT] = 1.0;
+        let (raised, _) = render_synth_note(&params);
+        let crossings = |x: &[f32]| x.windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count();
+        let (a, b) = (crossings(&plain[1_000..]), crossings(&raised[1_000..]));
+        assert!((b as f32 / a as f32 - 2.0).abs() < 0.1, "{a} vs {b}");
     }
 
     fn held_start(key: u8) -> VoiceStart {
@@ -1492,6 +1862,40 @@ mod instrument_tests {
         let short = render(&Instrument::Pluck, &params, 69, 24_000, Some(4_800));
         assert!(peak(&short[14_400..]) < 1e-3);
     }
+
+    #[test]
+    fn bowed_strings_sustain_while_held_and_extra_strings_detune() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::PLUCK_DECAY] = 0.3;
+        params.instrument[inst::SUSTAIN] = 1.0;
+        let plucked = render(&Instrument::Pluck, &params, 69, 96_000, None);
+        params.instrument[inst::PLUCK_BOW] = 1.0;
+        let bowed = render(&Instrument::Pluck, &params, 69, 96_000, None);
+        let late = 72_000..96_000;
+        assert!(
+            peak(&plucked[late.clone()]) < 1e-3,
+            "a plucked string dies away"
+        );
+        assert!(
+            peak(&bowed[late.clone()]) > 0.02,
+            "a bowed one keeps sounding"
+        );
+        let hz = autocorrelation_hz(&bowed[48_000..57_600]);
+        assert!((hz - 440.0).abs() < 10.0, "bowed in tune: {hz}");
+        assert!(bowed.iter().all(|s| s.is_finite() && s.abs() < 1.5));
+        // Released, the bowed string stops too.
+        let released = render(&Instrument::Pluck, &params, 69, 48_000, Some(24_000));
+        assert!(peak(&released[40_000..]) < 1e-3);
+        params.instrument[inst::PLUCK_BOW] = 0.0;
+        params.instrument[inst::PLUCK_STRINGS] = 3.0;
+        let three = render(&Instrument::Pluck, &params, 69, 24_000, None);
+        assert_ne!(three, plucked[..24_000].to_vec());
+        let hz = autocorrelation_hz(&three[2_400..12_000]);
+        assert!(
+            (hz - 440.0).abs() < 10.0,
+            "three strings centre on the note: {hz}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1570,6 +1974,107 @@ mod more_instrument_tests {
             }
             assert!(peak(&out[18_000..]) < 1e-3, "{name} releases");
         }
+    }
+
+    #[test]
+    fn resynth_plays_the_measured_harmonics_at_the_note() {
+        // A 220 Hz tone with a strong second harmonic, measured once.
+        let data: Vec<f32> = (0..96_000)
+            .map(|i| {
+                let w = std::f32::consts::TAU * 220.0 * i as f32 / 48_000.0;
+                0.3 * w.sin() + 0.2 * (2.0 * w).sin()
+            })
+            .collect();
+        let buffer = SampleBuffer::mono(data, 48_000.0);
+        let table = Arc::new(musiccraft_dsp::resynth::HarmonicTable::analyze(&buffer));
+        let instrument = Instrument::Resynth(Arc::clone(&table));
+        let mut params = ChannelParams::default();
+        params.instrument[inst::SUSTAIN] = 1.0;
+        params.instrument[inst::ADD_PARTIALS] = 32.0;
+        // Key 69 is A5 (440 Hz): the measured spectrum moves up an octave.
+        let out = render(&instrument, &params, 69, 24_000, None);
+        let level = peak(&out[4_800..]);
+        assert!(level > 0.05 && level < 1.0, "level {level}");
+        let hz = pitch_hz(&out[4_800..14_400]);
+        assert!((hz - 440.0).abs() < 8.0, "plays at the note: {hz}");
+        assert!(out.iter().all(|s| s.is_finite()));
+        // An empty analysis is silent.
+        let empty = Instrument::Resynth(Arc::new(musiccraft_dsp::resynth::HarmonicTable::silent()));
+        assert!(peak(&render(&empty, &params, 69, 4_800, None)) < 1e-6);
+    }
+
+    #[test]
+    fn additive_morphs_between_two_spectra() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::SUSTAIN] = 1.0;
+        params.instrument[inst::ADD_BRIGHT] = 0.0;
+        params.instrument[inst::ADD_BRIGHT_B] = 1.0;
+        let edges = |x: &[f32]| {
+            let level = peak(x).max(1e-6);
+            x.windows(2).map(|w| (w[1] - w[0]).abs()).sum::<f32>() / level
+        };
+        let dark = render(&Instrument::Additive, &params, 57, 9_600, None);
+        params.instrument[inst::ADD_MORPH] = 1.0;
+        let bright = render(&Instrument::Additive, &params, 57, 9_600, None);
+        assert!(edges(&bright[4_800..]) > edges(&dark[4_800..]) * 1.3);
+        // A one-second sweep goes from the first spectrum to the second.
+        params.instrument[inst::ADD_MORPH] = 0.0;
+        params.instrument[inst::ADD_MORPH_TIME] = 1.0;
+        let sweep = render(&Instrument::Additive, &params, 57, 52_800, None);
+        assert!(edges(&sweep[48_000..52_800]) > edges(&sweep[0..4_800]) * 1.3);
+        let hz = pitch_hz(&sweep[2_400..9_600]);
+        assert!((hz - 220.0).abs() < 6.0, "stays in tune: {hz}");
+    }
+
+    #[test]
+    fn six_operator_algorithms_waves_and_filter() {
+        let mut params = ChannelParams::default();
+        params.instrument[inst::SUSTAIN] = 1.0;
+        let four = render(&Instrument::Fm, &params, 57, 9_600, None);
+        // The old algorithms ignore operators 5 and 6.
+        let mut extra = params;
+        extra.instrument[inst::OP5_LEVEL] = 1.0;
+        extra.instrument[inst::OP6_LEVEL] = 1.0;
+        assert_eq!(render(&Instrument::Fm, &extra, 57, 9_600, None), four);
+        let mut outputs = vec![four];
+        for algo in 6..=11 {
+            let mut p = extra;
+            p.instrument[inst::FM_ALGO] = algo as f32;
+            for level in [
+                inst::OP1_LEVEL,
+                inst::OP2_LEVEL,
+                inst::OP3_LEVEL,
+                inst::OP4_LEVEL,
+            ] {
+                p.instrument[level] = 0.7;
+            }
+            let out = render(&Instrument::Fm, &p, 57, 9_600, None);
+            let level = peak(&out);
+            assert!(level > 0.02 && level < 1.0, "algorithm {algo}: {level}");
+            assert!(out.iter().all(|s| s.is_finite()));
+            outputs.push(out);
+        }
+        for (i, a) in outputs.iter().enumerate() {
+            for b in outputs.iter().skip(i + 1) {
+                assert!(a.iter().zip(b).any(|(x, y)| (x - y).abs() > 1e-3));
+            }
+        }
+        let mut square = params;
+        square.instrument[inst::OP1_WAVE] = 2.0;
+        assert_ne!(
+            render(&Instrument::Fm, &square, 57, 2_400, None),
+            outputs[0]
+        );
+        let mut dark = params;
+        dark.instrument[inst::OP1_WAVE] = 3.0;
+        let bright = render(&Instrument::Fm, &dark, 57, 9_600, None);
+        dark.instrument[inst::FM_CUTOFF] = 300.0;
+        let filtered = render(&Instrument::Fm, &dark, 57, 9_600, None);
+        let edges = |x: &[f32]| x.windows(2).map(|w| (w[1] - w[0]).abs()).sum::<f32>();
+        assert!(
+            edges(&filtered) < edges(&bright) * 0.8,
+            "the filter smooths it"
+        );
     }
 
     #[test]

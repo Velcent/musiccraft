@@ -44,6 +44,24 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
             )));
             ui.close();
         }
+        ui.menu_button("Add controller", |ui| {
+            for (label, kind) in [
+                ("LFO", "lfo"),
+                ("Macro knob", "macro"),
+                ("Envelope (first channel's notes)", "envelope"),
+                ("Keyboard (first channel's key)", "keyboard"),
+                ("Peak (insert 1's level)", "peak"),
+                ("Formula", "formula"),
+            ] {
+                if ui.button(label).clicked() {
+                    actions.push(Action::Run(Invocation::new(
+                        "controller.add",
+                        [kind.to_owned(), target.to_owned()],
+                    )));
+                    ui.close();
+                }
+            }
+        });
     });
 }
 const HEIGHT: f32 = 180.0;

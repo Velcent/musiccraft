@@ -149,6 +149,30 @@ pub struct EffectParams {
     pub values: [f32; MAX_EFFECT_PARAMS],
 }
 
+/// One sample of a zone sampler and the notes that play it.
+#[derive(Debug, Clone)]
+pub struct Zone {
+    /// The sample.
+    pub buffer: Arc<SampleBuffer>,
+    /// Lowest and highest key that play it.
+    pub low: u8,
+    pub high: u8,
+    /// Key at which it plays at its recorded pitch.
+    pub root: u8,
+    /// Lowest and highest velocity (1–127) that play it.
+    pub vel_low: u8,
+    pub vel_high: u8,
+}
+
+impl Zone {
+    /// Whether a note of `key` at `velocity` (0..1) plays this zone.
+    #[must_use]
+    pub fn plays(&self, key: u8, velocity: f32) -> bool {
+        let vel = (velocity.clamp(0.0, 1.0) * 127.0).round().clamp(1.0, 127.0) as u8;
+        (self.low..=self.high).contains(&key) && (self.vel_low..=self.vel_high).contains(&vel)
+    }
+}
+
 /// The sound source of a channel.
 #[derive(Debug, Clone)]
 pub enum Instrument {
@@ -170,6 +194,10 @@ pub enum Instrument {
     Granular(Arc<SampleBuffer>),
     /// Sixteen sample pads (`None` for an empty pad).
     Kit(Vec<Option<Arc<SampleBuffer>>>),
+    /// Samples mapped to key and velocity ranges.
+    Zones(Vec<Zone>),
+    /// A sample's harmonics played back additively.
+    Resynth(Arc<musiccraft_dsp::resynth::HarmonicTable>),
     /// Forwards notes to these channel indices.
     Layer(Vec<u16>),
     /// The external processor (plugin) in this engine slot; silent when the
@@ -190,6 +218,9 @@ pub struct ChannelNode {
     pub(crate) gains: (f32, f32),
     pub(crate) left: Vec<f32>,
     pub(crate) right: Vec<f32>,
+    /// MIDI Out: the control-change values and program last sent (`u8::MAX`
+    /// = not sent yet).
+    pub(crate) midi_sent: [u8; musiccraft_params::MIDI_CCS + 1],
 }
 
 #[derive(Debug, Clone)]
@@ -209,7 +240,12 @@ pub struct TrackNode {
     pub(crate) effects: Vec<EffectSlot>,
     pub(crate) left: Vec<f32>,
     pub(crate) right: Vec<f32>,
+    /// Louder side's peak in the last block, for peak controllers.
+    pub(crate) last_peak: f32,
 }
+
+/// Most tracks whose peaks controllers can follow.
+pub(crate) const MAX_PEAK_TRACKS: usize = musiccraft_params::MAX_MIXER_TRACKS;
 
 /// Everything the engine renders except the note sequence. Built on the main
 /// thread; every buffer is allocated here so the audio thread never allocates.
@@ -245,6 +281,7 @@ impl Graph {
             params,
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
+            midi_sent: [u8::MAX; musiccraft_params::MIDI_CCS + 1],
         });
         self.channels.len() - 1
     }
@@ -269,6 +306,7 @@ impl Graph {
                 .collect(),
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
+            last_peak: 0.0,
         });
         self.tracks.len() - 1
     }

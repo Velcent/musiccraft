@@ -4,7 +4,10 @@ use crate::hint::Hint;
 use egui::{Color32, Pos2, RichText, Sense, Shape, Stroke, pos2, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::music::key_name;
-use musiccraft_project::params::{INSTRUMENT_PARAMS, ParamSpec, WAVEFORMS, inst};
+use musiccraft_project::params::{
+    FM_ALGOS, FM_WAVES, INSTRUMENT_PARAMS, MIDI_CCS, MOD_DESTS, MOD_SLOTS, MOD_SOURCES, ParamSpec,
+    WAVEFORMS, inst,
+};
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME};
 
 use crate::dialogs::Dialog;
@@ -68,7 +71,7 @@ fn param_knob(
     }
 }
 
-fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
+pub(crate) fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
         .fill(theme::PANEL_DARK)
         .corner_radius(6.0)
@@ -142,7 +145,7 @@ fn contents(
     ui.add_space(4.0);
     if let Instrument::MidiOut { midi_channel } = &channel.instrument {
         // Sound settings do not apply to external gear.
-        midi_out(ui, frame, number, channel, *midi_channel, actions);
+        midi_out(ui, state, frame, number, channel, *midi_channel, actions);
         return;
     }
     ui.horizontal(|ui| {
@@ -327,6 +330,12 @@ fn contents(
             kit(ui, state, index, channel, pads, actions);
             return;
         }
+        Instrument::Zones { zones } => {
+            crate::zone_editor::show(ui, state, frame, index, zones, actions);
+        }
+        Instrument::Resynth { sample } => {
+            resynth(ui, state, frame, index, channel, sample, actions);
+        }
         Instrument::Layer { channels } => {
             layer(ui, frame, index, channels, actions);
             return;
@@ -400,6 +409,7 @@ fn sampler(
         });
         let slices = channel.params.get(inst::SLICES).round().max(1.0) as u32;
         waveform(ui, frame.waveform, theme::palette(index), slices);
+        crate::sample_editor::show(ui, state, frame, index, actions);
         ui.horizontal(|ui| {
             param_knob(
                 ui,
@@ -656,23 +666,10 @@ fn fm(
         actions,
     );
     ui.add_space(4.0);
+    let six = channel.params.get(inst::FM_ALGO).round() >= 6.0;
     section(ui, "ALGORITHM", |ui| {
         ui.horizontal(|ui| {
-            choice(
-                ui,
-                number,
-                channel,
-                inst::FM_ALGO,
-                &[
-                    "4→3→2→1",
-                    "4→3, 3+2→1",
-                    "4→3 2→1",
-                    "4→1,2,3",
-                    "2→1 +3 +4",
-                    "1+2+3+4",
-                ],
-                actions,
-            );
+            combo(ui, number, channel, inst::FM_ALGO, &FM_ALGOS, actions);
         });
         ui.horizontal(|ui| {
             param_knob(
@@ -681,16 +678,23 @@ fn fm(
                 number,
                 channel,
                 inst::FM_FEEDBACK,
-                "Feedback 4",
+                if six { "Feedback 6" } else { "Feedback 4" },
                 actions,
             );
         });
     });
-    for op in 0..4 {
+    for op in 0..if six { 6 } else { 4 } {
         ui.add_space(4.0);
         section(ui, &format!("OPERATOR {}", op + 1), |ui| {
             ui.horizontal(|ui| {
-                let base = inst::OP1_RATIO + op * 4;
+                combo(ui, number, channel, inst::OP1_WAVE + op, &FM_WAVES, actions);
+            });
+            ui.horizontal(|ui| {
+                let base = if op < 4 {
+                    inst::OP1_RATIO + op * 4
+                } else {
+                    inst::OP5_RATIO + (op - 4) * 4
+                };
                 param_knob(ui, state, number, channel, base, "Ratio", actions);
                 param_knob(ui, state, number, channel, base + 1, "Level", actions);
                 param_knob(ui, state, number, channel, base + 2, "Decay", actions);
@@ -698,6 +702,29 @@ fn fm(
             });
         });
     }
+    ui.add_space(4.0);
+    section(ui, "FILTER", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FM_CUTOFF,
+                "Cutoff",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FM_RESONANCE,
+                "Reso",
+                actions,
+            );
+        });
+    });
     ui.add_space(4.0);
     envelope_section(ui, state, number, channel, actions);
 }
@@ -812,6 +839,76 @@ fn additive(
         });
         harmonics_graph(ui, channel);
     });
+    ui.add_space(6.0);
+    section(ui, "MORPH TO SPECTRUM B", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_BRIGHT_B,
+                "Bright B",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_EVEN_B,
+                "Even B",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_INHARM_B,
+                "Stretch B",
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_MORPH,
+                "Morph",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_MORPH_TIME,
+                "Sweep",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_MORPH_RATE,
+                "LFO rate",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_MORPH_DEPTH,
+                "LFO depth",
+                actions,
+            );
+        });
+    });
 }
 
 /// Bars for each harmonic's level.
@@ -853,6 +950,7 @@ fn granular(
             }
         });
         waveform(ui, frame.waveform, theme::palette(index), 1);
+        crate::sample_editor::show(ui, state, frame, index, actions);
         ui.horizontal(|ui| {
             param_knob(
                 ui,
@@ -971,6 +1069,7 @@ fn kit(
 /// MIDI channel and mute of a MIDI Out channel, and where it sends.
 fn midi_out(
     ui: &mut egui::Ui,
+    state: &mut UiState,
     frame: &Frame<'_>,
     number: usize,
     channel: &Channel,
@@ -1013,11 +1112,59 @@ fn midi_out(
             .map_or_else(|| "no port chosen".to_owned(), |p| format!("port {p}"));
         ui.label(
             RichText::new(format!(
-                "Notes go to external gear ({port}); choose the port in Settings → MIDI."
+                "Notes go to external gear ({port}); choose the port in Settings > MIDI."
             ))
             .small()
             .color(theme::TEXT_DIM),
         );
+    });
+    ui.add_space(6.0);
+    section(ui, "CONTROLS AND PROGRAM", |ui| {
+        ui.label(
+            RichText::new("Each knob sends its controller number when it changes (−1 sends nothing); automate them like any knob.")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+        for row in 0..2 {
+            ui.horizontal(|ui| {
+                for k in row * 4..row * 4 + 4 {
+                    let cc = channel.params.get(inst::MIDI_CC1_NUMBER + k).round();
+                    param_knob(
+                        ui,
+                        state,
+                        number,
+                        channel,
+                        inst::MIDI_CC1 + k,
+                        &format!("CC {cc}"),
+                        actions,
+                    );
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            for k in 0..MIDI_CCS {
+                param_knob(
+                    ui,
+                    state,
+                    number,
+                    channel,
+                    inst::MIDI_CC1_NUMBER + k,
+                    &format!("# {}", k + 1),
+                    actions,
+                );
+            }
+        });
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::MIDI_PROGRAM,
+                "Program",
+                actions,
+            );
+        });
     });
 }
 
@@ -1113,6 +1260,27 @@ fn pluck(
                 channel,
                 inst::PLUCK_TONE,
                 "Tone",
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::PLUCK_BOW, "Bow", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::PLUCK_STRINGS,
+                "Strings",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::PLUCK_DETUNE,
+                "Detune",
                 actions,
             );
         });
@@ -1269,6 +1437,210 @@ fn synth(
             );
         });
     });
+    ui.add_space(6.0);
+    section(ui, "FILTER 2", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::FILTER2_TYPE,
+                &["Off", "Low-pass", "Band-pass", "High-pass"],
+                actions,
+            );
+        });
+        if channel.params.get(inst::FILTER2_TYPE) >= 0.5 {
+            ui.horizontal(|ui| {
+                choice(
+                    ui,
+                    number,
+                    channel,
+                    inst::FILTER_ROUTING,
+                    &["Series", "Parallel", "Split"],
+                    actions,
+                );
+            });
+            ui.horizontal(|ui| {
+                param_knob(ui, state, number, channel, inst::CUTOFF2, "Cutoff", actions);
+                param_knob(
+                    ui,
+                    state,
+                    number,
+                    channel,
+                    inst::RESONANCE2,
+                    "Reso",
+                    actions,
+                );
+            });
+        }
+    });
+    ui.add_space(6.0);
+    section(ui, "LFO 2 · MOD ENV", |ui| {
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::LFO2_SHAPE,
+                &["Sine", "Tri", "Saw", "Square", "Random"],
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::LFO2_RATE, "Rate", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ENV2_ATTACK,
+                "Attack",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ENV2_DECAY,
+                "Decay",
+                actions,
+            );
+        });
+    });
+    ui.add_space(6.0);
+    section(ui, "MOD MATRIX", |ui| {
+        for slot in 0..MOD_SLOTS {
+            let base = inst::MOD1_SOURCE + slot * 3;
+            ui.horizontal(|ui| {
+                combo(ui, number, channel, base, &MOD_SOURCES, actions);
+                ui.label(RichText::new("to").small());
+                combo(ui, number, channel, base + 1, &MOD_DESTS, actions);
+                param_knob(ui, state, number, channel, base + 2, "Amount", actions);
+            });
+        }
+    });
+}
+
+fn resynth(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    index: usize,
+    channel: &Channel,
+    sample: &str,
+    actions: &mut Vec<Action>,
+) {
+    let number = index + 1;
+    section(ui, "RESYNTHESIS", |ui| {
+        ui.horizontal(|ui| {
+            let name = std::path::Path::new(sample)
+                .file_name()
+                .map_or_else(|| sample.to_owned(), |n| n.to_string_lossy().into_owned());
+            ui.label(RichText::new(name).color(theme::ACCENT));
+            if ui
+                .small_button("Change…")
+                .hint("Measure another sample's harmonics")
+                .clicked()
+            {
+                state.open_dialog(Dialog::set_sample(index, sample.to_owned()));
+            }
+        });
+        crate::sample_editor::show(ui, state, frame, index, actions);
+        ui.label(
+            RichText::new(
+                "The sample's harmonics are measured once and played on every note's pitch.",
+            )
+            .small()
+            .color(theme::TEXT_DIM),
+        );
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::RESYN_SPEED,
+                "Speed",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::RESYN_POSITION,
+                "Start",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::RESYN_BLUR,
+                "Blur",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_INHARM,
+                "Stretch",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ADD_PARTIALS,
+                "Partials",
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
+            choice(
+                ui,
+                number,
+                channel,
+                inst::RESYN_LOOP,
+                &["Hold end", "Loop"],
+                actions,
+            );
+        });
+    });
+}
+
+/// A drop-down bound to an integer instrument parameter.
+fn combo(
+    ui: &mut egui::Ui,
+    number: usize,
+    channel: &Channel,
+    param: usize,
+    labels: &[&str],
+    actions: &mut Vec<Action>,
+) {
+    let current = channel.params.get(param).round() as usize;
+    egui::ComboBox::from_id_salt(("instrument-combo", number, param))
+        .width(84.0)
+        .selected_text(labels.get(current).copied().unwrap_or("?"))
+        .show_ui(ui, |ui| {
+            for (i, label) in labels.iter().enumerate() {
+                if ui.selectable_label(i == current, *label).clicked() && i != current {
+                    actions.push(Action::Run(Invocation::new(
+                        "channel.set_param",
+                        [
+                            number.to_string(),
+                            INSTRUMENT_PARAMS[param].name.to_owned(),
+                            i.to_string(),
+                        ],
+                    )));
+                }
+            }
+        });
 }
 
 /// A button showing one oscillator wave shape.

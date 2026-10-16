@@ -621,6 +621,380 @@ fn sidechained_compressor_ducks_on_each_kick() {
 }
 
 #[test]
+fn send_effect_feeds_its_target_from_mid_chain() {
+    let level = |script: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_sampler builtin:kick
+                 step.toggle 1 0
+                 channel.route 1 1
+                 mixer.add_effect 1 send
+                 mixer.set_effect_param 1 1 dry 0
+                 {script}"
+            ),
+        );
+        let options = RenderOptions {
+            max_tail_seconds: 0.0,
+            ..RenderOptions::default()
+        };
+        rms(&render(s.project(), options).0[..20_000])
+    };
+    let off = level("");
+    let sent = level("mixer.set_effect_param 1 1 target 2");
+    let muted_target = level("mixer.set_effect_param 1 1 target 2\nmixer.toggle_mute 2");
+    assert!(off < 1e-6, "dry 0 and no target: silence, got {off}");
+    assert!(sent > 0.01, "the kick reaches the master through insert 2");
+    assert!(
+        muted_target < 1e-6,
+        "only through insert 2, got {muted_target}"
+    );
+}
+
+#[test]
+fn band_split_moves_the_low_band_to_its_target() {
+    let level = |script: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_synth Sub
+                 note.add 1 0 16 C2
+                 channel.route 1 1
+                 mixer.add_effect 1 band_split
+                 mixer.set_effect_param 1 1 low_target 2
+                 {script}"
+            ),
+        );
+        let options = RenderOptions {
+            max_tail_seconds: 0.0,
+            ..RenderOptions::default()
+        };
+        rms(&render(s.project(), options).0[4_000..20_000])
+    };
+    let routed = level("");
+    let muted = level("mixer.toggle_mute 2");
+    assert!(
+        routed > 0.01,
+        "the bass reaches the master through insert 2"
+    );
+    assert!(
+        muted < routed * 0.5,
+        "most of a C2 is in the low band: {muted} vs {routed}"
+    );
+    let mut s = session();
+    run(&mut s, "mixer.add_effect 1 band_split");
+    assert!(
+        s.run_line("mixer.set_effect_param 1 1 mid_target 1")
+            .is_err()
+    );
+    run(&mut s, "mixer.set_effect_param 1 1 high_target 3");
+    assert!(s.run_line("mixer.remove_track 3").is_err());
+}
+
+#[test]
+fn controllers_drive_their_targets() {
+    // A held sine at 120 BPM: one beat is 0.5 s.
+    let level = |script: &str, from: f32, to: f32| {
+        let mut s = sine_session(&format!("note.add 1 0 64 A4\n{script}"));
+        s.run_line("project.set_tempo 120").unwrap();
+        let out = render_slide(&s);
+        let sr = SLIDE_RATE as f32;
+        rms(&out[(from * sr) as usize..(to * sr) as usize])
+    };
+    let open = level("", 0.2, 1.8);
+    // A macro at 0 on the channel volume silences it.
+    let muted = level(
+        "controller.add macro channel:1:volume\ncontroller.set 1 value 0",
+        0.2,
+        1.8,
+    );
+    assert!(open > 0.05 && muted < open * 0.01, "{open} vs {muted}");
+    // A square LFO over 2 beats: loud for the first beat, silent the next.
+    let lfo =
+        "controller.add lfo channel:1:volume\ncontroller.set 1 shape 3\ncontroller.set 1 period 2";
+    let first = level(lfo, 0.1, 0.45);
+    let second = level(lfo, 0.6, 0.95);
+    assert!(first > 0.05 && second < first * 0.05, "{first} vs {second}");
+    // A disabled controller does nothing.
+    let off = level(&format!("{lfo}\ncontroller.set 1 enabled off"), 0.6, 0.95);
+    assert!((off - open).abs() < open * 0.1);
+    // A formula: 0 for the first beat, full for the next.
+    let formula = "controller.add formula channel:1:volume\ncontroller.set 1 expr floor(t)";
+    assert!(level(formula, 0.1, 0.45) < 0.002 && level(formula, 0.6, 0.95) > 0.05);
+}
+
+#[test]
+fn envelope_and_keyboard_controllers_follow_a_channels_notes() {
+    // Channel 1 holds a sine; channel 2, on a muted insert, plays from beat 2
+    // (1 s) to beat 3 and drives channel 1's volume.
+    let level = |kind: &str, extra: &str| {
+        let mut s = sine_session(&format!(
+            "note.add 1 0 64 A4
+             channel.add_synth
+             note.add 2 8 4 C6
+             channel.route 2 2
+             mixer.set_mute 2 on
+             controller.add {kind} channel:1:volume
+             controller.set 1 channel 2
+             {extra}"
+        ));
+        s.run_line("project.set_tempo 120").unwrap();
+        let out = render_slide(&s);
+        let sr = SLIDE_RATE as f32;
+        let at = |a: f32, b: f32| rms(&out[(a * sr) as usize..(b * sr) as usize]);
+        (at(0.2, 0.9), at(1.1, 1.4), at(1.9, 2.4))
+    };
+    let (before, during, after) = level(
+        "envelope",
+        "controller.set 1 attack 0\ncontroller.set 1 sustain 1\ncontroller.set 1 release 0.05",
+    );
+    assert!(
+        before < 0.002 && during > 0.05 && after < 0.002,
+        "{before} {during} {after}"
+    );
+    // C6 (72) between 60 and 84 is halfway; the value holds after the note.
+    let (before, during, after) = level(
+        "keyboard",
+        "controller.set 1 low 60\ncontroller.set 1 high 84",
+    );
+    assert!(before < during, "{before} {during}");
+    assert!((during - after).abs() < during * 0.1, "holds its last key");
+}
+
+#[test]
+fn controller_commands_undo_and_follow_tracks() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         controller.add peak mixer:2:volume
+         controller.set 1 track 3
+         controller.set 1 gain 4
+         controller.set 1 min 1
+         controller.set 1 max 0.2",
+    );
+    let c = &s.project().controllers[0];
+    assert_eq!((c.min, c.max), (1.0, 0.2));
+    assert!(
+        s.run_line("controller.set 1 expr t").is_err(),
+        "peak has no expr"
+    );
+    assert!(s.run_line("controller.add bogus mixer:1:volume").is_err());
+    assert!(
+        s.run_line("mixer.remove_track 3").is_err(),
+        "the peak listens to 3"
+    );
+    assert!(
+        s.run_line("mixer.remove_track 2").is_err(),
+        "the target is on 2"
+    );
+    s.run_line("mixer.remove_track 1").unwrap();
+    let c = &s.project().controllers[0];
+    assert!(matches!(
+        c.kind,
+        musiccraft_project::ControllerKind::Peak { track: 2, .. }
+    ));
+    assert_eq!(
+        c.target,
+        musiccraft_project::AutomationTarget::MixerVolume { track: 1 }
+    );
+    s.run_line("edit.undo").unwrap();
+    s.run_line("edit.undo").unwrap();
+    assert_eq!(
+        s.project().controllers[0].max,
+        1.0,
+        "undo restores the old max"
+    );
+    run(&mut s, "controller.add formula mixer:0:pan");
+    assert!(s.run_line("controller.set 2 expr sin(").is_err());
+    run(
+        &mut s,
+        "controller.set 2 expr 0.5 + 0.5 * tri(bar)\ncontroller.remove 2",
+    );
+    s.run_line("edit.undo").unwrap();
+    assert_eq!(s.project().controllers.len(), 2);
+}
+
+#[test]
+fn zone_sampler_picks_a_zone_by_key_and_velocity() {
+    let play = |note: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_zones
+                 channel.add_zone 1 builtin:kick 0 59 48
+                 channel.add_zone 1 builtin:snare 60 127 72
+                 channel.set_zone 1 2 vel_low 64
+                 {note}"
+            ),
+        );
+        let options = RenderOptions {
+            max_tail_seconds: 0.5,
+            ..RenderOptions::default()
+        };
+        render(s.project(), options).0
+    };
+    let kick = play("note.add 1 0 4 C4");
+    let snare = play("note.add 1 0 4 C6 110");
+    let soft = play("note.add 1 0 4 C6 30");
+    assert!(rms(&kick[..8_000]) > 0.01 && rms(&snare[..8_000]) > 0.01);
+    assert!(
+        kick[..8_000]
+            .iter()
+            .zip(&snare[..8_000])
+            .any(|(a, b)| (a - b).abs() > 0.01)
+    );
+    assert!(
+        rms(&soft) < 1e-6,
+        "below the snare zone's velocities: silent"
+    );
+    // A zone's root plays the sample at its own pitch: the same sample a
+    // fifth up moves faster, so it ends sooner.
+    let root = play("note.add 1 0 4 C3");
+    let up = play("note.add 1 0 4 G3");
+    let end = |x: &[f32]| x.iter().rposition(|s| s.abs() > 1e-3).unwrap_or(0);
+    assert!(end(&up) < end(&root), "{} vs {}", end(&up), end(&root));
+}
+
+#[test]
+fn resynth_channels_play_and_change_sample() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_resynth builtin:tom
+         note.add 1 0 8 A5
+         channel.set_param 1 resyn_speed 0.5
+         channel.set_param 1 resyn_blur 0.3",
+    );
+    let options = RenderOptions {
+        max_tail_seconds: 0.5,
+        ..RenderOptions::default()
+    };
+    let out = render(s.project(), options).0;
+    assert!(out.iter().all(|x| x.is_finite()));
+    assert!(rms(&out[..20_000]) > 0.001, "it sounds");
+    run(&mut s, "channel.set_sample 1 builtin:snare");
+    s.run_line("edit.undo").unwrap();
+    assert!(matches!(
+        &s.project().channels[0].instrument,
+        musiccraft_project::Instrument::Resynth { sample } if sample == "builtin:tom"
+    ));
+}
+
+#[test]
+fn sample_edits_write_new_files_and_undo() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-edit-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:snare");
+    assert!(
+        s.run_line("sample.edit 1 reverse").is_err(),
+        "an unsaved project has nowhere to put files"
+    );
+    s.run_line(&format!(
+        "project.save \"{}\"",
+        dir.join("p.mcproj").display()
+    ))
+    .unwrap();
+    let sample = |s: &Session| match &s.project().channels[0].instrument {
+        musiccraft_project::Instrument::Sampler { sample } => sample.clone(),
+        _ => panic!("not a sampler"),
+    };
+    let length = |s: &Session| {
+        musiccraft_samples::load_wav(&dir.join(sample(s)))
+            .unwrap()
+            .len()
+    };
+    run(&mut s, "sample.edit 1 trim 0 0.1");
+    assert!(sample(&s).starts_with("edited/snare-"), "{}", sample(&s));
+    assert_eq!(length(&s), 4_800);
+    run(&mut s, "sample.edit 1 stretch 2");
+    assert_eq!(length(&s), 9_600);
+    run(&mut s, "sample.edit 1 cut 0 0.05");
+    assert_eq!(length(&s), 7_200);
+    for op in [
+        "silence 0 0.01",
+        "fade_in 0 0.02",
+        "fade_out 0.1 0.15",
+        "gain -6",
+        "gain 3 0 0.05",
+        "normalize -1",
+        "reverse",
+        "pitch 5",
+        "tune 0 1",
+    ] {
+        run(&mut s, &format!("sample.edit 1 {op}"));
+        let audio = musiccraft_samples::load_wav(&dir.join(sample(&s))).unwrap();
+        assert!(audio.left().iter().all(|x| x.is_finite()), "{op}");
+    }
+    let peak = musiccraft_samples::load_wav(&dir.join(sample(&s)))
+        .unwrap()
+        .peak();
+    assert!(peak > 0.1, "still audible: {peak}");
+    for bad in ["trim 0.2 0.1", "stretch 9", "bogus", "gain 99"] {
+        assert!(
+            s.run_line(&format!("sample.edit 1 {bad}")).is_err(),
+            "{bad}"
+        );
+    }
+    // Undo walks back to the built-in sound.
+    while sample(&s) != "builtin:snare" {
+        s.run_line("edit.undo").unwrap();
+    }
+    run(&mut s, "channel.add_synth");
+    assert!(
+        s.run_line("sample.edit 2 reverse").is_err(),
+        "no sample to edit"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn zone_commands_check_and_undo() {
+    let mut s = session();
+    run(&mut s, "channel.add_zones\nchannel.add_zone 1 builtin:hat");
+    assert!(s.run_line("channel.add_zone 1 builtin:hat 70 60").is_err());
+    assert!(s.run_line("channel.set_zone 1 1 vel_low 0").is_err());
+    assert!(
+        s.run_line("channel.set_zone 1 2 root 40").is_err(),
+        "no zone 2"
+    );
+    run(
+        &mut s,
+        "channel.set_zone 1 1 high 64\nchannel.remove_zone 1 1",
+    );
+    s.run_line("edit.undo").unwrap();
+    s.run_line("edit.undo").unwrap();
+    let musiccraft_project::Instrument::Zones { zones } = &s.project().channels[0].instrument
+    else {
+        panic!("not a zone sampler");
+    };
+    assert_eq!((zones.len(), zones[0].high), (1, 127));
+    run(&mut s, "channel.add_synth");
+    assert!(
+        s.run_line("channel.add_zone 2 builtin:hat").is_err(),
+        "not a zone sampler"
+    );
+}
+
+#[test]
+fn send_targets_follow_track_insertion_and_block_removal() {
+    let mut s = session();
+    run(
+        &mut s,
+        "mixer.add_effect 1 send
+         mixer.set_effect_param 1 1 target 3",
+    );
+    assert!(s.run_line("mixer.set_effect_param 1 1 target 1").is_err());
+    assert!(s.run_line("mixer.remove_track 3").is_err());
+    s.run_line("mixer.remove_track 2").unwrap();
+    assert_eq!(s.project().mixer[1].effects[0].values[0], 2.0);
+}
+
+#[test]
 fn flac_export_is_valid_and_smaller_than_wav() {
     let dir = std::env::temp_dir().join(format!("musiccraft-flacx-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -788,6 +1162,31 @@ fn slide_notes_glide_over_the_overlap_and_end_with_the_slid_note() {
     );
     // The slide does not lengthen the note: it ends at 1 s (plus its release).
     assert!(rms(&left[(1.3 * 48_000.0) as usize..(1.45 * 48_000.0) as usize]) < 1e-3);
+}
+
+#[test]
+fn pitch_corrector_follows_a_channels_notes() {
+    // Channel 1 sings A4 (220 Hz; middle C is C5) into insert 1; channel 2
+    // plays C5 on a muted insert and is what the corrector follows.
+    let mut s = sine_session(
+        "note.add 1 0 16 A4
+         channel.add_synth
+         note.add 2 0 16 C5
+         channel.route 1 1
+         channel.route 2 2
+         mixer.set_mute 2 on
+         mixer.add_effect 1 pitch_correct
+         mixer.set_effect_param 1 1 speed 0
+         mixer.set_effect_param 1 1 follow 2",
+    );
+    let left = render_slide(&s);
+    let hz = hz_between(&left, 0.8, 1.8);
+    assert!((hz - key_hz(60.0)).abs() < 6.0, "pulled to C5: {hz}");
+    // Moving channels keeps following the same one; removing it is refused.
+    s.run_line("channel.move 2 1").unwrap();
+    let follow = s.project().mixer[1].effects[0].values[6];
+    assert_eq!(follow, 1.0);
+    assert!(s.run_line("channel.remove 1").is_err());
 }
 
 #[test]
@@ -1563,4 +1962,58 @@ fn pattern_automation_plays_wherever_the_pattern_plays() {
         [1152 + 96],
         "the sliced remainder plays the second repeat"
     );
+}
+
+#[test]
+fn rack_branches_process_in_parallel_and_sync_without_rebuilds() {
+    let level = |script: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_synth Lead
+                 note.add 1 0 16 C5
+                 mixer.add_effect 0 rack
+                 {script}"
+            ),
+        );
+        let options = RenderOptions {
+            max_tail_seconds: 0.0,
+            ..RenderOptions::default()
+        };
+        rms(&render(s.project(), options).0[4_000..20_000])
+    };
+    let dry = level("");
+    assert!(dry > 0.01);
+    assert!(
+        level("mixer.set_effect_param 0 1 dry 0") < 1e-6,
+        "no branches"
+    );
+    let doubled = level(
+        "mixer.rack_add 0 1 1 eq
+         mixer.rack_add 0 1 2 eq
+         mixer.set_effect_param 0 1 dry 0",
+    );
+    assert!((doubled / dry - 2.0).abs() < 0.05, "{doubled} vs {dry}");
+    let filtered = level(
+        "mixer.rack_add 0 1 1 filter
+         mixer.rack_param 0 1 1 1 cutoff 100
+         mixer.set_effect_param 0 1 dry 0",
+    );
+    assert!(filtered < dry * 0.3, "the branch's lowpass ran: {filtered}");
+
+    let mut s = session();
+    run(
+        &mut s,
+        "mixer.add_effect 0 rack\nmixer.rack_add 0 1 1 delay",
+    );
+    let (_engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    assert!(bridge.sync(s.project(), &mut handle).rebuilt_graph);
+    run(&mut s, "mixer.rack_param 0 1 1 1 feedback 0.2");
+    let param = bridge.sync(s.project(), &mut handle);
+    assert!(!param.rebuilt_graph);
+    assert_eq!(param.messages, 1);
+    run(&mut s, "mixer.rack_add 0 1 1 chorus");
+    assert!(bridge.sync(s.project(), &mut handle).rebuilt_graph);
 }

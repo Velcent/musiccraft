@@ -6,6 +6,7 @@
 //! 0-based tick offsets (see `musiccraft_params::PPQ`).
 
 pub mod base64;
+mod controller;
 mod error;
 mod model;
 pub mod music;
@@ -16,13 +17,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub use controller::{Controller, ControllerKind};
 pub use error::ProjectError;
 pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
     InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MarkerAction,
     MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern, PatternId,
-    PatternLane, PlayMode, Playlist, PluginRef, PluginSlot, STEP_KEY,
+    PatternLane, PlayMode, Playlist, PluginRef, PluginSlot, STEP_KEY, SampleZone,
 };
 pub use musiccraft_params as params;
 
@@ -214,6 +216,9 @@ pub struct Project {
     /// Automation curves, placed on the playlist by automation clips.
     #[serde(default)]
     pub automations: Vec<Automation>,
+    /// Parameters moved continuously by a live source.
+    #[serde(default)]
+    pub controllers: Vec<Controller>,
     /// Whether the metronome clicks during playback (never rendered to files).
     #[serde(default)]
     pub metronome: bool,
@@ -269,6 +274,7 @@ impl Project {
             mixer,
             playlist: Playlist::default(),
             automations: Vec::new(),
+            controllers: Vec::new(),
             metronome: false,
             pan_law: PanLaw::Circular,
             swing: 0.0,
@@ -460,6 +466,21 @@ impl Project {
     #[must_use]
     pub fn automation_position(&self, id: AutomationId) -> Option<usize> {
         self.automations.iter().position(|a| a.id == id)
+    }
+
+    /// Index of a 1-based controller number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProjectError::NotFound`] if there is no such controller.
+    pub fn controller_index(&self, number: usize) -> Result<usize, ProjectError> {
+        number
+            .checked_sub(1)
+            .filter(|i| *i < self.controllers.len())
+            .ok_or(ProjectError::NotFound {
+                what: "controller",
+                number,
+            })
     }
 
     /// Index of a 1-based automation number.
