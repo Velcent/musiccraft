@@ -161,6 +161,14 @@ mod tests {
         let ctrl_n = Chord::parse("Ctrl+N").unwrap();
         assert_eq!(keymap.lookup(&ctrl_n).unwrap().name, "ui.save_new_version");
         assert!(keymap.chord_for("ui.new").is_none(), "New is menu-only");
+        // Home jumps to the start, Ctrl+H is panic.
+        let home = Chord::parse("Home").unwrap();
+        assert_eq!(
+            keymap.lookup(&home).unwrap().name,
+            "transport.jump_to_start"
+        );
+        let ctrl_h = Chord::parse("Ctrl+H").unwrap();
+        assert_eq!(keymap.lookup(&ctrl_h).unwrap().name, "transport.panic");
     }
 
     #[test]

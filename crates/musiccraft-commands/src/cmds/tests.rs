@@ -330,6 +330,28 @@ fn pause_holds_and_play_pause_toggles() {
 }
 
 #[test]
+fn jump_to_start_and_panic_are_requests_outside_history() {
+    use musiccraft_project::Transport;
+    let mut s = session();
+    let before = s.project().clone();
+    run(&mut s, "transport.play");
+    run(&mut s, "transport.jump_to_start");
+    run(&mut s, "transport.panic");
+    run(&mut s, "transport.panic");
+    let requests = s.project().requests();
+    assert_eq!((requests.jumps_to_start, requests.panics), (1, 2));
+    assert_eq!(
+        s.project().transport(),
+        Transport::Playing,
+        "playback goes on"
+    );
+    assert_eq!(s.undo_depth(), 0);
+    run(&mut s, "transport.stop");
+    assert_eq!(*s.project(), before, "requests are not project content");
+    fails(&mut s, "transport.panic now");
+}
+
+#[test]
 fn pattern_navigation_clamps() {
     let mut s = session();
     run(&mut s, "pattern.add");

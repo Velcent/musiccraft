@@ -9,7 +9,7 @@ use musiccraft_engine::{
     MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, TrackParams,
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
-use musiccraft_project::{Channel, MixerTrack, Project, base64};
+use musiccraft_project::{Channel, MixerTrack, Project, Requests, base64};
 use musiccraft_samples::SampleCache;
 
 use crate::build_sequence;
@@ -289,6 +289,9 @@ pub struct Bridge {
     /// Instances that failed to start, by instance number, with their plugin
     /// id; not retried until [`Bridge::retry_plugins`].
     failed: BTreeMap<u32, String>,
+    /// The project's transport requests already acted on; `None` before the
+    /// first sync.
+    requests: Option<Requests>,
 }
 
 impl Bridge {
@@ -302,6 +305,7 @@ impl Bridge {
             host: None,
             live: BTreeMap::new(),
             failed: BTreeMap::new(),
+            requests: None,
         }
     }
 
@@ -670,6 +674,17 @@ impl Bridge {
                 EngineMessage::Stop
             });
         }
+        let requests = project.requests();
+        if let Some(handled) = self.requests {
+            if requests.jumps_to_start > handled.jumps_to_start {
+                let home = desc.sequence.home() as f64;
+                messages.push(EngineMessage::Seek(home));
+            }
+            if requests.panics > handled.panics {
+                messages.push(EngineMessage::AllNotesOff);
+                messages.push(EngineMessage::StopPreview);
+            }
+        }
 
         let mut complete = true;
         for message in messages {
@@ -680,8 +695,12 @@ impl Bridge {
                 complete = false;
             }
         }
-        // On a full queue, forget the state so the next sync resends everything.
+        // On a full queue, forget the state so the next sync resends everything
+        // (and retries the requests).
         self.last = complete.then_some(desc);
+        if complete || self.requests.is_none() {
+            self.requests = Some(requests);
+        }
         report
     }
 

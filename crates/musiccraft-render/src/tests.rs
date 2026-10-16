@@ -289,6 +289,91 @@ fn pause_keeps_the_playhead_and_stop_rewinds() {
 }
 
 #[test]
+fn jump_to_start_keeps_the_transport_state() {
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let mut out = vec![0.0; 2048];
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    engine.process(&mut out, 2);
+    let played = engine.position_ticks();
+    assert!(played > 0.0);
+    run(&mut s, "transport.jump_to_start");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.is_playing(), "playback continues");
+    assert!(engine.position_ticks() < played, "back at the start");
+    // Paused: the playhead moves, the transport stays paused.
+    run(&mut s, "transport.pause");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.position_ticks() > 0.0);
+    run(&mut s, "transport.jump_to_start");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(!engine.is_playing());
+    assert!(engine.position_ticks().abs() < f64::EPSILON);
+}
+
+#[test]
+fn panic_releases_every_note_and_playback_goes_on() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         channel.set_param 1 sustain 1
+         channel.set_param 1 release 0
+         note.add 1 0 16 C5",
+    );
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let mut out = vec![0.0; 2048];
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert_eq!(engine.active_voices(), 1);
+    // A held live key is released too.
+    let _ = handle.send(musiccraft_engine::EngineMessage::NoteOn {
+        channel: 0,
+        key: 64,
+        velocity: 1.0,
+    });
+    engine.process(&mut out, 2);
+    assert_eq!(engine.active_voices(), 2);
+    run(&mut s, "transport.panic");
+    let _ = bridge.sync(s.project(), &mut handle);
+    for _ in 0..4 {
+        engine.process(&mut out, 2);
+    }
+    assert_eq!(engine.active_voices(), 0, "all notes off");
+    assert!(engine.is_playing(), "playback goes on");
+}
+
+#[test]
+fn requests_from_before_a_bridge_or_a_load_do_nothing() {
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick\ntransport.play");
+    run(&mut s, "transport.jump_to_start\ntransport.panic");
+    let (mut engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    let mut out = vec![0.0; 2048];
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    let position = engine.position_ticks();
+    // A new project starts its counters again: no seek, no panic.
+    run(
+        &mut s,
+        "project.new\nchannel.add_sampler builtin:kick\ntransport.play",
+    );
+    let report = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.position_ticks() > position, "{report:?}");
+}
+
+#[test]
 fn stop_message_rewinds_engine() {
     let (mut engine, _handle) = engine_pair(44_100);
     engine.apply(EngineMessage::Play);

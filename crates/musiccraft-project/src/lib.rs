@@ -65,6 +65,16 @@ impl Transport {
     }
 }
 
+/// Counts of one-shot transport requests. The bridge acts when a count rises;
+/// they are runtime-only and ignored by project equality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Requests {
+    /// `transport.jump_to_start` runs.
+    pub jumps_to_start: u32,
+    /// `transport.panic` runs.
+    pub panics: u32,
+}
+
 impl fmt::Display for Transport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -121,6 +131,9 @@ pub struct Project {
     tempo_bpm: f64,
     #[serde(skip)]
     transport: Transport,
+    /// One-shot transport requests (jump to start, panic); never saved.
+    #[serde(skip)]
+    requests: Requests,
     /// Whether the transport loops the current pattern or plays the song.
     #[serde(default)]
     pub play_mode: PlayMode,
@@ -176,6 +189,7 @@ impl Project {
             name: name.into(),
             tempo_bpm: DEFAULT_TEMPO_BPM,
             transport: Transport::Stopped,
+            requests: Requests::default(),
             play_mode: PlayMode::Pattern,
             channels: Vec::new(),
             patterns: vec![Pattern::new(PatternId(1), "Pattern 1")],
@@ -224,6 +238,22 @@ impl Project {
             return Err(ProjectError::TempoOutOfRange(bpm));
         }
         Ok(std::mem::replace(&mut self.tempo_bpm, bpm))
+    }
+
+    /// How many times jump-to-start and panic have been requested.
+    #[must_use]
+    pub fn requests(&self) -> Requests {
+        self.requests
+    }
+
+    /// Asks the engine to move the playhead to where Stop returns.
+    pub fn request_jump_to_start(&mut self) {
+        self.requests.jumps_to_start = self.requests.jumps_to_start.wrapping_add(1);
+    }
+
+    /// Asks the engine to release every sounding note.
+    pub fn request_panic(&mut self) {
+        self.requests.panics = self.requests.panics.wrapping_add(1);
     }
 
     /// Sets the transport state and returns the previous state.

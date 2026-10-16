@@ -17,6 +17,9 @@ of contents; see `docs/clean-room.md`.
 | Area | Feature | Requires |
 | --- | --- | --- |
 | Transport | Play / stop | `cmd:transport.toggle` `key:Space=transport.toggle` |
+| Transport | Pause and play / pause | `cmd:transport.pause` `cmd:transport.play_pause` `key:Ctrl+Space=transport.play_pause` |
+| Transport | Jump to the start | `cmd:transport.jump_to_start` `key:Home=transport.jump_to_start` |
+| Transport | Panic (all notes off) | `cmd:transport.panic` `key:Ctrl+H=transport.panic` |
 | Transport | Pattern / song mode | `cmd:transport.set_mode` `key:L=transport.toggle_mode` |
 | Transport | Tempo | `cmd:project.set_tempo` `spec:transport.md` |
 | Transport | Metronome | `cmd:transport.toggle_metronome` `key:Ctrl+M=transport.toggle_metronome` |
