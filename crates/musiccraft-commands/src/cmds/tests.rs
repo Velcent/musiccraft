@@ -120,6 +120,7 @@ const SCRIPT: &[&str] = &[
     "playlist.toggle_track_mute 3",
     "playlist.set_track_solo 2 on",
     "playlist.toggle_track_solo 4",
+    "playlist.toggle_track_arm 5",
     "playlist.rename_track 2 Drums",
     "playlist.rename_track 2 Lead line",
     "playlist.rename_track 2",

@@ -58,6 +58,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             toggle_clip_mute,
         ),
         cmd(
+            "playlist.toggle_track_arm",
+            "playlist.toggle_track_arm <track>",
+            "Arm a playlist track: recorded audio takes go to the first armed track with room.",
+            toggle_track_arm,
+        ),
+        cmd(
             "playlist.set_track_solo",
             "playlist.set_track_solo <track> <on|off>",
             "Solo a playlist track: while any track is soloed, only soloed tracks play.",
@@ -445,6 +451,23 @@ fn set_track_solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Com
             args.name(),
             [(track + 1).to_string(), on_off(was).to_owned()],
         ),
+    ))
+}
+
+fn toggle_track_arm(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let track = track_arg(args, 0)?;
+    let armed = !project.playlist.armed_tracks.remove(&track);
+    if armed {
+        project.playlist.armed_tracks.insert(track);
+    }
+    Ok(Outcome::undoable(
+        format!(
+            "playlist track {} {}",
+            track + 1,
+            if armed { "armed" } else { "disarmed" }
+        ),
+        Invocation::new(args.name(), [(track + 1).to_string()]),
     ))
 }
 

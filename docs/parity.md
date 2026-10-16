@@ -159,3 +159,4 @@ of contents; see `docs/clean-room.md`.
 | Transport | Master pitch / A4 tuning | `cmd:project.set_master_pitch` `cmd:project.set_a4` |
 | Transport | Tap tempo | `spec:transport.md` `done` |
 | Channel rack | Display filter groups | `cmd:channel.set_group` |
+| Transport | Arm playlist tracks for audio takes; choose the input device | `cmd:playlist.toggle_track_arm` `spec:settings.md` |

@@ -119,11 +119,14 @@
 ## Audio recording
 
 - With File → Record audio input on, REC armed and the transport playing in song
-  mode, the default input device is captured. When playback stops or REC is
+  mode, the input device chosen in Settings → Audio (the system default unless
+  set) is captured. When playback stops or REC is
   disarmed, the take is written as a 32-bit float WAV to `recordings/` beside the
   project (the per-user data folder for unsaved projects) and placed as an audio
-  clip at the position where recording started, on the first empty track, as one
-  undo step. Takes under 0.1 s are discarded. Input arrives through a lock-free
+  clip at the position where recording started, as one undo step: on the first
+  **armed** playlist track that has room for it (`playlist.toggle_track_arm
+  <track>`, undoable, saved; the red dot in the track header), else on the
+  first empty track. Takes under 0.1 s are discarded. Input arrives through a lock-free
   ring buffer holding four seconds; no latency compensation is applied yet.
 
 ## Automation
@@ -189,3 +192,6 @@
   and delete space with Ctrl+Insert / Ctrl+Delete) follows the playlist clip
   menu and shortcuts in the FL Studio online manual, "Playlist" and "Keyboard
   shortcuts". The offset model, naming and file layout are our own.
+- Per-track arming for audio recording and input device selection follow the
+  FL Studio online manual, "Recording" (arming and input selection). Arming
+  playlist rows (rather than mixer tracks) is our own simplification.

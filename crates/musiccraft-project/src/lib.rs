@@ -592,6 +592,7 @@ impl Project {
         let playlist = &mut self.playlist;
         playlist.muted_tracks.retain(|t| *t < PLAYLIST_TRACKS);
         playlist.soloed_tracks.retain(|t| *t < PLAYLIST_TRACKS);
+        playlist.armed_tracks.retain(|t| *t < PLAYLIST_TRACKS);
         playlist.track_names.retain(|t, _| *t < PLAYLIST_TRACKS);
         playlist
             .track_colors

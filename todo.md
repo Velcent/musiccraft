@@ -88,7 +88,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 - [x] Pattern select with keys 1–9.
 - [ ] Automation of individual notes or events inside a pattern.
 - [x] Channel display filter groups.
-- [ ] Per-track arm and audio input selection.
+- [x] Per-track arm and audio input selection.
 - [ ] Time signatures (known deferred).
 
 ## Sources

@@ -29,6 +29,8 @@ pub enum MidiInput {
 pub struct Settings {
     /// Output device name; `None` for the system default.
     pub audio_device: Option<String>,
+    /// Input device for audio recording; `None` for the system default.
+    pub audio_input: Option<String>,
     /// Sample rate; `None` for the device default.
     pub sample_rate: Option<u32>,
     /// Frames per audio callback; `None` for the device default.
@@ -55,6 +57,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             audio_device: None,
+            audio_input: None,
             sample_rate: None,
             buffer_frames: None,
             midi_input: MidiInput::Auto,
@@ -94,6 +97,8 @@ impl Settings {
 pub struct SettingsInfo {
     /// Output devices, default first.
     pub outputs: Vec<String>,
+    /// Input devices, default first.
+    pub inputs: Vec<String>,
     /// Sample rates the current device supports.
     pub sample_rates: Vec<u32>,
     /// The rate audio is running at.
@@ -212,6 +217,37 @@ fn note(ui: &mut egui::Ui, text: &str) {
 fn audio(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     let settings = frame.settings;
     let info = frame.settings_info;
+    row(ui, "Input device", |ui| {
+        let current = settings
+            .audio_input
+            .clone()
+            .unwrap_or_else(|| "System default".to_owned());
+        egui::ComboBox::from_id_salt("audio-input")
+            .width(300.0)
+            .selected_text(current)
+            .show_ui(ui, |ui| {
+                let choices = std::iter::once(None).chain(info.inputs.iter().cloned().map(Some));
+                for choice in choices {
+                    let label = choice
+                        .clone()
+                        .unwrap_or_else(|| "System default".to_owned());
+                    if ui
+                        .selectable_label(settings.audio_input == choice, label)
+                        .clicked()
+                    {
+                        changed(
+                            actions,
+                            Settings {
+                                audio_input: choice,
+                                ..settings.clone()
+                            },
+                        );
+                    }
+                }
+            })
+            .response
+            .hint("Recorded by File → Record audio input");
+    });
     row(ui, "Output device", |ui| {
         let current = settings
             .audio_device

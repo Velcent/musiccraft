@@ -351,6 +351,7 @@ impl App {
     fn refresh_devices(&mut self) {
         let info = &mut self.settings_info;
         info.outputs = musiccraft_audio::output_device_names();
+        info.inputs = musiccraft_audio::input_device_names();
         info.midi_ports = midi::port_names();
         info.midi_out_ports = midi_out::port_names();
         if let Some(host) = musiccraft_cli::plugin_host() {
@@ -485,6 +486,10 @@ impl App {
             let message = self.plugins.rescan(bridge);
             self.refresh_devices();
             self.ui.set_status(message, false);
+        }
+        if previous.audio_input != self.settings.audio_input {
+            // The next take opens the newly chosen device.
+            self.input = None;
         }
         if previous.audio_differs(&self.settings) {
             self.start_audio(ctx);
@@ -981,7 +986,7 @@ impl App {
         let wanted = armed && self.ui.record_audio && meters.is_playing() && song;
         if wanted && self.take.is_none() {
             if self.input.is_none() {
-                match musiccraft_audio::AudioInput::open_default() {
+                match musiccraft_audio::AudioInput::open(self.settings.audio_input.as_deref()) {
                     Ok(input) => self.input = Some(input),
                     Err(err) => {
                         self.ui.record_audio = false;

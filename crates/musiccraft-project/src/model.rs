@@ -852,6 +852,10 @@ pub struct Playlist {
     /// Track rows that are muted (0-based).
     #[serde(default)]
     pub muted_tracks: BTreeSet<u32>,
+    /// Rows armed for audio recording (0-based): takes go to the first one
+    /// with room.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub armed_tracks: BTreeSet<u32>,
     /// Soloed track rows (0-based): while any is soloed, only they play.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub soloed_tracks: BTreeSet<u32>,

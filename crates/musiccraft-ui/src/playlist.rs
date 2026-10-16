@@ -1027,6 +1027,18 @@ fn headers(
                 [number.clone()],
             )));
         }
+        let arm = Rect::from_center_size(r.right_center() - vec2(28.0, 0.0), vec2(14.0, 14.0));
+        let armed = playlist.armed_tracks.contains(&row);
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(arm));
+        if widgets::dot(&mut child, armed, theme::DANGER)
+            .hint("Arm for audio recording: takes go to the first armed track with room")
+            .clicked()
+        {
+            actions.push(Action::Run(Invocation::new(
+                "playlist.toggle_track_arm",
+                [number.clone()],
+            )));
+        }
         let solo = Rect::from_center_size(r.right_center() - vec2(12.0, 0.0), vec2(16.0, 14.0));
         let soloed = playlist.soloed_tracks.contains(&row);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(solo));
