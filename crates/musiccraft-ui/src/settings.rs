@@ -39,6 +39,8 @@ pub struct Settings {
     pub midi_input: MidiInput,
     /// MIDI output port for MIDI Out channels; `None` sends nothing.
     pub midi_output: Option<String>,
+    /// Send MIDI clock and start/stop on the MIDI output.
+    pub midi_clock: bool,
     /// Interface scale, 0.75–2.
     pub ui_scale: f32,
     /// Show the hint bar.
@@ -62,6 +64,7 @@ impl Default for Settings {
             buffer_frames: None,
             midi_input: MidiInput::Auto,
             midi_output: None,
+            midi_clock: false,
             ui_scale: 1.0,
             show_hints: true,
             autosave: true,
@@ -428,6 +431,22 @@ fn midi(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut
     output(ui, "None", None);
     for port in &info.midi_out_ports {
         output(ui, port, Some(port.clone()));
+    }
+    let mut clock = settings.midi_clock;
+    if ui
+        .checkbox(
+            &mut clock,
+            "Send MIDI clock (24 per beat) with start and stop",
+        )
+        .changed()
+    {
+        changed(
+            actions,
+            Settings {
+                midi_clock: clock,
+                ..settings.clone()
+            },
+        );
     }
     if info.midi_out_ports.is_empty() {
         note(

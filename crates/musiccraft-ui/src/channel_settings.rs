@@ -5,8 +5,8 @@ use egui::{Color32, Pos2, RichText, Sense, Shape, Stroke, pos2, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::music::key_name;
 use musiccraft_project::params::{
-    FM_ALGOS, FM_WAVES, INSTRUMENT_PARAMS, MOD_DESTS, MOD_SLOTS, MOD_SOURCES, ParamSpec, WAVEFORMS,
-    inst,
+    FM_ALGOS, FM_WAVES, INSTRUMENT_PARAMS, MIDI_CCS, MOD_DESTS, MOD_SLOTS, MOD_SOURCES, ParamSpec,
+    WAVEFORMS, inst,
 };
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME};
 
@@ -145,7 +145,7 @@ fn contents(
     ui.add_space(4.0);
     if let Instrument::MidiOut { midi_channel } = &channel.instrument {
         // Sound settings do not apply to external gear.
-        midi_out(ui, frame, number, channel, *midi_channel, actions);
+        midi_out(ui, state, frame, number, channel, *midi_channel, actions);
         return;
     }
     ui.horizontal(|ui| {
@@ -1061,6 +1061,7 @@ fn kit(
 /// MIDI channel and mute of a MIDI Out channel, and where it sends.
 fn midi_out(
     ui: &mut egui::Ui,
+    state: &mut UiState,
     frame: &Frame<'_>,
     number: usize,
     channel: &Channel,
@@ -1103,11 +1104,59 @@ fn midi_out(
             .map_or_else(|| "no port chosen".to_owned(), |p| format!("port {p}"));
         ui.label(
             RichText::new(format!(
-                "Notes go to external gear ({port}); choose the port in Settings → MIDI."
+                "Notes go to external gear ({port}); choose the port in Settings > MIDI."
             ))
             .small()
             .color(theme::TEXT_DIM),
         );
+    });
+    ui.add_space(6.0);
+    section(ui, "CONTROLS AND PROGRAM", |ui| {
+        ui.label(
+            RichText::new("Each knob sends its controller number when it changes (−1 sends nothing); automate them like any knob.")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+        for row in 0..2 {
+            ui.horizontal(|ui| {
+                for k in row * 4..row * 4 + 4 {
+                    let cc = channel.params.get(inst::MIDI_CC1_NUMBER + k).round();
+                    param_knob(
+                        ui,
+                        state,
+                        number,
+                        channel,
+                        inst::MIDI_CC1 + k,
+                        &format!("CC {cc}"),
+                        actions,
+                    );
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            for k in 0..MIDI_CCS {
+                param_knob(
+                    ui,
+                    state,
+                    number,
+                    channel,
+                    inst::MIDI_CC1_NUMBER + k,
+                    &format!("# {}", k + 1),
+                    actions,
+                );
+            }
+        });
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::MIDI_PROGRAM,
+                "Program",
+                actions,
+            );
+        });
     });
 }
 

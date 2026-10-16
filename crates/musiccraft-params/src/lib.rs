@@ -379,6 +379,11 @@ pub mod inst {
     /// Additive: morph LFO rate (Hz) and depth.
     pub const ADD_MORPH_RATE: usize = 130;
     pub const ADD_MORPH_DEPTH: usize = 131;
+    /// MIDI Out: eight control-change values (-1 = not sent), then their
+    /// controller numbers, then the program (0 = none, else 1..128).
+    pub const MIDI_CC1: usize = 132;
+    pub const MIDI_CC1_NUMBER: usize = 140;
+    pub const MIDI_PROGRAM: usize = 148;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -515,7 +520,27 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     spec("add_morph_time", 0.0, 10.0, 0.0, "s"),
     spec("add_morph_rate", 0.0, 10.0, 0.0, "Hz"),
     spec("add_morph_depth", 0.0, 1.0, 0.5, ""),
+    int_spec("midi_cc1", -1.0, 127.0, -1.0),
+    int_spec("midi_cc2", -1.0, 127.0, -1.0),
+    int_spec("midi_cc3", -1.0, 127.0, -1.0),
+    int_spec("midi_cc4", -1.0, 127.0, -1.0),
+    int_spec("midi_cc5", -1.0, 127.0, -1.0),
+    int_spec("midi_cc6", -1.0, 127.0, -1.0),
+    int_spec("midi_cc7", -1.0, 127.0, -1.0),
+    int_spec("midi_cc8", -1.0, 127.0, -1.0),
+    int_spec("midi_cc1_number", 0.0, 127.0, 1.0),
+    int_spec("midi_cc2_number", 0.0, 127.0, 7.0),
+    int_spec("midi_cc3_number", 0.0, 127.0, 10.0),
+    int_spec("midi_cc4_number", 0.0, 127.0, 11.0),
+    int_spec("midi_cc5_number", 0.0, 127.0, 71.0),
+    int_spec("midi_cc6_number", 0.0, 127.0, 74.0),
+    int_spec("midi_cc7_number", 0.0, 127.0, 91.0),
+    int_spec("midi_cc8_number", 0.0, 127.0, 93.0),
+    int_spec("midi_program", 0.0, 128.0, 0.0),
 ];
+
+/// Number of MIDI Out control-change knobs.
+pub const MIDI_CCS: usize = 8;
 
 /// Names of the FM operator waveforms, by `opN_wave` value.
 pub const FM_WAVES: [&str; 4] = ["sine", "half sine", "soft square", "soft saw"];
@@ -1489,6 +1514,9 @@ mod tests {
             (inst::PLUCK_DETUNE, "pluck_detune"),
             (inst::ADD_BRIGHT_B, "add_bright_b"),
             (inst::ADD_MORPH_DEPTH, "add_morph_depth"),
+            (inst::MIDI_CC1, "midi_cc1"),
+            (inst::MIDI_CC1_NUMBER, "midi_cc1_number"),
+            (inst::MIDI_PROGRAM, "midi_program"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

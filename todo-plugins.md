@@ -98,7 +98,7 @@ new UI editor or large DSP.
   outputs drive parameters like automation.
 - [x] Peak Controller → a controller driven by an insert's audio level.
 - [x] Formula Controller → controller driven by a formula of time and inputs.
-- [ ] MIDI Out → controller knobs, program changes and MIDI clock.
+- [x] MIDI Out → controller knobs, program changes and MIDI clock.
 
 ### Hard
 

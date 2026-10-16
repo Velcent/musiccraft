@@ -16,8 +16,11 @@ const MAX_HELD: usize = 256;
 pub struct MidiOutEvent {
     /// Frames into the audio block in which the engine produced it.
     pub delay: u32,
-    /// The three bytes of a note on or note off message.
+    /// The message: note on or off and control change use all three bytes,
+    /// program change two, clock and transport messages one (see `len`).
     pub bytes: [u8; 3],
+    /// How many of `bytes` the message uses.
+    pub len: u8,
 }
 
 impl MidiOutEvent {
@@ -26,6 +29,7 @@ impl MidiOutEvent {
         Self {
             delay,
             bytes: [0x90 | (midi_channel & 0x0f), key & 0x7f, velocity],
+            len: 3,
         }
     }
 
@@ -33,9 +37,24 @@ impl MidiOutEvent {
         Self {
             delay,
             bytes: [0x80 | (midi_channel & 0x0f), key & 0x7f, 0],
+            len: 3,
         }
     }
+
+    /// The message's bytes.
+    #[must_use]
+    pub fn message(&self) -> &[u8] {
+        self.bytes
+            .get(..usize::from(self.len))
+            .unwrap_or(&self.bytes)
+    }
 }
+
+/// MIDI clock (24 per quarter note) and transport bytes.
+pub(crate) const CLOCK: u8 = 0xf8;
+pub(crate) const START: u8 = 0xfa;
+pub(crate) const CONTINUE: u8 = 0xfb;
+pub(crate) const STOP: u8 = 0xfc;
 
 /// Receives the messages MIDI Out channels produce (main side).
 pub struct MidiOutReceiver {
@@ -91,6 +110,37 @@ impl MidiOut {
     fn send(&mut self, event: MidiOutEvent) {
         // A full queue (nobody listening, or a stalled sender) drops messages.
         let _ = self.producer.push(event);
+    }
+
+    /// Sends a control change.
+    pub(crate) fn control(&mut self, midi_channel: u8, controller: u8, value: u8) {
+        self.send(MidiOutEvent {
+            delay: 0,
+            bytes: [
+                0xb0 | (midi_channel & 0x0f),
+                controller & 0x7f,
+                value & 0x7f,
+            ],
+            len: 3,
+        });
+    }
+
+    /// Sends a program change (`program` 0..=127).
+    pub(crate) fn program(&mut self, midi_channel: u8, program: u8) {
+        self.send(MidiOutEvent {
+            delay: 0,
+            bytes: [0xc0 | (midi_channel & 0x0f), program & 0x7f, 0],
+            len: 2,
+        });
+    }
+
+    /// Sends a one-byte system real-time message (clock, start, stop).
+    pub(crate) fn realtime(&mut self, byte: u8, delay: u32) {
+        self.send(MidiOutEvent {
+            delay,
+            bytes: [byte, 0, 0],
+            len: 1,
+        });
     }
 
     /// Starts a note `delay` frames into the current block; with a `gate` it
@@ -206,7 +256,8 @@ mod tests {
             drain(&mut rx),
             vec![MidiOutEvent {
                 delay: 10,
-                bytes: [0x92, 60, 127]
+                bytes: [0x92, 60, 127],
+                len: 3,
             }]
         );
         out.advance(64);
@@ -215,7 +266,8 @@ mod tests {
             drain(&mut rx),
             vec![MidiOutEvent {
                 delay: 46,
-                bytes: [0x82, 60, 0]
+                bytes: [0x82, 60, 0],
+                len: 3,
             }]
         );
         out.advance(64);
@@ -260,6 +312,26 @@ mod tests {
         );
         out.advance(2_000);
         assert!(drain(&mut rx).is_empty(), "nothing left to end");
+    }
+
+    #[test]
+    fn controls_programs_and_clock_have_their_lengths() {
+        let (mut out, mut rx) = midi_out_pair();
+        out.control(2, 74, 100);
+        out.program(2, 5);
+        out.realtime(CLOCK, 7);
+        let got: Vec<(Vec<u8>, u32)> = drain(&mut rx)
+            .iter()
+            .map(|e| (e.message().to_vec(), e.delay))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                (vec![0xb2, 74, 100], 0),
+                (vec![0xc2, 5], 0),
+                (vec![0xf8], 7)
+            ]
+        );
     }
 
     #[test]

@@ -61,6 +61,8 @@ pub enum EngineMessage {
     AllNotesOff,
     /// Turn the beat click on or off.
     SetMetronome(bool),
+    /// Send MIDI clock and start/stop to the MIDI output while playing.
+    SetMidiClock(bool),
     /// Replace the channel/mixer graph. Voices are silenced.
     SetGraph(Box<Graph>),
     /// Replace the note sequence.

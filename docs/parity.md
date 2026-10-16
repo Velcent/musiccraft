@@ -111,6 +111,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Spectrum analyzer | `done` |
 | Effects | Pitch correction and tuner | `fx:pitch_correct` `fx:tuner` `spec:mixer.md` |
 | Generators | MIDI out to external gear | `cmd:channel.add_midi_out` `cmd:channel.set_midi_channel` `spec:channel-rack.md` |
+| Generators | MIDI out control changes, program change and MIDI clock | `cmd:channel.set_param` `spec:channel-rack.md` |
 | Instruments | Subtractive synth with unison, sub, drive, filter types, LFO and presets | `cmd:channel.add_synth` `spec:piano-roll.md` |
 | Instruments | Drum synth (kick, snare, hat, tom, clap) with presets | `cmd:channel.add_drum` `spec:channel-rack.md` |
 | Instruments | Plucked string with presets | `cmd:channel.add_pluck` `spec:channel-rack.md` |

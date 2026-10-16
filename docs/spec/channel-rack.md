@@ -248,6 +248,17 @@ Out channels voice their own notes and are never cut.
   Settings → MIDI (none by default). Timing is accurate to about one audio
   buffer. Offline renders and exports leave MIDI Out channels silent and
   send nothing.
+- Eight control-change knobs (`midi_cc1` … `midi_cc8`, 0–127; −1, the
+  default, sends nothing) with their controller numbers (`midi_cc1_number`
+  …, defaults 1, 7, 10, 11, 71, 74, 91, 93) and `midi_program` (0 none,
+  1–128). The engine sends a control change or program change whenever the
+  value differs from the last one it sent (and again after the channels are
+  rebuilt), so automation and controllers drive external gear; a muted
+  channel sends none.
+- **MIDI clock** (Settings → MIDI, off by default): while playing, 24 clock
+  messages per quarter note go to the MIDI output, with Start when playback
+  begins at the song start, Continue when it resumes elsewhere and Stop when
+  it stops or pauses.
 
 ## Built-in sounds
 

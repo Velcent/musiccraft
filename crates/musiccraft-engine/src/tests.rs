@@ -1363,3 +1363,58 @@ fn track_stereo_options_invert_swap_and_separate() {
     });
     assert_eq!(wide, (vec![1.5, 0.5], vec![-0.5, 0.5]), "the side doubles");
 }
+
+fn midi_messages(rx: &mut crate::MidiOutReceiver) -> Vec<Vec<u8>> {
+    std::iter::from_fn(|| rx.pop())
+        .map(|e| e.message().to_vec())
+        .collect()
+}
+
+#[test]
+fn midi_clock_starts_ticks_and_stops() {
+    let (mut engine, mut handle) = engine_pair(SR);
+    let mut rx = handle.take_midi_out().unwrap();
+    engine.apply(EngineMessage::SetGraph(Box::default()));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    engine.apply(EngineMessage::SetSequence(Box::new(Sequence::new(
+        vec![],
+        384,
+    ))));
+    engine.apply(EngineMessage::SetMidiClock(true));
+    engine.apply(EngineMessage::Play);
+    // Just short of a beat, so the next beat's first clock is not included.
+    render_mono(&mut engine, BEAT - 10);
+    let got = midi_messages(&mut rx);
+    assert_eq!(got.first(), Some(&vec![0xfa]), "start first");
+    let clocks = got.iter().filter(|m| m.as_slice() == [0xf8]).count();
+    assert_eq!(clocks, 24, "24 clocks per beat");
+    engine.apply(EngineMessage::Stop);
+    render_mono(&mut engine, BEAT);
+    assert_eq!(
+        midi_messages(&mut rx),
+        vec![vec![0xfc]],
+        "stop, then no clocks"
+    );
+}
+
+#[test]
+fn midi_out_sends_controls_and_program_when_they_change() {
+    let (mut engine, mut handle) = engine_pair(SR);
+    let mut rx = handle.take_midi_out().unwrap();
+    let mut params = ChannelParams::default();
+    params.instrument[inst::MIDI_CC1 + 1] = 100.0; // second knob: CC 7 by default
+    params.instrument[inst::MIDI_PROGRAM] = 5.0;
+    let mut graph = Graph::new();
+    graph.add_channel(Instrument::MidiOut(3), params);
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    render_mono(&mut engine, 256);
+    assert_eq!(
+        midi_messages(&mut rx),
+        vec![vec![0xb3, 7, 100], vec![0xc3, 4]]
+    );
+    render_mono(&mut engine, 256);
+    assert!(
+        midi_messages(&mut rx).is_empty(),
+        "unchanged values are not resent"
+    );
+}

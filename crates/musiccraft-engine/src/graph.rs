@@ -190,6 +190,9 @@ pub struct ChannelNode {
     pub(crate) gains: (f32, f32),
     pub(crate) left: Vec<f32>,
     pub(crate) right: Vec<f32>,
+    /// MIDI Out: the control-change values and program last sent (`u8::MAX`
+    /// = not sent yet).
+    pub(crate) midi_sent: [u8; musiccraft_params::MIDI_CCS + 1],
 }
 
 #[derive(Debug, Clone)]
@@ -250,6 +253,7 @@ impl Graph {
             params,
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
+            midi_sent: [u8::MAX; musiccraft_params::MIDI_CCS + 1],
         });
         self.channels.len() - 1
     }

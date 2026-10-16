@@ -408,6 +408,7 @@ impl App {
                 self.synced_revision = None;
                 self.connect_midi(ctx);
                 self.connect_midi_out();
+                self.send(EngineMessage::SetMidiClock(self.settings.midi_clock));
             }
             Err(err) => {
                 self.audio_label = format!("no audio: {err}");
@@ -503,6 +504,9 @@ impl App {
             if previous.midi_output != self.settings.midi_output {
                 self.connect_midi_out();
                 self.ui.set_status(self.midi_out_label.clone(), false);
+            }
+            if previous.midi_clock != self.settings.midi_clock {
+                self.send(EngineMessage::SetMidiClock(self.settings.midi_clock));
             }
         }
     }

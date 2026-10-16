@@ -94,7 +94,7 @@ pub fn start(receiver: Arc<Mutex<MidiOutReceiver>>, port: &str) -> Result<MidiOu
             while !flag.load(Ordering::Relaxed) {
                 if let Ok(mut rx) = receiver.lock() {
                     while let Some(event) = rx.pop() {
-                        let _ = connection.send(&event.bytes);
+                        let _ = connection.send(event.message());
                     }
                 }
                 std::thread::sleep(POLL);

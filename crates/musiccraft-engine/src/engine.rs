@@ -165,6 +165,10 @@ pub struct Engine {
     voices: Vec<Voice>,
     voice_counter: u64,
     metronome: bool,
+    /// Whether MIDI clock and start/stop go to the MIDI output.
+    midi_clock: bool,
+    /// Whether the transport was playing at the last block, for start/stop.
+    clock_was_playing: bool,
     click: Click,
     preview: Option<Box<crate::Preview>>,
     externals: Vec<Option<Box<dyn External>>>,
@@ -235,6 +239,8 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
             .collect(),
         voice_counter: 0,
         metronome: false,
+        midi_clock: false,
+        clock_was_playing: false,
         click: Click::default(),
         preview: None,
         externals: (0..MAX_EXTERNALS).map(|_| None).collect(),
@@ -472,6 +478,13 @@ impl Engine {
             EngineMessage::NoteOff { channel, key } => self.live_note_off(channel, key),
             EngineMessage::AllNotesOff => self.release_all(true),
             EngineMessage::SetMetronome(on) => self.metronome = on,
+            EngineMessage::SetMidiClock(on) => {
+                if !on && self.clock_was_playing {
+                    self.midi_out.realtime(crate::midi_out::STOP, 0);
+                }
+                self.midi_clock = on;
+                self.clock_was_playing = on && self.playing;
+            }
             EngineMessage::PlayPreview(preview) => {
                 if let Some(old) = self.preview.replace(preview) {
                     self.discard(Garbage::Preview(old));
@@ -746,6 +759,17 @@ impl Engine {
             position_beats: self.position_beats(),
             sample_rate: self.sample_rate,
         };
+        if self.midi_clock && self.playing != self.clock_was_playing {
+            let byte = if !self.playing {
+                crate::midi_out::STOP
+            } else if self.position <= 0.0 {
+                crate::midi_out::START
+            } else {
+                crate::midi_out::CONTINUE
+            };
+            self.midi_out.realtime(byte, 0);
+            self.clock_was_playing = self.playing;
+        }
         if self.playing {
             self.schedule(frames);
             self.frames_played += frames as u64;
@@ -785,6 +809,7 @@ impl Engine {
                 &cx,
             );
         }
+        send_midi_controls(graph, &mut self.midi_out);
         let Graph { channels, tracks } = graph;
         for node in channels.iter_mut() {
             clear(&mut node.left, frames);
@@ -862,6 +887,19 @@ impl Engine {
             if let Some(at) = pause {
                 stop = at;
             }
+            if self.midi_clock {
+                // 24 clocks per quarter note.
+                let step = f64::from(PPQ) / 24.0;
+                let mut tick = (position / step).ceil() * step;
+                while tick < stop {
+                    let offset = done + (tick - position) / tpf;
+                    self.midi_out.realtime(
+                        crate::midi_out::CLOCK,
+                        (offset - 1e-6).ceil().max(0.0) as u32,
+                    );
+                    tick += step;
+                }
+            }
             if self.metronome {
                 let ppq = f64::from(PPQ);
                 let mut beat = (position / ppq).ceil() * ppq;
@@ -938,6 +976,52 @@ fn apply_automation(graph: &mut Graph, sequence: &Sequence, position: f64) {
     for lane in sequence.automation() {
         if let Some(value) = lane.value_at(position) {
             write_target(graph, lane.target, value);
+        }
+    }
+}
+
+/// MIDI Out channels send each control change and their program when its
+/// value differs from what they last sent (muted channels send nothing).
+fn send_midi_controls(graph: &mut Graph, midi_out: &mut MidiOut) {
+    use musiccraft_params::MIDI_CCS;
+    for node in &mut graph.channels {
+        let Instrument::MidiOut(midi_channel) = node.instrument else {
+            continue;
+        };
+        if node.params.mute {
+            continue;
+        }
+        let value = |i: usize| {
+            node.params
+                .instrument
+                .get(i)
+                .copied()
+                .unwrap_or(-1.0)
+                .round()
+        };
+        for k in 0..MIDI_CCS {
+            let cc = value(inst::MIDI_CC1 + k);
+            if !(0.0..=127.0).contains(&cc) {
+                continue;
+            }
+            let cc = cc as u8;
+            let number = value(inst::MIDI_CC1_NUMBER + k).clamp(0.0, 127.0) as u8;
+            if let Some(sent) = node.midi_sent.get_mut(k) {
+                if *sent != cc {
+                    *sent = cc;
+                    midi_out.control(midi_channel, number, cc);
+                }
+            }
+        }
+        let program = value(inst::MIDI_PROGRAM);
+        if (1.0..=128.0).contains(&program) {
+            let program = (program - 1.0) as u8;
+            if let Some(sent) = node.midi_sent.get_mut(MIDI_CCS) {
+                if *sent != program {
+                    *sent = program;
+                    midi_out.program(midi_channel, program);
+                }
+            }
         }
     }
 }
