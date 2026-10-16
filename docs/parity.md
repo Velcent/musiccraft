@@ -101,6 +101,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Hall reverb (feedback delay network, early reflections) | `fx:hall_reverb` |
 | Effects | Guitar pedal chain (compressor, drive, tone, chorus, cabinet) | `fx:guitar_chain` |
 | Effects | X/Y multi-effect and four-stage effect chain | `fx:multi_fx` `fx:fx_chain` |
+| Effects | Beat shaper (drawn time and volume envelopes) | `fx:beat_shaper` |
 | Effects | Send effect (mid-chain send to another insert) | `fx:send` |
 | Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |
 | Effects | Pitch shifter | `fx:pitch_shift` |

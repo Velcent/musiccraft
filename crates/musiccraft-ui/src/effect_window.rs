@@ -4,6 +4,7 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
+use musiccraft_dsp::beat::{BEAT_CYCLE_NAMES, BEAT_POINTS, FIRST_TIME, FIRST_VOLUME};
 use musiccraft_dsp::blocks::{BLOCK_CONTROLS, BLOCK_NAMES, CHAIN_STAGES};
 use musiccraft_dsp::character::GRAPHIC_BANDS;
 use musiccraft_dsp::modulation::{SYNC_RATE_NAMES, autopan_shape, gate_step_on};
@@ -313,9 +314,13 @@ fn knobs(
     ui.horizontal_wrapped(|ui| {
         for (p, spec) in effect.kind.params().iter().enumerate() {
             let value = effect.values[p];
+            let drawn_beat = effect.kind == EffectKind::BeatShaper
+                && ((spec.name.starts_with("time_") && spec.name != "time_mode")
+                    || spec.name.starts_with("volume_"));
             if spec.name == "steps"
                 || spec.name.starts_with("point_")
                 || spec.name.starts_with("step_")
+                || drawn_beat
             {
                 // Edited by clicking the steps or dragging the points in the graph.
                 continue;
@@ -356,6 +361,8 @@ fn knobs(
                 "lfo_shape" => pick(&LFO_SHAPES),
                 "mode" if effect.kind == EffectKind::Distortion => pick(&["soft", "hard"]),
                 "drive_type" => pick(&["soft", "hard", "fuzz"]),
+                "cycle" => pick(&BEAT_CYCLE_NAMES),
+                "time_mode" => pick(&["steps", "ramps"]),
                 name if name.ends_with("block") => pick(&BLOCK_NAMES),
                 "cabinet" => pick(&["off", "small", "large"]),
                 "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
@@ -464,6 +471,15 @@ fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effe
             theme::TEXT,
         );
     }
+}
+
+/// The beat shaper's time strip (top) and volume strip (bottom).
+fn beat_strips(rect: Rect) -> (Rect, Rect) {
+    let half = rect.height() * 0.5;
+    (
+        Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + half - 2.0)),
+        Rect::from_min_max(pos2(rect.left(), rect.top() + half + 2.0), rect.max),
+    )
 }
 
 /// A row of boxes joined by arrows, one per stage of a chain; stages that
@@ -1548,6 +1564,63 @@ fn graph(
         }
         // Drawn by `crate::tuner` instead.
         EffectKind::Plugin | EffectKind::PitchCorrect | EffectKind::Tuner => {}
+        EffectKind::BeatShaper => {
+            let (time_strip, volume_strip) = beat_strips(rect);
+            let ramps = value(effect, "time_mode") >= 0.5;
+            let specs = effect.kind.params();
+            // Time grows downward (further back), volume upward, so at their
+            // defaults (live, full level) the two rows of points sit apart.
+            for (strip, first, ramped, down, label) in [
+                (
+                    time_strip,
+                    FIRST_TIME,
+                    ramps,
+                    true,
+                    "time (down = further back)",
+                ),
+                (volume_strip, FIRST_VOLUME, true, false, "volume"),
+            ] {
+                painter.rect_stroke(
+                    strip,
+                    0.0,
+                    Stroke::new(1.0, theme::GRID_LINE),
+                    egui::StrokeKind::Inside,
+                );
+                let points: Vec<f32> = (0..BEAT_POINTS)
+                    .map(|k| effect.values.get(first + k).copied().unwrap_or(0.0))
+                    .collect();
+                let inner = strip.shrink2(vec2(0.0, 4.0));
+                let y = |v: f32| {
+                    if down {
+                        inner.top() + v * inner.height()
+                    } else {
+                        inner.bottom() - v * inner.height()
+                    }
+                };
+                let line: Vec<Pos2> = (0..=width)
+                    .map(|i| {
+                        let phase = i as f32 / width as f32;
+                        let v = musiccraft_dsp::beat::envelope(&points, phase.min(0.9999), ramped);
+                        pos2(strip.left() + i as f32, y(v))
+                    })
+                    .collect();
+                for pair in line.windows(2) {
+                    painter.line_segment([pair[0], pair[1]], Stroke::new(2.0, color));
+                }
+                for (k, v) in points.iter().enumerate() {
+                    let x = strip.left() + strip.width() * k as f32 / BEAT_POINTS as f32;
+                    handles.push((pos2(x, y(*v)), None, specs.get(first + k).map(|s| s.name)));
+                }
+                painter.text(
+                    pos2(strip.right() - 4.0, strip.bottom() - 2.0),
+                    egui::Align2::RIGHT_BOTTOM,
+                    label,
+                    egui::FontId::proportional(10.0),
+                    theme::TEXT_DIM,
+                );
+            }
+            hint = "One cycle, left to right. Top: how far behind playback runs (hold to repeat, ramp down to slow or stop); bottom: volume. Drag the points";
+        }
         EffectKind::MultiFx => {
             let block = value(effect, "block").round().max(0.0) as usize;
             let (x_name, y_name) = BLOCK_CONTROLS.get(block).copied().unwrap_or(("", ""));
@@ -1695,6 +1768,19 @@ fn graph(
                     EffectKind::MultiFx => {
                         push("x", (pointer.x - rect.left()) / rect.width());
                         push("y", (rect.bottom() - pointer.y) / rect.height());
+                    }
+                    EffectKind::BeatShaper => {
+                        if let Some(name) = y_param {
+                            let (time_strip, volume_strip) = beat_strips(rect);
+                            let h = |strip: Rect| strip.shrink2(vec2(0.0, 4.0));
+                            if name.starts_with("time_") {
+                                let inner = h(time_strip);
+                                push(name, (pointer.y - inner.top()) / inner.height().max(1.0));
+                            } else {
+                                let inner = h(volume_strip);
+                                push(name, (inner.bottom() - pointer.y) / inner.height().max(1.0));
+                            }
+                        }
                     }
                     EffectKind::Waveshaper => {
                         if let Some(name) = y_param {

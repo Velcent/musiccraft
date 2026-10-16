@@ -77,7 +77,7 @@ Status:
 | Frequency Shifter | `freq_shift` | covered | Ring-mod mode is the separate `ring_mod` |
 | Pitch Shifter | `pitch_shift` | covered | |
 | Pitcher, Newtone | `pitch_correct` | partial | Real-time correction to a key and scale; no MIDI-controlled target notes, harmonies or offline note editing |
-| Gross Beat | `gate`, `stutter` | partial | No drawn time/volume envelopes |
+| Gross Beat | `beat_shaper` (drawn time and volume envelopes), `gate`, `stutter` | covered | Eight points per envelope |
 | Fruity Scratcher | — | not planned | Turntable simulation |
 | Frequency Splitter | — | not planned | Splitting into separate mixer tracks; `multiband` covers band processing |
 | Fruity Send, Fruity Mute 2 | `send` effect (mid-chain send with dry control), mixer sends and mute | covered | |

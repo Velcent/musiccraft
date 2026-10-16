@@ -371,6 +371,7 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::GuitarChain => "Guitar chain",
         K::MultiFx => "X/Y multi-effect",
         K::FxChain => "Effect chain",
+        K::BeatShaper => "Beat shaper",
         K::Plugin => "Plugin",
     }
 }

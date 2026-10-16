@@ -2,6 +2,7 @@
 //! no allocation, no locks, no I/O, no panics. Constructors (`new`) may allocate
 //! and must be called on the main thread.
 
+pub mod beat;
 pub mod blocks;
 pub mod character;
 pub mod convolution;

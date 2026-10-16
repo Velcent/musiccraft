@@ -1,5 +1,6 @@
 use musiccraft_params::{EffectKind, MAX_EFFECT_PARAMS};
 
+use crate::beat::BeatShaper;
 use crate::blocks::{FxChain, MultiFx};
 use crate::character::{
     AutoFilter, BassBoost, DcBlock, Formant, FreqShift, GraphicEq, MultiTap, NoiseGate, Overdrive,
@@ -179,6 +180,8 @@ pub enum Effect {
     MultiFx(MultiFx),
     /// Four X/Y effect blocks in series in one insert.
     FxChain(FxChain),
+    /// Drawn time and volume envelopes over a tempo-synced cycle.
+    BeatShaper(BeatShaper),
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -233,6 +236,7 @@ impl Effect {
             EffectKind::GuitarChain => Self::GuitarChain(GuitarChain::new(sample_rate)),
             EffectKind::MultiFx => Self::MultiFx(MultiFx::new(sample_rate)),
             EffectKind::FxChain => Self::FxChain(FxChain::new(sample_rate)),
+            EffectKind::BeatShaper => Self::BeatShaper(BeatShaper::new(sample_rate)),
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -284,6 +288,7 @@ impl Effect {
             Self::GuitarChain(_) => EffectKind::GuitarChain,
             Self::MultiFx(_) => EffectKind::MultiFx,
             Self::FxChain(_) => EffectKind::FxChain,
+            Self::BeatShaper(_) => EffectKind::BeatShaper,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -353,6 +358,7 @@ impl Effect {
             Self::GuitarChain(fx) => fx.process(left, right, params, ctx),
             Self::MultiFx(fx) => fx.process(left, right, params, ctx),
             Self::FxChain(fx) => fx.process(left, right, params, ctx),
+            Self::BeatShaper(fx) => fx.process(left, right, params, ctx),
             Self::Passthrough => {}
         }
     }
@@ -410,6 +416,7 @@ impl Effect {
             Self::GuitarChain(fx) => fx.reset(),
             Self::MultiFx(fx) => fx.reset(),
             Self::FxChain(fx) => fx.reset(),
+            Self::BeatShaper(fx) => fx.reset(),
             Self::Phaser(fx) => fx.reset(),
             Self::Flanger(fx) => fx.reset(),
             Self::Bitcrusher(fx) => fx.reset(),

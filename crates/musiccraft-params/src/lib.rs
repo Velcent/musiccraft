@@ -526,13 +526,15 @@ pub enum EffectKind {
     MultiFx,
     /// Four X/Y effect blocks in series in one insert.
     FxChain,
+    /// Drawn time and volume envelopes over a tempo-synced cycle.
+    BeatShaper,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 43] = [
+pub const EFFECT_KINDS: [EffectKind; 44] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -542,6 +544,7 @@ pub const EFFECT_KINDS: [EffectKind; 43] = [
     EffectKind::Delay,
     EffectKind::MultiTap,
     EffectKind::Stutter,
+    EffectKind::BeatShaper,
     EffectKind::MultiFx,
     EffectKind::FxChain,
     EffectKind::Reverb,
@@ -772,6 +775,28 @@ const FX_CHAIN_PARAMS: &[ParamSpec] = &[
     spec("stage4_y", 0.0, 1.0, 0.5, ""),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const BEAT_SHAPER_PARAMS: &[ParamSpec] = &[
+    int_spec("cycle", 0.0, 3.0, 2.0),
+    int_spec("time_mode", 0.0, 1.0, 0.0),
+    spec("time_1", 0.0, 1.0, 0.0, ""),
+    spec("time_2", 0.0, 1.0, 0.0, ""),
+    spec("time_3", 0.0, 1.0, 0.0, ""),
+    spec("time_4", 0.0, 1.0, 0.0, ""),
+    spec("time_5", 0.0, 1.0, 0.0, ""),
+    spec("time_6", 0.0, 1.0, 0.0, ""),
+    spec("time_7", 0.0, 1.0, 0.0, ""),
+    spec("time_8", 0.0, 1.0, 0.0, ""),
+    spec("volume_1", 0.0, 1.0, 1.0, ""),
+    spec("volume_2", 0.0, 1.0, 1.0, ""),
+    spec("volume_3", 0.0, 1.0, 1.0, ""),
+    spec("volume_4", 0.0, 1.0, 1.0, ""),
+    spec("volume_5", 0.0, 1.0, 1.0, ""),
+    spec("volume_6", 0.0, 1.0, 1.0, ""),
+    spec("volume_7", 0.0, 1.0, 1.0, ""),
+    spec("volume_8", 0.0, 1.0, 1.0, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -1114,6 +1139,7 @@ impl EffectKind {
             Self::GuitarChain => "guitar_chain",
             Self::MultiFx => "multi_fx",
             Self::FxChain => "fx_chain",
+            Self::BeatShaper => "beat_shaper",
             Self::Plugin => "plugin",
         }
     }
@@ -1171,6 +1197,7 @@ impl EffectKind {
             Self::GuitarChain => GUITAR_CHAIN_PARAMS,
             Self::MultiFx => MULTI_FX_PARAMS,
             Self::FxChain => FX_CHAIN_PARAMS,
+            Self::BeatShaper => BEAT_SHAPER_PARAMS,
             Self::Plugin => &[],
         }
     }

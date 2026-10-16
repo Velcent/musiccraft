@@ -1712,6 +1712,55 @@ const FX_CHAIN: &[Preset] = &[
     ),
 ];
 
+const BEAT_SHAPER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Half repeat",
+        &[
+            ("time_5", 0.5),
+            ("time_6", 0.5),
+            ("time_7", 0.5),
+            ("time_8", 0.5),
+        ],
+    ),
+    preset(
+        "Tape stop",
+        &[
+            ("time_mode", 1.0),
+            ("time_5", 0.0),
+            ("time_6", 0.15),
+            ("time_7", 0.32),
+            ("time_8", 0.45),
+        ],
+    ),
+    preset(
+        "Stutter end",
+        &[("time_7", 0.125), ("time_8", 0.25), ("cycle", 1.0)],
+    ),
+    preset(
+        "Pump",
+        &[
+            ("volume_1", 0.0),
+            ("volume_2", 0.6),
+            ("volume_3", 0.0),
+            ("volume_4", 0.6),
+            ("volume_5", 0.0),
+            ("volume_6", 0.6),
+            ("volume_7", 0.0),
+            ("volume_8", 0.6),
+        ],
+    ),
+    preset(
+        "Gate halves",
+        &[
+            ("volume_2", 0.0),
+            ("volume_4", 0.0),
+            ("volume_6", 0.0),
+            ("volume_8", 0.0),
+        ],
+    ),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1759,6 +1808,7 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::GuitarChain => GUITAR_CHAIN,
         EffectKind::MultiFx => MULTI_FX,
         EffectKind::FxChain => FX_CHAIN,
+        EffectKind::BeatShaper => BEAT_SHAPER,
         EffectKind::Plugin => &[],
     }
 }

@@ -59,7 +59,7 @@ new UI editor or large DSP.
   effect blocks with an X/Y control.
 - [x] Distructor → chainable multi-effect (several existing blocks in series
   inside one insert).
-- [ ] Gross Beat → drawn time (scratch/repeat) and volume envelopes per beat,
+- [x] Gross Beat → drawn time (scratch/repeat) and volume envelopes per beat,
   extending `stutter` and `gate`.
 - [ ] Frequency Splitter → split a track into three bands routed to
   separate mixer inserts (needs multi-output routing).
