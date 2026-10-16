@@ -245,6 +245,17 @@ impl Project {
         Ok(std::mem::replace(&mut self.tempo_bpm, bpm))
     }
 
+    /// The first pattern after the selected one with no notes.
+    #[must_use]
+    pub fn next_empty_pattern(&self) -> Option<usize> {
+        self.patterns
+            .iter()
+            .enumerate()
+            .skip(self.current_pattern + 1)
+            .find(|(_, p)| p.notes.is_empty())
+            .map(|(i, _)| i)
+    }
+
     /// How many times jump-to-start and panic have been requested.
     #[must_use]
     pub fn requests(&self) -> Requests {

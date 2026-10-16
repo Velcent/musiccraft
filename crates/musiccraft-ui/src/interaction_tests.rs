@@ -475,6 +475,37 @@ fn piano_roll_selection_editing() {
 }
 
 #[test]
+fn f4_goes_to_the_next_empty_pattern_and_offers_to_name_it() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 1 C5"]);
+    h.settle();
+    assert_eq!(
+        h.key(egui::Key::F4, Modifiers::NONE),
+        ["pattern.next_empty"]
+    );
+    assert_eq!(h.session.project().patterns.len(), 2);
+    assert!(h.state.dialog.is_some(), "a rename prompt for pattern 2");
+    h.settle();
+    let mut typed = h.frame(vec![
+        Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        },
+        Event::Text("Drop".to_owned()),
+    ]);
+    typed.extend(h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]));
+    assert_eq!(typed, ["pattern.rename 2 Drop"]);
+}
+
+#[test]
 fn playlist_selection_editing() {
     let mut h = Harness::new(&[
         "pattern.add",

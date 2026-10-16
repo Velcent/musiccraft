@@ -26,6 +26,11 @@
   starting there, otherwise removes every note of that channel starting there.
   `step.set` forces a state. Steps and piano-roll notes are the same data.
 
+- **Next empty pattern**: `pattern.next_empty` selects the first pattern
+  after the selected one that has no notes; when there is none it adds a new
+  pattern (as `pattern.add`, undoable) and selects it. Selecting an existing
+  pattern is not undoable. F4 runs it and then offers to name the pattern
+  (a rename prompt; Escape keeps the name).
 - **Swing** is one amount for the whole project: `project.set_swing <0-100>`
   (undoable; saved as `"swing"`, 0–1). Notes that start exactly on an off-beat
   sixteenth (steps 1, 3, 5, …) are delayed by up to half a step: 12 ticks ×
@@ -172,6 +177,10 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   and mixer routing) follows the general workflow described in the FL Studio
   online manual, "Channel Rack" section. Command names, value ranges and defaults
   are our own.
+- F4 selecting the next empty pattern and offering to name it follows the FL
+  Studio online manual, "Keyboard shortcuts" and the pattern selector.
+  "Empty" meaning "no notes" and adding a pattern when none is left are our
+  own choices.
 - Swing: the FL Studio online manual describes one main swing control, a
   per-channel swing mix (default 100%) and a truncate option for swung
   notes. The delay curve, the truncate rule and the migration are our own.

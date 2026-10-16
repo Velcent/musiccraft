@@ -505,7 +505,11 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
         })
         .response
         .hint("Selected pattern (Plus / Minus)");
-    if ui.small_button("+").hint("New pattern (F4)").clicked() {
+    if ui
+        .small_button("+")
+        .hint("New pattern (F4: next empty pattern)")
+        .clicked()
+    {
         run(actions, "pattern.add");
     }
     ui.add_space(4.0);

@@ -31,7 +31,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   (default 100%); add a "truncate" option.
 
 ### Smaller
-- [ ] F4 jumps to the next *empty* pattern and offers to name it.
+- [x] F4 jumps to the next *empty* pattern and offers to name it.
 - [ ] Tempo range: FL allows 10–522 BPM; decide whether to lower our 20 BPM
   floor (999 BPM ceiling can stay).
 

@@ -352,6 +352,31 @@ fn jump_to_start_and_panic_are_requests_outside_history() {
 }
 
 #[test]
+fn next_empty_selects_an_empty_pattern_or_adds_one() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C5");
+    for line in ["pattern.add", "pattern.add", "note.add 1 0 1 C5 @3"] {
+        run(&mut s, line);
+    }
+    s.run_line("pattern.select 1").unwrap();
+    let depth = s.undo_depth();
+    // Pattern 2 is empty: select it, no history.
+    run(&mut s, "pattern.next_empty");
+    assert_eq!(s.project().current_pattern, 1);
+    assert_eq!(s.undo_depth(), depth);
+    // Nothing empty after pattern 2 (3 has a note): add pattern 4.
+    run(&mut s, "pattern.next_empty");
+    assert_eq!(s.project().patterns.len(), 4);
+    assert_eq!(s.project().current_pattern, 3);
+    assert_eq!(s.undo_depth(), depth + 1);
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().patterns.len(), 3);
+    assert_eq!(s.project().current_pattern, 1);
+    fails(&mut s, "pattern.next_empty 2");
+}
+
+#[test]
 fn pattern_navigation_clamps() {
     let mut s = session();
     run(&mut s, "pattern.add");

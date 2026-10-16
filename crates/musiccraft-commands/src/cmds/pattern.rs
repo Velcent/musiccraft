@@ -8,6 +8,12 @@ use crate::{BATCH, Command, CommandError, Invocation, Outcome};
 pub(super) fn commands() -> Vec<Box<dyn Command>> {
     vec![
         cmd(
+            "pattern.next_empty",
+            "pattern.next_empty",
+            "Select the next pattern with no notes, adding one if there is none.",
+            next_empty,
+        ),
+        cmd(
             "pattern.add",
             "pattern.add [name]",
             "Create an empty pattern and select it.",
@@ -197,6 +203,17 @@ fn select(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
     args.expect(1, 1)?;
     project.current_pattern = pattern_arg(project, args, 0)?;
     Ok(selected(project))
+}
+
+fn next_empty(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    match project.next_empty_pattern() {
+        Some(index) => {
+            project.current_pattern = index;
+            Ok(selected(project))
+        }
+        None => add(project, args),
+    }
 }
 
 fn next(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

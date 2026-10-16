@@ -34,7 +34,7 @@
 | Alt+F8 | Browser |
 | Alt+T | Add a playlist marker at the playhead |
 | F10 | Settings |
-| F4 | New pattern |
+| F4 | Next empty pattern (adds one if none), then name it |
 | Plus / Minus | Next / previous pattern |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z, Ctrl+Y | Redo |

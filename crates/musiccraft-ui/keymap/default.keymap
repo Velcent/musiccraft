@@ -27,7 +27,7 @@ Alt+F8       = view.toggle browser
 F10          = ui.settings
 
 # Patterns
-F4           = pattern.add
+F4           = ui.next_empty_pattern
 Plus         = pattern.next
 Minus        = pattern.prev
 

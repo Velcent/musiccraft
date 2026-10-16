@@ -53,7 +53,8 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Portamento (glide) | `done` |
 | Piano roll | Chord and scale helpers | `cmd:note.add_chord` `done` |
 | Piano roll | Import MIDI files | `cmd:note.import_midi` |
-| Patterns | New pattern | `cmd:pattern.add` `key:F4=pattern.add` |
+| Patterns | New pattern | `cmd:pattern.add` |
+| Patterns | Next empty pattern, then name it | `cmd:pattern.next_empty` `key:F4=ui.next_empty_pattern` |
 | Patterns | Next / previous pattern | `key:Plus=pattern.next` `key:Minus=pattern.prev` |
 | Patterns | Clone / rename / delete / length | `cmd:pattern.clone` `cmd:pattern.rename` `cmd:pattern.remove` `cmd:pattern.set_length` |
 | Playlist | Place, move, resize, delete clips | `cmd:playlist.add_clip` `cmd:playlist.move_clip` `cmd:playlist.resize_clip` `cmd:playlist.remove_clip` `spec:playlist.md` |
