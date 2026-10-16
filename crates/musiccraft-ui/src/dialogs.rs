@@ -15,6 +15,7 @@ pub enum Purpose {
     SaveAs,
     Export,
     ExportStems,
+    ExportMidi,
     AddSample,
     SetSample(usize),
     SetPad(usize, usize),
@@ -73,6 +74,14 @@ impl Dialog {
         Self::new(
             Purpose::Export,
             format!("{}{name}.wav", project_dir(project)),
+        )
+    }
+
+    pub fn export_midi(project: &Project) -> Self {
+        let name = project.name().replace(['/', '\\'], "-");
+        Self::new(
+            Purpose::ExportMidi,
+            format!("{}{name}.mid", project_dir(project)),
         )
     }
 
@@ -144,6 +153,7 @@ impl Dialog {
             Purpose::SaveAs => "Save project as",
             Purpose::Export => "Export audio",
             Purpose::ExportStems => "Export stems to folder",
+            Purpose::ExportMidi => "Export MIDI file",
             Purpose::AddSample => "Add WAV sample",
             Purpose::SetSample(_) => "Change sample",
             Purpose::SetPad(_, _) => "Pad sample (file path or builtin:<sound>; - clears)",
@@ -171,6 +181,7 @@ impl Dialog {
                 bits => Invocation::new("project.export_wav", [text, bits.to_owned()]),
             },
             Purpose::ExportStems => Invocation::new("project.export_stems", [text]),
+            Purpose::ExportMidi => Invocation::new("project.export_midi", [text]),
             Purpose::AddSample => Invocation::new("channel.add_sampler", [text]),
             Purpose::SetPad(channel, pad) => Invocation::new(
                 "channel.set_pad",

@@ -445,5 +445,6 @@ pub fn register_with(
     registry.register(Box::new(ExportStemsCommand { host: host.clone() }))?;
     registry.register(Box::new(ExportFlacCommand { host: host.clone() }))?;
     registry.register(Box::new(crate::ConsolidateCommand { host: host.clone() }))?;
+    registry.register(Box::new(crate::ExportMidiCommand))?;
     registry.register(Box::new(crate::plugins::PluginListCommand { host }))
 }

@@ -1322,6 +1322,7 @@ fn process_track(
     // Invalid samples would otherwise circulate in reverb and delay feedback
     // forever, silencing the track until the graph is rebuilt.
     scrub(l, r);
+    params.stereo(l, r);
     for slot in effects.iter_mut().filter(|s| s.params.enabled) {
         if let Some(index) = slot.external {
             if let Some(Some(external)) = externals.get_mut(usize::from(index)) {

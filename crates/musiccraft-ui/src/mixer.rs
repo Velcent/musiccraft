@@ -166,6 +166,46 @@ fn strip(
                     state.open_dialog(Dialog::rename_track(index, &track.name));
                     ui.close();
                 }
+                ui.horizontal(|ui| {
+                    ui.label("Stereo separation");
+                    let mut separation = track.separation;
+                    let drag = ui.add(
+                        egui::DragValue::new(&mut separation)
+                            .range(-1.0..=1.0)
+                            .speed(0.01),
+                    );
+                    if drag.drag_started() || drag.gained_focus() {
+                        state.begin_gesture();
+                    }
+                    if drag.changed() {
+                        actions.push(Action::Coalesced(
+                            Invocation::new(
+                                "mixer.set_separation",
+                                [number.clone(), format!("{separation:.3}")],
+                            ),
+                            state.gesture(),
+                        ));
+                    }
+                })
+                .response
+                .on_hover_text("-1 mono, 0 as is, 1 wider");
+                for (label, on, name) in [
+                    ("Invert phase", track.phase_invert, "mixer.set_phase_invert"),
+                    (
+                        "Swap left and right",
+                        track.swap_sides,
+                        "mixer.set_swap_sides",
+                    ),
+                ] {
+                    if ui.selectable_label(on, label).clicked() {
+                        run(
+                            actions,
+                            name,
+                            [number.clone(), if on { "off" } else { "on" }.to_owned()],
+                        );
+                        ui.close();
+                    }
+                }
                 if index > 0
                     && ui
                         .button(RichText::new("Delete").color(theme::DANGER))

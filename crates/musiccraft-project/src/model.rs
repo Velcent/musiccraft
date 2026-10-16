@@ -580,6 +580,15 @@ pub struct MixerTrack {
     /// Sends to higher-numbered inserts, sorted by target.
     #[serde(default)]
     pub sends: Vec<MixerSend>,
+    /// Stereo separation, -1 (mono) .. 0 (as is) .. 1 (side doubled).
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub separation: f32,
+    /// Flip the polarity of both sides.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub phase_invert: bool,
+    /// Exchange the left and right sides.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub swap_sides: bool,
 }
 
 impl MixerTrack {
@@ -595,8 +604,16 @@ impl MixerTrack {
             effects: Vec::new(),
             to_master: true,
             sends: Vec::new(),
+            separation: 0.0,
+            phase_invert: false,
+            swap_sides: false,
         }
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_f32(value: &f32) -> bool {
+    *value == 0.0
 }
 
 /// Stable identity of an automation.

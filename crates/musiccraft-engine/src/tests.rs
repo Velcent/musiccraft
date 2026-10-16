@@ -1335,3 +1335,31 @@ fn a_song_loop_point_wraps_there_but_stop_returns_home() {
         "Stop returns to the start"
     );
 }
+
+#[test]
+fn track_stereo_options_invert_swap_and_separate() {
+    let block = |params: TrackParams| {
+        let (mut l, mut r) = (vec![1.0_f32, 0.5], vec![0.0_f32, 0.5]);
+        params.stereo(&mut l, &mut r);
+        (l, r)
+    };
+    let base = TrackParams::default();
+    assert_eq!(block(base), (vec![1.0, 0.5], vec![0.0, 0.5]), "untouched");
+    let swapped = block(TrackParams { swap: true, ..base });
+    assert_eq!(swapped, (vec![0.0, 0.5], vec![1.0, 0.5]));
+    let inverted = block(TrackParams {
+        invert: true,
+        ..base
+    });
+    assert_eq!(inverted, (vec![-1.0, -0.5], vec![0.0, -0.5]));
+    let mono = block(TrackParams {
+        separation: -1.0,
+        ..base
+    });
+    assert_eq!(mono, (vec![0.5, 0.5], vec![0.5, 0.5]));
+    let wide = block(TrackParams {
+        separation: 1.0,
+        ..base
+    });
+    assert_eq!(wide, (vec![1.5, 0.5], vec![-0.5, 0.5]), "the side doubles");
+}

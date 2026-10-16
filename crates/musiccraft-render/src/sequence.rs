@@ -72,6 +72,11 @@ fn pattern_events(project: &Project, pattern: &Pattern) -> Vec<NoteEvent> {
 }
 
 fn song_events(project: &Project) -> Vec<NoteEvent> {
+    song_note_events(project, true)
+}
+
+/// The song's note events; `audio` includes the notes that play audio clips.
+fn song_note_events(project: &Project, audio: bool) -> Vec<NoteEvent> {
     let mut events = Vec::new();
     for clip in &project.playlist.clips {
         if clip.muted || !project.playlist.track_audible(clip.track) {
@@ -86,6 +91,7 @@ fn song_events(project: &Project) -> Vec<NoteEvent> {
                     pattern_clip_events(project, pattern, clip, &mut events);
                 }
             }
+            ClipSource::Audio(_) if !audio => {}
             ClipSource::Audio(id) => {
                 // The sample plays once, unpitched (at its root key), for the clip's length.
                 let Some(index) = project.channel_position(id) else {
@@ -280,6 +286,25 @@ pub fn build_sequence(project: &Project) -> Sequence {
 
 /// The whole pattern or song, ignoring the loop region (used for export).
 #[must_use]
+/// The notes a MIDI export writes: what the transport would play once
+/// (pattern or song by play mode, swing and arpeggios applied), without audio
+/// clips; and the length in ticks.
+pub(crate) fn midi_events(project: &Project) -> (Vec<NoteEvent>, u64) {
+    match project.play_mode {
+        PlayMode::Pattern => {
+            let pattern = project.current_pattern();
+            (
+                crate::arp::apply(project, pattern_events(project, pattern)),
+                u64::from(pattern.length_ticks()),
+            )
+        }
+        PlayMode::Song => (
+            crate::arp::apply(project, song_note_events(project, false)),
+            u64::from(project.song_length_ticks()),
+        ),
+    }
+}
+
 pub fn build_full_sequence(project: &Project) -> Sequence {
     match project.play_mode {
         PlayMode::Pattern => {

@@ -596,6 +596,7 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             }
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.export_stems" => state.dialog = Some(dialogs::Dialog::export_stems(frame.project)),
+            "ui.export_midi" => state.dialog = Some(dialogs::Dialog::export_midi(frame.project)),
             "ui.quit" => out.push(Action::Quit),
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
             "ui.automate" => {

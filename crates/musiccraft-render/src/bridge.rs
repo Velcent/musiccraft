@@ -142,6 +142,9 @@ fn track_params(track: &MixerTrack, index: usize, audible: Option<&[bool]>) -> T
     let mut params = TrackParams {
         volume: track.volume,
         pan: track.pan,
+        separation: track.separation,
+        invert: track.phase_invert,
+        swap: track.swap_sides,
         mute: track.mute || soloed_out,
         to_master: track.to_master || index == 0,
         ..TrackParams::default()

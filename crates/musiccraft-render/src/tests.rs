@@ -1417,3 +1417,47 @@ fn consolidating_a_clip_renders_it_to_an_audio_clip() {
     assert!(s.project().playlist.clips[0].pattern().is_some());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn midi_export_round_trips_through_import() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-midi-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("song.mid");
+    let mut s = session();
+    run(
+        &mut s,
+        &format!(
+            "channel.add_synth
+             note.add 1 0 2 D5 100
+             note.add 1 2 1 E5 64
+             note.add 1 2 3 G5 127
+             channel.add_sampler builtin:kick
+             step.toggle 2 0
+             playlist.add_audio_clip 2 1 0 1
+             project.export_midi \"{}\"",
+            path.display()
+        ),
+    );
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..4], b"MThd");
+    // A tempo track plus one track per channel with notes.
+    assert_eq!(u16::from_be_bytes([bytes[10], bytes[11]]), 3);
+    run(
+        &mut s,
+        &format!("pattern.add\nnote.import_midi 1 \"{}\" @2", path.display()),
+    );
+    let notes = |p: usize| -> Vec<(u32, u32, u8, u8)> {
+        s.project().patterns[p]
+            .notes
+            .iter()
+            .map(|n| (n.start, n.length, n.key, n.velocity))
+            .collect()
+    };
+    // Channel 1's notes come back, plus the kick from the other track (the
+    // importer merges every track into one channel).
+    let back = notes(1);
+    for note in &notes(0) {
+        assert!(back.contains(note), "{note:?} in {back:?}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

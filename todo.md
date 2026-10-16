@@ -66,8 +66,8 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   - [x] Alt+C clone, Alt+Del delete, Alt+Up/Down move.
   - [x] Ctrl+L sends to a free mixer track.
   - [x] Shift+Ctrl+Left/Right shifts steps.
-- [ ] MIDI export (Ctrl+Shift+M).
-- [ ] Mixer track options: stereo separation, phase invert, swap left/right.
+- [x] MIDI export (Ctrl+Shift+M).
+- [x] Mixer track options: stereo separation, phase invert, swap left/right.
 
 ## 3. Missing: lower priority
 

@@ -11,6 +11,7 @@ mod arp;
 mod bridge;
 mod consolidate;
 mod export;
+mod midi_export;
 pub mod plugins;
 mod sequence;
 
@@ -20,6 +21,7 @@ pub use export::{
     ExportCommand, ExportFlacCommand, ExportStemsCommand, RenderOptions, export_stems, export_wav,
     register, register_with, render, render_with,
 };
+pub use midi_export::{ExportMidiCommand, midi_file};
 pub use plugins::{
     LivePlugin, PluginEvent, PluginFactory, PluginHost, PluginInfo, PluginInstance, PluginKind,
     PluginParam, PluginRequest,

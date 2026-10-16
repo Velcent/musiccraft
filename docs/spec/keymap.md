@@ -49,6 +49,7 @@
 | Ctrl+O | Open project |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |
 | Ctrl+R | Export WAV |
+| Ctrl+Shift+M | Export MIDI |
 
 ### Over the channel rack
 
