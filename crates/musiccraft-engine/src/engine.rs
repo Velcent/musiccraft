@@ -661,6 +661,8 @@ impl Engine {
                         prefix(&mut node.right, frames),
                     );
                     external.process(l, r, &transport);
+                    // A plugin's bad output must not reach effect tails.
+                    scrub(l, r);
                 }
             }
         }
@@ -886,15 +888,24 @@ fn trigger(
         return;
     }
     // A slide note moves the sounding note of its channel instead of
-    // starting one.
-    if start.slide {
+    // starting one. Instruments whose pitch is fixed when a note starts (kit
+    // pads, drum synth, pluck, sliced samples) play it as a normal note.
+    let slides = start.slide
+        && channels
+            .get(usize::from(start.channel))
+            .is_some_and(|node| crate::voice::glides(&node.instrument));
+    if slides {
         let held = voices
             .iter_mut()
-            .filter(|v| v.channel == start.channel && v.held())
+            .filter(|v| v.channel == start.channel && v.held() && v.pitched())
             .max_by_key(|v| v.age);
         if let Some(voice) = held {
             let frames = start.gate.unwrap_or(1);
             voice.slide_to(start.key, start.delay, frames, start.gate);
+            // Later portamento notes glide from where the slide ends.
+            if let Some(slot) = last_keys.get_mut(usize::from(start.channel)) {
+                *slot = Some(f32::from(start.key) + start.shape.fine);
+            }
             return;
         }
     }
@@ -1069,10 +1080,14 @@ fn process_track(
         right,
     } = track;
     let (l, r) = (prefix(left, frames), prefix(right, frames));
+    // Invalid samples would otherwise circulate in reverb and delay feedback
+    // forever, silencing the track until the graph is rebuilt.
+    scrub(l, r);
     for slot in effects.iter_mut().filter(|s| s.params.enabled) {
         if let Some(index) = slot.external {
             if let Some(Some(external)) = externals.get_mut(usize::from(index)) {
                 external.process(l, r, &transport);
+                scrub(l, r);
             }
             continue;
         }
@@ -1098,12 +1113,28 @@ fn process_track(
         };
         slot.effect
             .process_keyed(l, r, &slot.params.values, ctx, key);
+        if scrub(l, r) {
+            // The effect's own state went bad; start it afresh.
+            slot.effect.reset();
+        }
     }
     let from = *gains;
     let to = params.gains();
     *gains = to;
     scale_ramped(l, from.0, to.0);
     scale_ramped(r, from.1, to.1);
+}
+
+/// Replaces non-finite samples with silence. Returns whether any were found.
+fn scrub(left: &mut [f32], right: &mut [f32]) -> bool {
+    let mut found = false;
+    for sample in left.iter_mut().chain(right.iter_mut()) {
+        if !sample.is_finite() {
+            *sample = 0.0;
+            found = true;
+        }
+    }
+    found
 }
 
 fn prefix(buffer: &mut [f32], frames: usize) -> &mut [f32] {

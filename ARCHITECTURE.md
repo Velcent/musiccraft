@@ -149,4 +149,4 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 - Honoring a plugin's restart request (latency or port changes) while running.
 - Decoding compressed samples (FLAC, Ogg, MP3), likely via `symphonia`; lossy
   export formats.
-- Time signatures other than 4/4, tempo automation, audio clips and recording.
+- Time signatures other than 4/4 and tempo automation.

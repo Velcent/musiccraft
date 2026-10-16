@@ -802,6 +802,65 @@ fn layers_play_their_channels() {
 }
 
 #[test]
+fn slide_notes_on_fixed_pitch_instruments_play_as_new_notes() {
+    for (name, instrument, voices) in [
+        ("drum synth", Instrument::DrumSynth, 2),
+        ("synth", Instrument::Synth, 1),
+    ] {
+        let (mut engine, _handle) = engine_pair(SR);
+        let mut graph = Graph::new();
+        graph.add_channel(instrument, impulse_params());
+        engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+        engine.apply(EngineMessage::SetTempo(120.0));
+        let mut first = note(0, 0);
+        first.length = 2 * u64::from(PPQ);
+        let mut slide = note(0, 0);
+        slide.start = u64::from(PPQ) / 32;
+        slide.key = 67;
+        slide.slide = true;
+        let seq = Sequence::new(vec![first, slide], 4 * u64::from(PPQ));
+        engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+        engine.apply(EngineMessage::Play);
+        // Just past the slide note (1/32 beat is 750 frames at 120 BPM).
+        render_mono(&mut engine, 1_000);
+        assert_eq!(engine.active_voices(), voices, "{name}");
+    }
+}
+
+#[test]
+fn a_nan_burst_cannot_silence_a_reverb_for_good() {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    // A sample that starts with invalid values, then holds a steady level.
+    let mut data = vec![0.5; 480_000];
+    data[0] = f32::NAN;
+    data[1] = f32::INFINITY;
+    let buffer = Arc::new(SampleBuffer::mono(data, f64::from(SR)));
+    graph.add_channel(Instrument::Sampler(buffer), impulse_params());
+    let fx = EffectParams {
+        enabled: true,
+        values: EffectKind::Reverb.defaults(),
+    };
+    graph.set_master(
+        TrackParams::default(),
+        vec![(Effect::new(EffectKind::Reverb, SR as f32), fx)],
+    );
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 60,
+        velocity: 1.0,
+    });
+    let out = render_mono(&mut engine, 4_800);
+    assert!(out.iter().all(|s| s.is_finite()));
+    // The reverb (and the dry signal through it) keeps sounding afterwards.
+    assert!(
+        out[2_000..].iter().any(|s| s.abs() > 0.01),
+        "the track was silenced by the bad samples"
+    );
+}
+
+#[test]
 fn tuner_publishes_the_pitch_it_hears() {
     let (mut engine, handle) = engine_pair(SR);
     let mut graph = Graph::new();

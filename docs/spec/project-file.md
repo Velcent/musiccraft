@@ -48,7 +48,17 @@
 - The desktop app writes the open project to `autosave.mcproj` in the per-user
   data folder (`$XDG_DATA_HOME/musiccraft`, `~/Library/Application
   Support/MusicCraft`, or `%APPDATA%\MusicCraft`) at most once a minute, and only
-  after a change. File → Recover autosave loads it.
+  after a change. A failed write is retried a minute later.
+- Closing the app with nothing unsaved deletes `autosave.mcproj`. An autosave
+  found at start-up therefore means the last session did not close properly: it is
+  moved to `recovery.mcproj` (so this session's autosaves cannot overwrite it),
+  the status line says so, and File → Recover unsaved work offers it.
+- Recovering runs `project.recover <file>`: the backup loads as unsaved work with
+  no file of its own, so Save asks where to save instead of writing into the data
+  folder.
+- Closing the window, File → New and File → Open ask whether to save unsaved
+  changes first (Save, Don't save, Cancel). "Unsaved" means the project differs
+  from what was last saved, loaded or created.
 
 ## Sources
 

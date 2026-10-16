@@ -20,6 +20,19 @@ pub fn key_to_hz(key: f32) -> f32 {
     440.0 * 2.0_f32.powf((key - 69.0) / 12.0)
 }
 
+/// Below this magnitude a fed-back value is treated as silence (about -300 dB).
+const DENORMAL_FLOOR: f32 = 1e-15;
+
+/// Returns 0 for values too small to hear. Applied wherever a value is fed back
+/// into filter or delay state, so decaying tails reach exact silence instead of
+/// lingering as subnormal floats, which are very slow on many CPUs. Non-finite
+/// values pass through unchanged (the engine replaces those).
+#[inline]
+#[must_use]
+pub fn flush_denormal(x: f32) -> f32 {
+    if x.abs() < DENORMAL_FLOOR { 0.0 } else { x }
+}
+
 /// Left and right gains for a balance pan in -1..=1. Centre is unity on both sides.
 #[must_use]
 pub fn pan_gains(pan: f32) -> (f32, f32) {
@@ -47,6 +60,16 @@ mod tests {
     fn a4_is_440() {
         assert!((key_to_hz(69.0) - 440.0).abs() < 1e-3);
         assert!((key_to_hz(57.0) - 220.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn tiny_values_flush_to_zero() {
+        assert_eq!(flush_denormal(1e-20), 0.0);
+        assert_eq!(flush_denormal(-1e-20), 0.0);
+        assert_eq!(flush_denormal(f32::MIN_POSITIVE / 4.0), 0.0);
+        assert_eq!(flush_denormal(1e-6), 1e-6);
+        assert_eq!(flush_denormal(-0.5), -0.5);
+        assert!(flush_denormal(f32::NAN).is_nan());
     }
 
     #[test]

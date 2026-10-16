@@ -50,8 +50,10 @@
   (`release`, `fine`, `mod_x`, `mod_y`, `color`, `porta on|off`,
   `muted on|off`); undoable.
 - **Portamento notes** start a new voice that glides from the pitch of the
-  channel's previous note over the channel's `glide` time (0.1 s when that is
-  0). Unlike slide notes they retrigger the envelope.
+  channel's previous note (or from where a slide ended) over the channel's
+  `glide` time (0.1 s when that is 0). Unlike slide notes they retrigger the
+  envelope. They glide on every instrument whose pitch can move (see slide
+  notes); on the others they play normally.
 - **Muted notes** stay in the pattern but do not play; they are drawn hollow.
   The piano roll's Mute tool toggles muting on the notes it clicks or sweeps.
 - The bottom lane edits velocity, pan, release, fine pitch, Mod X or Mod Y.
@@ -66,9 +68,13 @@
   <on|off>`, undoable; stored as `"slide": true`). When it starts while
   another note of the same channel is sounding, it does not start a new
   voice: the sounding note glides to the slide note's key over the slide
-  note's length and keeps sounding until the slide note ends. With nothing
-  sounding, a slide note plays like a normal note.
-- Works for the synth and the sampler; plugins get a normal note.
+  note's length, starting on the slide note's own frame, and keeps sounding
+  until the slide note ends. With nothing sounding, a slide note plays like a
+  normal note.
+- Works on every built-in instrument whose pitch can move: synth, sampler, FM,
+  keys, additive and granular (new grains follow the glide). Kit pads, the drum
+  synth, the pluck and sliced samples fix their pitch when a note starts, so a
+  slide note plays there as a normal note; plugins get a normal note too.
 - In the piano roll, the Slide toggle on the toolbar makes new notes slide
   notes, and Tools → Toggle slide flips the selected notes. Slide notes are
   drawn with a ramp mark.

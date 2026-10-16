@@ -436,6 +436,26 @@ fn save_and_load_round_trip() {
 }
 
 #[test]
+fn recover_loads_a_backup_without_adopting_its_path() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-recover-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("recovery.mcproj");
+    let mut s = session();
+    run(&mut s, "project.rename Rescued");
+    run(&mut s, "project.set_tempo 99");
+    run(&mut s, &format!("project.save \"{}\"", path.display()));
+    run(&mut s, "project.new");
+    run(&mut s, &format!("project.recover \"{}\"", path.display()));
+    assert_eq!(s.project().name(), "Rescued");
+    assert!((s.project().tempo_bpm() - 99.0).abs() < 1e-9);
+    assert!(s.project().path().is_none(), "saving must ask where");
+    assert_eq!(s.undo_depth(), 0);
+    fails(&mut s, "project.save");
+    fails(&mut s, "project.recover /no/such/backup.mcproj");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn save_without_a_path_needs_one() {
     let mut s = session();
     fails(&mut s, "project.save");

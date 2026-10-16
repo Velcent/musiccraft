@@ -28,6 +28,21 @@ struct Grain {
     length: u32,
 }
 
+/// Whether an instrument's pitch can move while a note sounds (portamento and
+/// slide notes). Kit pads, the drum synth and the pluck fix their pitch when a
+/// note starts.
+pub(crate) fn glides(instrument: &Instrument) -> bool {
+    matches!(
+        instrument,
+        Instrument::Synth
+            | Instrument::Sampler(_)
+            | Instrument::Fm
+            | Instrument::Keys
+            | Instrument::Additive
+            | Instrument::Granular(_)
+    )
+}
+
 fn param(params: &ChannelParams, index: usize) -> f32 {
     params.instrument.get(index).copied().unwrap_or(0.0)
 }
@@ -105,6 +120,8 @@ pub(crate) struct Voice {
     /// Current glide offset in keys (moves toward 0) and its change per frame.
     glide: f32,
     glide_rate: f32,
+    /// Frames before a slide's glide begins (the slide note's offset in the block).
+    glide_wait: u32,
     sample_rate: f32,
     /// Oscillator phases for FM, keys and additive.
     phases: [f64; PARTIALS],
@@ -158,6 +175,7 @@ impl Voice {
             pan: (1.0, 1.0),
             glide: 0.0,
             glide_rate: 0.0,
+            glide_wait: 0,
             sample_rate: sample_rate.max(1.0),
         }
     }
@@ -173,6 +191,12 @@ impl Voice {
     /// The pitch in keys the voice is sounding now (before the channel pitch).
     pub fn current_key(&self) -> f32 {
         f32::from(self.key) + self.glide
+    }
+
+    /// Whether the voice's pitch follows its key (false for a sample slice,
+    /// where the key only picks the slice).
+    pub fn pitched(&self) -> bool {
+        self.slice_end.is_none()
     }
 
     pub fn start(
@@ -253,10 +277,13 @@ impl Voice {
         } else {
             param(params, inst::GLIDE)
         };
-        let glides = matches!(instrument, Instrument::Synth)
-            || (start.shape.porta && matches!(instrument, Instrument::Sampler(_)));
+        // The synth's glide time applies to overlapping notes; portamento notes
+        // glide on every instrument whose pitch can move.
+        let glide_on = matches!(instrument, Instrument::Synth)
+            || (start.shape.porta && glides(instrument) && self.pitched());
+        self.glide_wait = 0;
         match start.glide_from {
-            Some(from) if glide_time > 0.0 && glides => {
+            Some(from) if glide_time > 0.0 && glide_on => {
                 self.glide = from - f32::from(start.key);
                 self.glide_rate = self.glide.abs() / (glide_time * self.env_rate());
             }
@@ -285,6 +312,8 @@ impl Voice {
         self.key = key;
         self.glide = from - f32::from(key);
         self.glide_rate = self.glide.abs() / (frames.max(1) as f32);
+        // The glide starts on the slide note's own frame, not at the block start.
+        self.glide_wait = delay;
         if let Some(gate) = gate {
             self.gate = Some(u64::from(delay) + gate);
         }
@@ -375,9 +404,8 @@ impl Voice {
                 continue;
             }
             if self.glide != 0.0 {
-                // A slide moves the pitch offset toward zero.
-                let change = self.glide_rate.min(self.glide.abs());
-                self.glide -= change * self.glide.signum();
+                // Portamento or a slide moves the pitch offset toward zero.
+                self.step_glide();
                 step = step_for(self.glide);
             }
             let level = self.env.next_level() * self.velocity;
@@ -414,11 +442,15 @@ impl Voice {
         let decay = [op(1, 2), op(2, 2), op(3, 2), op(4, 2)].map(|d| d.max(0.005));
         let sustain = [op(1, 3), op(2, 3), op(3, 3), op(4, 3)];
         let sr = self.sample_rate;
-        let hz = key_to_hz(pitch + self.glide);
+        let mut hz = key_to_hz(pitch + self.glide);
         let tau = std::f32::consts::TAU;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
                 continue;
+            }
+            if self.glide != 0.0 {
+                self.step_glide();
+                hz = key_to_hz(pitch + self.glide);
             }
             let t = self.elapsed as f32 / sr;
             self.elapsed = self.elapsed.saturating_add(1);
@@ -476,12 +508,16 @@ impl Voice {
         let tremolo = param(params, inst::KEYS_TREMOLO).clamp(0.0, 1.0);
         let hammer = param(params, inst::KEYS_HAMMER).clamp(0.0, 1.0);
         let sr = self.sample_rate;
-        let hz = key_to_hz(pitch + self.glide);
+        let mut hz = key_to_hz(pitch + self.glide);
         let tau = std::f32::consts::TAU;
         let nyquist = sr * 0.45;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
                 continue;
+            }
+            if self.glide != 0.0 {
+                self.step_glide();
+                hz = key_to_hz(pitch + self.glide);
             }
             let t = self.elapsed as f32 / sr;
             self.elapsed = self.elapsed.saturating_add(1);
@@ -572,7 +608,7 @@ impl Voice {
         let inharm = param(params, inst::ADD_INHARM).clamp(0.0, 1.0);
         let fade = param(params, inst::ADD_DECAY).clamp(0.0, 1.0);
         let sr = self.sample_rate;
-        let hz = key_to_hz(pitch + self.glide);
+        let mut hz = key_to_hz(pitch + self.glide);
         let slope = 2.0 - 1.6 * bright;
         let norm: f32 = (1..=count)
             .map(|n| (n as f32).powf(-slope) * if n % 2 == 0 { even } else { 1.0 })
@@ -582,6 +618,10 @@ impl Voice {
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
                 continue;
+            }
+            if self.glide != 0.0 {
+                self.step_glide();
+                hz = key_to_hz(pitch + self.glide);
             }
             let t = self.elapsed as f32 / sr;
             self.elapsed = self.elapsed.saturating_add(1);
@@ -630,12 +670,18 @@ impl Voice {
         let jitter = param(params, inst::GRAN_PITCH_RAND).max(0.0);
         let scan = f64::from(param(params, inst::GRAN_SCAN));
         let rate = buffer.sample_rate() / f64::from(sample_rate);
-        let base_step = rate * 2.0_f64.powf(f64::from(pitch - root) / 12.0);
+        let step_at = |glide: f32| rate * 2.0_f64.powf(f64::from(pitch + glide - root) / 12.0);
+        let mut base_step = step_at(self.glide);
         // Overlapping grains are normalized by how many overlap on average.
         let overlap = (size as f32 / interval).max(1.0);
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
                 continue;
+            }
+            if self.glide != 0.0 {
+                // New grains follow portamento and slides.
+                self.step_glide();
+                base_step = step_at(self.glide);
             }
             self.grain_timer -= 1.0;
             if self.grain_timer <= 0.0 {
@@ -905,14 +951,10 @@ impl Voice {
             if !self.advance_gate() {
                 continue;
             }
+            // Glide moves every frame; the oscillators follow at control rate.
+            self.step_glide();
             let level = self.env.next_level();
             if self.filter_countdown == 0 {
-                if self.glide != 0.0 {
-                    // Portamento: move the pitch offset toward zero.
-                    let step =
-                        (self.glide_rate * FILTER_UPDATE_INTERVAL as f32).min(self.glide.abs());
-                    self.glide -= step * self.glide.signum();
-                }
                 lfo = (self.lfo_phase * std::f32::consts::TAU).sin() * lfo_depth;
                 let vibrato = if lfo_target == 0 { lfo * 2.0 } else { 0.0 };
                 let base = f64::from(key_to_hz(pitch + self.glide + vibrato));
@@ -969,6 +1011,16 @@ impl Voice {
                 self.active = false;
                 break;
             }
+        }
+    }
+
+    /// Moves the glide offset one frame toward zero, after any slide wait.
+    fn step_glide(&mut self) {
+        if self.glide_wait > 0 {
+            self.glide_wait -= 1;
+        } else if self.glide != 0.0 {
+            let change = self.glide_rate.min(self.glide.abs());
+            self.glide -= change * self.glide.signum();
         }
     }
 
@@ -1100,6 +1152,112 @@ mod tests {
             assert!(diff > 1.0, "parameter {index} made no difference");
             assert!(out.iter().all(|s| s.is_finite() && s.abs() < 2.0));
         }
+    }
+
+    fn held_start(key: u8) -> VoiceStart {
+        VoiceStart {
+            shape: crate::NoteShape::default(),
+            slide: false,
+            channel: 0,
+            key,
+            velocity: 1.0,
+            delay: 0,
+            gate: None,
+            live: true,
+            pan: 0.0,
+            glide_from: None,
+        }
+    }
+
+    fn render_frames(voice: &mut Voice, instrument: &Instrument, params: &ChannelParams, n: usize) {
+        let mut l = vec![0.0; n];
+        let mut r = vec![0.0; n];
+        voice.render(instrument, params, &mut l, &mut r, 1_000.0);
+    }
+
+    #[test]
+    fn slides_move_every_pitched_instrument_from_their_own_frame() {
+        let buffer = std::sync::Arc::new(musiccraft_dsp::SampleBuffer::mono(
+            vec![0.25; 48_000],
+            1_000.0,
+        ));
+        let instruments = [
+            ("synth", Instrument::Synth),
+            ("fm", Instrument::Fm),
+            ("keys", Instrument::Keys),
+            ("additive", Instrument::Additive),
+            ("sampler", Instrument::Sampler(buffer.clone())),
+            ("granular", Instrument::Granular(buffer)),
+        ];
+        let params = ChannelParams::default();
+        for (name, instrument) in &instruments {
+            let mut voice = Voice::new(1_000.0);
+            voice.start(held_start(57), instrument, &params, 1);
+            // A slide note 40 frames into the block, gliding over 100 frames.
+            voice.slide_to(69, 40, 100, None);
+            render_frames(&mut voice, instrument, &params, 40);
+            assert!(
+                (voice.current_key() - 57.0).abs() < 1e-4,
+                "{name} moved before the slide note: {}",
+                voice.current_key()
+            );
+            render_frames(&mut voice, instrument, &params, 50);
+            assert!(
+                (voice.current_key() - 63.0).abs() < 0.2,
+                "{name} halfway: {}",
+                voice.current_key()
+            );
+            render_frames(&mut voice, instrument, &params, 100);
+            assert!(
+                (voice.current_key() - 69.0).abs() < 1e-4,
+                "{name} arrived: {}",
+                voice.current_key()
+            );
+        }
+    }
+
+    #[test]
+    fn portamento_notes_glide_on_fm_keys_and_additive() {
+        let params = ChannelParams::default();
+        for (name, instrument) in [
+            ("fm", Instrument::Fm),
+            ("keys", Instrument::Keys),
+            ("additive", Instrument::Additive),
+        ] {
+            let mut start = held_start(69);
+            start.shape.porta = true;
+            start.glide_from = Some(57.0);
+            let mut voice = Voice::new(1_000.0);
+            voice.start(start, &instrument, &params, 1);
+            assert!((voice.current_key() - 57.0).abs() < 1e-4, "{name} start");
+            // Portamento without a glide time takes 0.1 s (100 frames here).
+            render_frames(&mut voice, &instrument, &params, 400);
+            assert!(
+                (voice.current_key() - 69.0).abs() < 1e-4,
+                "{name} arrived: {}",
+                voice.current_key()
+            );
+        }
+    }
+
+    #[test]
+    fn sample_slices_are_not_pitched() {
+        let buffer = std::sync::Arc::new(musiccraft_dsp::SampleBuffer::mono(
+            vec![0.25; 4_000],
+            1_000.0,
+        ));
+        let mut params = ChannelParams::default();
+        let instrument = Instrument::Sampler(buffer);
+        let mut voice = Voice::new(1_000.0);
+        voice.start(held_start(60), &instrument, &params, 1);
+        assert!(voice.pitched());
+        params.instrument[inst::SLICES] = 4.0;
+        voice.start(held_start(60), &instrument, &params, 1);
+        assert!(!voice.pitched());
+        assert!(glides(&instrument));
+        assert!(!glides(&Instrument::DrumSynth));
+        assert!(!glides(&Instrument::Pluck));
+        assert!(!glides(&Instrument::Kit(Vec::new())));
     }
 
     #[test]

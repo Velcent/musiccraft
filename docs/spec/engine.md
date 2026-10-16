@@ -10,6 +10,15 @@
   written as silence.
 - Device callbacks of any size are split into internal blocks of at most 256
   frames.
+- Invalid samples (NaN or infinite) never reach effect tails: plugin output,
+  each mixer track's input and the output of every effect are checked, invalid
+  samples become silence, and a built-in effect that produced them is reset.
+  Without this, one bad sample from a plugin could circulate in a reverb or delay
+  and silence its track until the graph was rebuilt.
+- Filter, delay and reverb feedback paths flush values below 1e-15 (about
+  -300 dB) to zero, so decaying tails reach exact silence instead of lingering as
+  subnormal floats, which are very slow on many CPUs. (Setting the CPU's
+  flush-to-zero mode would need `unsafe`.)
 - `musiccraft-cli tone [seconds]` plays an A4 test tone (440 Hz) and
   `musiccraft-cli play <script> [seconds]` plays a scripted project; both are the
   headless checks for the audio path.

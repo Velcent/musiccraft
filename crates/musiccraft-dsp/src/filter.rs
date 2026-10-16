@@ -1,5 +1,7 @@
 use std::f32::consts::PI;
 
+use crate::util::flush_denormal;
+
 /// Response selected from a [`Svf`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SvfMode {
@@ -74,8 +76,8 @@ impl Svf {
         let v3 = input - self.ic2eq;
         let v1 = self.a1 * self.ic1eq + self.a2 * v3;
         let v2 = self.ic2eq + self.a2 * self.ic1eq + self.a3 * v3;
-        self.ic1eq = 2.0 * v1 - self.ic1eq;
-        self.ic2eq = 2.0 * v2 - self.ic2eq;
+        self.ic1eq = flush_denormal(2.0 * v1 - self.ic1eq);
+        self.ic2eq = flush_denormal(2.0 * v2 - self.ic2eq);
         if !self.ic1eq.is_finite() || !self.ic2eq.is_finite() {
             self.reset();
             return (0.0, 0.0);
@@ -88,8 +90,8 @@ impl Svf {
         let v3 = input - self.ic2eq;
         let v1 = self.a1 * self.ic1eq + self.a2 * v3;
         let v2 = self.ic2eq + self.a2 * self.ic1eq + self.a3 * v3;
-        self.ic1eq = 2.0 * v1 - self.ic1eq;
-        self.ic2eq = 2.0 * v2 - self.ic2eq;
+        self.ic1eq = flush_denormal(2.0 * v1 - self.ic1eq);
+        self.ic2eq = flush_denormal(2.0 * v2 - self.ic2eq);
         if !self.ic1eq.is_finite() || !self.ic2eq.is_finite() {
             self.reset();
             return 0.0;
@@ -228,8 +230,8 @@ impl Biquad {
     /// Filters one sample.
     pub fn process(&mut self, x: f32) -> f32 {
         let y = self.b0 * x + self.z1;
-        self.z1 = self.b1 * x - self.a1 * y + self.z2;
-        self.z2 = self.b2 * x - self.a2 * y;
+        self.z1 = flush_denormal(self.b1 * x - self.a1 * y + self.z2);
+        self.z2 = flush_denormal(self.b2 * x - self.a2 * y);
         if !y.is_finite() {
             self.reset();
             return 0.0;

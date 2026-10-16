@@ -296,6 +296,11 @@ impl UiState {
         self.gesture
     }
 
+    /// Opens the Save As dialog for `project`.
+    pub fn open_save_as(&mut self, project: &Project) {
+        self.dialog = Some(dialogs::Dialog::save_as(project));
+    }
+
     /// Records a command result for the status line.
     pub fn set_status(&mut self, text: impl Into<String>, error: bool) {
         self.status = StatusLine {

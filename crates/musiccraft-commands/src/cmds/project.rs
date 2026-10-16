@@ -39,6 +39,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "Load a project file (clears undo history).",
             load,
         ),
+        cmd(
+            "project.recover",
+            "project.recover <path>",
+            "Load a crash backup as unsaved work: saving asks for a file (clears undo history).",
+            recover,
+        ),
     ]
 }
 
@@ -105,4 +111,20 @@ fn load(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
     ));
     *project = loaded;
     Ok(Outcome::reset(format!("loaded {}", path.display())))
+}
+
+fn recover(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let path = PathBuf::from(args.str(0)?);
+    let text = fs::read_to_string(&path)
+        .map_err(|e| CommandError::Io(format!("cannot read {}: {e}", path.display())))?;
+    let mut recovered = Project::from_json(&text)?;
+    // A backup is not where the work belongs, so saving must ask for a file
+    // instead of quietly writing into the app's data folder.
+    recovered.set_path(None);
+    *project = recovered;
+    Ok(Outcome::reset(format!(
+        "recovered unsaved work from {}; save it to keep it",
+        path.display()
+    )))
 }
