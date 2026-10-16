@@ -95,14 +95,15 @@ Hover any control and the hint bar at the top says what it does.
   (filter cutoff and resonance), edited in the event lane at the bottom
   alongside velocity and pan.
 - **Mixer** (F9, floating): faders with a dB curve, pan, on/solo, ten effect
-  slots, sends via the arrows under each strip. 35 built-in effects: filter,
+  slots, sends via the arrows under each strip. 37 built-in effects: filter,
   auto filter, vowel filter, 3-band, graphic and parametric EQ, bass boost,
   delay, multi-tap delay, stutter, reverb, convolution reverb (load an impulse
   file or pick a generated room), chorus, phaser, flanger, ring modulator,
   frequency shifter, pitch shifter, pitch corrector (snap a voice to a key and
   scale), tuner, vocoder, compressor and multiband
-  compressor (sidechain), limiter, noise gate, transient shaper, trance gate,
-  auto-pan, stereo tool, DC remover, distortion, overdrive, soft clipper,
+  compressor (sidechain), limiter, all-in-one dynamics (gate, compressor
+  and limiter), noise gate, transient shaper, trance gate,
+  auto-pan, stereo tool, stereo shaper (mixing matrix and Haas delay), DC remover, distortion, overdrive, soft clipper,
   waveshaper and bitcrusher. Click an effect to open its window: presets, and
   a graph you can drag (EQ points, crossovers, compressor knee, delay taps…).
   View → Spectrum analyzer (or click the toolbar scope) shows the master

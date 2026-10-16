@@ -8,6 +8,7 @@ use crate::convolution::Convolver;
 use crate::creative::{MultibandCompressor, PitchShifter, Stutter, Vocoder};
 use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
 use crate::pitch::{PitchCorrector, Tuner};
+use crate::toolbox::{Dynamics, StereoShaper};
 use crate::{Biquad, Chorus, Compressor, Delay, Distortion, Limiter, Reverb, Svf, SvfMode};
 
 /// Information every effect may need while processing.
@@ -158,6 +159,10 @@ pub enum Effect {
     PitchCorrect(PitchCorrector),
     /// See [`Tuner`].
     Tuner(Tuner),
+    /// See [`Dynamics`].
+    Dynamics(Dynamics),
+    /// See [`StereoShaper`].
+    StereoShaper(StereoShaper),
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -204,6 +209,8 @@ impl Effect {
             EffectKind::Convolution => Self::Convolution(Convolver::builtin("hall", sample_rate)),
             EffectKind::PitchCorrect => Self::PitchCorrect(PitchCorrector::new(sample_rate)),
             EffectKind::Tuner => Self::Tuner(Tuner::new(sample_rate)),
+            EffectKind::Dynamics => Self::Dynamics(Dynamics::default()),
+            EffectKind::StereoShaper => Self::StereoShaper(StereoShaper::new(sample_rate)),
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -247,6 +254,8 @@ impl Effect {
             Self::Convolution(_) => EffectKind::Convolution,
             Self::PitchCorrect(_) => EffectKind::PitchCorrect,
             Self::Tuner(_) => EffectKind::Tuner,
+            Self::Dynamics(_) => EffectKind::Dynamics,
+            Self::StereoShaper(_) => EffectKind::StereoShaper,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -308,6 +317,8 @@ impl Effect {
             Self::Convolution(fx) => fx.process(left, right, params, ctx),
             Self::PitchCorrect(fx) => fx.process(left, right, params, ctx),
             Self::Tuner(fx) => fx.process(left, right),
+            Self::Dynamics(fx) => fx.process(left, right, params, ctx),
+            Self::StereoShaper(fx) => fx.process(left, right, params, ctx),
             Self::Passthrough => {}
         }
     }
@@ -345,6 +356,8 @@ impl Effect {
             Self::Convolution(fx) => fx.reset(),
             Self::PitchCorrect(fx) => fx.reset(),
             Self::Tuner(fx) => fx.reset(),
+            Self::Dynamics(fx) => *fx = Dynamics::default(),
+            Self::StereoShaper(fx) => fx.reset(),
             Self::BassBoost(fx) => *fx = BassBoost::default(),
             Self::Overdrive(fx) => *fx = Overdrive::default(),
             Self::DcBlock(fx) => *fx = DcBlock::default(),

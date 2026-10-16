@@ -17,6 +17,7 @@ pub mod response;
 mod reverb;
 mod sample;
 mod time;
+pub mod toolbox;
 mod util;
 
 pub use dynamics::{Compressor, Distortion, Limiter};

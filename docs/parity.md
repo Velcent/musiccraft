@@ -83,6 +83,8 @@ of contents; see `docs/clean-room.md`.
 | Effects | DC remover, ring modulator, frequency shifter | `fx:dc_block` `fx:ring_mod` `fx:freq_shift` |
 | Effects | Vowel (formant) filter and LFO/envelope auto filter | `fx:formant` `fx:auto_filter` |
 | Effects | Noise gate and transient shaper | `fx:noise_gate` `fx:transient` |
+| Effects | All-in-one dynamics (gate, compressor, limiter) | `fx:dynamics` |
+| Effects | Stereo shaper (mixing matrix, inter-channel delay) | `fx:stereo_shaper` |
 | Effects | Multi-tap delay and stutter | `fx:multi_tap` `fx:stutter` |
 | Effects | Multiband compressor | `fx:multiband` |
 | Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |

@@ -58,6 +58,7 @@
 | `flanger` | rate Hz, depth ms, delay ms, feedback (−0.95–0.95), mix |
 | `bitcrusher` | bits (1–16), downsample (hold every 1–32 samples), mix, output dB |
 | `stereo` | width (0 mono – 2 extra wide, mid/side), balance, invert left, invert right |
+| `stereo_shaper` | left_to_left, right_to_left, left_to_right, right_to_right (−1–1; each output side is a mix of both inputs, so swapping sides, mono from one side and polarity flips are all settings), delay ms (−20–20: positive delays the right side, negative the left, for Haas widening), output dB |
 | `gate` | rate (1/32 note – 1 bar per step), duty (open share of a step), depth, smooth ms, steps (16-step on/off pattern as a number, bit 0 = first step) |
 | `autopan` | rate (1/32 note – 1 bar per cycle), depth, shape (sine, triangle, square) |
 | `graphic_eq` | seven peak bands at 63, 160, 400, 1k, 2.5k, 6.3k, 16k Hz (±18 dB each), output dB |
@@ -71,6 +72,7 @@
 | `freq_shift` | shift Hz (−2000–2000; every frequency moves by the same amount, via a Hilbert transformer), mix |
 | `formant` | vowel (0 a – 4 u, fractional values morph), shift semitones, resonance, mix |
 | `auto_filter` | mode, cutoff Hz, resonance, rate (tempo-synced LFO), depth octaves, envelope octaves (input level opens or closes the filter), mix |
+| `dynamics` | an all-in-one chain of noise gate → compressor → limiter: gate_threshold dB (at its minimum, −100, the gate is off), gate_attack / gate_hold / gate_release ms, gate_range dB; comp_threshold dB, comp_ratio (1 = off), comp_attack / comp_release ms, comp_makeup dB; limit_gain dB (before the limiter), limit_ceiling dB, limit_release ms. Each stage behaves exactly like the separate `noise_gate`, `compressor` and `limiter`; by default only the limiter acts. Its window draws the combined static curve; drag the knee for the compressor threshold and the right-hand point for the ceiling |
 | `noise_gate` | threshold dB, attack ms, hold ms, release ms, range dB (attenuation while closed) |
 | `transient` | attack (−1 soften – 1 boost), sustain (−1–1), output dB; from the difference of a fast and a slow envelope |
 | `multi_tap` | four taps of time (beats) and level, alternating left/right, feedback, mix, damping |
@@ -168,7 +170,8 @@ Ranges and defaults are defined in `musiccraft-params`.
   all-pass Hilbert transformer coefficients; vowel formant frequencies are
   textbook averages (Peterson & Barney style tables). The range of effect types
   (graphic and parametric EQ, gate, transient processing, multi-tap delay,
-  waveshaping, frequency shifting) mirrors the categories in the FL Studio
+  waveshaping, frequency shifting, an all-in-one dynamics unit, a stereo
+  mixing matrix) mirrors the categories in the FL Studio
   manual's effects list; the designs are ours. Convolution is uniformly
   partitioned overlap-save (textbook); the vocoder is a classic channel
   vocoder (band-pass filter banks and envelope followers); the pitch shifter is

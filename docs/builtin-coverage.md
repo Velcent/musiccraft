@@ -52,7 +52,7 @@ Status:
 | Fruity Bass Boost | `bass_boost` | covered | |
 | Fruity Compressor | `compressor` (with sidechain) | covered | |
 | Fruity Multiband Compressor | `multiband` | covered | |
-| Fruity Limiter | `limiter`, `compressor`, `noise_gate` | covered | The reference combines all three in one window |
+| Fruity Limiter | `dynamics` (gate, compressor and limiter in one insert); also `limiter`, `compressor`, `noise_gate` | covered | |
 | Maximus | `multiband` + `limiter` | partial | No combined multiband limiter in one effect |
 | Soundgoodizer | `multiband` "Upfront" preset | partial | |
 | Transient Processor | `transient` | covered | |
@@ -70,7 +70,8 @@ Status:
 | Fruity Flanger, Flangus | `flanger` | covered | |
 | Fruity Phaser, Vintage Phaser | `phaser` | covered | |
 | Fruity Pan O Matic | `autopan` | covered | |
-| Fruity Stereo Enhancer, Stereo Shaper, Balance, Center, Phase Inverter | `stereo`, `dc_block` | covered | |
+| Fruity Stereo Enhancer, Balance, Center, Phase Inverter | `stereo`, `dc_block` | covered | |
+| Fruity Stereo Shaper | `stereo_shaper` (left/right mixing matrix, inter-channel delay) | covered | |
 | Fruity Vocoder, Vocodex | `vocoder` (sidechain modulator) | covered | 16 fixed bands |
 | Frequency Shifter | `freq_shift` | covered | Ring-mod mode is the separate `ring_mod` |
 | Pitch Shifter | `pitch_shift` | covered | |

@@ -167,6 +167,20 @@ pub fn noise_gate_db(params: &[f32], input_db: f32) -> f32 {
     }
 }
 
+/// Output level (dB) of the dynamics chain's static curve: the gate (when
+/// on), then the compressor, then the limiter.
+#[must_use]
+pub fn dynamics_db(params: &[f32], input_db: f32) -> f32 {
+    use crate::toolbox::Dynamics;
+    let gated = if Dynamics::gate_on(params) {
+        noise_gate_db(Dynamics::gate_params(params), input_db)
+    } else {
+        input_db
+    };
+    let compressed = compressor_db(Dynamics::compressor_params(params), gated);
+    limiter_db(Dynamics::limiter_params(params), compressed)
+}
+
 /// A drum-like hit's level envelope before and after the transient shaper,
 /// `points` values each over 300 ms.
 #[must_use]

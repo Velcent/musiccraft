@@ -1257,6 +1257,89 @@ const CONVOLUTION: &[Preset] = &[
     preset("Dark", &[("mix", 0.35), ("high_cut", 3_000.0)]),
 ];
 
+const DYNAMICS: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Glue",
+        &[
+            ("comp_threshold", -18.0),
+            ("comp_ratio", 2.0),
+            ("comp_attack", 30.0),
+            ("comp_release", 200.0),
+            ("comp_makeup", 2.0),
+        ],
+    ),
+    preset(
+        "Loud",
+        &[
+            ("comp_threshold", -12.0),
+            ("comp_ratio", 4.0),
+            ("comp_attack", 5.0),
+            ("comp_makeup", 3.0),
+            ("limit_gain", 6.0),
+            ("limit_ceiling", -0.1),
+        ],
+    ),
+    preset(
+        "Tight drums",
+        &[
+            ("gate_threshold", -40.0),
+            ("gate_hold", 10.0),
+            ("gate_release", 60.0),
+            ("comp_threshold", -20.0),
+            ("comp_ratio", 3.0),
+            ("comp_attack", 15.0),
+            ("comp_release", 80.0),
+        ],
+    ),
+    preset(
+        "Clean vocal",
+        &[
+            ("gate_threshold", -50.0),
+            ("gate_range", -20.0),
+            ("comp_threshold", -24.0),
+            ("comp_ratio", 3.0),
+            ("comp_makeup", 6.0),
+        ],
+    ),
+];
+
+const STEREO_SHAPER: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Swap sides",
+        &[
+            ("left_to_left", 0.0),
+            ("right_to_left", 1.0),
+            ("left_to_right", 1.0),
+            ("right_to_right", 0.0),
+        ],
+    ),
+    preset(
+        "Mono",
+        &[
+            ("left_to_left", 0.5),
+            ("right_to_left", 0.5),
+            ("left_to_right", 0.5),
+            ("right_to_right", 0.5),
+        ],
+    ),
+    preset(
+        "Left only",
+        &[("left_to_right", 1.0), ("right_to_right", 0.0)],
+    ),
+    preset("Haas wide", &[("delay", 12.0)]),
+    preset(
+        "Wider",
+        &[
+            ("left_to_left", 0.8),
+            ("right_to_left", -0.3),
+            ("left_to_right", -0.3),
+            ("right_to_right", 0.8),
+        ],
+    ),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1296,6 +1379,8 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::Convolution => CONVOLUTION,
         EffectKind::PitchCorrect => PITCH_CORRECT,
         EffectKind::Tuner => TUNER,
+        EffectKind::Dynamics => DYNAMICS,
+        EffectKind::StereoShaper => STEREO_SHAPER,
         EffectKind::Plugin => &[],
     }
 }

@@ -465,13 +465,17 @@ pub enum EffectKind {
     PitchCorrect,
     /// Shows the detected pitch; leaves audio untouched.
     Tuner,
+    /// Noise gate, compressor and limiter in series.
+    Dynamics,
+    /// Left/right mixing matrix with an inter-channel delay.
+    StereoShaper,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 35] = [
+pub const EFFECT_KINDS: [EffectKind; 37] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -495,12 +499,14 @@ pub const EFFECT_KINDS: [EffectKind; 35] = [
     EffectKind::Compressor,
     EffectKind::Multiband,
     EffectKind::Limiter,
+    EffectKind::Dynamics,
     EffectKind::NoiseGate,
     EffectKind::Transient,
     EffectKind::SoftClipper,
     EffectKind::Gate,
     EffectKind::Autopan,
     EffectKind::Stereo,
+    EffectKind::StereoShaper,
     EffectKind::DcBlock,
     EffectKind::Distortion,
     EffectKind::Overdrive,
@@ -571,6 +577,31 @@ const NOISE_GATE_PARAMS: &[ParamSpec] = &[
     spec("hold", 0.0, 500.0, 20.0, "ms"),
     spec("release", 1.0, 2_000.0, 100.0, "ms"),
     spec("range", -80.0, 0.0, -80.0, "dB"),
+];
+
+const DYNAMICS_PARAMS: &[ParamSpec] = &[
+    spec("gate_threshold", -100.0, 0.0, -100.0, "dB"),
+    spec("gate_attack", 0.01, 50.0, 1.0, "ms"),
+    spec("gate_hold", 0.0, 500.0, 20.0, "ms"),
+    spec("gate_release", 1.0, 2_000.0, 100.0, "ms"),
+    spec("gate_range", -80.0, 0.0, -80.0, "dB"),
+    spec("comp_threshold", -60.0, 0.0, -12.0, "dB"),
+    spec("comp_ratio", 1.0, 20.0, 1.0, ":1"),
+    spec("comp_attack", 0.1, 200.0, 10.0, "ms"),
+    spec("comp_release", 5.0, 2_000.0, 120.0, "ms"),
+    spec("comp_makeup", 0.0, 24.0, 0.0, "dB"),
+    spec("limit_gain", 0.0, 24.0, 0.0, "dB"),
+    spec("limit_ceiling", -12.0, 0.0, -0.3, "dB"),
+    spec("limit_release", 10.0, 1_000.0, 80.0, "ms"),
+];
+
+const STEREO_SHAPER_PARAMS: &[ParamSpec] = &[
+    spec("left_to_left", -1.0, 1.0, 1.0, ""),
+    spec("right_to_left", -1.0, 1.0, 0.0, ""),
+    spec("left_to_right", -1.0, 1.0, 0.0, ""),
+    spec("right_to_right", -1.0, 1.0, 1.0, ""),
+    spec("delay", -20.0, 20.0, 0.0, "ms"),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -881,6 +912,8 @@ impl EffectKind {
             Self::Convolution => "convolution",
             Self::PitchCorrect => "pitch_correct",
             Self::Tuner => "tuner",
+            Self::Dynamics => "dynamics",
+            Self::StereoShaper => "stereo_shaper",
             Self::Plugin => "plugin",
         }
     }
@@ -930,6 +963,8 @@ impl EffectKind {
             Self::Convolution => CONVOLUTION_PARAMS,
             Self::PitchCorrect => PITCH_CORRECT_PARAMS,
             Self::Tuner => TUNER_PARAMS,
+            Self::Dynamics => DYNAMICS_PARAMS,
+            Self::StereoShaper => STEREO_SHAPER_PARAMS,
             Self::Plugin => &[],
         }
     }

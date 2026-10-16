@@ -392,6 +392,60 @@ fn knobs(
     });
 }
 
+/// The stereo shaper's matrix: a line from each input to each output whose
+/// thickness is the gain (red when inverted), and the delayed side marked.
+fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effect: &EffectSlot) {
+    let inputs = [
+        pos2(rect.left() + rect.width() * 0.25, rect.top() + 18.0),
+        pos2(rect.left() + rect.width() * 0.75, rect.top() + 18.0),
+    ];
+    let outputs = [
+        pos2(inputs[0].x, rect.bottom() - 18.0),
+        pos2(inputs[1].x, rect.bottom() - 18.0),
+    ];
+    let routes = [
+        (0, 0, "left_to_left"),
+        (1, 0, "right_to_left"),
+        (0, 1, "left_to_right"),
+        (1, 1, "right_to_right"),
+    ];
+    for (from, to, name) in routes {
+        let gain = value(effect, name);
+        if gain.abs() < 0.01 {
+            continue;
+        }
+        let tint = if gain < 0.0 { theme::DANGER } else { color };
+        painter.line_segment(
+            [inputs[from], outputs[to]],
+            Stroke::new(1.0 + gain.abs() * 4.0, tint),
+        );
+    }
+    let delay = value(effect, "delay");
+    for (i, label) in ["L", "R"].into_iter().enumerate() {
+        let font = egui::FontId::proportional(11.0);
+        painter.text(
+            inputs[i],
+            egui::Align2::CENTER_BOTTOM,
+            label,
+            font.clone(),
+            theme::TEXT,
+        );
+        let late = (i == 1 && delay > 0.0) || (i == 0 && delay < 0.0);
+        let text = if late {
+            format!("{label} +{:.1} ms", delay.abs())
+        } else {
+            label.to_owned()
+        };
+        painter.text(
+            outputs[i],
+            egui::Align2::CENTER_TOP,
+            text,
+            font,
+            theme::TEXT,
+        );
+    }
+}
+
 /// A parameter name for display: `low_gain` → `Low gain`.
 pub(crate) fn pretty(name: &str) -> String {
     let mut text = name.replace('_', " ");
@@ -567,7 +621,10 @@ fn graph(
                 hint = "Drag the point: left/right sets the cutoff, up/down the resonance";
             }
         }
-        EffectKind::Compressor | EffectKind::Limiter | EffectKind::NoiseGate => {
+        EffectKind::Compressor
+        | EffectKind::Limiter
+        | EffectKind::NoiseGate
+        | EffectKind::Dynamics => {
             let (top, bottom) = (6.0, -60.0);
             let map = |db_in: f32, db_out: f32| {
                 pos2(
@@ -596,6 +653,8 @@ fn graph(
                     response::compressor_db(&effect.values, db)
                 } else if effect.kind == EffectKind::NoiseGate {
                     response::noise_gate_db(&effect.values, db).max(bottom)
+                } else if effect.kind == EffectKind::Dynamics {
+                    response::dynamics_db(&effect.values, db).max(bottom)
                 } else {
                     response::limiter_db(&effect.values, db)
                 }
@@ -615,6 +674,20 @@ fn graph(
                 let threshold = value(effect, "threshold");
                 handles.push((map(threshold, transfer(threshold)), Some("threshold"), None));
                 hint = "Input level across, output level up. Drag the knee to set the threshold";
+            } else if effect.kind == EffectKind::Dynamics {
+                let threshold = value(effect, "comp_threshold");
+                handles.push((
+                    map(threshold, transfer(threshold)),
+                    Some("comp_threshold"),
+                    None,
+                ));
+                let ceiling = value(effect, "limit_ceiling");
+                handles.push((
+                    pos2(rect.right() - 12.0, db_y(rect, ceiling, top, bottom)),
+                    None,
+                    Some("limit_ceiling"),
+                ));
+                hint = "Gate, compressor and limiter combined. Drag the knee for the compressor threshold, the right point for the ceiling";
             } else {
                 let ceiling = value(effect, "ceiling");
                 handles.push((
@@ -821,6 +894,10 @@ fn graph(
                 );
             }
             hint = "Lines show how far apart left and right sit; red means phase inverted";
+        }
+        EffectKind::StereoShaper => {
+            stereo_shaper_graph(&painter, rect, color, effect);
+            hint = "Where each output side's sound comes from (red is phase inverted); the delay shifts one side later";
         }
         EffectKind::Reverb | EffectKind::Chorus | EffectKind::Phaser | EffectKind::Flanger => {
             let points: Vec<Pos2> = if effect.kind == EffectKind::Reverb {
@@ -1281,6 +1358,17 @@ fn graph(
                         push("threshold", db);
                     }
                     EffectKind::Limiter => push("ceiling", y_db(rect, pointer.y, 6.0, -60.0)),
+                    EffectKind::Dynamics => {
+                        if let Some(name) = x_param {
+                            push(
+                                name,
+                                -60.0 + 66.0 * (pointer.x - rect.left()) / rect.width(),
+                            );
+                        }
+                        if let Some(name) = y_param {
+                            push(name, y_db(rect, pointer.y, 6.0, -60.0));
+                        }
+                    }
                     EffectKind::MultiTap => {
                         if let Some(name) = x_param {
                             push(name, (pointer.x - rect.left()) / rect.width() * TAP_SPAN);
