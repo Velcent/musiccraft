@@ -57,6 +57,10 @@ pub fn show(
                         );
                     }
                 });
+            if state.graph.is_some() {
+                ui.separator();
+                graph_editor(ui, state, project, actions);
+            }
             ui.separator();
             add_menu(ui, frame.plugins, actions);
         });
@@ -145,6 +149,16 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                 "pattern.set_length",
                 [(project.current_pattern + 1).to_string(), steps.to_string()],
             );
+        }
+        let mut open = state.graph.is_some();
+        if ui
+            .toggle_value(&mut open, "Graph")
+            .on_hover_text(
+                "Edit velocity, pan, fine pitch and more per step of the selected channel",
+            )
+            .changed()
+        {
+            state.graph = open.then_some(crate::piano_roll::LaneMode::Velocity);
         }
         ui.label(RichText::new("swing").color(theme::TEXT_DIM))
             .on_hover_text("Project swing; each channel's swing mix scales it");
@@ -624,5 +638,97 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     }
     if pressed(shift_ctrl, Key::ArrowRight) {
         run(actions, "step.shift", [number, "1".to_owned()]);
+    }
+}
+
+/// The step graph editor: one bar per step of the selected channel, showing
+/// the property of the note that starts on that step. Dragging a bar sets it;
+/// one drag is one undo step.
+fn graph_editor(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    actions: &mut Vec<Action>,
+) {
+    use crate::piano_roll::LaneMode;
+    let Some(mode) = state.graph else {
+        return;
+    };
+    let channel = state.selected_channel;
+    let Some(id) = project.channels.get(channel).map(|c| c.id) else {
+        ui.label(RichText::new("Select a channel").color(theme::TEXT_DIM));
+        return;
+    };
+    let pattern = project.current_pattern();
+    let steps = (pattern.length_ticks() / TICKS_PER_STEP).max(1);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(&project.channels[channel].name).strong());
+        for m in LaneMode::ALL {
+            if ui.selectable_label(mode == m, m.label()).clicked() {
+                state.graph = Some(m);
+            }
+        }
+    });
+    let size = egui::vec2(ui.available_width().max(120.0), 70.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+    state.graph_view = Some((rect, steps));
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 3.0, theme::PANEL_DARK);
+    let width = rect.width() / steps as f32;
+    let note_at = |step: u32| {
+        pattern
+            .notes_of(id)
+            .filter(|n| n.start == step * TICKS_PER_STEP)
+            .max_by_key(|n| n.key)
+            .copied()
+    };
+    let step_at = |x: f32| ((x - rect.left()) / width).floor().max(0.0) as u32;
+    let unit = |y: f32| ((rect.bottom() - 3.0 - y) / (rect.height() - 6.0)).clamp(0.0, 1.0);
+    if response.drag_started() || response.clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            state.graph_drag = note_at(step_at(pos.x).min(steps - 1));
+            state.begin_gesture();
+        }
+    }
+    let mut shown = None;
+    if let (Some(note), Some(pos)) = (state.graph_drag, response.interact_pointer_pos()) {
+        if response.dragged() || response.clicked() {
+            let t = unit(pos.y);
+            shown = Some((note.start, t));
+            if let Some(invocation) = mode.invocation(channel, &note, t) {
+                actions.push(Action::Coalesced(invocation, state.gesture()));
+            }
+        }
+    }
+    if response.drag_stopped() || (!response.dragged() && !response.clicked()) {
+        state.graph_drag = None;
+    }
+    let color = theme::palette(channel);
+    let base = if mode.centred() {
+        rect.center().y
+    } else {
+        rect.bottom() - 3.0
+    };
+    for step in 0..steps {
+        let x0 = rect.left() + width * step as f32;
+        if step % 4 == 0 {
+            painter.line_segment(
+                [egui::pos2(x0, rect.top()), egui::pos2(x0, rect.bottom())],
+                egui::Stroke::new(1.0, theme::GRID_BEAT),
+            );
+        }
+        let Some(note) = note_at(step) else {
+            continue;
+        };
+        let t = match shown {
+            Some((start, t)) if start == note.start => t,
+            _ => mode.value(&note),
+        };
+        let tip = rect.bottom() - 3.0 - t * (rect.height() - 6.0);
+        let bar = egui::Rect::from_two_pos(
+            egui::pos2(x0 + 2.0, base),
+            egui::pos2(x0 + (width - 2.0).max(3.0), tip),
+        );
+        painter.rect_filled(bar, 1.0, color);
     }
 }

@@ -319,6 +319,27 @@ fn number_keys_select_patterns_or_mute_channels_over_the_rack() {
 }
 
 #[test]
+fn the_step_graph_editor_edits_the_note_under_a_bar() {
+    let mut h = Harness::new(&["channel.add_synth", "step.toggle 1 0", "step.toggle 1 4"]);
+    h.state.windows.channel_rack = true;
+    h.state.graph = Some(crate::piano_roll::LaneMode::Velocity);
+    h.settle();
+    let (rect, steps) = h.state.graph_view.expect("graph drawn");
+    let width = rect.width() / steps as f32;
+    // High on the bar of step 4: a loud velocity for the note there.
+    let found = h.click(
+        pos2(rect.left() + width * 4.5, rect.top() + 8.0),
+        PointerButton::Primary,
+    );
+    assert!(
+        found
+            .iter()
+            .any(|c| c.starts_with("note.set_velocity 1 96t 60")),
+        "{found:?}"
+    );
+}
+
+#[test]
 fn shortcuts_run_commands_but_not_while_typing() {
     let mut h = Harness::new(&[]);
     h.settle();

@@ -26,6 +26,11 @@
   them; Alt+C, Alt+Delete and Alt+Up/Down clone, delete and move the selected
   channel; Ctrl+L runs `channel.route_free`; Shift+Ctrl+Left/Right shift its
   steps.
+- **Step graph editor**: the rack's Graph toggle opens a strip under the rows
+  for the selected channel, one bar per step of the pattern, showing the note
+  that starts on that step (the highest, when several do): velocity, pan,
+  release, fine pitch, Mod X or Mod Y. Dragging a bar sets that note's value
+  through the usual note commands; one drag is one undo step.
 - **Display filter groups**: `channel.set_group <n> [group]` (undoable,
   saved as `"group"`; no name removes it) puts a channel in a named group. The
   rack's group menu (shown once any channel has a group) shows All, one
@@ -254,3 +259,6 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   echo delay). Units, ranges and rules are our own.
 - Display filter groups follow the channel rack filter groups described in the
   FL Studio online manual, "Channel Rack". "Unsorted" and the menu are our own.
+- The step graph editor follows the channel rack graph editor described in the
+  FL Studio online manual, "Channel Rack" (graph editor). Its properties match
+  our piano roll lane; the layout is our own.

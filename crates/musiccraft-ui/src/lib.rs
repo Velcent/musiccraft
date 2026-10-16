@@ -218,6 +218,12 @@ pub struct UiState {
     pub taps: Vec<f64>,
     /// The channel rack shows only this display filter group (`None`: all).
     pub rack_group: Option<String>,
+    /// The channel rack's step graph editor: open, what it edits, and the
+    /// step being dragged.
+    pub(crate) graph: Option<piano_roll::LaneMode>,
+    pub(crate) graph_drag: Option<musiccraft_project::Note>,
+    /// Where the graph strip was last drawn and its step count (for tests).
+    pub(crate) graph_view: Option<(egui::Rect, u32)>,
     /// While recording in song mode, also capture the audio input.
     pub record_audio: bool,
     /// Text that filters the plugin parameter list.
@@ -283,6 +289,9 @@ impl UiState {
             typing_keyboard: false,
             taps: Vec::new(),
             rack_group: None,
+            graph: None,
+            graph_drag: None,
+            graph_view: None,
             record_audio: false,
             plugin_filter: String::new(),
             hint: None,

@@ -1824,7 +1824,7 @@ pub(crate) enum LaneMode {
 }
 
 impl LaneMode {
-    const ALL: [LaneMode; 6] = [
+    pub(crate) const ALL: [LaneMode; 6] = [
         LaneMode::Velocity,
         LaneMode::Pan,
         LaneMode::Release,
@@ -1833,7 +1833,7 @@ impl LaneMode {
         LaneMode::ModY,
     ];
 
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Velocity => "Velocity",
             Self::Pan => "Pan",
@@ -1845,11 +1845,11 @@ impl LaneMode {
     }
 
     /// Whether the lane's neutral value is in the middle.
-    fn centred(self) -> bool {
+    pub(crate) fn centred(self) -> bool {
         !matches!(self, Self::Velocity)
     }
 
-    fn value(self, note: &Note) -> f32 {
+    pub(crate) fn value(self, note: &Note) -> f32 {
         let p = note.props;
         match self {
             Self::Velocity => f32::from(note.velocity.max(1) - 1) / 126.0,
@@ -1861,7 +1861,7 @@ impl LaneMode {
         }
     }
 
-    fn invocation(self, channel: usize, note: &Note, t: f32) -> Option<Invocation> {
+    pub(crate) fn invocation(self, channel: usize, note: &Note, t: f32) -> Option<Invocation> {
         // Snap to the neutral value near the middle of centred lanes.
         let snap = |v: i32, mid: i32, near: i32| if (v - mid).abs() <= near { mid } else { v };
         let p = note.props;

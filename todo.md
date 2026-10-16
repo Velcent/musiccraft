@@ -71,7 +71,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 
 ## 3. Missing: lower priority
 
-- [ ] Per-step graph editor (pitch, pan, velocity per step).
+- [x] Per-step graph editor (pitch, pan, velocity per step).
 - [x] Per-channel time shift, gate and note echo.
 - [x] Piano roll tools:
   - [x] Limit.
