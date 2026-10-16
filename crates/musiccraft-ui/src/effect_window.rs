@@ -1465,7 +1465,9 @@ fn graph(
         EffectKind::Vocoder => {
             frequency_grid(&painter, rect);
             let shift = 2.0_f32.powf(value(effect, "shift") / 12.0);
-            for f in musiccraft_dsp::creative::vocoder_freqs() {
+            let (bands, low, high) = musiccraft_dsp::creative::vocoder_layout(&effect.values);
+            for f in (0..bands).map(|i| musiccraft_dsp::creative::vocoder_freq(i, bands, low, high))
+            {
                 let x = freq_x(rect, f);
                 let xs = freq_x(rect, (f * shift).min(F_HIGH));
                 painter.line_segment(

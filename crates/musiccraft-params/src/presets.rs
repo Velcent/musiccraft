@@ -1364,6 +1364,11 @@ const VOCODER: &[Preset] = &[
     preset("Whisper", &[("noise", 0.8), ("bandwidth", 0.3)]),
     preset("Deep", &[("shift", -5.0)]),
     preset("Chipmunk", &[("shift", 7.0)]),
+    preset("Fine (48 bands)", &[("bands", 48.0), ("bandwidth", 0.7)]),
+    preset(
+        "Coarse (8 bands)",
+        &[("bands", 8.0), ("low", 200.0), ("high", 5_000.0)],
+    ),
 ];
 
 const PITCH_SHIFT: &[Preset] = &[

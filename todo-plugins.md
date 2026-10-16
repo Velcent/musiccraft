@@ -73,7 +73,7 @@ new UI editor or large DSP.
 - [ ] Newtone / Newtime → offline note and time editing of audio (needs an
   audio editor view).
 - [ ] Edison → an audio editor/recorder window (currently "not planned").
-- [ ] Vocodex → more bands (up to 100), band distribution and per-band
+- [x] Vocodex → more bands (up to 100), band distribution and per-band
   envelopes for `vocoder`.
 
 ## Generators

@@ -73,7 +73,7 @@ Status:
 | Fruity Pan O Matic | `autopan` | covered | |
 | Fruity Stereo Enhancer, Balance, Center, Phase Inverter | `stereo`, `dc_block` | covered | |
 | Fruity Stereo Shaper | `stereo_shaper` (left/right mixing matrix, inter-channel delay) | covered | |
-| Fruity Vocoder, Vocodex | `vocoder` (sidechain modulator) | covered | 16 fixed bands |
+| Fruity Vocoder, Vocodex | `vocoder` (sidechain modulator) | covered | 4–64 bands over a chosen range |
 | Frequency Shifter | `freq_shift` | covered | Ring-mod mode is the separate `ring_mod` |
 | Pitch Shifter | `pitch_shift` | covered | |
 | Pitcher | `pitch_correct` (scale or a followed channel's notes, two harmony voices) | covered | |

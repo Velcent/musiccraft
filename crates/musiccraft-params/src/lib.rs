@@ -938,6 +938,9 @@ const VOCODER_PARAMS: &[ParamSpec] = &[
     spec("noise", 0.0, 1.0, 0.1, ""),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 12.0, 0.0, "dB"),
+    int_spec("bands", 4.0, 64.0, 16.0),
+    spec("low", 40.0, 1_000.0, 120.0, "Hz"),
+    spec("high", 2_000.0, 16_000.0, 7_500.0, "Hz"),
 ];
 
 const PITCH_SHIFT_PARAMS: &[ParamSpec] = &[
