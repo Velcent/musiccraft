@@ -7,9 +7,9 @@ use musiccraft_commands::{Invocation, Registry, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
 use musiccraft_render::PluginHost;
 
-/// The CLAP plugin host, shared by every session in the process. Plugin
-/// folders are scanned on first use. Setting `MUSICCRAFT_NO_PLUGINS` turns
-/// hosting off (plugin channels then stay silent and say so).
+/// The plugin host (CLAP and VST3), shared by every session in the process.
+/// Plugin folders are scanned on first use. Setting `MUSICCRAFT_NO_PLUGINS`
+/// turns hosting off (plugin channels then stay silent and say so).
 #[must_use]
 pub fn plugin_host() -> Option<PluginHost> {
     static HOST: std::sync::OnceLock<Option<PluginHost>> = std::sync::OnceLock::new();
@@ -17,7 +17,10 @@ pub fn plugin_host() -> Option<PluginHost> {
         if std::env::var_os("MUSICCRAFT_NO_PLUGINS").is_some() {
             return None;
         }
-        let host: PluginHost = std::sync::Arc::new(musiccraft_clap::ClapHost::new());
+        let clap: PluginHost = std::sync::Arc::new(musiccraft_clap::ClapHost::new());
+        let vst3: PluginHost = std::sync::Arc::new(musiccraft_vst3::Vst3Host::new());
+        let host: PluginHost =
+            std::sync::Arc::new(musiccraft_render::CombinedHost::new(vec![clap, vst3]));
         Some(host)
     })
     .clone()

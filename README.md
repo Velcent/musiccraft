@@ -73,7 +73,7 @@ Hover any control and the hint bar at the top says what it does.
   types, LFO, presets), FM synth (4 operators), keys (piano, e-piano, organ),
   additive synth, granular sampler, drum synth (kick, snare, hat, tom, clap),
   16-pad drum kit, plucked string, layer (one channel plays several), sampler
-  with loop slicing, and CLAP plugins. Every channel has an arpeggiator.
+  with loop slicing, and CLAP and VST3 plugins. Every channel has an arpeggiator.
 - **Playlist** (main workspace): paint patterns, automation or audio clips;
   click, Shift+click or Ctrl+drag to select; drag to move or resize; Delete,
   Ctrl+B duplicate. Click the ruler to seek, Shift+drag it to set a loop,
@@ -128,11 +128,13 @@ Hover any control and the hint bar at the top says what it does.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
 - **MIDI Out channels** (rack → More instruments) send their notes to
   external gear on a MIDI channel; pick the output port in Settings → MIDI.
-- **Plugins (CLAP)**: instruments and effects from `~/.clap`, `/usr/lib/clap`
-  and `CLAP_PATH` show up in the browser, the rack's add menu and mixer slots.
-  Each gets a parameter panel and can open its own window; parameters and
-  state are saved in the project and exports render them. Tested with
-  Surge XT and LSP plugins.
+- **Plugins (CLAP and VST3)**: instruments and effects from `~/.clap`,
+  `/usr/lib/clap` and `CLAP_PATH`, and from `~/.vst3`, `/usr/lib/vst3` and
+  `VST3_PATH`, show up in the browser, the rack's add menu and mixer slots.
+  Each gets a parameter panel and can open its own window (VST3 windows on
+  Linux for now); parameters and state are saved in the project and exports
+  render them. CLAP is tested with Surge XT and LSP plugins; VST3 with the
+  bundled test plugins (third-party VST3 plugins are not tested yet).
 
 Built-in sounds (`builtin:kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`,
 `rim`, `crash`) are synthesized at start-up; WAV files can be loaded as samples.

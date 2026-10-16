@@ -35,9 +35,10 @@ Inside anything that runs on the audio thread (`musiccraft-engine`, `musiccraft-
 - Communicate with the rest of the app only through lock-free, fixed-size messages
   (plain `Copy` data) and pre-allocated buffers.
 - `unsafe` is forbidden workspace-wide. If a future dependency forces an exception,
-  raise it with the user first. The one approved exception (plugin hosting, approved
-  by the user on 2026-10-10) is `musiccraft-clap` plus its test fixture
-  `musiccraft-clap-testplugin`: every `unsafe` block there carries a `SAFETY:`
+  raise it with the user first. The approved exceptions (plugin hosting: CLAP
+  approved by the user on 2026-10-10, VST3 on 2026-10-16) are `musiccraft-clap`
+  and `musiccraft-vst3` plus their test fixtures `musiccraft-clap-testplugin` and
+  `musiccraft-vst3-testplugin`: every `unsafe` block there carries a `SAFETY:`
   comment (enforced by clippy), and nothing else may use `unsafe`.
 
 ## Architecture rules
@@ -78,7 +79,7 @@ cargo test --workspace
 - [x] M5 Playlist with patterns and clips
 - [x] M6 Project save/load, WAV export
 - [x] M7 MCP server
-- [x] M7 Plugin hosting, CLAP (`docs/spec/plugins.md`); VST3 is a `todo`
+- [x] M7 Plugin hosting, CLAP and VST3 (`docs/spec/plugins.md`)
 - [x] M8 Parity checklist (`cargo xtask parity`) and UI polish
 
 Open items are tracked as `todo` rows in `docs/parity.md`.

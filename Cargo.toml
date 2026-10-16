@@ -21,6 +21,8 @@ musiccraft-audio = { path = "crates/musiccraft-audio" }
 musiccraft-cli = { path = "crates/musiccraft-cli" }
 musiccraft-clap = { path = "crates/musiccraft-clap" }
 musiccraft-formula = { path = "crates/musiccraft-formula" }
+musiccraft-plugin-window = { path = "crates/musiccraft-plugin-window" }
+musiccraft-vst3 = { path = "crates/musiccraft-vst3" }
 cpal = "0.18"
 rtrb = "0.4"
 serde = { version = "1", features = ["derive"] }

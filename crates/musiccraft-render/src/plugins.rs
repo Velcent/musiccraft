@@ -172,6 +172,60 @@ pub trait PluginFactory: Send + Sync {
 /// A shared plugin factory.
 pub type PluginHost = Arc<dyn PluginFactory>;
 
+/// Several plugin factories (for example CLAP and VST3) offered as one: the
+/// catalogs are merged and sorted by name, and each plugin is created by the
+/// factory that listed it.
+pub struct CombinedHost {
+    hosts: Vec<PluginHost>,
+}
+
+impl CombinedHost {
+    /// Combines `hosts`; an id listed by more than one belongs to the first.
+    #[must_use]
+    pub fn new(hosts: Vec<PluginHost>) -> Self {
+        Self { hosts }
+    }
+}
+
+impl PluginFactory for CombinedHost {
+    fn catalog(&self) -> Vec<PluginInfo> {
+        let mut all: Vec<PluginInfo> = Vec::new();
+        for host in &self.hosts {
+            for info in host.catalog() {
+                if !all.iter().any(|p| p.id == info.id) {
+                    all.push(info);
+                }
+            }
+        }
+        all.sort_by_key(|p| p.name.to_lowercase());
+        all
+    }
+
+    fn rescan(&self) {
+        for host in &self.hosts {
+            host.rescan();
+        }
+    }
+
+    fn set_extra_folders(&self, folders: Vec<PathBuf>) {
+        for host in &self.hosts {
+            host.set_extra_folders(folders.clone());
+        }
+    }
+
+    fn scan_errors(&self) -> Vec<String> {
+        self.hosts.iter().flat_map(|h| h.scan_errors()).collect()
+    }
+
+    fn instantiate(&self, request: &PluginRequest<'_>) -> Result<LivePlugin, String> {
+        self.hosts
+            .iter()
+            .find(|h| h.catalog().iter().any(|p| p.id == request.id))
+            .ok_or_else(|| "not installed".to_owned())?
+            .instantiate(request)
+    }
+}
+
 /// `plugin.list [instrument|effect]`: lists installed plugins.
 #[derive(Default)]
 pub struct PluginListCommand {
@@ -217,5 +271,74 @@ impl Command for PluginListCommand {
             return Ok(Outcome::done("no plugins found"));
         }
         Ok(Outcome::done(plugins.join("\n")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A host listing fixed plugins; creating one reports which host was asked.
+    struct Stub {
+        tag: &'static str,
+        plugins: Vec<(&'static str, &'static str)>,
+        errors: Vec<String>,
+    }
+
+    impl PluginFactory for Stub {
+        fn catalog(&self) -> Vec<PluginInfo> {
+            self.plugins
+                .iter()
+                .map(|(id, name)| PluginInfo {
+                    id: (*id).to_owned(),
+                    name: (*name).to_owned(),
+                    vendor: String::new(),
+                    version: String::new(),
+                    kind: PluginKind::Effect,
+                    path: PathBuf::new(),
+                })
+                .collect()
+        }
+
+        fn rescan(&self) {}
+
+        fn scan_errors(&self) -> Vec<String> {
+            self.errors.clone()
+        }
+
+        fn instantiate(&self, request: &PluginRequest<'_>) -> Result<LivePlugin, String> {
+            Err(format!("{} made {}", self.tag, request.id))
+        }
+    }
+
+    #[test]
+    fn combined_hosts_merge_catalogs_and_route_creation() {
+        let clap: PluginHost = Arc::new(Stub {
+            tag: "clap",
+            plugins: vec![("org.b", "Beta"), ("shared", "Shared")],
+            errors: vec!["bad.clap".into()],
+        });
+        let vst3: PluginHost = Arc::new(Stub {
+            tag: "vst3",
+            plugins: vec![("vst3:01", "alpha"), ("shared", "Shared again")],
+            errors: vec!["bad.vst3".into()],
+        });
+        let host = CombinedHost::new(vec![clap, vst3]);
+        let names: Vec<String> = host.catalog().into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["alpha", "Beta", "Shared"], "sorted, first wins");
+        assert_eq!(host.scan_errors(), ["bad.clap", "bad.vst3"]);
+        let made = |id: &str| {
+            let request = PluginRequest {
+                id,
+                sample_rate: 48_000,
+                max_frames: 256,
+                state: None,
+            };
+            host.instantiate(&request).unwrap_err()
+        };
+        assert_eq!(made("vst3:01"), "vst3 made vst3:01");
+        assert_eq!(made("org.b"), "clap made org.b");
+        assert_eq!(made("shared"), "clap made shared");
+        assert_eq!(made("missing"), "not installed");
     }
 }

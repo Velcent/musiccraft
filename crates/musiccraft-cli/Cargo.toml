@@ -13,6 +13,7 @@ musiccraft-commands.workspace = true
 musiccraft-engine.workspace = true
 musiccraft-project.workspace = true
 musiccraft-render.workspace = true
+musiccraft-vst3.workspace = true
 
 [lints]
 workspace = true

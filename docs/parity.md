@@ -129,7 +129,7 @@ of contents; see `docs/clean-room.md`.
 | Instruments | Third synth oscillator | `spec:channel-rack.md` `done` |
 | Effects | Effect windows with response graphs and presets | `spec:mixer.md` `done` |
 | Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |
-| Instruments | VST3 plugins | `todo` |
+| Instruments | VST3 plugins (instruments, effects, Linux plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `spec:plugins.md` `done` |
 | Windows | Playlist / rack / piano roll / mixer shortcuts | `key:F5=view.toggle playlist` `key:F6=view.toggle channel_rack` `key:F7=view.toggle piano_roll` `key:F9=view.toggle mixer` `spec:keymap.md` |
 | Windows | Browser | `key:Alt+F8=view.toggle browser` |
 | Options | Settings window: audio device, rate, buffer, MIDI port, scale, folders, project info | `key:F10=ui.settings` `spec:settings.md` |

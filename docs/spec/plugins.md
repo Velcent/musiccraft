@@ -1,4 +1,4 @@
-# Spec: plugin hosting (CLAP)
+# Spec: plugin hosting (CLAP and VST3)
 
 ## Behavior
 
@@ -60,8 +60,9 @@
 ## Safety boundary
 
 - Loading a plugin means running code from a shared library through the C ABI,
-  which requires `unsafe`. All of it lives in one crate, `musiccraft-clap`; every
-  other crate keeps `unsafe_code = "forbid"`. The rest of MusicCraft talks to
+  which requires `unsafe`. All of it lives in two crates, `musiccraft-clap` and
+  `musiccraft-vst3` (plus their test plugins); every other crate keeps
+  `unsafe_code = "forbid"`. The rest of MusicCraft talks to
   plugins only through the safe `External` trait (engine) and the
   `PluginFactory` trait (render).
 - A crashing plugin can take the app down; there is no out-of-process
@@ -88,12 +89,79 @@
 - A plugin asking to be restarted (latency or port changes) keeps running
   with its current setup.
 
+## VST3
+
+- MusicCraft also hosts **VST3** plugins, as instruments and effects, with the
+  same commands, project storage and windows as CLAP plugins. The plugin
+  database lists both kinds together.
+- **Ids**: a VST3 plugin is referenced as `vst3:` followed by the 32 hex digits
+  of its audio processor's class id (for example
+  `vst3:6E33225254224A00AA69301AF318797D`), so CLAP and VST3 ids never clash.
+- **Scanning** looks for `*.vst3` bundles (or single files) in the standard
+  VST3 locations (`$HOME/.vst3`, `/usr/lib/vst3`, `/usr/local/lib/vst3` on
+  Linux; `%COMMONPROGRAMFILES%\VST3` on Windows;
+  `~/Library/Audio/Plug-Ins/VST3` and `/Library/Audio/Plug-Ins/VST3` on macOS)
+  and in every directory listed in `VST3_PATH`. Inside a bundle the binary is
+  `Contents/<arch>-linux/<name>.so`, `Contents/<arch>-win/<name>.vst3` or
+  `Contents/MacOS/<name>`. The module's entry function (`ModuleEntry`,
+  `InitDll`) runs once when it loads and its exit function when it unloads.
+  macOS bundles are listed as scan errors for now: their entry function needs
+  a CoreFoundation bundle reference MusicCraft does not create yet.
+- **Kind**: a class of category "Audio Module Class" whose sub-categories
+  include `Instrument` is an instrument; any other audio module is an effect.
+- **Instances**: the audio component is created and initialized with a host
+  context (`IHostApplication`, which can also create messages and attribute
+  lists). Its edit controller is the component itself when it implements
+  `IEditController`, otherwise the class the component names, created and
+  initialized the same way. Separate component and controller are connected
+  to each other through `IConnectionPoint`, and the controller receives the
+  component's state (`setComponentState`). Stereo main buses are activated
+  (and the first event input bus for instruments), the bus arrangement is set
+  to stereo, processing is set up for real-time 32-bit audio at the engine's
+  rate and largest block, and the component is made active. Teardown runs in
+  the reverse order.
+- **Notes** reach the first event input bus as note-on and note-off events
+  (channel 0, velocity 0–1, no note id). Pan per note is not sent.
+- **Parameters** come from the edit controller. Continuous parameters use
+  normalized values, 0 to 1; a parameter with `n` steps uses whole numbers 0
+  to `n` (sent to the plugin as `value / n`). Values reach the processor
+  through the input parameter changes of the next `process` call, and the
+  controller is told too (`setParamNormalized`). The controller formats
+  values for display (`getParamStringByValue`).
+- **Edits in the plugin's window** arrive through the host's component handler
+  (`beginEdit`, `performEdit`, `endEdit`): MusicCraft records them as
+  parameter commands, like CLAP edits, and forwards them to the processor.
+  Changes the processor reports in its output parameter changes are recorded
+  the same way. A `restartComponent` asking to reload parameter values or
+  titles refreshes the parameter list; other restart requests are ignored
+  while the plugin keeps running.
+- **State** is saved as one blob holding the component's state and the
+  controller's state: the bytes `MCV3`, a little-endian `u32` version (1), then
+  for each part a little-endian `u64` length and the bytes. Restoring gives the
+  component its part (`setState`), then the controller the component's part
+  (`setComponentState`) and its own part (`setState`).
+- **Windows**: on Linux, a plugin view that supports `X11EmbedWindowID` is
+  embedded in an X11 window MusicCraft creates. The host frame
+  (`IPlugFrame`) handles resize requests, and the host run loop
+  (`Linux::IRunLoop`) lets the plugin register file descriptors and timers,
+  which the app polls every frame while the window is open. On Windows and
+  macOS, VST3 windows are not offered yet.
+- **Real-time rules** are the CLAP ones: `setProcessing` and `process` are the
+  only audio-thread calls; parameter queues, the event list and the process
+  context are preallocated, and nothing allocates on the audio thread.
+
 ## Sources
 
 - CLAP — open plugin standard, MIT licensed: headers and documentation at
   github.com/free-audio/clap (plugin entry and factory, `process`, events,
   `params`, `state`, `gui`, `timer-support`, `posix-fd-support`, search paths in
   `entry.h`).
+- VST 3 — Steinberg's plugin API, MIT licensed since SDK 3.8: interfaces and
+  documentation at github.com/steinbergmedia/vst3sdk and the VST 3 developer
+  portal (module entry functions, `IPluginFactory`, `IComponent`,
+  `IAudioProcessor`, `IEditController`, `IConnectionPoint`, `IPlugView`,
+  `Linux::IRunLoop`, bundle layout and search paths). Rust declarations come
+  from the `vst3` crate (MIT or Apache-2.0), generated from those headers.
 - Placement of plugins as channel instruments and mixer insert effects follows
   the publicly documented workflow of pattern-based DAWs; everything else is our
   own design.

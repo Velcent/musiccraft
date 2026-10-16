@@ -25,8 +25,8 @@ pub use export::{
 };
 pub use midi_export::{ExportMidiCommand, midi_file};
 pub use plugins::{
-    LivePlugin, PluginEvent, PluginFactory, PluginHost, PluginInfo, PluginInstance, PluginKind,
-    PluginParam, PluginRequest,
+    CombinedHost, LivePlugin, PluginEvent, PluginFactory, PluginHost, PluginInfo, PluginInstance,
+    PluginKind, PluginParam, PluginRequest,
 };
 pub use sample_edit::SampleEditCommand;
 pub use sequence::{build_full_sequence, build_sequence};

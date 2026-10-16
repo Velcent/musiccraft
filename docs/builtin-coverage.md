@@ -34,7 +34,7 @@ Status:
 | Slicex, Fruity Slicer | `channel.slice` (sample slicing into steps) | covered | |
 | Fruity Granulizer | Granular instrument | covered | |
 | Layer | Layer channel | covered | |
-| Fruity Wrapper | CLAP plugin hosting | partial | CLAP only. VST3 is a `todo` (extending the `unsafe` exception needs a decision); VST2 and AU are not planned |
+| Fruity Wrapper | CLAP and VST3 plugin hosting | partial | CLAP and VST3 (VST3 windows on Linux only so far; VST3 on macOS not yet); VST2 and AU are not planned |
 | FLEX, Autogun, BeepMap | — | not planned | Preset-player or image-to-sound tools; no equivalent design planned |
 | MIDI Out | MIDI Out channel (`channel.add_midi_out`) | covered | Notes, eight control-change knobs, program change and MIDI clock to one output port |
 | Patcher | `rack` (four parallel chains of up to six built-in effects, branch level and pan, dry mix) | partial | Effect graphs only, as parallel chains; instruments combine through layer channels, and plugins cannot go inside a rack |
