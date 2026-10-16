@@ -75,6 +75,7 @@
 | `overdrive` | drive dB, tone Hz (low-pass after the clipper), bias (asymmetry, adds even harmonics), mix, output dB |
 | `soft_clipper` | threshold dB, knee (how early the curve bends), output dB; never exceeds the threshold |
 | `waveshaper` | shape (tanh, hard clip, fold, sine, asymmetric, rectify, drawn), drive dB, mix, output dB, point_1 … point_9 (the drawn curve: output levels −1–1 at inputs −1, −0.75, … 1, joined by straight lines and held flat beyond ±1; the defaults draw a straight line, so the drawn shape starts clean). With the drawn shape the window shows the nine points; drag one up or down to bend the curve |
+| `guitar_chain` | a fixed pedal chain in one insert: compress (0–1; threshold −6 to −40 dB, ratio 1–8 and make-up 0–12 dB together; 0 is off), drive dB (0 is off) and drive_type (soft tanh, hard clip, fuzz: asymmetric and sputtering near silence), bass / mid / treble dB (shelf at 120 Hz, peak at 700 Hz, shelf at 3.2 kHz), chorus (0–1 depth of a fixed chorus, 0 off), cabinet (off, small: 110 Hz – 5 kHz with a 1.8 kHz bump, large: 70 Hz – 3.8 kHz with a 120 Hz bump), output dB, mix. The chorus follows the wet/dry mix. The window shows the chain with the stages that are on lit |
 | `dc_block` | freq Hz (one-pole high-pass that removes DC offset) |
 | `ring_mod` | freq Hz (sine carrier the signal is multiplied by), mix |
 | `freq_shift` | shift Hz (−2000–2000; every frequency moves by the same amount, via a Hilbert transformer), mix |

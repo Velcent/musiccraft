@@ -60,7 +60,7 @@ Status:
 | Fruity WaveShaper | `waveshaper` | covered | Six fixed curves plus a nine-point drawn curve |
 | Fruity Blood Overdrive, Fast Dist | `overdrive`, `distortion` (soft or hard-threshold mode) | covered | |
 | Fruity Squeeze | `bitcrusher` (with squeeze), `waveshaper` | covered | |
-| Hardcore | `overdrive`, `waveshaper`, `auto_filter`, `chorus` | partial | No single guitar-pedal chain effect |
+| Hardcore | `guitar_chain` (compressor, drive, tone stack, chorus, cabinet) | covered | Fixed stage order |
 | Effector | Separate effects | partial | No all-in-one effect |
 | Fruity Delay 2 / 3 | `delay` (offset, modulation, feedback low cut, diffusion, saturation) | covered | |
 | Fruity Delay Bank, Multiband Delay | `multi_tap` (per-tap pan, low cut and high cut) | covered | Four taps |

@@ -53,7 +53,7 @@ new UI editor or large DSP.
   `delay`.
 - [x] Luxeverb → a higher-density reverb (FDN design) with modulation and
   early reflections as a second reverb kind.
-- [ ] Hardcore → `guitar_chain`: a fixed chain of compressor, overdrive, tone
+- [x] Hardcore → `guitar_chain`: a fixed chain of compressor, overdrive, tone
   stack, chorus and cabinet filter with per-stage bypass.
 - [ ] Effector → `multi_fx`: one insert that picks one of several existing
   effect blocks with an X/Y control.

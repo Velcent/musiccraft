@@ -1614,6 +1614,49 @@ const HALL_REVERB: &[Preset] = &[
     preset("Dark", &[("damping", 2_000.0), ("decay", 3.0)]),
 ];
 
+const GUITAR_CHAIN: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Clean",
+        &[
+            ("drive", 0.0),
+            ("compress", 0.5),
+            ("chorus", 0.4),
+            ("output", 0.0),
+        ],
+    ),
+    preset(
+        "Crunch",
+        &[
+            ("drive", 24.0),
+            ("mid", 3.0),
+            ("treble", 2.0),
+            ("output", -9.0),
+        ],
+    ),
+    preset(
+        "High gain",
+        &[
+            ("drive", 40.0),
+            ("drive_type", 1.0),
+            ("bass", 4.0),
+            ("mid", -5.0),
+            ("treble", 4.0),
+            ("cabinet", 2.0),
+            ("output", -12.0),
+        ],
+    ),
+    preset(
+        "Fuzz",
+        &[
+            ("drive", 36.0),
+            ("drive_type", 2.0),
+            ("treble", -3.0),
+            ("output", -10.0),
+        ],
+    ),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1658,6 +1701,7 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::MultibandLimiter => MULTIBAND_LIMITER,
         EffectKind::Send => SEND,
         EffectKind::HallReverb => HALL_REVERB,
+        EffectKind::GuitarChain => GUITAR_CHAIN,
         EffectKind::Plugin => &[],
     }
 }

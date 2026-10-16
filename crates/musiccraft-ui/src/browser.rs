@@ -368,6 +368,7 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::MultibandLimiter => "Multiband limiter",
         K::Send => "Send",
         K::HallReverb => "Hall reverb",
+        K::GuitarChain => "Guitar chain",
         K::Plugin => "Plugin",
     }
 }

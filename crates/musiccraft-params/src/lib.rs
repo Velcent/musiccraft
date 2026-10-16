@@ -520,13 +520,15 @@ pub enum EffectKind {
     Send,
     /// Dense feedback-delay-network reverb with early reflections.
     HallReverb,
+    /// Compressor, drive, tone stack, chorus and cabinet in one insert.
+    GuitarChain,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 40] = [
+pub const EFFECT_KINDS: [EffectKind; 41] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -565,6 +567,7 @@ pub const EFFECT_KINDS: [EffectKind; 40] = [
     EffectKind::Distortion,
     EffectKind::Overdrive,
     EffectKind::Waveshaper,
+    EffectKind::GuitarChain,
     EffectKind::BassBoost,
     EffectKind::Bitcrusher,
 ];
@@ -725,6 +728,19 @@ const HALL_REVERB_PARAMS: &[ParamSpec] = &[
     spec("mod_rate", 0.05, 3.0, 0.4, "Hz"),
     spec("width", 0.0, 1.0, 1.0, ""),
     spec("mix", 0.0, 1.0, 0.3, ""),
+];
+
+const GUITAR_CHAIN_PARAMS: &[ParamSpec] = &[
+    spec("compress", 0.0, 1.0, 0.3, ""),
+    spec("drive", 0.0, 48.0, 18.0, "dB"),
+    int_spec("drive_type", 0.0, 2.0, 0.0),
+    spec("bass", -12.0, 12.0, 0.0, "dB"),
+    spec("mid", -12.0, 12.0, 0.0, "dB"),
+    spec("treble", -12.0, 12.0, 0.0, "dB"),
+    spec("chorus", 0.0, 1.0, 0.0, ""),
+    int_spec("cabinet", 0.0, 2.0, 1.0),
+    spec("output", -24.0, 6.0, -6.0, "dB"),
+    spec("mix", 0.0, 1.0, 1.0, ""),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -1064,6 +1080,7 @@ impl EffectKind {
             Self::MultibandLimiter => "multiband_limiter",
             Self::Send => "send",
             Self::HallReverb => "hall_reverb",
+            Self::GuitarChain => "guitar_chain",
             Self::Plugin => "plugin",
         }
     }
@@ -1118,6 +1135,7 @@ impl EffectKind {
             Self::MultibandLimiter => MULTIBAND_LIMITER_PARAMS,
             Self::Send => SEND_PARAMS,
             Self::HallReverb => HALL_REVERB_PARAMS,
+            Self::GuitarChain => GUITAR_CHAIN_PARAMS,
             Self::Plugin => &[],
         }
     }

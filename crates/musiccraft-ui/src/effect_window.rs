@@ -354,6 +354,8 @@ fn knobs(
                 "shape" => pick(&["sine", "triangle", "square"]),
                 "lfo_shape" => pick(&LFO_SHAPES),
                 "mode" if effect.kind == EffectKind::Distortion => pick(&["soft", "hard"]),
+                "drive_type" => pick(&["soft", "hard", "fuzz"]),
+                "cabinet" => pick(&["off", "small", "large"]),
                 "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
                 "key" => pick(&musiccraft_project::params::NOTE_NAMES),
                 "scale" => {
@@ -459,6 +461,43 @@ fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effe
             font,
             theme::TEXT,
         );
+    }
+}
+
+/// A row of boxes joined by arrows, one per stage of a chain; stages that
+/// are on are filled.
+fn chain_diagram(painter: &egui::Painter, rect: Rect, color: Color32, stages: &[(&str, bool)]) {
+    let n = stages.len().max(1) as f32;
+    let cell = rect.width() / n;
+    let mid = rect.center().y;
+    for (i, (name, on)) in stages.iter().enumerate() {
+        let left = rect.left() + cell * i as f32;
+        let block = Rect::from_center_size(pos2(left + cell * 0.5, mid), vec2(cell * 0.7, 34.0));
+        if *on {
+            painter.rect_filled(block, 4.0, color.gamma_multiply(0.7));
+        }
+        painter.rect_stroke(
+            block,
+            4.0,
+            Stroke::new(1.0, color),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            block.center(),
+            egui::Align2::CENTER_CENTER,
+            *name,
+            egui::FontId::proportional(11.0),
+            if *on {
+                theme::BACKGROUND
+            } else {
+                theme::TEXT_DIM
+            },
+        );
+        if i + 1 < stages.len() {
+            let from = pos2(block.right(), mid);
+            let to = pos2(left + cell * 1.15, mid);
+            painter.line_segment([from, to], Stroke::new(1.0, theme::TEXT_DIM));
+        }
     }
 }
 
@@ -1082,7 +1121,8 @@ fn graph(
             let decay = value(effect, "decay").max(0.1);
             let early = value(effect, "early");
             let span = (decay * 1.5).clamp(1.0, 20.0) + predelay;
-            let x = |t: f32| rect.left() + rect.width() * t / span;
+            // A square-root time axis leaves room for the early reflections.
+            let x = |t: f32| rect.left() + rect.width() * (t / span).max(0.0).sqrt();
             let level_y = |level: f32| rect.bottom() - level * rect.height() * 0.9;
             for (i, ms) in [7.1_f32, 11.3, 17.9, 23.3, 31.7, 39.1].iter().enumerate() {
                 let scale = 0.5 + value(effect, "size");
@@ -1096,7 +1136,7 @@ fn graph(
             // A 60 dB fall over `decay` seconds, drawn on a 60 dB scale.
             let points = (0..=width)
                 .map(|i| {
-                    let t = span * i as f32 / width as f32;
+                    let t = span * (i as f32 / width as f32).powi(2);
                     let db = if t < predelay {
                         -60.0
                     } else {
@@ -1109,7 +1149,7 @@ fn graph(
                 })
                 .collect();
             curve(&painter, rect, color, points);
-            hint = "Early reflections (orange) after the predelay, then the tail falling 60 dB over the decay time";
+            hint = "Early reflections (orange) after the predelay, then the tail falling 60 dB over the decay time (time stretched near the start)";
         }
         EffectKind::GraphicEq
         | EffectKind::ParametricEq
@@ -1501,6 +1541,20 @@ fn graph(
         }
         // Drawn by `crate::tuner` instead.
         EffectKind::Plugin | EffectKind::PitchCorrect | EffectKind::Tuner => {}
+        EffectKind::GuitarChain => {
+            let tone_on = ["bass", "mid", "treble"]
+                .iter()
+                .any(|n| value(effect, n).abs() > 0.05);
+            let stages = [
+                ("Comp", value(effect, "compress") > 0.0),
+                ("Drive", value(effect, "drive") > 0.0),
+                ("Tone", tone_on),
+                ("Cab", value(effect, "cabinet") >= 0.5),
+                ("Chorus", value(effect, "chorus") > 0.0),
+            ];
+            chain_diagram(&painter, rect, color, &stages);
+            hint = "The pedal chain, left to right; lit stages are on. Set a stage's knob to zero to switch it off";
+        }
         EffectKind::Send => {}
     }
 
