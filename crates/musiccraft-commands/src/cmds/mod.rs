@@ -12,6 +12,7 @@ mod pattern;
 mod playlist;
 mod plugin;
 mod project;
+mod rack;
 mod record;
 mod transport;
 mod zones;
@@ -32,6 +33,7 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(note_gen::commands());
     commands.extend(pattern::commands());
     commands.extend(mixer::commands());
+    commands.extend(rack::commands());
     commands.extend(playlist::commands());
     commands.extend(clip_edit::commands());
     commands.extend(automation::commands());

@@ -18,6 +18,7 @@ mod mixer;
 mod piano_roll;
 mod playlist;
 mod plugins;
+mod rack_view;
 mod sample_editor;
 pub mod settings;
 mod spectrum;

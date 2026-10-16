@@ -104,6 +104,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Beat shaper (drawn time and volume envelopes) | `fx:beat_shaper` |
 | Effects | Scratch (held span, automatable position, patterns) | `fx:scratch` |
 | Effects | Send effect (mid-chain send to another insert) | `fx:send` |
+| Effects | Effect rack (parallel chains of effects in one slot) | `fx:rack` `cmd:mixer.rack_add` |
 | Effects | Band splitter (three bands to separate inserts) | `fx:band_split` |
 | Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |
 | Effects | Pitch shifter | `fx:pitch_shift` |

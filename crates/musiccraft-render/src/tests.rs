@@ -1963,3 +1963,57 @@ fn pattern_automation_plays_wherever_the_pattern_plays() {
         "the sliced remainder plays the second repeat"
     );
 }
+
+#[test]
+fn rack_branches_process_in_parallel_and_sync_without_rebuilds() {
+    let level = |script: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_synth Lead
+                 note.add 1 0 16 C5
+                 mixer.add_effect 0 rack
+                 {script}"
+            ),
+        );
+        let options = RenderOptions {
+            max_tail_seconds: 0.0,
+            ..RenderOptions::default()
+        };
+        rms(&render(s.project(), options).0[4_000..20_000])
+    };
+    let dry = level("");
+    assert!(dry > 0.01);
+    assert!(
+        level("mixer.set_effect_param 0 1 dry 0") < 1e-6,
+        "no branches"
+    );
+    let doubled = level(
+        "mixer.rack_add 0 1 1 eq
+         mixer.rack_add 0 1 2 eq
+         mixer.set_effect_param 0 1 dry 0",
+    );
+    assert!((doubled / dry - 2.0).abs() < 0.05, "{doubled} vs {dry}");
+    let filtered = level(
+        "mixer.rack_add 0 1 1 filter
+         mixer.rack_param 0 1 1 1 cutoff 100
+         mixer.set_effect_param 0 1 dry 0",
+    );
+    assert!(filtered < dry * 0.3, "the branch's lowpass ran: {filtered}");
+
+    let mut s = session();
+    run(
+        &mut s,
+        "mixer.add_effect 0 rack\nmixer.rack_add 0 1 1 delay",
+    );
+    let (_engine, mut handle) = engine_pair(44_100);
+    let mut bridge = Bridge::new(44_100);
+    assert!(bridge.sync(s.project(), &mut handle).rebuilt_graph);
+    run(&mut s, "mixer.rack_param 0 1 1 1 feedback 0.2");
+    let param = bridge.sync(s.project(), &mut handle);
+    assert!(!param.rebuilt_graph);
+    assert_eq!(param.messages, 1);
+    run(&mut s, "mixer.rack_add 0 1 1 chorus");
+    assert!(bridge.sync(s.project(), &mut handle).rebuilt_graph);
+}

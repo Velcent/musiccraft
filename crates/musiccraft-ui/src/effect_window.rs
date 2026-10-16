@@ -187,6 +187,8 @@ fn contents(
             .find(|(t, s, _)| *t == track && *s == slot)
             .map(|(_, _, hz)| *hz);
         crate::tuner::show(ui, effect, detected, GRAPH);
+    } else if effect.kind == EffectKind::Rack {
+        crate::rack_view::show(ui, state, track, slot, effect, actions);
     } else {
         graph(ui, state, track, slot, effect, sample_rate, actions);
     }
@@ -304,11 +306,50 @@ fn preset_bar(
     });
 }
 
+/// Which effect a row of knobs edits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KnobTarget {
+    /// Effect `slot` (0-based) of mixer `track`.
+    Slot(usize, usize),
+    /// Effect `n` of `branch` (both 0-based) of the rack in `slot` of `track`.
+    Rack(usize, usize, usize, usize),
+}
+
+impl KnobTarget {
+    fn set(self, name: &str, value: f32) -> Invocation {
+        match self {
+            Self::Slot(track, slot) => set_param(track, slot, name, value),
+            Self::Rack(track, slot, branch, n) => Invocation::new(
+                "mixer.rack_param",
+                [
+                    track.to_string(),
+                    (slot + 1).to_string(),
+                    (branch + 1).to_string(),
+                    (n + 1).to_string(),
+                    name.to_owned(),
+                    format!("{value}"),
+                ],
+            ),
+        }
+    }
+}
+
 fn knobs(
     ui: &mut egui::Ui,
     state: &mut UiState,
     track: usize,
     slot: usize,
+    effect: &EffectSlot,
+    actions: &mut Vec<Action>,
+) {
+    knob_row(ui, state, KnobTarget::Slot(track, slot), effect, actions);
+}
+
+/// An effect's knobs (the ones its graph does not edit).
+pub(crate) fn knob_row(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    target: KnobTarget,
     effect: &EffectSlot,
     actions: &mut Vec<Action>,
 ) {
@@ -318,7 +359,11 @@ fn knobs(
             let drawn_beat = effect.kind == EffectKind::BeatShaper
                 && ((spec.name.starts_with("time_") && spec.name != "time_mode")
                     || spec.name.starts_with("volume_"));
-            if spec.name == "steps"
+            let in_rack = matches!(target, KnobTarget::Rack(..));
+            let routed = Some(p) == effect.kind.channel_ref_index()
+                || effect.kind.track_ref_indices().any(|i| i == p);
+            if (in_rack && routed)
+                || spec.name == "steps"
                 || spec.name.starts_with("point_")
                 || spec.name.starts_with("step_")
                 || drawn_beat
@@ -393,7 +438,7 @@ fn knobs(
                     if value.fract() < 0.05 || i == next {
                         letters[i].to_owned()
                     } else {
-                        format!("{}→{}", letters[i], letters[next])
+                        format!("{}>{}", letters[i], letters[next])
                     }
                 }
                 "invert_left" | "invert_right" => {
@@ -410,11 +455,13 @@ fn knobs(
                 spec.min < 0.0 && spec.max > 0.0,
                 &text,
             );
-            crate::automation::menu(
-                &out.response,
-                &format!("mixer:{track}:{}:{}", slot + 1, spec.name),
-                actions,
-            );
+            if let KnobTarget::Slot(track, slot) = target {
+                crate::automation::menu(
+                    &out.response,
+                    &format!("mixer:{track}:{}:{}", slot + 1, spec.name),
+                    actions,
+                );
+            }
             if out.started {
                 state.begin_gesture();
             }
@@ -422,7 +469,7 @@ fn knobs(
                 let new = crate::channel_settings::from_unit(spec, t);
                 if new != value {
                     actions.push(Action::Coalesced(
-                        set_param(track, slot, spec.name, new),
+                        target.set(spec.name, new),
                         state.gesture(),
                     ));
                 }
@@ -630,12 +677,19 @@ pub(crate) fn pretty(name: &str) -> String {
             _ => None,
         };
         if let (Some(a), Some(b)) = (side(from), side(to)) {
-            return format!("{a} → {b}");
+            return format!("{a} > {b}");
         }
     }
     // `stage2_block` → `S2 block`.
-    let name = match name.strip_prefix("stage") {
-        Some(rest) if rest.starts_with(|c: char| c.is_ascii_digit()) => format!("s{rest}"),
+    // `branch3_pan` → `B3 pan`.
+    let name = match name
+        .strip_prefix("stage")
+        .or_else(|| name.strip_prefix("branch"))
+    {
+        Some(rest) if rest.starts_with(|c: char| c.is_ascii_digit()) => {
+            let letter = if name.starts_with('s') { 's' } else { 'b' };
+            format!("{letter}{rest}")
+        }
         _ => name.to_owned(),
     };
     let mut text = name.replace('_', " ");
@@ -1407,7 +1461,7 @@ fn graph(
                     color.gamma_multiply(fill),
                 );
                 let text = if target >= 0.5 {
-                    format!("{name} → insert {target:.0}")
+                    format!("{name} > insert {target:.0}")
                 } else {
                     format!("{name} stays")
                 };
@@ -1609,6 +1663,7 @@ fn graph(
         }
         // Drawn by `crate::tuner` instead.
         EffectKind::Plugin | EffectKind::PitchCorrect | EffectKind::Tuner => {}
+        EffectKind::Rack => {}
         EffectKind::BeatShaper => {
             let (time_strip, volume_strip) = beat_strips(rect);
             let ramps = value(effect, "time_mode") >= 0.5;

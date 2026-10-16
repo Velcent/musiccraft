@@ -24,6 +24,10 @@ pub const MAX_EFFECT_PARAMS: usize = 24;
 pub const MAX_INSTRUMENT_PARAMS: usize = 160;
 /// Maximum number of effect slots on one mixer track.
 pub const MAX_EFFECT_SLOTS: usize = 10;
+/// Parallel branches an effect rack holds.
+pub const RACK_BRANCHES: usize = 4;
+/// Effects one effect-rack branch holds.
+pub const RACK_BRANCH_EFFECTS: usize = 6;
 /// Maximum number of mixer tracks, master included.
 pub const MAX_MIXER_TRACKS: usize = 128;
 
@@ -713,13 +717,15 @@ pub enum EffectKind {
     BandSplit,
     /// Freezes recent audio and moves the play point through it like a record.
     Scratch,
+    /// Up to four parallel chains of built-in effects in one insert.
+    Rack,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 46] = [
+pub const EFFECT_KINDS: [EffectKind; 47] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -731,6 +737,7 @@ pub const EFFECT_KINDS: [EffectKind; 46] = [
     EffectKind::Stutter,
     EffectKind::BeatShaper,
     EffectKind::Scratch,
+    EffectKind::Rack,
     EffectKind::MultiFx,
     EffectKind::FxChain,
     EffectKind::Reverb,
@@ -1003,6 +1010,19 @@ const SCRATCH_PARAMS: &[ParamSpec] = &[
     spec("depth", 0.0, 1.0, 1.0, ""),
     spec("inertia", 0.1, 200.0, 5.0, "ms"),
     spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const RACK_PARAMS: &[ParamSpec] = &[
+    spec("dry", 0.0, 1.0, 1.0, ""),
+    spec("branch1_level", 0.0, 1.25, 1.0, ""),
+    spec("branch1_pan", -1.0, 1.0, 0.0, ""),
+    spec("branch2_level", 0.0, 1.25, 1.0, ""),
+    spec("branch2_pan", -1.0, 1.0, 0.0, ""),
+    spec("branch3_level", 0.0, 1.25, 1.0, ""),
+    spec("branch3_pan", -1.0, 1.0, 0.0, ""),
+    spec("branch4_level", 0.0, 1.25, 1.0, ""),
+    spec("branch4_pan", -1.0, 1.0, 0.0, ""),
+    spec("output", -24.0, 12.0, 0.0, "dB"),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -1355,6 +1375,7 @@ impl EffectKind {
             Self::BeatShaper => "beat_shaper",
             Self::BandSplit => "band_split",
             Self::Scratch => "scratch",
+            Self::Rack => "rack",
             Self::Plugin => "plugin",
         }
     }
@@ -1415,6 +1436,7 @@ impl EffectKind {
             Self::BeatShaper => BEAT_SHAPER_PARAMS,
             Self::BandSplit => BAND_SPLIT_PARAMS,
             Self::Scratch => SCRATCH_PARAMS,
+            Self::Rack => RACK_PARAMS,
             Self::Plugin => &[],
         }
     }
@@ -1424,6 +1446,16 @@ impl EffectKind {
     #[must_use]
     pub fn sidechain_index(self) -> Option<usize> {
         self.params().iter().position(|p| p.name == "sidechain")
+    }
+
+    /// Whether this effect can run inside an effect rack: every built-in
+    /// effect except the ones the engine routes, plugins and racks.
+    #[must_use]
+    pub fn allowed_in_rack(self) -> bool {
+        !matches!(
+            self,
+            Self::Send | Self::BandSplit | Self::Plugin | Self::Rack
+        )
     }
 
     /// Whether parameter `index` names an insert this effect feeds (the send's

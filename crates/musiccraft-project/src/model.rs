@@ -3,8 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use musiccraft_params::{
-    EffectKind, INSTRUMENT_PARAMS, MAX_EFFECT_PARAMS, MAX_INSTRUMENT_PARAMS, ParamSpec, defaults,
-    inst,
+    EffectKind, INSTRUMENT_PARAMS, MAX_EFFECT_PARAMS, MAX_INSTRUMENT_PARAMS, ParamSpec,
+    RACK_BRANCHES, defaults, inst,
 };
 use serde::{Deserialize, Serialize};
 
@@ -528,6 +528,9 @@ pub struct EffectSlot {
     /// A file the effect loads: the convolution reverb's impulse response
     /// (an audio file or `ir:<name>`). `None` uses the effect's default.
     pub file: Option<String>,
+    /// The parallel branches of an effect rack, each a chain of effects;
+    /// empty for every other effect.
+    pub branches: Vec<Vec<EffectSlot>>,
 }
 
 impl EffectSlot {
@@ -540,6 +543,11 @@ impl EffectSlot {
             values: kind.defaults(),
             plugin: None,
             file: None,
+            branches: if kind == EffectKind::Rack {
+                vec![Vec::new(); RACK_BRANCHES]
+            } else {
+                Vec::new()
+            },
         }
     }
 
@@ -572,6 +580,8 @@ struct EffectRepr {
     plugin: Option<PluginRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     file: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    branches: Vec<Vec<EffectSlot>>,
 }
 
 impl From<EffectSlot> for EffectRepr {
@@ -582,6 +592,7 @@ impl From<EffectSlot> for EffectRepr {
             params: params_to_map(slot.kind.params(), &slot.values),
             plugin: slot.plugin.map(|p| *p),
             file: slot.file,
+            branches: slot.branches,
         }
     }
 }
@@ -597,6 +608,15 @@ impl From<EffectRepr> for EffectSlot {
             values: params_from_map(repr.kind.params(), &repr.params),
             plugin: repr.plugin.map(Box::new),
             file: repr.file,
+            // A rack always has its four branches; nothing else has any.
+            branches: if repr.kind == EffectKind::Rack {
+                let mut branches = repr.branches;
+                branches.resize(RACK_BRANCHES, Vec::new());
+                branches.truncate(RACK_BRANCHES);
+                branches
+            } else {
+                Vec::new()
+            },
         }
     }
 }

@@ -19,6 +19,7 @@ pub mod mastering;
 pub mod modulation;
 mod osc;
 pub mod pitch;
+pub mod rack;
 pub mod response;
 pub mod resynth;
 mod reverb;

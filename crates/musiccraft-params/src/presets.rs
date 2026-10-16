@@ -2118,6 +2118,11 @@ const SCRATCH: &[Preset] = &[
     ),
 ];
 
+const RACK: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Wide pair", &[("branch1_pan", -0.8), ("branch2_pan", 0.8)]),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -2168,6 +2173,7 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::BeatShaper => BEAT_SHAPER,
         EffectKind::BandSplit => BAND_SPLIT,
         EffectKind::Scratch => SCRATCH,
+        EffectKind::Rack => RACK,
         EffectKind::Plugin => &[],
     }
 }

@@ -13,6 +13,7 @@ use crate::hall::HallReverb;
 use crate::mastering::{BandSplitter, MultibandLimiter};
 use crate::modulation::{Bitcrusher, Flanger, Gate, Phaser};
 use crate::pitch::{PitchCorrector, Tuner};
+use crate::rack::Rack;
 use crate::scratch::Scratch;
 use crate::toolbox::{Dynamics, StereoShaper};
 use crate::{Biquad, Chorus, Compressor, Delay, Distortion, Limiter, Reverb, Svf, SvfMode};
@@ -187,6 +188,8 @@ pub enum Effect {
     BandSplit(BandSplitter),
     /// Freezes recent audio and moves the play point through it like a record.
     Scratch(Scratch),
+    /// Up to four parallel chains of built-in effects in one insert.
+    Rack(Box<Rack>),
     /// Leaves audio untouched; a plugin slot, processed by the engine's
     /// external processor instead.
     Passthrough,
@@ -244,6 +247,7 @@ impl Effect {
             EffectKind::BeatShaper => Self::BeatShaper(BeatShaper::new(sample_rate)),
             EffectKind::BandSplit => Self::BandSplit(BandSplitter::default()),
             EffectKind::Scratch => Self::Scratch(Scratch::new(sample_rate)),
+            EffectKind::Rack => Self::Rack(Box::default()),
             EffectKind::Plugin => Self::Passthrough,
         }
     }
@@ -298,6 +302,7 @@ impl Effect {
             Self::BeatShaper(_) => EffectKind::BeatShaper,
             Self::BandSplit(_) => EffectKind::BandSplit,
             Self::Scratch(_) => EffectKind::Scratch,
+            Self::Rack(_) => EffectKind::Rack,
             Self::Passthrough => EffectKind::Plugin,
         }
     }
@@ -370,6 +375,7 @@ impl Effect {
             Self::BeatShaper(fx) => fx.process(left, right, params, ctx),
             Self::BandSplit(fx) => fx.process(left, right, params, ctx),
             Self::Scratch(fx) => fx.process(left, right, params, ctx),
+            Self::Rack(fx) => fx.process(left, right, params, ctx),
             Self::Passthrough => {}
         }
     }
@@ -430,6 +436,7 @@ impl Effect {
             Self::BeatShaper(fx) => fx.reset(),
             Self::BandSplit(fx) => fx.reset(),
             Self::Scratch(fx) => fx.reset(),
+            Self::Rack(fx) => fx.reset(),
             Self::Phaser(fx) => fx.reset(),
             Self::Flanger(fx) => fx.reset(),
             Self::Bitcrusher(fx) => fx.reset(),

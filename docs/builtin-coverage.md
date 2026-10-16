@@ -37,7 +37,7 @@ Status:
 | Fruity Wrapper | CLAP plugin hosting | partial | CLAP only. VST3 is a `todo` (extending the `unsafe` exception needs a decision); VST2 and AU are not planned |
 | FLEX, Autogun, BeepMap | — | not planned | Preset-player or image-to-sound tools; no equivalent design planned |
 | MIDI Out | MIDI Out channel (`channel.add_midi_out`) | covered | Notes, eight control-change knobs, program change and MIDI clock to one output port |
-| Patcher | — | not planned | Modular plugin graphs; mixer routing and sends cover the common cases |
+| Patcher | `rack` (four parallel chains of up to six built-in effects, branch level and pan, dry mix) | partial | Effect graphs only, as parallel chains; instruments combine through layer channels, and plugins cannot go inside a rack |
 | Fruity Envelope / Keyboard / X-Y controllers, Formula Controller, Peak Controller | Controllers (`controller.add`: lfo, envelope, keyboard, peak, formula, macro), automation clips | covered | One target per controller; an X/Y pad is two macros |
 | Dashboard, Fruity Video Player, ZGameEditor Visualizer | — | not planned | Video and custom-panel tools are outside an audio workstation's core |
 

@@ -104,8 +104,10 @@ new UI editor or large DSP.
 
 - [x] Harmor / Harmless → audio resynthesis with blur and stretch (`channel.add_resynth`). Image
   resynthesis is left out: it would need an image decoder dependency.
-- [ ] Patcher → modular graph of instruments and effects inside one slot
-  (currently "not planned").
+- [x] Patcher → the effect rack (`rack`): up to four parallel chains of up
+  to six built-in effects inside one insert slot, mixed with the dry signal
+  (`mixer.rack_*`). Instrument graphs are covered by layer channels and
+  mixer routing.
 - [ ] VST3 hosting (Fruity Wrapper) → extends the `unsafe` exception; needs
   the user's go-ahead before any work.
 

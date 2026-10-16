@@ -41,6 +41,19 @@ pub enum EngineMessage {
         /// New settings.
         params: EffectParams,
     },
+    /// Update the settings of one effect inside an effect rack.
+    RackEffect {
+        /// Track index (0 = master).
+        track: u16,
+        /// Slot of the rack on the track.
+        slot: u8,
+        /// Branch of the rack.
+        branch: u8,
+        /// Position of the effect on the branch.
+        index: u8,
+        /// New settings.
+        params: EffectParams,
+    },
     /// Start a held note outside the sequence (preview, MIDI input).
     NoteOn {
         /// Channel index.

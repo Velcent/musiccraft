@@ -470,6 +470,28 @@ impl Engine {
                     slot.params = params;
                 }
             }
+            EngineMessage::RackEffect {
+                track,
+                slot,
+                branch,
+                index,
+                params,
+            } => {
+                if let Some(musiccraft_dsp::Effect::Rack(rack)) = self
+                    .graph
+                    .as_deref_mut()
+                    .and_then(|g| g.tracks.get_mut(usize::from(track)))
+                    .and_then(|t| t.effects.get_mut(usize::from(slot)))
+                    .map(|s| &mut s.effect)
+                {
+                    rack.set(
+                        usize::from(branch),
+                        usize::from(index),
+                        params.enabled,
+                        params.values,
+                    );
+                }
+            }
             EngineMessage::NoteOn {
                 channel,
                 key,

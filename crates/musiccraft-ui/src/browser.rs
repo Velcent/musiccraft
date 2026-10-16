@@ -386,6 +386,7 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::BeatShaper => "Beat shaper",
         K::BandSplit => "Band splitter",
         K::Scratch => "Scratch",
+        K::Rack => "Effect rack",
         K::Plugin => "Plugin",
     }
 }

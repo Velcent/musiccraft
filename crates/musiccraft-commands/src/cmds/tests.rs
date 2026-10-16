@@ -106,6 +106,14 @@ const SCRIPT: &[&str] = &[
     "mixer.toggle_effect 2 2",
     "mixer.move_effect 2 2 1",
     "mixer.remove_effect 2 1",
+    "mixer.add_effect 2 rack",
+    "mixer.set_effect_param 2 2 dry 0.5",
+    "mixer.rack_add 2 2 1 filter",
+    "mixer.rack_add 2 2 1 chorus",
+    "mixer.rack_add 2 2 3 reverb",
+    "mixer.rack_param 2 2 1 1 cutoff 800",
+    "mixer.rack_enable 2 2 1 2 off",
+    "mixer.rack_remove 2 2 1 1",
     "mixer.set_send 1 2 0.5",
     "mixer.set_send 1 4 0.25",
     "mixer.set_send 3 4 1",
@@ -1397,4 +1405,33 @@ fn note_props_survive_edits_and_files() {
     fails(&mut s, "note.set_prop 1 0 C4 fine 300");
     fails(&mut s, "note.set_prop 1 0 C4 color 0");
     fails(&mut s, "note.set_prop 1 0 C4 wobble 3");
+}
+
+#[test]
+fn rack_branches_hold_effects_and_survive_files() {
+    let mut s = session();
+    run(&mut s, "mixer.add_effect 0 rack");
+    run(&mut s, "mixer.rack_add 0 1 2 delay");
+    run(&mut s, "mixer.rack_add 0 1 2 compressor");
+    run(&mut s, "mixer.rack_param 0 1 2 2 threshold -30");
+    let rack = &s.project().mixer[0].effects[0];
+    assert_eq!(rack.branches.len(), 4);
+    assert_eq!(rack.branches[1].len(), 2);
+    assert_eq!(rack.branches[1][1].values[0], -30.0);
+    let json = serde_json::to_string(s.project()).unwrap();
+    let back: Project = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.mixer[0].effects, s.project().mixer[0].effects);
+
+    fails(&mut s, "mixer.rack_add 0 1 5 delay");
+    fails(&mut s, "mixer.rack_add 0 1 1 send");
+    fails(&mut s, "mixer.rack_add 0 1 1 rack");
+    fails(&mut s, "mixer.rack_param 0 1 2 2 sidechain 1");
+    fails(&mut s, "mixer.rack_param 0 1 2 3 mix 1");
+    fails(&mut s, "mixer.rack_remove 0 1 1 1");
+    for _ in 0..4 {
+        run(&mut s, "mixer.rack_add 0 1 2 eq");
+    }
+    fails(&mut s, "mixer.rack_add 0 1 2 eq");
+    run(&mut s, "mixer.add_effect 0 eq");
+    fails(&mut s, "mixer.rack_add 0 2 1 delay");
 }

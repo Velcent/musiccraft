@@ -124,6 +124,30 @@ stopped. The gate's window shows the 16 steps; clicking one turns it on or off.
 
 Ranges and defaults are defined in `musiccraft-params`.
 
+## Effect rack
+
+- The `rack` effect holds up to four parallel **branches** inside one slot,
+  each a chain of up to six built-in effects with their own settings. The
+  slot's input feeds every branch; each branch's output is scaled by
+  `branchN_level` (0–1.25) and placed by `branchN_pan` (balance, −1–1), the
+  branches are summed with `dry` (0–1) of the input, and `output` dB scales
+  the result. An empty branch is silent, so a new rack (with `dry` at its
+  default of 1) passes its input unchanged until effects are added.
+- Branch effects may be any built-in effect except the ones the engine
+  routes (`send`, `band_split`), plugins and racks themselves. Inside a
+  rack, effects have no sidechain and follow no channel (those parameters
+  are refused and hidden).
+- Commands (undoable): `mixer.rack_add <track> <slot> <branch> <kind>`
+  appends an effect to a branch; `mixer.rack_remove <track> <slot> <branch>
+  <n>` and `mixer.rack_insert … <n> <json>` (undo) remove and restore one;
+  `mixer.rack_param <track> <slot> <branch> <n> <param> <value>` sets a
+  parameter; `mixer.rack_enable <track> <slot> <branch> <n> <on|off>`
+  bypasses one. Changing a branch's effects rebuilds the track (tails
+  reset); changing their parameters does not.
+- The rack's window shows the four branches as rows of effect boxes; each
+  branch has an "Add" menu, and each effect expands into its knobs and a
+  bypass and remove button. Branch effect parameters are not automatable.
+
 ## Pitch correction and tuner
 
 - Both effects detect the pitch of a single voice or instrument (monophonic,
@@ -206,3 +230,7 @@ Ranges and defaults are defined in `musiccraft-params`.
 - Track stereo separation, phase invert and swap left/right are mixer track
   properties described in the FL Studio online manual, "Mixer" (track
   properties). The mid/side formula is textbook; the ranges are our own.
+- The effect rack takes the idea of building parallel effect graphs inside
+  one plugin slot from the FL Studio online manual's description of
+  Patcher; the fixed four-branch layout, the parameters and the commands are
+  our own design.
