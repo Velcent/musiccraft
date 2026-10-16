@@ -66,7 +66,8 @@ Hover any control and the hint bar at the top says what it does.
   tools (pencil, brush, eraser, box) at the top left; the piano roll adds a
   mute tool. The piano roll's Tools
   menu strums, humanizes, makes legato, chops, glues, flips, snaps to a scale
-  and arpeggiates; slide notes glide from the note before. The rack's
+  and arpeggiates; slide notes bend the notes they overlap (per colour
+  group; a chord follows its top note). The rack's
   right-click menu fills every 2/4/8 steps and shifts steps.
 - **Instruments**: synth (three oscillators, unison, sub, drive, filter
   types, LFO, presets), FM synth (4 operators), keys (piano, e-piano, organ),

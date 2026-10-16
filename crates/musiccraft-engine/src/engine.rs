@@ -267,6 +267,19 @@ impl Engine {
         self.voices.iter().filter(|v| v.active).count()
     }
 
+    /// The keys of the sounding (not released) voices, lowest first.
+    #[cfg(test)]
+    pub(crate) fn held_keys(&self) -> Vec<u8> {
+        let mut keys: Vec<u8> = self
+            .voices
+            .iter()
+            .filter(|v| v.held())
+            .map(|v| v.key)
+            .collect();
+        keys.sort_unstable();
+        keys
+    }
+
     fn ticks_per_frame(&self) -> f64 {
         self.tempo_bpm / 60.0 * f64::from(PPQ) / self.sample_rate
     }
@@ -909,27 +922,17 @@ fn trigger(
         }
         return;
     }
-    // A slide note moves the sounding note of its channel instead of
-    // starting one. Instruments whose pitch is fixed when a note starts (kit
-    // pads, drum synth, pluck, sliced samples) play it as a normal note.
+    // A slide note bends the sounding notes of its channel and colour group
+    // and never starts a voice. Instruments whose pitch is fixed when a note
+    // starts (kit pads, drum synth, pluck, sliced samples) play it as a normal
+    // note.
     let slides = start.slide
         && channels
             .get(usize::from(start.channel))
             .is_some_and(|node| crate::voice::glides(&node.instrument));
     if slides {
-        let held = voices
-            .iter_mut()
-            .filter(|v| v.channel == start.channel && v.held() && v.pitched())
-            .max_by_key(|v| v.age);
-        if let Some(voice) = held {
-            let frames = start.gate.unwrap_or(1);
-            voice.slide_to(start.key, start.delay, frames, start.gate);
-            // Later portamento notes glide from where the slide ends.
-            if let Some(slot) = last_keys.get_mut(usize::from(start.channel)) {
-                *slot = Some(f32::from(start.key) + start.shape.fine);
-            }
-            return;
-        }
+        slide(voices, last_keys, &start);
+        return;
     }
     // A portamento note glides from the channel's previous note, held or not.
     let previous = last_keys.get(usize::from(start.channel)).copied().flatten();
@@ -959,6 +962,31 @@ fn trigger(
     if let Some(voice) = free_voice(voices) {
         *counter += 1;
         voice.start(start, &node.instrument, &node.params, *counter);
+    }
+}
+
+/// Applies a slide note: the top note of its channel and colour group glides
+/// to the slide note's key and the others keep their interval to it, each over
+/// its overlap with the slide note. With nothing to bend it is silent.
+fn slide(voices: &mut [Voice], last_keys: &mut [Option<f32>], start: &VoiceStart) {
+    let length = start.gate.unwrap_or(1);
+    let bends = |v: &Voice| {
+        v.channel == start.channel
+            && v.color() == start.shape.color
+            && v.pitched()
+            && v.sounding_for(start.delay).is_some()
+    };
+    let Some(top) = voices.iter().filter(|v| bends(v)).map(|v| v.key).max() else {
+        return;
+    };
+    let semitones = i16::from(start.key) - i16::from(top);
+    for voice in voices.iter_mut().filter(|v| bends(v)) {
+        let overlap = voice.sounding_for(start.delay).unwrap_or(1).min(length);
+        voice.slide_by(semitones, start.delay, overlap);
+    }
+    // Later portamento notes glide from where the slide ends.
+    if let Some(slot) = last_keys.get_mut(usize::from(start.channel)) {
+        *slot = Some(f32::from(start.key) + start.shape.fine);
     }
 }
 

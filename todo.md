@@ -17,13 +17,13 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   are entered at the selected step and the cursor advances).
 
 ### Sound
-- [ ] Slide notes:
-  - [ ] A slide note that overlaps no other note is silent.
-  - [ ] The overlap length sets the slide time.
-  - [ ] The slide stops when the note being slid ends.
-  - [ ] Slides only affect notes of the same colour group (up to 16
+- [x] Slide notes:
+  - [x] A slide note that overlaps no other note is silent.
+  - [x] The overlap length sets the slide time.
+  - [x] The slide stops when the note being slid ends.
+  - [x] Slides only affect notes of the same colour group (up to 16
     independent slides in a chord).
-  - [ ] In a chord, the top note sets the pitch offset and every note keeps
+  - [x] In a chord, the top note sets the pitch offset and every note keeps
     that offset after the slide.
 - [ ] Pan law: a circular default (-3 dB at centre) with a triangular option,
   instead of a plain balance control.

@@ -36,7 +36,7 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Velocity editor lane | `cmd:note.set_velocity` `done` |
 | Piano roll | Select, copy, paste, duplicate, nudge | `cmd:edit.batch` `done` |
 | Piano roll | Per-note pan lane | `cmd:note.set_pan` `done` |
-| Piano roll | Per-note pitch slides | `cmd:note.set_slide` `spec:piano-roll.md` |
+| Piano roll | Per-note pitch slides (overlap sets the time; per colour group; chords follow the top note) | `cmd:note.set_slide` `spec:piano-roll.md` |
 | Piano roll | Portamento and muted notes, mute tool | `cmd:note.set_prop` `spec:piano-roll.md` |
 | Piano roll | Note release velocity, fine pitch, Mod X/Y and colour, edited in the event lane | `cmd:note.set_prop` `spec:piano-roll.md` |
 | Piano roll | Right-drag deletes notes | `spec:piano-roll.md` `done` |

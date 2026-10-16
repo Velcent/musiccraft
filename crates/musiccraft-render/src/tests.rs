@@ -569,8 +569,9 @@ fn frequency(data: &[f32], sample_rate: f32) -> f32 {
     crossings as f32 * sample_rate / data.len() as f32
 }
 
-#[test]
-fn slide_notes_glide_the_sounding_note_without_retriggering() {
+/// A synth with one sine oscillator and full sustain, at 120 BPM (a step is
+/// 1/8 s), plus `notes`.
+fn sine_session(notes: &str) -> Session {
     let mut s = session();
     run(
         &mut s,
@@ -578,42 +579,90 @@ fn slide_notes_glide_the_sounding_note_without_retriggering() {
          channel.add_synth
          channel.set_param 1 wave1 0
          channel.set_param 1 osc_mix 0
-         channel.set_param 1 sustain 1
-         note.add 1 0 8 C4
-         note.add 1 4 8 C5 100 0 slide",
+         channel.set_param 1 sustain 1",
     );
-    let sr = 48_000.0;
+    run(&mut s, notes);
+    s
+}
+
+const SLIDE_RATE: u32 = 48_000;
+
+fn render_slide(s: &Session) -> Vec<f32> {
     let options = RenderOptions {
-        sample_rate: 48_000,
+        sample_rate: SLIDE_RATE,
         loops: 1,
-        max_tail_seconds: 0.0,
+        max_tail_seconds: 0.5,
     };
-    let (left, _, _) = render(s.project(), options);
-    // At 120 BPM a step is 1/8 s: the slide starts at 0.5 s, ends at 1.5 s.
-    let at = |from: f32, to: f32| frequency(&left[(from * sr) as usize..(to * sr) as usize], sr);
-    // The glide spans the slide note: key 48 + 12 semitones over 0.5–1.5 s.
-    let hz = |key: f32| 440.0 * 2f32.powf((key - 69.0) / 12.0);
-    let before = at(0.1, 0.45);
-    assert!((before - hz(48.0)).abs() < 3.0, "before slide {before}");
-    let middle = at(0.95, 1.05);
+    render(s.project(), options).0
+}
+
+/// Frequency over `from..to` seconds.
+fn hz_between(data: &[f32], from: f32, to: f32) -> f32 {
+    let sr = SLIDE_RATE as f32;
+    frequency(&data[(from * sr) as usize..(to * sr) as usize], sr)
+}
+
+fn key_hz(key: f32) -> f32 {
+    440.0 * 2f32.powf((key - 69.0) / 12.0)
+}
+
+#[test]
+fn slide_notes_glide_over_the_overlap_and_end_with_the_slid_note() {
+    // C4 for 1 s; a C5 slide note from 0.5 s to 1.5 s overlaps it for 0.5 s.
+    let s = sine_session("note.add 1 0 8 C4\nnote.add 1 4 8 C5 100 0 slide");
+    let left = render_slide(&s);
+    let before = hz_between(&left, 0.1, 0.45);
+    assert!((before - key_hz(48.0)).abs() < 3.0, "before slide {before}");
+    let middle = hz_between(&left, 0.7, 0.8);
     assert!(
-        (middle - hz(54.0)).abs() < 8.0,
-        "halfway {middle} vs {}",
-        hz(54.0)
+        (middle - key_hz(54.0)).abs() < 8.0,
+        "halfway through the overlap {middle} vs {}",
+        key_hz(54.0)
     );
-    let late = at(1.42, 1.49);
+    let late = hz_between(&left, 0.93, 0.99);
     assert!(
-        late > hz(58.5) && late < hz(60.0) + 3.0,
+        late > key_hz(58.5) && late < key_hz(60.0) + 3.0,
         "nearly there {late}"
     );
-    // Still sounding until the slide note ends.
-    assert!(rms(&left[(1.4 * sr) as usize..(1.48 * sr) as usize]) > 0.05);
+    // The slide does not lengthen the note: it ends at 1 s (plus its release).
+    assert!(rms(&left[(1.3 * 48_000.0) as usize..(1.45 * 48_000.0) as usize]) < 1e-3);
+}
 
-    // A slide note with nothing sounding plays normally.
-    let mut s = session();
-    run(&mut s, "channel.add_synth\nnote.add 1 0 4 C4 100 0 slide");
-    let (left, _, _) = render(s.project(), options);
-    assert!(rms(&left[..4_800]) > 0.01);
+#[test]
+fn slide_notes_without_an_overlap_are_silent() {
+    let s = sine_session(
+        "note.add 1 0 4 C4 100 0 slide\nnote.add 1 8 4 C4\nnote.add 1 12 4 G4 100 0 slide",
+    );
+    let left = render_slide(&s);
+    assert!(rms(&left[..48_000]) < 1e-4, "nothing before the first note");
+    // The second slide note starts as the note ends: no overlap either.
+    assert!(rms(&left[(1.8 * 48_000.0) as usize..]) < 1e-3);
+}
+
+#[test]
+fn slide_notes_starting_with_their_note_bend_it() {
+    let s = sine_session("note.add 1 0 8 C4\nnote.add 1 0 4 C5 100 0 slide");
+    let left = render_slide(&s);
+    let after = hz_between(&left, 0.6, 0.95);
+    assert!((after - key_hz(60.0)).abs() < 4.0, "slid to C5: {after}");
+}
+
+#[test]
+fn note_colour_groups_reach_the_engine() {
+    let s = sine_session(
+        "note.add 1 0 16 C4
+         note.add 1 0 16 G4
+         note.add 1 0 16 E3
+         note.set_prop 1 0 E3 color 2
+         note.add 1 2 2 A4 100 0 slide",
+    );
+    let seq = build_sequence(s.project());
+    let colors: Vec<(u8, u8)> = seq
+        .events()
+        .iter()
+        .map(|e| (e.key, e.shape.color))
+        .collect();
+    assert!(colors.contains(&(40, 1)) && colors.contains(&(55, 0)));
 }
 
 #[test]

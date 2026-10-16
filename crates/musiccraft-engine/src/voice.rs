@@ -305,18 +305,39 @@ impl Voice {
         self.sample_rate
     }
 
-    /// Glides this voice to `key` over `frames` frames (a slide note), and
-    /// keeps it sounding for `delay + gate` frames from now.
-    pub fn slide_to(&mut self, key: u8, delay: u32, frames: u64, gate: Option<u64>) {
-        let from = self.current_key();
-        self.key = key;
-        self.glide = from - f32::from(key);
-        self.glide_rate = self.glide.abs() / (frames.max(1) as f32);
-        // The glide starts on the slide note's own frame, not at the block start.
-        self.glide_wait = delay;
-        if let Some(gate) = gate {
-            self.gate = Some(u64::from(delay) + gate);
+    /// The colour group of the note this voice plays.
+    pub fn color(&self) -> u8 {
+        self.shape.color
+    }
+
+    /// How many frames this voice still sounds for, counted from `at` frames
+    /// into the block: `None` when it is not sounding by then (idle, starting
+    /// later, released or already ended), `u64::MAX` when nothing ends it
+    /// (a live key or a one-shot sample).
+    pub fn sounding_for(&self, at: u32) -> Option<u64> {
+        if !self.active || self.env.is_releasing() || self.delay > at {
+            return None;
         }
+        let elapsed = u64::from(at - self.delay);
+        match self.gate {
+            Some(gate) => gate.checked_sub(elapsed).filter(|&left| left > 0),
+            None if self.live || self.one_shot => Some(u64::MAX),
+            None => None,
+        }
+    }
+
+    /// Moves this voice's key by `semitones` (a slide note), gliding there over
+    /// `frames` frames that start `at` frames into the block. The voice keeps
+    /// its own end.
+    pub fn slide_by(&mut self, semitones: i16, at: u32, frames: u64) {
+        let from = self.current_key();
+        let key = (i16::from(self.key) + semitones).clamp(0, 127);
+        self.key = u8::try_from(key).unwrap_or(self.key);
+        self.glide = from - f32::from(self.key);
+        self.glide_rate = self.glide.abs() / (frames.max(1) as f32);
+        // The glide starts on the slide note's own frame; the voice's gate and
+        // glide count only once its own start delay has passed.
+        self.glide_wait = at.saturating_sub(self.delay);
     }
 
     /// Closes the gate (one-shot samples keep playing unless `force`).
@@ -1194,7 +1215,7 @@ mod tests {
             let mut voice = Voice::new(1_000.0);
             voice.start(held_start(57), instrument, &params, 1);
             // A slide note 40 frames into the block, gliding over 100 frames.
-            voice.slide_to(69, 40, 100, None);
+            voice.slide_by(12, 40, 100);
             render_frames(&mut voice, instrument, &params, 40);
             assert!(
                 (voice.current_key() - 57.0).abs() < 1e-4,

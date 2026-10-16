@@ -827,6 +827,92 @@ fn slide_notes_on_fixed_pitch_instruments_play_as_new_notes() {
     }
 }
 
+/// A synth engine at 120 BPM playing `events` (start and length in beats).
+fn synth_playing(events: &[(u64, u64, u8, u8, bool)]) -> Engine {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    graph.add_channel(Instrument::Synth, impulse_params());
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    let ppq = u64::from(PPQ);
+    let notes = events
+        .iter()
+        .map(|&(start, length, key, color, slide)| {
+            let mut event = note(0, 0);
+            event.start = start * ppq;
+            event.length = length * ppq;
+            event.key = key;
+            event.shape.color = color;
+            event.slide = slide;
+            event
+        })
+        .collect();
+    let seq = Sequence::new(notes, 16 * ppq);
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::Play);
+    engine
+}
+
+#[test]
+fn a_chord_slides_by_its_top_note_within_its_colour_group() {
+    // C4 + G4 in group 0, E3 in group 1; a slide to A4 in group 0 at beat 1.
+    let mut engine = synth_playing(&[
+        (0, 4, 48, 0, false),
+        (0, 4, 55, 0, false),
+        (0, 4, 40, 1, false),
+        (1, 1, 57, 0, true),
+    ]);
+    render_mono(&mut engine, 3 * BEAT);
+    // G4 → A4 is +2, so C4 → D4; E3 is in another group and stays.
+    assert_eq!(engine.held_keys(), [40, 50, 57]);
+    assert_eq!(engine.active_voices(), 3, "a slide note starts no voice");
+}
+
+#[test]
+fn colour_groups_slide_independently() {
+    let mut engine = synth_playing(&[
+        (0, 4, 48, 0, false),
+        (0, 4, 40, 1, false),
+        (1, 1, 52, 0, true),
+        (1, 1, 35, 1, true),
+    ]);
+    render_mono(&mut engine, 3 * BEAT);
+    assert_eq!(engine.held_keys(), [35, 52]);
+}
+
+#[test]
+fn a_slide_note_with_nothing_of_its_group_sounding_is_silent() {
+    // The only held note is in another colour group.
+    let mut engine = synth_playing(&[(0, 4, 48, 1, false), (1, 1, 60, 0, true)]);
+    render_mono(&mut engine, 3 * BEAT / 2);
+    assert_eq!(engine.held_keys(), [48]);
+    let mut engine = synth_playing(&[(1, 1, 60, 0, true)]);
+    let out = render_mono(&mut engine, 3 * BEAT);
+    assert!(
+        out.iter().all(|s| s.abs() < 1e-6),
+        "no voice for a lone slide"
+    );
+}
+
+#[test]
+fn the_highest_of_several_simultaneous_slide_notes_wins() {
+    let mut engine = synth_playing(&[
+        (0, 4, 48, 0, false),
+        (1, 1, 50, 0, true),
+        (1, 1, 53, 0, true),
+    ]);
+    render_mono(&mut engine, 3 * BEAT);
+    assert_eq!(engine.held_keys(), [53]);
+}
+
+#[test]
+fn a_slide_never_lengthens_the_note_it_bends() {
+    // The note ends at beat 2; the slide note runs to beat 4.
+    let mut engine = synth_playing(&[(0, 2, 48, 0, false), (1, 3, 60, 0, true)]);
+    render_mono(&mut engine, 2 * BEAT + BEAT / 2);
+    assert!(engine.held_keys().is_empty());
+}
+
 #[test]
 fn a_nan_burst_cannot_silence_a_reverb_for_good() {
     let (mut engine, _handle) = engine_pair(SR);

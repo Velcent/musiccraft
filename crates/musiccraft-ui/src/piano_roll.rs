@@ -404,7 +404,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
         }
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.toggle_value(&mut state.roll.slide, "Slide")
-            .hint("New notes are slide notes: they glide the sounding note to their key");
+            .hint("New notes are slide notes: they bend the notes they overlap (in their colour group) to their key");
         ui.toggle_value(&mut state.roll.porta, "Porta").hint(
             "New notes are portamento notes: they glide from the previous note and retrigger",
         );
