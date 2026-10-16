@@ -252,6 +252,15 @@ fn contents(
         });
     });
     ui.add_space(6.0);
+    section(ui, "VOICES", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::CUT_GROUP, "Cut", actions);
+            param_knob(ui, state, number, channel, inst::CUT_BY, "Cut by", actions);
+            param_knob(ui, state, number, channel, inst::POLY_MAX, "Max", actions);
+            choice(ui, number, channel, inst::MONO, &["Poly", "Mono"], actions);
+        });
+    });
+    ui.add_space(6.0);
     match &channel.instrument {
         Instrument::Sampler { sample } => {
             sampler(ui, state, frame, index, channel, sample, actions)

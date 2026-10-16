@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use musiccraft_dsp::ProcessContext;
-use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR};
+use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR, inst};
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::graph::{ChannelNode, Instrument, TrackNode};
+use crate::graph::{ChannelNode, ChannelParams, Instrument, TrackNode};
 use crate::midi_out::{MidiOut, MidiOutReceiver, midi_out_pair};
 use crate::voice::{Voice, VoiceStart};
 use crate::{
@@ -265,6 +265,15 @@ impl Engine {
     #[must_use]
     pub fn active_voices(&self) -> usize {
         self.voices.iter().filter(|v| v.active).count()
+    }
+
+    /// Active voices on `channel`, cut or not.
+    #[cfg(test)]
+    pub(crate) fn voices_on(&self, channel: u16) -> usize {
+        self.voices
+            .iter()
+            .filter(|v| v.active && v.channel == channel)
+            .count()
     }
 
     /// The keys of the sounding (not released) voices, lowest first.
@@ -886,6 +895,15 @@ fn trigger(
         }
         return;
     }
+    let Some(node) = channels.get(usize::from(start.channel)) else {
+        return;
+    };
+    // A slide note on an instrument that can bend starts no sound, so it cuts
+    // nothing; every other note cuts the channels its cut group chokes.
+    let bends = start.slide && crate::voice::glides(&node.instrument);
+    if !bends {
+        cut_group(voices, channels, &node.params, start.delay);
+    }
     if let Some(ChannelNode {
         instrument: Instrument::MidiOut(midi_channel),
         params,
@@ -941,9 +959,7 @@ fn trigger(
     }
     if start.shape.porta {
         start.glide_from = previous;
-        let Some(node) = channels.get(usize::from(start.channel)) else {
-            return;
-        };
+        make_room(voices, &node.params, start.channel, start.delay);
         if let Some(voice) = free_voice(voices) {
             *counter += 1;
             voice.start(start, &node.instrument, &node.params, *counter);
@@ -956,9 +972,7 @@ fn trigger(
         .filter(|v| v.channel == start.channel && v.held())
         .max_by_key(|v| v.age)
         .map(Voice::current_key);
-    let Some(node) = channels.get(usize::from(start.channel)) else {
-        return;
-    };
+    make_room(voices, &node.params, start.channel, start.delay);
     if let Some(voice) = free_voice(voices) {
         *counter += 1;
         voice.start(start, &node.instrument, &node.params, *counter);
@@ -987,6 +1001,57 @@ fn slide(voices: &mut [Voice], last_keys: &mut [Option<f32>], start: &VoiceStart
     // Later portamento notes glide from where the slide ends.
     if let Some(slot) = last_keys.get_mut(usize::from(start.channel)) {
         *slot = Some(f32::from(start.key) + start.shape.fine);
+    }
+}
+
+/// An integer channel parameter (cut groups, polyphony).
+fn int_param(params: &ChannelParams, index: usize) -> u32 {
+    params
+        .instrument
+        .get(index)
+        .map_or(0, |v| v.round().max(0.0) as u32)
+}
+
+/// Cuts, `at` frames into the block, every voice of every channel that the
+/// starting note's cut group chokes.
+fn cut_group(voices: &mut [Voice], channels: &[ChannelNode], params: &ChannelParams, at: u32) {
+    let group = int_param(params, inst::CUT_GROUP);
+    if group == 0 {
+        return;
+    }
+    for voice in voices.iter_mut().filter(|v| v.active) {
+        let choked = channels
+            .get(usize::from(voice.channel))
+            .is_some_and(|node| int_param(&node.params, inst::CUT_BY) == group);
+        if choked {
+            voice.cut(at);
+        }
+    }
+}
+
+/// Cuts the channel's oldest voices until a new one fits its mono or
+/// polyphony limit.
+fn make_room(voices: &mut [Voice], params: &ChannelParams, channel: u16, at: u32) {
+    let limit = if int_param(params, inst::MONO) > 0 {
+        1
+    } else {
+        int_param(params, inst::POLY_MAX) as usize
+    };
+    if limit == 0 {
+        return;
+    }
+    let sounding = |v: &Voice| v.active && v.channel == channel && !v.is_cut();
+    let mut count = voices.iter().filter(|v| sounding(v)).count();
+    while count >= limit {
+        let Some(oldest) = voices
+            .iter_mut()
+            .filter(|v| sounding(v))
+            .min_by_key(|v| v.age)
+        else {
+            break;
+        };
+        oldest.cut(at);
+        count -= 1;
     }
 }
 

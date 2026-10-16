@@ -33,6 +33,8 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Route to mixer insert | `cmd:channel.route` |
 | Channel rack | Rename / clone / reorder / delete | `cmd:channel.rename` `cmd:channel.clone` `cmd:channel.move` `cmd:channel.remove` |
 | Channel rack | Instrument parameters | `cmd:channel.set_param` |
+| Channel rack | Cut groups (choke) | `spec:channel-rack.md` `done` |
+| Channel rack | Mono and maximum polyphony | `spec:channel-rack.md` `done` |
 | Channel rack | Swing: global amount, per-channel mix and truncate | `cmd:project.set_swing` `spec:channel-rack.md` |
 | Channel rack | Channel settings window (envelope, filter, sample view) | `done` |
 | Channel rack | Melodic patterns previewed in the rack | `done` |

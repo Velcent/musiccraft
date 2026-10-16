@@ -47,6 +47,30 @@
   - Older files stored swing per pattern. On load, a project without a global
     swing takes the largest pattern swing.
 
+## Voices: cut groups, mono and polyphony
+
+Channel parameters (`channel.set_param <n> <name> <value>`, undoable; channel
+settings → VOICES). They apply to the built-in instruments; plugin and MIDI
+Out channels voice their own notes and are never cut.
+
+- **Cut groups** (choke): `cut_group` (0–16, 0 = none) is the group a
+  channel's notes cut; `cut_by` (0–16, 0 = none) is the group that cuts the
+  channel. When a note starts on a channel whose `cut_group` is G, every
+  sounding voice of every channel whose `cut_by` is G is cut, on the new
+  note's own frame. A closed hi-hat with `cut_group 1` and an open hi-hat with
+  `cut_by 1` makes the closed hat choke the open one; giving both channels
+  `cut_group 1` and `cut_by 1` makes each choke the other (and itself).
+- **Mono** (`mono` 0 or 1): a new note cuts every other voice of the channel,
+  so one note sounds at a time. With the synth's `glide`, the new note still
+  glides from the note it replaces.
+- **Max polyphony** (`poly_max`, 0–64, 0 = no limit): when a note starts and
+  the channel already has that many voices sounding, the oldest are cut until
+  the new note fits. Mono is the same as a limit of 1.
+- A **cut** fades the voice out over 3 ms instead of its release time (one-shot
+  samples included), so it never clicks. A voice fading out after a cut no
+  longer counts toward the polyphony limit.
+- Slide notes start no voice, so they cut nothing.
+
 ## Sampler
 
 - Plays the sample from its start. The pitch follows the note key relative to the
@@ -181,6 +205,10 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   Studio online manual, "Keyboard shortcuts" and the pattern selector.
   "Empty" meaning "no notes" and adding a pattern when none is left are our
   own choices.
+- Cut groups ("cut" and "cut by"), mono and maximum polyphony are channel
+  settings described in the FL Studio online manual, "Channel settings",
+  miscellaneous functions. The 3 ms fade, the group range and the counting
+  rules are our own.
 - Swing: the FL Studio online manual describes one main swing control, a
   per-channel swing mix (default 100%) and a truncate option for swung
   notes. The delay curve, the truncate rule and the migration are our own.

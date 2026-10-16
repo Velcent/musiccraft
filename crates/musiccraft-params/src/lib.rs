@@ -289,6 +289,14 @@ pub mod inst {
     pub const SWING_MIX: usize = 74;
     /// 1 = swung notes keep their end (they get shorter).
     pub const SWING_TRUNCATE: usize = 75;
+    /// Cut group this channel's notes cut (0 = none).
+    pub const CUT_GROUP: usize = 76;
+    /// Cut group that cuts this channel (0 = none).
+    pub const CUT_BY: usize = 77;
+    /// 1 = one note at a time.
+    pub const MONO: usize = 78;
+    /// Most voices sounding at once (0 = no limit).
+    pub const POLY_MAX: usize = 79;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -369,6 +377,10 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     spec("gran_scan", -2.0, 2.0, 0.0, ""),
     spec("swing_mix", 0.0, 1.0, 1.0, ""),
     int_spec("swing_truncate", 0.0, 1.0, 0.0),
+    int_spec("cut_group", 0.0, 16.0, 0.0),
+    int_spec("cut_by", 0.0, 16.0, 0.0),
+    int_spec("mono", 0.0, 1.0, 0.0),
+    int_spec("poly_max", 0.0, 64.0, 0.0),
 ];
 
 /// Names of the keys instrument's types, by `keys_type` value.
@@ -1006,6 +1018,8 @@ mod tests {
             (inst::GRAN_SCAN, "gran_scan"),
             (inst::SWING_MIX, "swing_mix"),
             (inst::SWING_TRUNCATE, "swing_truncate"),
+            (inst::CUT_GROUP, "cut_group"),
+            (inst::POLY_MAX, "poly_max"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

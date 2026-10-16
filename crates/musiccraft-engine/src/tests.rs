@@ -948,6 +948,102 @@ fn a_slide_never_lengthens_the_note_it_bends() {
     assert!(engine.held_keys().is_empty());
 }
 
+/// Two channels at 120 BPM playing `events` (channel, start beat, key), each
+/// held for four beats.
+fn two_channels(
+    instrument: impl Fn() -> Instrument,
+    params: [&[(usize, f32)]; 2],
+    events: &[(u16, u64, u8)],
+) -> Engine {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    for settings in params {
+        let mut p = impulse_params();
+        for &(index, value) in settings {
+            p.instrument[index] = value;
+        }
+        graph.add_channel(instrument(), p);
+    }
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    let notes = events
+        .iter()
+        .map(|&(channel, start, key)| {
+            let mut event = note(start, channel);
+            event.length = 4 * u64::from(PPQ);
+            event.key = key;
+            event
+        })
+        .collect();
+    let seq = Sequence::new(notes, 16 * u64::from(PPQ));
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::Play);
+    engine
+}
+
+/// Frames a cut takes, with a little slack.
+const CUT_FRAMES: usize = (crate::voice::CUT_SECONDS * SR as f32) as usize + 8;
+
+#[test]
+fn a_cut_group_chokes_the_channels_cut_by_it() {
+    // Channel 0 is a closed hat (cuts group 1), channel 1 an open hat (cut by 1).
+    let hats = || Instrument::DrumSynth;
+    let closed: &[(usize, f32)] = &[(inst::DRUM_TYPE, 2.0), (inst::CUT_GROUP, 1.0)];
+    let open: &[(usize, f32)] = &[
+        (inst::DRUM_TYPE, 2.0),
+        (inst::DRUM_DECAY, 2.0),
+        (inst::CUT_BY, 1.0),
+    ];
+    let mut engine = two_channels(hats, [closed, open], &[(1, 0, 60), (0, 1, 60)]);
+    render_mono(&mut engine, BEAT - 10);
+    assert_eq!(engine.voices_on(1), 1, "the open hat rings");
+    render_mono(&mut engine, 10 + CUT_FRAMES);
+    assert_eq!(engine.voices_on(1), 0, "choked by the closed hat");
+    assert_eq!(engine.voices_on(0), 1);
+    // The other way round nothing is choked.
+    let mut engine = two_channels(hats, [closed, open], &[(0, 0, 60), (1, 1, 60)]);
+    render_mono(&mut engine, BEAT + CUT_FRAMES);
+    assert_eq!(engine.voices_on(1), 1);
+    assert_eq!(engine.voices_on(0), 1, "the open hat does not cut");
+}
+
+#[test]
+fn a_cut_starts_on_the_cutting_notes_frame_and_fades_quickly() {
+    // A long one-shot sample of constant level on channel 1, cut by channel 0.
+    let sample = Arc::new(SampleBuffer::mono(vec![0.5; 4 * BEAT], f64::from(SR)));
+    let cutter: &[(usize, f32)] = &[(inst::CUT_GROUP, 3.0), (inst::ONE_SHOT, 1.0)];
+    let cut: &[(usize, f32)] = &[(inst::CUT_BY, 3.0), (inst::ONE_SHOT, 1.0)];
+    let mut engine = two_channels(
+        || Instrument::Sampler(Arc::clone(&sample)),
+        [cutter, cut],
+        &[(1, 0, 60), (0, 1, 60)],
+    );
+    let out = render_mono(&mut engine, BEAT + CUT_FRAMES + 100);
+    let level = std::f32::consts::SQRT_2 * 0.5 * std::f32::consts::FRAC_1_SQRT_2;
+    assert!((out[BEAT - 1] - level).abs() < 1e-4, "{}", out[BEAT - 1]);
+    // From the cut frame on: the new note plus a fading old one.
+    assert!(out[BEAT + 1] > level && out[BEAT + 1] < 2.0 * level);
+    let after = out[BEAT + CUT_FRAMES + 50];
+    assert!((after - level).abs() < 1e-4, "only the new note: {after}");
+}
+
+#[test]
+fn mono_and_polyphony_limits_cut_the_oldest_voices() {
+    let chord = [(0, 0, 60), (0, 0, 64), (0, 0, 67), (0, 1, 72)];
+    for (settings, voices) in [
+        (&[][..], 4),
+        (&[(inst::MONO, 1.0)][..], 1),
+        (&[(inst::POLY_MAX, 2.0)][..], 2),
+        (&[(inst::POLY_MAX, 3.0)][..], 3),
+    ] {
+        let mut engine = two_channels(|| Instrument::Synth, [settings, &[]], &chord);
+        render_mono(&mut engine, BEAT + CUT_FRAMES);
+        assert_eq!(engine.voices_on(0), voices, "{settings:?}");
+        // The newest note always sounds.
+        assert!(engine.held_keys().contains(&72), "{settings:?}");
+    }
+}
+
 #[test]
 fn a_nan_burst_cannot_silence_a_reverb_for_good() {
     let (mut engine, _handle) = engine_pair(SR);

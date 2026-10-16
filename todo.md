@@ -37,8 +37,8 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 
 ## 2. Missing: high impact
 
-- [ ] Cut groups / choke (a closed hi-hat cuts an open one).
-- [ ] Per-channel mono mode and maximum polyphony.
+- [x] Cut groups / choke (a closed hi-hat cuts an open one).
+- [x] Per-channel mono mode and maximum polyphony.
 - [ ] Recording:
   - [ ] Count-in (Ctrl+P).
   - [ ] Wait for input before recording starts (Ctrl+I).
