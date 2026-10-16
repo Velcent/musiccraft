@@ -28,20 +28,42 @@
 | Ctrl+H | Panic: all notes off |
 | L | Toggle pattern / song mode |
 | Ctrl+M | Metronome on / off |
-| R | Arm / disarm recording |
+| R | Arm / disarm recording (`record.toggle`) |
+| Ctrl+E | Step edit on / off |
+| Ctrl+P | Recording count-in on / off |
+| Ctrl+I | Wait for input before recording on / off |
 | Ctrl+T | Typing keyboard plays notes |
 | F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer |
 | Alt+F8 | Browser |
 | Alt+T | Add a playlist marker at the playhead |
 | F10 | Settings |
-| F4 | New pattern |
+| F4 | Next empty pattern (adds one if none), then name it |
 | Plus / Minus | Next / previous pattern |
+| 1–9 | Select pattern 1–9 (over the channel rack: mute channels instead) |
+| P B D E C T Y Z | Tools: draw, paint, delete, select, slice, mute, play, zoom (piano roll and playlist) |
+| S / O | New piano-roll notes are slide / portamento notes (toggle) |
+| Ctrl+Insert / Ctrl+Delete | Insert / delete the loop region's time in the playlist |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z, Ctrl+Y | Redo |
 | Ctrl+N | Save new version (`song_2.mcproj`, …) |
 | Ctrl+O | Open project |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |
 | Ctrl+R | Export WAV |
+| Ctrl+Shift+M | Export MIDI |
+
+### Over the channel rack
+
+Window-local keys, active while the pointer is over the rack (and the typing
+keyboard is off); they take precedence over the global keys above.
+
+| Chord | Action |
+| --- | --- |
+| 1–9, 0 | Mute / unmute channel 1–10 (`channel.toggle_mute`) |
+| Ctrl+1–9, Ctrl+0 | Solo channel 1–10 (`channel.solo`) |
+| Alt+C / Alt+Delete | Clone / delete the selected channel |
+| Alt+Up / Alt+Down | Move the selected channel up / down |
+| Ctrl+L | Route the selected channel to a free mixer track (`channel.route_free`) |
+| Shift+Ctrl+Left / Right | Shift the selected channel's steps |
 
 ## Sources
 
@@ -52,7 +74,13 @@
   are a convenience for users switching tools; the bindings are data and can be
   changed.
 - Ctrl+T (typing keyboard): own choice. New project has no default shortcut;
-  it is in the File menu. Ctrl+E is left free for step edit mode, as in the
-  manual.
+  it is in the File menu.
+- Ctrl+E (step edit), Ctrl+P (count-in) and Ctrl+I (wait for input) follow
+  the FL Studio online manual, "Keyboard shortcuts" and "Recording".
+- The single-key tools (P, B, D, E, C, T, Y, Z, plus S and O for new note
+  kinds), 1–9 pattern select, the channel rack keys and Ctrl+Insert /
+  Ctrl+Delete follow the FL Studio online manual, "Keyboard shortcuts"
+  (global, channel rack, piano roll and playlist sections). Applying one tool
+  choice to both editors is our own simplification.
 - Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo and redo: common desktop convention (own
   choice; the manual describes a different undo toggle).

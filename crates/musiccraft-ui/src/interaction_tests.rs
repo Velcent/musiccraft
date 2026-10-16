@@ -230,6 +230,116 @@ fn playlist_place_move_delete() {
 }
 
 #[test]
+fn single_key_tools_slice_and_mute() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C5"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    // C picks the slice tool everywhere; a click cuts the note on the grid.
+    assert!(h.key(egui::Key::C, Modifiers::NONE).is_empty());
+    assert_eq!(h.state.roll.tool, crate::piano_roll::Tool::Slice);
+    assert_eq!(h.state.playlist.tool, crate::piano_roll::Tool::Slice);
+    let cut = h.click(h.roll_point(2 * step + 3, 60), PointerButton::Primary);
+    assert_eq!(cut, ["note.slice 1 0t 60 48t"]);
+    // S and O toggle slide and porta for new notes; P is draw again.
+    h.key(egui::Key::S, Modifiers::NONE);
+    h.key(egui::Key::O, Modifiers::NONE);
+    assert!(h.state.roll.slide && h.state.roll.porta);
+    h.key(egui::Key::P, Modifiers::NONE);
+    assert_eq!(h.state.roll.tool, crate::piano_roll::Tool::Draw);
+}
+
+#[test]
+fn playlist_slice_and_mute_tools() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 0 2"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    h.key(egui::Key::C, Modifiers::NONE);
+    // On the playlist the slice tool cuts the clip.
+    let cut = h.click(
+        h.playlist_point(TICKS_PER_BAR + 2, 0),
+        PointerButton::Primary,
+    );
+    assert_eq!(cut, ["playlist.slice_clip 1 384t"]);
+    h.settle();
+    // T: the mute tool mutes the clicked clip.
+    h.key(egui::Key::T, Modifiers::NONE);
+    let muted = h.click(
+        h.playlist_point(TICKS_PER_BAR + 40, 0),
+        PointerButton::Primary,
+    );
+    assert_eq!(muted, ["playlist.toggle_clip_mute 1 384t"]);
+    assert!(h.session.project().playlist.clips[1].muted);
+}
+
+#[test]
+fn number_keys_select_patterns_or_mute_channels_over_the_rack() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_synth",
+        "pattern.add",
+        "pattern.select 1",
+    ]);
+    h.settle();
+    // Anywhere else, 2 selects pattern 2.
+    assert_eq!(
+        h.key(egui::Key::Num2, Modifiers::NONE),
+        ["pattern.select 2"]
+    );
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = h
+        .ctx
+        .memory(|m| m.area_rect(egui::Id::new("channel-rack")))
+        .expect("rack drawn");
+    h.frame(vec![Event::PointerMoved(rack.center())]);
+    assert_eq!(
+        h.key(egui::Key::Num2, Modifiers::NONE),
+        ["channel.toggle_mute 2"]
+    );
+    assert_eq!(
+        h.key(egui::Key::Num1, Modifiers::COMMAND),
+        ["channel.solo 1"]
+    );
+    h.state.selected_channel = 1;
+    assert_eq!(
+        h.key(egui::Key::ArrowUp, Modifiers::ALT),
+        ["channel.move 2 1"]
+    );
+    assert_eq!(h.state.selected_channel, 0);
+    assert_eq!(
+        h.key(egui::Key::L, Modifiers::COMMAND),
+        ["channel.route_free 1"]
+    );
+    assert_eq!(h.session.project().channels[0].mixer_track, 1);
+    assert_eq!(
+        h.key(egui::Key::ArrowRight, Modifiers::COMMAND | Modifiers::SHIFT),
+        ["step.shift 1 1"]
+    );
+}
+
+#[test]
+fn the_step_graph_editor_edits_the_note_under_a_bar() {
+    let mut h = Harness::new(&["channel.add_synth", "step.toggle 1 0", "step.toggle 1 4"]);
+    h.state.windows.channel_rack = true;
+    h.state.graph = Some(crate::piano_roll::LaneMode::Velocity);
+    h.settle();
+    let (rect, steps) = h.state.graph_view.expect("graph drawn");
+    let width = rect.width() / steps as f32;
+    // High on the bar of step 4: a loud velocity for the note there.
+    let found = h.click(
+        pos2(rect.left() + width * 4.5, rect.top() + 8.0),
+        PointerButton::Primary,
+    );
+    assert!(
+        found
+            .iter()
+            .any(|c| c.starts_with("note.set_velocity 1 96t 60")),
+        "{found:?}"
+    );
+}
+
+#[test]
 fn shortcuts_run_commands_but_not_while_typing() {
     let mut h = Harness::new(&[]);
     h.settle();
@@ -472,6 +582,37 @@ fn piano_roll_selection_editing() {
     h.hover_roll(12 * step + 2, 70);
     h.key(egui::Key::V, Modifiers::COMMAND);
     assert!(h.roll_notes().contains(&(288, 64)), "{:?}", h.roll_notes());
+}
+
+#[test]
+fn f4_goes_to_the_next_empty_pattern_and_offers_to_name_it() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 1 C5"]);
+    h.settle();
+    assert_eq!(
+        h.key(egui::Key::F4, Modifiers::NONE),
+        ["pattern.next_empty"]
+    );
+    assert_eq!(h.session.project().patterns.len(), 2);
+    assert!(h.state.dialog.is_some(), "a rename prompt for pattern 2");
+    h.settle();
+    let mut typed = h.frame(vec![
+        Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        },
+        Event::Text("Drop".to_owned()),
+    ]);
+    typed.extend(h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]));
+    assert_eq!(typed, ["pattern.rename 2 Drop"]);
 }
 
 #[test]

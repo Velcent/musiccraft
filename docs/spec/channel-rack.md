@@ -19,6 +19,23 @@
   `channel.toggle_mute`, `channel.solo`, `channel.route`, `channel.set_sample` and
   `channel.set_param` edit channels. All are undoable. Removing a channel removes
   its notes from every pattern; undo restores both.
+- `channel.route_free <n>` routes a channel to the first mixer insert that no
+  other channel feeds and that has no effects, adding an insert when none is
+  free, and names that insert after the channel (one undo step).
+- Keys over the rack (see `keymap.md`): 1–0 mute channels 1–10, Ctrl+1–0 solo
+  them; Alt+C, Alt+Delete and Alt+Up/Down clone, delete and move the selected
+  channel; Ctrl+L runs `channel.route_free`; Shift+Ctrl+Left/Right shift its
+  steps.
+- **Step graph editor**: the rack's Graph toggle opens a strip under the rows
+  for the selected channel, one bar per step of the pattern, showing the note
+  that starts on that step (the highest, when several do): velocity, pan,
+  release, fine pitch, Mod X or Mod Y. Dragging a bar sets that note's value
+  through the usual note commands; one drag is one undo step.
+- **Display filter groups**: `channel.set_group <n> [group]` (undoable,
+  saved as `"group"`; no name removes it) puts a channel in a named group. The
+  rack's group menu (shown once any channel has a group) shows All, one
+  group, or Unsorted (channels without one). Right-click a channel → Group…
+  sets it. Filtering only hides rows; numbering and keys stay the same.
 - `channel.solo <n>` mutes every other channel; running it again on an already
   soloed channel unmutes all channels.
 - **Steps** are sixteenth notes. `step.toggle <channel> <step>` (0-based step)
@@ -26,12 +43,73 @@
   starting there, otherwise removes every note of that channel starting there.
   `step.set` forces a state. Steps and piano-roll notes are the same data.
 
-- **Swing**: `pattern.set_swing <pattern> <0-100>` delays notes that start
-  exactly on an off-beat sixteenth (steps 1, 3, 5, …) by up to half a step
-  (12 ticks at 100%). Other notes are unaffected. Undoable; saved per pattern.
+- **Next empty pattern**: `pattern.next_empty` selects the first pattern
+  after the selected one that has no notes; when there is none it adds a new
+  pattern (as `pattern.add`, undoable) and selects it. Selecting an existing
+  pattern is not undoable. F4 runs it and then offers to name the pattern
+  (a rename prompt; Escape keeps the name).
+- **Swing** is one amount for the whole project: `project.set_swing <0-100>`
+  (undoable; saved as `"swing"`, 0–1). Notes that start exactly on an off-beat
+  sixteenth (steps 1, 3, 5, …) are delayed by up to half a step: 12 ticks ×
+  swing × the channel's **swing mix**. Other notes are unaffected. It applies
+  to pattern notes in pattern and song mode, not to audio clips.
+  - `swing_mix` (channel parameter, 0–1, default 1 = 100%; `channel.set_param
+    <n> swing_mix <v>`) scales the global swing per channel: 0 keeps a channel
+    straight.
+  - `swing_truncate` (channel parameter, 0 or 1, default 0): a swung note
+    keeps its original end and so gets shorter by the delay (never below one
+    tick) instead of moving whole, so it cannot run into the next step.
+  - Both are in channel settings → SWING. The channel rack's swing box sets
+    the global amount.
+  - Older files stored swing per pattern. On load, a project without a global
+    swing takes the largest pattern swing.
+
+## Timing and echo
+
+Channel parameters (channel settings → TIMING AND ECHO), applied when the
+sequence is built, after swing and the arpeggiator; they change what the
+channel plays, not the stored notes:
+
+- `time_shift` (-96…96 ticks) moves every note of the channel later
+  (negative: earlier, never before the loop start).
+- `gate` (0…384 ticks, 0 = off) gives every note that fixed length.
+- Note echo: `echo_count` (0–8) repeats each note `echo_time` ticks apart
+  (default 48), each repeat's velocity multiplied by `echo_feed` (0–1,
+  default 0.5) and its key moved by `echo_pitch` semitones (-12…12). Repeats
+  past the loop end, below velocity 1 or outside the key range are dropped.
+  Echoes are never slide notes.
+
+## Voices: cut groups, mono and polyphony
+
+Channel parameters (`channel.set_param <n> <name> <value>`, undoable; channel
+settings → VOICES). They apply to the built-in instruments; plugin and MIDI
+Out channels voice their own notes and are never cut.
+
+- **Cut groups** (choke): `cut_group` (0–16, 0 = none) is the group a
+  channel's notes cut; `cut_by` (0–16, 0 = none) is the group that cuts the
+  channel. When a note starts on a channel whose `cut_group` is G, every
+  sounding voice of every channel whose `cut_by` is G is cut, on the new
+  note's own frame. A closed hi-hat with `cut_group 1` and an open hi-hat with
+  `cut_by 1` makes the closed hat choke the open one; giving both channels
+  `cut_group 1` and `cut_by 1` makes each choke the other (and itself).
+- **Mono** (`mono` 0 or 1): a new note cuts every other voice of the channel,
+  so one note sounds at a time. With the synth's `glide`, the new note still
+  glides from the note it replaces.
+- **Max polyphony** (`poly_max`, 0–64, 0 = no limit): when a note starts and
+  the channel already has that many voices sounding, the oldest are cut until
+  the new note fits. Mono is the same as a limit of 1.
+- A **cut** fades the voice out over 3 ms instead of its release time (one-shot
+  samples included), so it never clicks. A voice fading out after a cut no
+  longer counts toward the polyphony limit.
+- Slide notes start no voice, so they cut nothing.
 
 ## Sampler
 
+- `reverse` (0 or 1) plays the sample backwards from its end; `fade_in` and
+  `fade_out` (0–10 s) fade each note in from its start and out over its last
+  seconds (before the note or the sample ends). Used by audio clips (see
+  `playlist.md`, "Clip editing"); sliced samplers and kit pads ignore
+  `reverse`.
 - Plays the sample from its start. The pitch follows the note key relative to the
   `root_key` parameter (default 60) plus the `pitch` parameter in semitones.
   Samples of any rate are resampled by linear interpolation.
@@ -160,8 +238,27 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   and mixer routing) follows the general workflow described in the FL Studio
   online manual, "Channel Rack" section. Command names, value ranges and defaults
   are our own.
+- F4 selecting the next empty pattern and offering to name it follows the FL
+  Studio online manual, "Keyboard shortcuts" and the pattern selector.
+  "Empty" meaning "no notes" and adding a pattern when none is left are our
+  own choices.
+- Cut groups ("cut" and "cut by"), mono and maximum polyphony are channel
+  settings described in the FL Studio online manual, "Channel settings",
+  miscellaneous functions. The 3 ms fade, the group range and the counting
+  rules are our own.
+- Swing: the FL Studio online manual describes one main swing control, a
+  per-channel swing mix (default 100%) and a truncate option for swung
+  notes. The delay curve, the truncate rule and the migration are our own.
 - MIDI Out: note on/off messages per the MIDI 1.0 specification (MIDI
   Association); the channel kind mirrors the "send notes to external gear"
   generator listed in the FL Studio online manual's plugin list. Design ours.
 - Built-in sounds: own design; no third-party audio is used.
 - WAV decoding: the RIFF/WAVE format via the `hound` crate.
+- Time shift, gate and note echo are channel settings described in the FL
+  Studio online manual, "Channel settings" (miscellaneous functions: time,
+  echo delay). Units, ranges and rules are our own.
+- Display filter groups follow the channel rack filter groups described in the
+  FL Studio online manual, "Channel Rack". "Unsorted" and the menu are our own.
+- The step graph editor follows the channel rack graph editor described in the
+  FL Studio online manual, "Channel Rack" (graph editor). Its properties match
+  our piano roll lane; the layout is our own.

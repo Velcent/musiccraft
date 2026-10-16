@@ -43,6 +43,9 @@ pub(crate) fn glides(instrument: &Instrument) -> bool {
     )
 }
 
+/// How long a cut voice takes to fade out.
+pub(crate) const CUT_SECONDS: f32 = 0.003;
+
 fn param(params: &ChannelParams, index: usize) -> f32 {
     params.instrument.get(index).copied().unwrap_or(0.0)
 }
@@ -116,6 +119,10 @@ pub(crate) struct Voice {
     string_peak: f32,
     string_count: u32,
     sample_pos: f64,
+    /// Sampler: playing backwards.
+    reverse: bool,
+    /// Sampler: output frames played, for the fade-in.
+    sample_frames: f64,
     pan: (f32, f32),
     /// Current glide offset in keys (moves toward 0) and its change per frame.
     glide: f32,
@@ -132,6 +139,11 @@ pub(crate) struct Voice {
     grains: [Grain; GRAINS],
     /// Frames until the next grain.
     grain_timer: f32,
+    /// A cut (choke, mono, polyphony limit): frames to wait before fading
+    /// out, counted once the voice's own start delay has passed.
+    cut_wait: Option<u32>,
+    /// Velocity lost per frame while a cut fades out.
+    cut_step: f32,
 }
 
 impl Voice {
@@ -170,8 +182,12 @@ impl Voice {
             pad: 0,
             grains: [Grain::default(); GRAINS],
             grain_timer: 0.0,
+            cut_wait: None,
+            cut_step: 0.0,
             filter_countdown: 0,
             sample_pos: 0.0,
+            reverse: false,
+            sample_frames: 0.0,
             pan: (1.0, 1.0),
             glide: 0.0,
             glide_rate: 0.0,
@@ -183,6 +199,7 @@ impl Voice {
     /// Whether the gate is still open (not releasing).
     pub fn held(&self) -> bool {
         self.active
+            && self.cut_wait.is_none()
             && self.delay == 0
             && !self.env.is_releasing()
             && (self.gate.is_some() || self.live || self.one_shot)
@@ -207,6 +224,7 @@ impl Voice {
         age: u64,
     ) {
         self.active = true;
+        self.cut_wait = None;
         self.live = start.live;
         self.shape = start.shape;
         self.channel = start.channel;
@@ -258,8 +276,19 @@ impl Voice {
                 f64::from(param(params, inst::GRAN_POSITION).clamp(0.0, 1.0)) * buffer.len() as f64;
         }
         self.slice_end = None;
+        self.reverse = false;
+        self.sample_frames = 0.0;
         if let Instrument::Sampler(buffer) = instrument {
             let slices = param(params, inst::SLICES).round().max(1.0) as i32;
+            // A sliced audio clip starts part-way; a reversed sample plays
+            // from its end.
+            let offset = f64::from(start.shape.start.max(0.0)) * buffer.sample_rate();
+            self.reverse = param(params, inst::REVERSE) >= 0.5 && slices <= 1;
+            self.sample_pos = if self.reverse {
+                buffer.len() as f64 - 1.0 - offset
+            } else {
+                offset
+            };
             if slices > 1 {
                 // Key root + i plays slice i (wrapping), as a one-shot.
                 let root = param(params, inst::ROOT_KEY).round() as i32;
@@ -315,7 +344,7 @@ impl Voice {
     /// later, released or already ended), `u64::MAX` when nothing ends it
     /// (a live key or a one-shot sample).
     pub fn sounding_for(&self, at: u32) -> Option<u64> {
-        if !self.active || self.env.is_releasing() || self.delay > at {
+        if !self.active || self.cut_wait.is_some() || self.env.is_releasing() || self.delay > at {
             return None;
         }
         let elapsed = u64::from(at - self.delay);
@@ -338,6 +367,22 @@ impl Voice {
         // The glide starts on the slide note's own frame; the voice's gate and
         // glide count only once its own start delay has passed.
         self.glide_wait = at.saturating_sub(self.delay);
+    }
+
+    /// Whether a cut has been scheduled (the voice is fading out or about to).
+    pub fn is_cut(&self) -> bool {
+        self.cut_wait.is_some()
+    }
+
+    /// Fades this voice out over [`CUT_SECONDS`], starting `at` frames into the
+    /// block, whatever its instrument and release (one-shots included).
+    pub fn cut(&mut self, at: u32) {
+        if !self.active {
+            return;
+        }
+        let wait = at.saturating_sub(self.delay);
+        self.cut_wait = Some(self.cut_wait.map_or(wait, |w| w.min(wait)));
+        self.cut_step = self.velocity.max(1e-6) / (CUT_SECONDS * self.sample_rate);
     }
 
     /// Closes the gate (one-shot samples keep playing unless `force`).
@@ -420,6 +465,8 @@ impl Voice {
             .slice_end
             .unwrap_or(f64::INFINITY)
             .min(buffer.len() as f64);
+        let fade_in = f64::from(param(params, inst::FADE_IN)) * f64::from(sample_rate);
+        let fade_out = f64::from(param(params, inst::FADE_OUT)) * f64::from(sample_rate);
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if !self.advance_gate() {
                 continue;
@@ -429,16 +476,47 @@ impl Voice {
                 self.step_glide();
                 step = step_for(self.glide);
             }
-            let level = self.env.next_level() * self.velocity;
+            let fade = self.sample_fade(fade_in, fade_out, step, end);
+            self.sample_frames += 1.0;
+            let level = self.env.next_level() * self.velocity * fade;
             let (sl, sr) = buffer.read(self.sample_pos);
             *l += sl * level * self.pan.0;
             *r += sr * level * self.pan.1;
-            self.sample_pos += step;
-            if self.sample_pos >= end || self.env.is_idle() {
+            let done = if self.reverse {
+                self.sample_pos -= step;
+                self.sample_pos < 0.0
+            } else {
+                self.sample_pos += step;
+                self.sample_pos >= end
+            };
+            if done || self.env.is_idle() {
                 self.active = false;
                 break;
             }
         }
+    }
+
+    /// The sampler's fade gain (0..1) for the current frame: rising over
+    /// `fade_in` output frames from the start, falling over the last
+    /// `fade_out` frames before the note (or the sample) ends.
+    fn sample_fade(&self, fade_in: f64, fade_out: f64, step: f64, end: f64) -> f32 {
+        let mut gain = 1.0_f64;
+        if fade_in > 0.0 {
+            gain = gain.min(self.sample_frames / fade_in);
+        }
+        if fade_out > 0.0 {
+            let source_left = if self.reverse {
+                self.sample_pos
+            } else {
+                end - self.sample_pos
+            };
+            let mut left = source_left / step.abs().max(1e-9);
+            if let (Some(gate), false) = (self.gate, self.one_shot) {
+                left = left.min(gate as f64);
+            }
+            gain = gain.min(left / fade_out);
+        }
+        gain.clamp(0.0, 1.0) as f32
     }
 
     /// Writes one mono sample to both sides, with the note's pan.
@@ -1048,9 +1126,24 @@ impl Voice {
     /// Handles the start delay and the gate countdown for one frame. Returns
     /// whether the voice sounds on this frame.
     fn advance_gate(&mut self) -> bool {
+        if !self.active {
+            return false;
+        }
         if self.delay > 0 {
             self.delay -= 1;
             return false;
+        }
+        match self.cut_wait {
+            Some(0) => {
+                self.velocity -= self.cut_step;
+                if self.velocity <= 0.0 {
+                    self.velocity = 0.0;
+                    self.active = false;
+                    return false;
+                }
+            }
+            Some(wait) => self.cut_wait = Some(wait - 1),
+            None => {}
         }
         if let Some(remaining) = self.gate {
             if remaining == 0 {

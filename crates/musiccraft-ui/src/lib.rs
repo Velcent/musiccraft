@@ -126,6 +126,10 @@ pub struct EngineStatus {
     pub midi: String,
     /// MIDI output description.
     pub midi_out: String,
+    /// A recording count-in is clicking.
+    pub counting_in: bool,
+    /// Playback waits for the first live note.
+    pub waiting: bool,
 }
 
 /// Undo history information for menus.
@@ -210,8 +214,16 @@ pub struct UiState {
     pub workspace: egui::Rect,
     /// Letter keys play notes on the selected channel.
     pub typing_keyboard: bool,
-    /// Live notes are written into the selected pattern while playing.
-    pub record: bool,
+    /// Times (seconds) of the latest tempo taps.
+    pub taps: Vec<f64>,
+    /// The channel rack shows only this display filter group (`None`: all).
+    pub rack_group: Option<String>,
+    /// The channel rack's step graph editor: open, what it edits, and the
+    /// step being dragged.
+    pub(crate) graph: Option<piano_roll::LaneMode>,
+    pub(crate) graph_drag: Option<musiccraft_project::Note>,
+    /// Where the graph strip was last drawn and its step count (for tests).
+    pub(crate) graph_view: Option<(egui::Rect, u32)>,
     /// While recording in song mode, also capture the audio input.
     pub record_audio: bool,
     /// Text that filters the plugin parameter list.
@@ -248,6 +260,16 @@ impl Default for UiState {
 }
 
 impl UiState {
+    /// How far step edit moves per note: the piano roll's snap, or one step
+    /// when snap is off.
+    #[must_use]
+    pub fn step_edit_ticks(&self) -> u32 {
+        match self.roll.snap {
+            geometry::Snap::Off => musiccraft_project::params::TICKS_PER_STEP,
+            snap => snap.ticks(),
+        }
+    }
+
     /// Fresh interface state using `keymap`.
     #[must_use]
     pub fn new(keymap: Keymap) -> Self {
@@ -265,7 +287,11 @@ impl UiState {
             automation_view: None,
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
-            record: false,
+            taps: Vec::new(),
+            rack_group: None,
+            graph: None,
+            graph_drag: None,
+            graph_view: None,
             record_audio: false,
             plugin_filter: String::new(),
             hint: None,
@@ -541,8 +567,51 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                 let tick = tick - tick % musiccraft_project::params::PPQ;
                 state.dialog = Some(dialogs::Dialog::add_marker(tick));
             }
+            "ui.tool" => {
+                // One tool choice for the piano roll and the playlist.
+                match invocation
+                    .args
+                    .first()
+                    .and_then(|t| piano_roll::Tool::parse(t))
+                {
+                    Some(tool) => {
+                        state.roll.tool = tool;
+                        state.playlist.tool = tool;
+                    }
+                    None => state.set_status("ui.tool: unknown tool", true),
+                }
+            }
+            "ui.toggle_slide" => state.roll.slide = !state.roll.slide,
+            "ui.toggle_porta" => state.roll.porta = !state.roll.porta,
+            "ui.insert_space" | "ui.delete_space" => {
+                let name = invocation.name.replace("ui.", "playlist.");
+                match frame.project.playlist.loop_range {
+                    Some((start, end)) => out.push(Action::Run(Invocation::new(
+                        &name,
+                        [format!("{start}t"), format!("{}t", end - start)],
+                    ))),
+                    None => state.set_status(
+                        "select a time range first: Shift+drag the playlist ruler",
+                        true,
+                    ),
+                }
+            }
+            "ui.next_empty_pattern" => {
+                // Mirrors `pattern.next_empty`, then offers to name the pattern.
+                let project = frame.project;
+                let (index, name) = match project.next_empty_pattern() {
+                    Some(i) => (i, project.patterns[i].name.clone()),
+                    None => (
+                        project.patterns.len(),
+                        format!("Pattern {}", project.patterns.len() + 1),
+                    ),
+                };
+                out.push(Action::Run(Invocation::bare("pattern.next_empty")));
+                state.dialog = Some(dialogs::Dialog::rename_pattern(index, &name));
+            }
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.export_stems" => state.dialog = Some(dialogs::Dialog::export_stems(frame.project)),
+            "ui.export_midi" => state.dialog = Some(dialogs::Dialog::export_midi(frame.project)),
             "ui.quit" => out.push(Action::Quit),
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
             "ui.automate" => {
@@ -577,7 +646,6 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                         .unwrap_or(settings::Tab::Audio),
                 );
             }
-            "ui.toggle_record" => state.record = !state.record,
             _ => out.push(action),
         }
     }

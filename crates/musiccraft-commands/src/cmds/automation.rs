@@ -2,7 +2,8 @@ use musiccraft_project::params::{
     INSTRUMENT_PARAMS, TICKS_PER_BAR, TICKS_PER_STEP, index_of, volume_to_unit,
 };
 use musiccraft_project::{
-    Automation, AutomationId, AutomationPoint, AutomationTarget, Clip, MAX_VOLUME, Project,
+    Automation, AutomationId, AutomationPoint, AutomationTarget, Clip, ClipSource, MAX_VOLUME,
+    PLAYLIST_TRACKS, PatternLane, Project,
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,7 +61,164 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "Replace every point with [[tick, value], ...] (used by undo).",
             set_points,
         ),
+        cmd(
+            "pattern.record_event",
+            "pattern.record_event <target> <tick>",
+            "Record the target's current value into the selected pattern's automation at a pattern tick.",
+            record_event,
+        ),
+        cmd(
+            "pattern.clear_events",
+            "pattern.clear_events <pattern> [target]",
+            "Remove a pattern's automation (all of it, or one target's).",
+            clear_events,
+        ),
+        cmd(
+            "pattern.set_events",
+            "pattern.set_events <pattern> <json>",
+            "Replace a pattern's automation lanes (used by undo).",
+            set_events,
+        ),
+        cmd(
+            "automation.record",
+            "automation.record <target> <tick>",
+            "Record the target's current value at a song position, creating an automation and clip if needed.",
+            record,
+        ),
     ]
+}
+
+/// An inverse that restores pattern `index`'s automation exactly.
+fn events_inverse(project: &Project, index: usize) -> Invocation {
+    let json = serde_json::to_string(&project.patterns[index].automation)
+        .unwrap_or_else(|_| "[]".to_owned());
+    Invocation::new("pattern.set_events", [(index + 1).to_string(), json])
+}
+
+fn record_event(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = parse_target(project, args, args.str(0)?)?;
+    let index = project.current_pattern;
+    let tick = args.time(1, TICKS_PER_STEP)? % project.patterns[index].length_ticks().max(1);
+    let (value, label) =
+        current(project, &target).ok_or_else(|| args.invalid("the target does not exist"))?;
+    let inverse = events_inverse(project, index);
+    let lanes = &mut project.patterns[index].automation;
+    let lane = match lanes.iter().position(|l| l.target == target) {
+        Some(i) => &mut lanes[i],
+        None => {
+            lanes.push(PatternLane {
+                target,
+                points: Vec::new(),
+            });
+            let last = lanes.len() - 1;
+            &mut lanes[last]
+        }
+    };
+    lane.points.retain(|p| p.tick != tick);
+    lane.points.push(AutomationPoint { tick, value });
+    lane.points.sort_by_key(|p| p.tick);
+    Ok(Outcome::undoable(
+        format!("recorded {label} in pattern {} at {tick}t", index + 1),
+        inverse,
+    ))
+}
+
+fn clear_events(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 2)?;
+    let index = project.pattern_index(args.number(0, "pattern")?)?;
+    let target = match args.opt(1) {
+        Some(text) => Some(parse_target(project, args, text)?),
+        None => None,
+    };
+    let inverse = events_inverse(project, index);
+    let lanes = &mut project.patterns[index].automation;
+    let before = lanes.len();
+    lanes.retain(|l| target.as_ref().is_some_and(|t| *t != l.target));
+    Ok(Outcome::undoable(
+        format!(
+            "removed {} automation lanes from pattern {}",
+            before - lanes.len(),
+            index + 1
+        ),
+        inverse,
+    ))
+}
+
+fn set_events(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = project.pattern_index(args.number(0, "pattern")?)?;
+    let lanes: Vec<PatternLane> =
+        serde_json::from_str(args.str(1)?).map_err(|e| args.invalid(e.to_string()))?;
+    let inverse = events_inverse(project, index);
+    project.patterns[index].automation = lanes;
+    Ok(Outcome::undoable(
+        format!("pattern {} automation restored", index + 1),
+        inverse,
+    ))
+}
+
+/// Records `target`'s current value at song position `tick`: into an
+/// automation clip of that target covering `tick`, or a new automation whose
+/// clip covers the whole song (so later points, even after the song wraps,
+/// land in it).
+fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = parse_target(project, args, args.str(0)?)?;
+    let tick = args.time(1, TICKS_PER_STEP)?;
+    let (value, label) =
+        current(project, &target).ok_or_else(|| args.invalid("the target does not exist"))?;
+    let covering = project.playlist.clips.iter().find_map(|clip| {
+        let index = project.automation_position(clip.automation()?)?;
+        let covers = clip.start <= tick && tick < clip.start + clip.length;
+        (covers && project.automations[index].target == target).then_some((index, clip.start))
+    });
+    if let Some((index, start)) = covering {
+        let at = tick - start;
+        let automation = &mut project.automations[index];
+        let old = automation.points.clone();
+        automation.points.retain(|p| p.tick != at);
+        automation.points.push(AutomationPoint { tick: at, value });
+        automation.sort_points();
+        return Ok(Outcome::undoable(
+            format!("recorded {label} at {tick}t"),
+            set_points_inverse(index, &old),
+        ));
+    }
+    let length = project
+        .song_length_ticks()
+        .max(tick + 1)
+        .next_multiple_of(TICKS_PER_BAR);
+    let track = (0..PLAYLIST_TRACKS)
+        .find(|row| {
+            !project
+                .playlist
+                .clips
+                .iter()
+                .any(|c| c.track == *row && c.start < length)
+        })
+        .ok_or_else(|| args.invalid("no playlist track has room for an automation clip"))?;
+    let id = AutomationId(project.alloc_id());
+    project.automations.push(Automation {
+        id,
+        name: label.clone(),
+        target,
+        points: vec![AutomationPoint { tick, value }],
+    });
+    project.playlist.clips.push(Clip {
+        source: ClipSource::Automation(id),
+        track,
+        start: 0,
+        length,
+        offset: 0,
+        muted: false,
+    });
+    project.playlist.sort_clips();
+    let number = project.automations.len();
+    Ok(Outcome::undoable(
+        format!("recording {label} into automation {number}"),
+        Invocation::new("automation.remove", [number.to_string()]),
+    ))
 }
 
 fn automation_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, CommandError> {
@@ -381,8 +539,8 @@ pub(crate) fn remap_slots(
     track: usize,
     map: impl Fn(usize) -> Option<usize>,
 ) {
-    for automation in &mut project.automations {
-        if let AutomationTarget::EffectParam { track: t, slot, .. } = &mut automation.target {
+    for target in targets_mut(project) {
+        if let AutomationTarget::EffectParam { track: t, slot, .. } = target {
             if *t == track {
                 if let Some(new) = map(*slot) {
                     *slot = new;
@@ -392,10 +550,28 @@ pub(crate) fn remap_slots(
     }
 }
 
+/// Every automation target: automation clips' and pattern lanes'.
+fn targets_mut(project: &mut Project) -> impl Iterator<Item = &mut AutomationTarget> {
+    let lanes = project
+        .patterns
+        .iter_mut()
+        .flat_map(|p| p.automation.iter_mut().map(|l| &mut l.target));
+    project
+        .automations
+        .iter_mut()
+        .map(|a| &mut a.target)
+        .chain(lanes)
+}
+
 /// Whether any automation drives something on mixer track `track` (or, with
 /// `slot`, that effect slot).
 pub(crate) fn targets_track(project: &Project, track: usize, slot: Option<usize>) -> bool {
-    project.automations.iter().any(|a| match &a.target {
+    let lanes = project
+        .patterns
+        .iter()
+        .flat_map(|p| p.automation.iter().map(|l| &l.target));
+    let clips = project.automations.iter().map(|a| &a.target);
+    clips.chain(lanes).any(|target| match target {
         AutomationTarget::MixerVolume { track: t } | AutomationTarget::MixerPan { track: t } => {
             slot.is_none() && *t == track
         }
@@ -409,8 +585,8 @@ pub(crate) fn targets_track(project: &Project, track: usize, slot: Option<usize>
 /// Shifts mixer track numbers in automation targets: tracks at or after
 /// `from` move by `delta`.
 pub(crate) fn shift_tracks(project: &mut Project, from: usize, delta: isize) {
-    for automation in &mut project.automations {
-        let track = match &mut automation.target {
+    for target in targets_mut(project) {
+        let track = match target {
             AutomationTarget::MixerVolume { track }
             | AutomationTarget::MixerPan { track }
             | AutomationTarget::EffectParam { track, .. } => track,

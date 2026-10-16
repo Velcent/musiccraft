@@ -77,6 +77,10 @@ pub enum EngineMessage {
         /// The new processor.
         external: Option<Box<dyn External>>,
     },
+    /// How the next `Play` begins (count-in, wait for the first live note).
+    SetStart(Start),
+    /// Stop at the loop end instead of wrapping (recording without looping).
+    SetStopAtEnd(bool),
     /// Set a parameter of the external processor in a slot.
     ExternalParam {
         /// Slot index.
@@ -86,6 +90,18 @@ pub enum EngineMessage {
         /// Value in the processor's own units.
         value: f64,
     },
+}
+
+/// How playback begins on `Play`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Start {
+    /// The playhead moves at once.
+    #[default]
+    Now,
+    /// Click this many beats first, then move.
+    CountIn(u32),
+    /// Move when the first live note arrives.
+    WaitForInput,
 }
 
 impl EngineMessage {

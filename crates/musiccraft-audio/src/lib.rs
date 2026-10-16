@@ -74,6 +74,23 @@ pub fn output_device_names() -> Vec<String> {
     names
 }
 
+/// Names of the input devices of the default host, default first.
+#[must_use]
+pub fn input_device_names() -> Vec<String> {
+    let host = cpal::default_host();
+    let default = host.default_input_device().map(|d| device_name(&d));
+    let mut names: Vec<String> = host
+        .input_devices()
+        .map(|devices| devices.map(|d| device_name(&d)).collect())
+        .unwrap_or_default();
+    names.dedup();
+    if let Some(default) = default {
+        names.retain(|n| *n != default);
+        names.insert(0, default);
+    }
+    names
+}
+
 /// What to open; `None` fields use the device's defaults.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OutputRequest {
@@ -361,8 +378,25 @@ impl AudioInput {
     ///
     /// Returns an error if there is no input device or it cannot start.
     pub fn open_default() -> Result<Self, AudioError> {
+        Self::open(None)
+    }
+
+    /// Opens the input device named `name` (from [`input_device_names`]), or
+    /// the default one when `name` is `None` or not found.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there is no input device or it cannot start.
+    pub fn open(name: Option<&str>) -> Result<Self, AudioError> {
         let host = cpal::default_host();
-        let device = host.default_input_device().ok_or(AudioError::NoDevice)?;
+        let named = name.and_then(|wanted| {
+            host.input_devices()
+                .ok()?
+                .find(|d| device_name(d) == wanted)
+        });
+        let device = named
+            .or_else(|| host.default_input_device())
+            .ok_or(AudioError::NoDevice)?;
         let supported = device.default_input_config().map_err(device_error)?;
         let config = supported.config();
         let name = device

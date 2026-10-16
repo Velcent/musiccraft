@@ -13,7 +13,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 - [x] R arms / disarms recording (FL); Ctrl+E is reserved for step edit mode.
 - [x] Piano roll: Shift+arrows move the selection (semitone / snap step),
   Ctrl+Up/Down move it an octave. Plain arrows no longer move notes.
-- [ ] Ctrl+E toggles step edit mode (notes played on a MIDI or typing keyboard
+- [x] Ctrl+E toggles step edit mode (notes played on a MIDI or typing keyboard
   are entered at the selected step and the cursor advances).
 
 ### Sound
@@ -27,69 +27,73 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
     that offset after the slide.
 - [x] Pan law: a circular default (-3 dB at centre) with a triangular option,
   instead of a plain balance control.
-- [ ] Swing: one global swing amount, scaled by a per-channel swing mix
+- [x] Swing: one global swing amount, scaled by a per-channel swing mix
   (default 100%); add a "truncate" option.
 
 ### Smaller
-- [ ] F4 jumps to the next *empty* pattern and offers to name it.
-- [ ] Tempo range: FL allows 10–522 BPM; decide whether to lower our 20 BPM
-  floor (999 BPM ceiling can stay).
+- [x] F4 jumps to the next *empty* pattern and offers to name it.
+- [x] Tempo range: FL allows 10–522 BPM; decide whether to lower our 20 BPM
+  floor (999 BPM ceiling can stay). Lowered to 10.
 
 ## 2. Missing: high impact
 
-- [ ] Cut groups / choke (a closed hi-hat cuts an open one).
-- [ ] Per-channel mono mode and maximum polyphony.
-- [ ] Recording:
-  - [ ] Count-in (Ctrl+P).
-  - [ ] Wait for input before recording starts (Ctrl+I).
-  - [ ] Blend vs replace.
-  - [ ] Loop recording.
-  - [ ] Step recording.
-  - [ ] Record knob movements as automation.
-- [ ] Transport:
+- [x] Cut groups / choke (a closed hi-hat cuts an open one).
+- [x] Per-channel mono mode and maximum polyphony.
+- [x] Recording:
+  - [x] Count-in (Ctrl+P).
+  - [x] Wait for input before recording starts (Ctrl+I).
+  - [x] Blend vs replace.
+  - [x] Loop recording.
+  - [x] Step recording.
+  - [x] Record knob movements as automation.
+- [x] Transport:
   - [x] Pause with Ctrl+Space (`transport.pause`, `transport.play_pause`).
   - [x] Panic with Ctrl+H (all notes off).
   - [x] Home jumps to the start.
-- [ ] Playlist tracks: names, colours, mute and solo.
-- [ ] Playlist clip editing:
-  - [ ] Slice clips.
-  - [ ] Make unique.
-  - [ ] Merge.
-  - [ ] Consolidate / render to audio.
-  - [ ] Reverse.
-  - [ ] Fade in / out.
-  - [ ] Insert / delete space (Ctrl+Ins / Ctrl+Del).
-- [ ] Single-key tools: P draw, B paint, D delete, E select, C slice, T mute,
+- [x] Playlist tracks: names, colours, mute and solo.
+- [x] Playlist clip editing:
+  - [x] Slice clips.
+  - [x] Make unique.
+  - [x] Merge.
+  - [x] Consolidate / render to audio.
+  - [x] Reverse.
+  - [x] Fade in / out.
+  - [x] Insert / delete space (Ctrl+Ins / Ctrl+Del).
+- [x] Single-key tools: P draw, B paint, D delete, E select, C slice, T mute,
   Y play, Z zoom; plus S slide and O porta for new piano-roll notes.
-- [ ] Channel rack keys:
-  - [ ] 1–0 mute a channel, Ctrl+1–0 solo one.
-  - [ ] Alt+C clone, Alt+Del delete, Alt+Up/Down move.
-  - [ ] Ctrl+L sends to a free mixer track.
-  - [ ] Shift+Ctrl+Left/Right shifts steps.
-- [ ] MIDI export (Ctrl+Shift+M).
-- [ ] Mixer track options: stereo separation, phase invert, swap left/right.
+- [x] Channel rack keys:
+  - [x] 1–0 mute a channel, Ctrl+1–0 solo one.
+  - [x] Alt+C clone, Alt+Del delete, Alt+Up/Down move.
+  - [x] Ctrl+L sends to a free mixer track.
+  - [x] Shift+Ctrl+Left/Right shifts steps.
+- [x] MIDI export (Ctrl+Shift+M).
+- [x] Mixer track options: stereo separation, phase invert, swap left/right.
 
 ## 3. Missing: lower priority
 
-- [ ] Per-step graph editor (pitch, pan, velocity per step).
-- [ ] Per-channel time shift, gate and note echo.
-- [ ] Piano roll tools:
-  - [ ] Limit.
-  - [ ] LFO.
-  - [ ] Scale levels.
-  - [ ] Flam.
-  - [ ] Full randomizer.
-  - [ ] Chord / pattern generator.
-  - [ ] Articulate.
-  - [ ] Claw machine.
-- [ ] Master pitch / A4 tuning.
-- [ ] Tap tempo.
-- [ ] MP3 export (already a `todo` in parity.md).
-- [ ] Pattern select with keys 1–9.
-- [ ] Automation of individual notes or events inside a pattern.
-- [ ] Channel display filter groups.
-- [ ] Per-track arm and audio input selection.
-- [ ] Time signatures (known deferred).
+- [x] Per-step graph editor (pitch, pan, velocity per step).
+- [x] Per-channel time shift, gate and note echo.
+- [x] Piano roll tools:
+  - [x] Limit.
+  - [x] LFO.
+  - [x] Scale levels.
+  - [x] Flam.
+  - [x] Full randomizer.
+  - [x] Chord / pattern generator.
+  - [x] Articulate.
+  - [x] Claw machine.
+- [x] Master pitch / A4 tuning.
+- [x] Tap tempo.
+- [ ] MP3 export (already a `todo` in parity.md). Blocked: there is no mature
+  pure-Rust MP3 encoder; the usual crates wrap LAME (C, LGPL), which needs a
+  dependency decision from the maintainer first.
+- [x] Pattern select with keys 1–9.
+- [x] Automation of individual notes or events inside a pattern.
+- [x] Channel display filter groups.
+- [x] Per-track arm and audio input selection.
+- [ ] Time signatures (known deferred). Still deferred: 4/4 bars of 384 ticks
+  are assumed across the model, commands, UI grids and file format, so this
+  needs its own milestone and spec.
 
 ## Sources
 

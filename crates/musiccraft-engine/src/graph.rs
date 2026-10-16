@@ -48,6 +48,27 @@ impl ChannelParams {
 }
 
 impl TrackParams {
+    /// Applies polarity, side swap and stereo separation to a block.
+    pub(crate) fn stereo(&self, left: &mut [f32], right: &mut [f32]) {
+        let separation = if self.separation.is_finite() {
+            self.separation.clamp(-1.0, 1.0)
+        } else {
+            0.0
+        };
+        if !self.invert && !self.swap && separation == 0.0 {
+            return;
+        }
+        let polarity = if self.invert { -1.0 } else { 1.0 };
+        let width = 1.0 + separation;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let (a, b) = if self.swap { (*r, *l) } else { (*l, *r) };
+            let mid = (a + b) * 0.5;
+            let side = (a - b) * 0.5 * width;
+            *l = (mid + side) * polarity;
+            *r = (mid - side) * polarity;
+        }
+    }
+
     /// Left/right fader gains from volume, pan and mute.
     #[must_use]
     pub fn gains(&self) -> (f32, f32) {
@@ -86,6 +107,12 @@ pub struct TrackParams {
     pub sends: [SendParams; MAX_SENDS],
     /// Number of active sends.
     pub send_count: u8,
+    /// Stereo separation, -1 (mono) .. 0 (unchanged) .. 1 (side doubled).
+    pub separation: f32,
+    /// Flip the polarity of both sides.
+    pub invert: bool,
+    /// Exchange left and right.
+    pub swap: bool,
 }
 
 impl Default for TrackParams {
@@ -97,6 +124,9 @@ impl Default for TrackParams {
             to_master: true,
             sends: [SendParams::default(); MAX_SENDS],
             send_count: 0,
+            separation: 0.0,
+            invert: false,
+            swap: false,
         }
     }
 }

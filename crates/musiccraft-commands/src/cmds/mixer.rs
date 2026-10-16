@@ -44,6 +44,24 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_volume,
         ),
         cmd(
+            "mixer.set_separation",
+            "mixer.set_separation <track> <-1..1>",
+            "Set a mixer track's stereo separation: -1 mono, 0 as is, 1 wider.",
+            set_separation,
+        ),
+        cmd(
+            "mixer.set_phase_invert",
+            "mixer.set_phase_invert <track> <on|off>",
+            "Flip the polarity of a mixer track.",
+            set_phase_invert,
+        ),
+        cmd(
+            "mixer.set_swap_sides",
+            "mixer.set_swap_sides <track> <on|off>",
+            "Exchange a mixer track's left and right sides.",
+            set_swap_sides,
+        ),
+        cmd(
             "mixer.set_pan",
             "mixer.set_pan <track> <-1..1>",
             "Set a mixer track's pan.",
@@ -364,6 +382,52 @@ fn set_volume(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
         |t| &mut t.volume,
         num,
         "volume",
+    ))
+}
+
+fn set_separation(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let value =
+        musiccraft_project::check_range("separation", args.f32(1, "separation")?, -1.0, 1.0)?;
+    Ok(set_track_field(
+        project,
+        args,
+        index,
+        value,
+        |t| &mut t.separation,
+        num,
+        "separation",
+    ))
+}
+
+fn set_phase_invert(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let value = args.flag(1)?;
+    Ok(set_track_field(
+        project,
+        args,
+        index,
+        value,
+        |t| &mut t.phase_invert,
+        |v| on_off(v).to_owned(),
+        "phase invert",
+    ))
+}
+
+fn set_swap_sides(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let value = args.flag(1)?;
+    Ok(set_track_field(
+        project,
+        args,
+        index,
+        value,
+        |t| &mut t.swap_sides,
+        |v| on_off(v).to_owned(),
+        "swap sides",
     ))
 }
 

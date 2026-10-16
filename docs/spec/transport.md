@@ -6,7 +6,7 @@
   is either `stopped` or `playing`, and a **play mode** that is either `pattern`
   or `song`.
 - New projects start `stopped`, in `pattern` mode, at 130 BPM.
-- Supported tempo range is 20 to 999 BPM inclusive. Values outside the range, and
+- Supported tempo range is 10 to 999 BPM inclusive. Values outside the range, and
   non-finite values, are rejected and leave the project unchanged.
 - `transport.play` starts playback. If already playing it does nothing and reports so.
 - `transport.stop` halts playback and returns the playhead to the start of the
@@ -32,6 +32,14 @@
 - `transport.toggle_metronome` (default key Ctrl+M) turns a click on every beat
   on or off: a short decaying sine, higher on each bar's first beat. The setting
   is saved with the project but the click is never part of an export.
+- **Tap tempo**: the TAP button next to the tempo display. Each tap sets the
+  tempo from the average interval of the last eight taps (clamped to the
+  range); a pause over two seconds starts a new count. One run of taps is one
+  undo step. The rule lives in `musiccraft_commands::tap_tempo`.
+- **Master pitch** (`project.set_master_pitch <cents>`, -1200…1200, or
+  `project.set_a4 <hz>`, 392–494 Hz, which sets the equivalent cents;
+  undoable, saved as `"master_pitch"`; Settings → Project) transposes every
+  built-in instrument. Plugins and MIDI Out channels are not retuned.
 - `project.set_tempo <bpm>` sets the tempo. It is undoable; setting the same value
   records no history entry.
 - Transport and mode commands are not part of undo history. The transport state
@@ -60,10 +68,13 @@
 
 ## Sources
 
-- Own design. The range and defaults are our own choices.
+- Own design. The 10 BPM floor matches the FL Studio online manual's tempo
+  range; the 999 BPM ceiling and the defaults are our own choices.
 - Space-bar play/stop, stop returning to the start, and a pattern/song mode switch
   are common conventions described in the public manuals of several pattern-based
   DAWs (FL Studio online manual, "Transport panel" and "Keyboard shortcuts").
 - Home to jump to the start and Ctrl+H for panic (all notes off) follow the FL
   Studio online manual, "Keyboard shortcuts", global section. What panic
   releases and the request counters are our own design.
+- Tap tempo and master pitch (A4 tuning) follow the FL Studio online manual
+  ("Tempo tapper", "Main pitch"); the averaging rule and ranges are our own.

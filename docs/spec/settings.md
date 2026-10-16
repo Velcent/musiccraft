@@ -9,7 +9,8 @@
   `%APPDATA%\MusicCraft` on Windows, `~/Library/Application Support/MusicCraft`
   on macOS) and loaded at start. A missing or unreadable file means defaults.
   Changes apply and save immediately; there is no OK/Cancel.
-- **Audio**: output device (default first), sample rate (device default or
+- **Audio**: input device for audio recording (system default first; the next
+  take opens the new choice), output device (default first), sample rate (device default or
   one the device supports) and buffer size (device default or 64–4096
   frames, with the resulting latency shown). Changing any of them restarts
   audio: playback stops, running plugins store their state in the project and

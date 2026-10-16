@@ -28,10 +28,22 @@ pub fn folder(project: &Project) -> Option<PathBuf> {
     }
 }
 
-/// The first playlist row with no clips (1-based).
-fn free_track(project: &Project) -> u32 {
-    (0..PLAYLIST_TRACKS)
-        .find(|row| !project.playlist.clips.iter().any(|c| c.track == *row))
+/// Where a take from `start` lasting `length` ticks goes (1-based): the first
+/// armed row with room for it, else the first row with no clips.
+fn take_track(project: &Project, start: u32, length: u32) -> u32 {
+    let clips = &project.playlist.clips;
+    let room = |row: u32| {
+        !clips
+            .iter()
+            .any(|c| c.track == row && c.start < start + length && start < c.end())
+    };
+    project
+        .playlist
+        .armed_tracks
+        .iter()
+        .copied()
+        .find(|row| room(*row))
+        .or_else(|| (0..PLAYLIST_TRACKS).find(|row| !clips.iter().any(|c| c.track == *row)))
         .unwrap_or(PLAYLIST_TRACKS - 1)
         + 1
 }
@@ -48,7 +60,7 @@ pub fn place(project: &Project, path: &Path, start_tick: u32, seconds: f64) -> I
             format!("channel.set_param {number} one_shot 0"),
             format!(
                 "playlist.add_audio_clip {number} {} {start_tick}t {length}t",
-                free_track(project)
+                take_track(project, start_tick, length)
             ),
         ],
     )
@@ -132,5 +144,38 @@ mod tests {
                 .is_none()
         );
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn takes_go_to_the_first_armed_track_with_room() {
+        let mut project = Project::default();
+        let path = Path::new("take.wav");
+        // No arm: the first empty row.
+        assert!(
+            place(&project, path, 0, 1.0)
+                .to_string()
+                .contains("add_audio_clip 1 1 0t")
+        );
+        project.playlist.armed_tracks.insert(4);
+        project.playlist.armed_tracks.insert(6);
+        assert!(
+            place(&project, path, 0, 1.0)
+                .to_string()
+                .contains("add_audio_clip 1 5 0t")
+        );
+        // Row 5 is busy at that time: the next armed row takes it.
+        project.playlist.clips.push(musiccraft_project::Clip {
+            source: musiccraft_project::ClipSource::Pattern(musiccraft_project::PatternId(1)),
+            track: 4,
+            start: 0,
+            length: 384,
+            offset: 0,
+            muted: false,
+        });
+        assert!(
+            place(&project, path, 0, 1.0)
+                .to_string()
+                .contains("add_audio_clip 1 7 0t")
+        );
     }
 }

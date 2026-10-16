@@ -238,6 +238,66 @@ fn contents(
         }
     });
     ui.add_space(6.0);
+    section(ui, "SWING", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::SWING_MIX, "Mix", actions);
+            choice(
+                ui,
+                number,
+                channel,
+                inst::SWING_TRUNCATE,
+                &["Shift", "Truncate"],
+                actions,
+            );
+        });
+    });
+    ui.add_space(6.0);
+    section(ui, "TIMING AND ECHO", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::TIME_SHIFT,
+                "Shift",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::GATE, "Gate", actions);
+        });
+        ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ECHO_COUNT,
+                "Echoes",
+                actions,
+            );
+            param_knob(ui, state, number, channel, inst::ECHO_TIME, "Time", actions);
+            param_knob(ui, state, number, channel, inst::ECHO_FEED, "Feed", actions);
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::ECHO_PITCH,
+                "Pitch",
+                actions,
+            );
+        });
+    });
+    ui.add_space(6.0);
+    section(ui, "VOICES", |ui| {
+        ui.horizontal(|ui| {
+            param_knob(ui, state, number, channel, inst::CUT_GROUP, "Cut", actions);
+            param_knob(ui, state, number, channel, inst::CUT_BY, "Cut by", actions);
+            param_knob(ui, state, number, channel, inst::POLY_MAX, "Max", actions);
+            choice(ui, number, channel, inst::MONO, &["Poly", "Mono"], actions);
+        });
+    });
+    ui.add_space(6.0);
     match &channel.instrument {
         Instrument::Sampler { sample } => {
             sampler(ui, state, frame, index, channel, sample, actions)
@@ -341,6 +401,26 @@ fn sampler(
         let slices = channel.params.get(inst::SLICES).round().max(1.0) as u32;
         waveform(ui, frame.waveform, theme::palette(index), slices);
         ui.horizontal(|ui| {
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FADE_IN,
+                "Fade in",
+                actions,
+            );
+            param_knob(
+                ui,
+                state,
+                number,
+                channel,
+                inst::FADE_OUT,
+                "Fade out",
+                actions,
+            );
+        });
+        ui.horizontal(|ui| {
             let mut one_shot = channel.params.get(inst::ONE_SHOT) >= 0.5;
             if ui
                 .checkbox(&mut one_shot, "One shot")
@@ -353,6 +433,21 @@ fn sampler(
                         number.to_string(),
                         "one_shot".to_owned(),
                         if one_shot { "1" } else { "0" }.to_owned(),
+                    ],
+                )));
+            }
+            let mut reverse = channel.params.get(inst::REVERSE) >= 0.5;
+            if ui
+                .checkbox(&mut reverse, "Reverse")
+                .hint("Play the sample backwards")
+                .changed()
+            {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.set_param",
+                    [
+                        number.to_string(),
+                        "reverse".to_owned(),
+                        if reverse { "1" } else { "0" }.to_owned(),
                     ],
                 )));
             }

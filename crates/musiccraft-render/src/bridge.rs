@@ -6,7 +6,7 @@ use musiccraft_dsp::convolution::Convolver;
 use musiccraft_dsp::{Effect, SampleBuffer};
 use musiccraft_engine::{
     ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_BLOCK,
-    MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, TrackParams,
+    MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, Start, TrackParams,
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
 use musiccraft_project::{Channel, MixerTrack, Project, Requests, base64};
@@ -76,6 +76,8 @@ struct Desc {
     playing: bool,
     paused: bool,
     metronome: bool,
+    start: Start,
+    stop_at_end: bool,
 }
 
 /// What a [`Bridge::sync`] did.
@@ -105,14 +107,37 @@ fn sample_key(sample: &str, base: Option<&Path>) -> String {
     }
 }
 
-fn channel_params(channel: &Channel, pan_law: PanLaw) -> ChannelParams {
+/// Beats of the recording count-in (one 4/4 bar).
+const COUNT_IN_BEATS: u32 = 4;
+
+/// How Play begins: count-in and wait for input apply only while armed, and
+/// waiting takes over from the count-in.
+fn start_mode(project: &Project) -> Start {
+    let options = project.record;
+    if !project.is_armed() {
+        Start::Now
+    } else if options.wait_for_input {
+        Start::WaitForInput
+    } else if options.count_in {
+        Start::CountIn(COUNT_IN_BEATS)
+    } else {
+        Start::Now
+    }
+}
+
+fn channel_params(channel: &Channel, pan_law: PanLaw, master_pitch: f32) -> ChannelParams {
+    let mut instrument = channel.params.0;
+    // The master pitch transposes every built-in instrument.
+    if let Some(pitch) = instrument.get_mut(musiccraft_params::inst::PITCH) {
+        *pitch += master_pitch / 100.0;
+    }
     ChannelParams {
         volume: channel.volume,
         pan: channel.pan,
         pan_law,
         mute: channel.mute,
         track: u16::try_from(channel.mixer_track).unwrap_or(0),
-        instrument: channel.params.0,
+        instrument,
     }
 }
 
@@ -122,6 +147,9 @@ fn track_params(track: &MixerTrack, index: usize, audible: Option<&[bool]>) -> T
     let mut params = TrackParams {
         volume: track.volume,
         pan: track.pan,
+        separation: track.separation,
+        invert: track.phase_invert,
+        swap: track.swap_sides,
         mute: track.mute || soloed_out,
         to_master: track.to_master || index == 0,
         ..TrackParams::default()
@@ -249,7 +277,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
         channels: project
             .channels
             .iter()
-            .map(|c| channel_params(c, pan_law))
+            .map(|c| channel_params(c, pan_law, project.master_pitch))
             .collect(),
         tracks: project
             .mixer
@@ -275,6 +303,8 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
         playing: project.transport().is_playing(),
         paused: project.transport().is_paused(),
         metronome: project.metronome,
+        start: start_mode(project),
+        stop_at_end: project.is_armed() && !project.record.loop_record,
     }
 }
 
@@ -661,6 +691,15 @@ impl Bridge {
             .is_none_or(|p| p.metronome != desc.metronome)
         {
             messages.push(EngineMessage::SetMetronome(desc.metronome));
+        }
+        if previous.as_ref().is_none_or(|p| p.start != desc.start) {
+            messages.push(EngineMessage::SetStart(desc.start));
+        }
+        if previous
+            .as_ref()
+            .is_none_or(|p| p.stop_at_end != desc.stop_at_end)
+        {
+            messages.push(EngineMessage::SetStopAtEnd(desc.stop_at_end));
         }
         if previous
             .as_ref()

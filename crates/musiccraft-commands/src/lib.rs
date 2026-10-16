@@ -12,6 +12,7 @@
 //!   `@<pattern>` argument names another. Inverses always name the pattern.
 
 mod args;
+pub mod automation_record;
 mod cmds;
 mod command;
 mod error;
@@ -19,6 +20,7 @@ mod invocation;
 mod midi_file;
 mod registry;
 mod session;
+pub mod tap_tempo;
 
 pub use command::{Command, Outcome};
 pub use error::CommandError;

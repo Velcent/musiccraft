@@ -393,7 +393,7 @@ fn swing_delays_offbeat_sixteenths_only() {
          step.toggle 1 1
          step.toggle 1 2
          step.toggle 1 3
-         pattern.set_swing 1 50",
+         project.set_swing 50",
     );
     let starts: Vec<u64> = build_sequence(s.project())
         .events()
@@ -401,6 +401,53 @@ fn swing_delays_offbeat_sixteenths_only() {
         .map(|e| e.start)
         .collect();
     assert_eq!(starts, [0, 24 + 6, 48, 72 + 6]);
+}
+
+/// (start, length) of channel `channel`'s events (0-based).
+fn timing(s: &Session, channel: u16) -> Vec<(u64, u64)> {
+    build_sequence(s.project())
+        .events()
+        .iter()
+        .filter(|e| e.channel == channel)
+        .map(|e| (e.start, e.length))
+        .collect()
+}
+
+#[test]
+fn swing_mix_scales_the_project_swing_per_channel() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:hat
+         channel.add_sampler builtin:kick
+         channel.add_sampler builtin:snare
+         step.toggle 1 1
+         step.toggle 2 1
+         step.toggle 3 1
+         project.set_swing 100
+         channel.set_param 2 swing_mix 0.5
+         channel.set_param 3 swing_mix 0",
+    );
+    assert_eq!(timing(&s, 0), [(24 + 12, 24)], "full mix (the default)");
+    assert_eq!(timing(&s, 1), [(24 + 6, 24)], "half");
+    assert_eq!(timing(&s, 2), [(24, 24)], "straight");
+}
+
+#[test]
+fn truncated_swing_keeps_the_note_end() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         note.add 1 1 1 C5
+         note.add 1 3 2 C5
+         project.set_swing 100
+         channel.set_param 1 swing_truncate 1",
+    );
+    assert_eq!(timing(&s, 0), [(36, 12), (84, 36)]);
+    // In song mode too.
+    run(&mut s, "playlist.add_clip 1 1 0 1\ntransport.set_mode song");
+    assert_eq!(timing(&s, 0), [(36, 12), (84, 36)]);
 }
 
 #[test]
@@ -1130,4 +1177,390 @@ fn pausing_the_transport_at_a_pause_marker_keeps_the_playhead_there() {
     let _ = bridge.sync(s.project(), &mut handle);
     engine.process(&mut out, 2);
     assert!(engine.position_ticks().abs() < f64::EPSILON);
+}
+
+#[test]
+fn recording_options_reach_the_engine_only_while_armed() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_sampler builtin:kick
+         step.toggle 1 0
+         record.toggle_count_in",
+    );
+    let (mut engine, mut handle) = engine_pair(48_000);
+    let mut bridge = Bridge::new(48_000);
+    let mut out = vec![0.0; 2 * 1024];
+    // Not armed: Play starts at once.
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.is_playing());
+    run(&mut s, "transport.stop\nrecord.toggle");
+    let _ = bridge.sync(s.project(), &mut handle);
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(!engine.is_playing() && handle.meters().is_counting_in());
+    // One bar at 120 BPM is 2 s.
+    for _ in 0..94 {
+        engine.process(&mut out, 2);
+    }
+    assert!(engine.is_playing(), "the count-in is over");
+    // Wait for input takes over from the count-in.
+    run(&mut s, "transport.stop\nrecord.toggle_wait");
+    let _ = bridge.sync(s.project(), &mut handle);
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(handle.meters().is_waiting());
+}
+
+#[test]
+fn recording_without_looping_stops_at_the_pattern_end() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 960
+         channel.add_sampler builtin:kick
+         record.toggle_loop
+         transport.play",
+    );
+    let (mut engine, mut handle) = engine_pair(48_000);
+    let mut bridge = Bridge::new(48_000);
+    let mut out = vec![0.0; 2 * 1024];
+    let _ = bridge.sync(s.project(), &mut handle);
+    // A bar at 960 BPM is 0.25 s: 12 000 frames.
+    for _ in 0..16 {
+        engine.process(&mut out, 2);
+    }
+    assert!(engine.is_playing(), "not armed: it loops");
+    run(&mut s, "record.toggle");
+    let _ = bridge.sync(s.project(), &mut handle);
+    for _ in 0..16 {
+        engine.process(&mut out, 2);
+    }
+    assert!(!engine.is_playing());
+    assert_eq!(handle.meters().end_stops(), 1);
+}
+
+#[test]
+fn soloed_playlist_tracks_silence_the_others() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick
+         step.toggle 1 0
+         pattern.add
+         channel.add_sampler builtin:snare
+         step.toggle 2 0
+         playlist.add_clip 1 1 0
+         playlist.add_clip 2 2 0
+         transport.set_mode song",
+    );
+    let channels = |s: &Session| -> Vec<u16> {
+        build_sequence(s.project())
+            .events()
+            .iter()
+            .map(|e| e.channel)
+            .collect()
+    };
+    assert_eq!(channels(&s), [0, 1]);
+    run(&mut s, "playlist.set_track_solo 2 on");
+    assert_eq!(channels(&s), [1], "only the soloed track");
+    run(&mut s, "playlist.set_track_mute 2 on");
+    assert!(channels(&s).is_empty(), "muted wins over solo");
+    run(
+        &mut s,
+        "playlist.set_track_mute 2 off\nplaylist.toggle_track_solo 2",
+    );
+    assert_eq!(channels(&s), [0, 1]);
+}
+
+#[test]
+fn a_sliced_pattern_clip_plays_on_from_its_offset() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick
+         step.toggle 1 0
+         step.toggle 1 4
+         step.toggle 1 8
+         step.toggle 1 12
+         playlist.add_clip 1 1 0 2
+         playlist.slice_clip 1 1.375
+         transport.set_mode song",
+    );
+    let starts: Vec<u64> = build_sequence(s.project())
+        .events()
+        .iter()
+        .map(|e| e.start)
+        .collect();
+    // Every beat over two bars, unchanged by the cut at bar 1 + 1.5 beats.
+    assert_eq!(starts, (0..8).map(|b| b * 96).collect::<Vec<_>>());
+}
+
+#[test]
+fn sliced_audio_clips_start_part_way_into_the_sample() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_sampler builtin:kick
+         playlist.add_audio_clip 1 1 0 1
+         playlist.slice_clip 1 0.5
+         transport.set_mode song",
+    );
+    let seq = build_sequence(s.project());
+    let offsets: Vec<(u64, f32)> = seq
+        .events()
+        .iter()
+        .map(|e| (e.start, e.shape.start))
+        .collect();
+    // Half a bar at 120 BPM is one second.
+    assert_eq!(offsets, [(0, 0.0), (192, 1.0)]);
+}
+
+#[test]
+fn reversed_and_faded_samples() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-reverse-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ramp = dir.join("ramp.wav");
+    // A rising ramp, 0.5 s at 48 kHz.
+    let data: Vec<f32> = (0..24_000).map(|i| i as f32 / 24_000.0).collect();
+    musiccraft_samples::write_wav(
+        &ramp,
+        &data,
+        &data,
+        48_000,
+        musiccraft_samples::WavFormat::Float32,
+    )
+    .unwrap();
+    let mut s = session();
+    run(
+        &mut s,
+        &format!(
+            "project.set_tempo 120
+             channel.add_sampler \"{}\"
+             channel.set_param 1 one_shot 1
+             channel.set_pan 1 -1
+             step.toggle 1 0",
+            ramp.display()
+        ),
+    );
+    let options = RenderOptions {
+        sample_rate: 48_000,
+        loops: 1,
+        max_tail_seconds: 0.0,
+    };
+    let left = |s: &Session| render(s.project(), options).0;
+    let forward = left(&s);
+    assert!(forward[100] < forward[20_000], "rises");
+    run(&mut s, "channel.set_param 1 reverse 1");
+    let backward = left(&s);
+    assert!(backward[100] > backward[20_000], "falls when reversed");
+    run(
+        &mut s,
+        "channel.set_param 1 reverse 0\nchannel.set_param 1 fade_out 0.25",
+    );
+    let faded = left(&s);
+    // Halfway through the fade-out the ramp is cut to about half.
+    let at = 18_000;
+    assert!(
+        (faded[at] / forward[at] - 0.5).abs() < 0.02,
+        "{}",
+        faded[at] / forward[at]
+    );
+    run(
+        &mut s,
+        "channel.set_param 1 fade_out 0\nchannel.set_param 1 fade_in 0.1",
+    );
+    let faded_in = left(&s);
+    assert!((faded_in[2_400] / forward[2_400] - 0.5).abs() < 0.02);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn consolidating_a_clip_renders_it_to_an_audio_clip() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-consolidate-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(
+        &mut s,
+        &format!(
+            "channel.add_synth
+             note.add 1 0 4 C5
+             playlist.add_clip 1 1 2 1
+             project.save \"{}\"",
+            dir.join("song.mcproj").display()
+        ),
+    );
+    run(&mut s, "playlist.consolidate 1 2");
+    let project = s.project();
+    assert_eq!(project.channels.len(), 2);
+    let clip = project.playlist.clips[0];
+    assert_eq!(
+        clip.source,
+        musiccraft_project::ClipSource::Audio(project.channels[1].id)
+    );
+    assert_eq!((clip.start, clip.length), (768, 384));
+    let wav = dir.join("consolidated/Pattern-1-1.wav");
+    assert!(wav.exists());
+    // The render holds the note: loud at the start, the length of the clip.
+    let buffer = musiccraft_samples::load_wav(&wav).unwrap();
+    let expected = 384.0 / 96.0 * 60.0 / 130.0;
+    assert!((buffer.duration_seconds() - expected).abs() < 1e-3);
+    assert!((0..4800).any(|i| buffer.read(i as f64).0.abs() > 0.05));
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().channels.len(), 1);
+    assert!(s.project().playlist.clips[0].pattern().is_some());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn midi_export_round_trips_through_import() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-midi-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("song.mid");
+    let mut s = session();
+    run(
+        &mut s,
+        &format!(
+            "channel.add_synth
+             note.add 1 0 2 D5 100
+             note.add 1 2 1 E5 64
+             note.add 1 2 3 G5 127
+             channel.add_sampler builtin:kick
+             step.toggle 2 0
+             playlist.add_audio_clip 2 1 0 1
+             project.export_midi \"{}\"",
+            path.display()
+        ),
+    );
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..4], b"MThd");
+    // A tempo track plus one track per channel with notes.
+    assert_eq!(u16::from_be_bytes([bytes[10], bytes[11]]), 3);
+    run(
+        &mut s,
+        &format!("pattern.add\nnote.import_midi 1 \"{}\" @2", path.display()),
+    );
+    let notes = |p: usize| -> Vec<(u32, u32, u8, u8)> {
+        s.project().patterns[p]
+            .notes
+            .iter()
+            .map(|n| (n.start, n.length, n.key, n.velocity))
+            .collect()
+    };
+    // Channel 1's notes come back, plus the kick from the other track (the
+    // importer merges every track into one channel).
+    let back = notes(1);
+    for note in &notes(0) {
+        assert!(back.contains(note), "{note:?} in {back:?}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn time_shift_gate_and_echo_change_what_a_channel_plays() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         note.add 1 4 2 C5 100
+         channel.add_synth
+         note.add 2 4 2 C5 100",
+    );
+    let rows = |s: &Session| -> Vec<(u16, u64, u64, u8, u8)> {
+        build_sequence(s.project())
+            .events()
+            .iter()
+            .map(|e| {
+                (
+                    e.channel,
+                    e.start,
+                    e.length,
+                    e.key,
+                    (e.velocity * 127.0).round() as u8,
+                )
+            })
+            .collect()
+    };
+    run(
+        &mut s,
+        "channel.set_param 1 time_shift -12\nchannel.set_param 1 gate 6",
+    );
+    assert_eq!(rows(&s), [(0, 84, 6, 60, 100), (1, 96, 48, 60, 100)]);
+    run(
+        &mut s,
+        "channel.set_param 1 time_shift 0
+         channel.set_param 1 gate 0
+         channel.set_param 1 echo_count 2
+         channel.set_param 1 echo_time 24
+         channel.set_param 1 echo_feed 0.5
+         channel.set_param 1 echo_pitch 12",
+    );
+    let echoes: Vec<_> = rows(&s).into_iter().filter(|r| r.0 == 0).collect();
+    assert_eq!(
+        echoes,
+        [
+            (0, 96, 48, 60, 100),
+            (0, 120, 48, 72, 50),
+            (0, 144, 48, 84, 25)
+        ]
+    );
+}
+
+#[test]
+fn master_pitch_transposes_built_in_instruments() {
+    // A5 is key 69 here: 440 Hz.
+    let mut s = sine_session("note.add 1 0 8 A5");
+    let left = render_slide(&s);
+    assert!((hz_between(&left, 0.1, 0.9) - 440.0).abs() < 4.0);
+    run(&mut s, "project.set_master_pitch -1200");
+    let left = render_slide(&s);
+    assert!((hz_between(&left, 0.1, 0.9) - 220.0).abs() < 4.0);
+}
+
+#[test]
+fn pattern_automation_plays_wherever_the_pattern_plays() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         pattern.record_event channel:1:volume 4",
+    );
+    // One lane of one point at tick 96 in pattern mode.
+    let seq = build_sequence(s.project());
+    assert_eq!(seq.automation().len(), 1);
+    assert_eq!(seq.automation()[0].points.len(), 1);
+    assert_eq!(seq.automation()[0].points[0].0, 96);
+    // In song mode once per repeat of the pattern inside each clip; a clip
+    // sliced past the point skips that repeat's point.
+    run(
+        &mut s,
+        "playlist.add_clip 1 1 2 2
+         transport.set_mode song",
+    );
+    let ticks: Vec<u64> = build_sequence(s.project())
+        .automation()
+        .iter()
+        .flat_map(|l| l.points.iter().map(|p| p.0))
+        .collect();
+    assert_eq!(ticks, [768 + 96, 1152 + 96]);
+    run(
+        &mut s,
+        "playlist.slice_clip 1 2.5\nplaylist.remove_clip 1 2",
+    );
+    let ticks: Vec<u64> = build_sequence(s.project())
+        .automation()
+        .iter()
+        .flat_map(|l| l.points.iter().map(|p| p.0))
+        .collect();
+    assert_eq!(
+        ticks,
+        [1152 + 96],
+        "the sliced remainder plays the second repeat"
+    );
 }
