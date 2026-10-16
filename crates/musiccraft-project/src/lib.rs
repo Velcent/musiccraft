@@ -27,7 +27,7 @@ pub use model::{
 pub use musiccraft_params as params;
 
 /// Lowest tempo a project accepts, in beats per minute.
-pub const MIN_TEMPO_BPM: f64 = 20.0;
+pub const MIN_TEMPO_BPM: f64 = 10.0;
 /// Highest tempo a project accepts, in beats per minute.
 pub const MAX_TEMPO_BPM: f64 = 999.0;
 /// Tempo of a newly created project, in beats per minute.

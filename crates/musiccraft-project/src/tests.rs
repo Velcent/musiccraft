@@ -33,7 +33,7 @@ fn tempo_range_edges_are_inclusive() {
 #[test]
 fn invalid_tempo_is_rejected_and_project_unchanged() {
     let mut project = Project::default();
-    for bad in [0.0, 19.9, 999.1, f64::NAN, f64::INFINITY, -120.0] {
+    for bad in [0.0, 9.9, 999.1, f64::NAN, f64::INFINITY, -120.0] {
         assert!(matches!(
             project.set_tempo_bpm(bad),
             Err(ProjectError::TempoOutOfRange(_))

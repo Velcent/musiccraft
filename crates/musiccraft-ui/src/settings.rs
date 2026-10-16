@@ -549,7 +549,7 @@ fn project(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
         let mut tempo = project.tempo_bpm();
         let drag = ui.add(
             egui::DragValue::new(&mut tempo)
-                .range(20.0..=999.0)
+                .range(musiccraft_project::MIN_TEMPO_BPM..=musiccraft_project::MAX_TEMPO_BPM)
                 .speed(0.1)
                 .suffix(" BPM"),
         );

@@ -6,7 +6,7 @@
   is either `stopped` or `playing`, and a **play mode** that is either `pattern`
   or `song`.
 - New projects start `stopped`, in `pattern` mode, at 130 BPM.
-- Supported tempo range is 20 to 999 BPM inclusive. Values outside the range, and
+- Supported tempo range is 10 to 999 BPM inclusive. Values outside the range, and
   non-finite values, are rejected and leave the project unchanged.
 - `transport.play` starts playback. If already playing it does nothing and reports so.
 - `transport.stop` halts playback and returns the playhead to the start of the
@@ -60,7 +60,8 @@
 
 ## Sources
 
-- Own design. The range and defaults are our own choices.
+- Own design. The 10 BPM floor matches the FL Studio online manual's tempo
+  range; the 999 BPM ceiling and the defaults are our own choices.
 - Space-bar play/stop, stop returning to the start, and a pattern/song mode switch
   are common conventions described in the public manuals of several pattern-based
   DAWs (FL Studio online manual, "Transport panel" and "Keyboard shortcuts").

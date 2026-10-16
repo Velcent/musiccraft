@@ -32,8 +32,8 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 
 ### Smaller
 - [x] F4 jumps to the next *empty* pattern and offers to name it.
-- [ ] Tempo range: FL allows 10–522 BPM; decide whether to lower our 20 BPM
-  floor (999 BPM ceiling can stay).
+- [x] Tempo range: FL allows 10–522 BPM; decide whether to lower our 20 BPM
+  floor (999 BPM ceiling can stay). Lowered to 10.
 
 ## 2. Missing: high impact
 

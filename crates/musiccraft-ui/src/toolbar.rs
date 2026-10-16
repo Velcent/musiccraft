@@ -3,7 +3,7 @@
 use crate::hint::Hint;
 use egui::{RichText, vec2};
 use musiccraft_commands::Invocation;
-use musiccraft_project::PlayMode;
+use musiccraft_project::{MAX_TEMPO_BPM, MIN_TEMPO_BPM, PlayMode};
 
 use crate::icons::{self, Icon};
 use crate::{Action, Frame, UiState, geometry::position_label, theme, widgets};
@@ -475,7 +475,7 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     let delta = -tempo_lcd.drag_delta().y * if fine { 0.02 } else { 0.25 }
         + scroll * if fine { 0.01 } else { 0.05 };
     if delta != 0.0 {
-        let value = (tempo + f64::from(delta)).clamp(20.0, 999.0);
+        let value = (tempo + f64::from(delta)).clamp(MIN_TEMPO_BPM, MAX_TEMPO_BPM);
         actions.push(Action::Coalesced(
             Invocation::new("project.set_tempo", [format!("{value:.3}")]),
             state.gesture(),
