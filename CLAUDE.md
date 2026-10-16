@@ -17,8 +17,12 @@ shortcuts. Cross-platform: Linux, macOS, Windows. Developed primarily on CachyOS
   terms permitting, WAV, etc.).
 - Never decompile, disassemble, or inspect the binaries or internals of any
   commercial DAW. Never use leaked or proprietary source, assets, or samples.
-- Do not read, parse, or reverse-engineer proprietary project formats (e.g. `.flp`).
-  MusicCraft has its own project format.
+- Do not reverse-engineer proprietary project formats yourself. The one exception
+  (owner's decision, 2026-10-16): `.flp` import in `musiccraft-flp`, a Rust port of
+  the GPL-3.0 PyFLP parser, kept in step with PyFLP. MusicCraft has its own project
+  format.
+- MusicCraft is licensed GPL-3.0-or-later (`LICENSE`). Code copied or ported from
+  other projects must be GPL-3.0-compatible and keep its copyright notice.
 - Do not copy icons, skins, fonts, sample packs, logos, or names. Match layout and
   default shortcuts through our own implementation and our own artwork.
 - Every spec in `docs/spec/` ends with a **Sources** section naming where the

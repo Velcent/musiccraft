@@ -2,15 +2,13 @@
 <!--
   Template: the release workflow replaces @VERSION@ and @DATE@ and writes
   io.github.bhimio1.MusicCraft.metainfo.xml next to it.
-
-  TODO(license): add <project_license>SPDX-ID</project_license> once the project's
-  license is chosen. Flathub requires it, and so does any public distribution.
 -->
 <component type="desktop-application">
   <id>io.github.bhimio1.MusicCraft</id>
   <name>MusicCraft</name>
   <summary>Pattern-based digital audio workstation</summary>
   <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
   <description>
     <p>
       MusicCraft is a clean-room, pure-Rust digital audio workstation with a

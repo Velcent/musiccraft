@@ -174,3 +174,10 @@ cargo xtask parity          # feature checklist (docs/parity.md)
 - `MUSICCRAFT_SCREENSHOT=out.png musiccraft …` saves one frame and exits.
 
 MusicCraft is an independent project and is not affiliated with any other DAW.
+
+## License
+
+MusicCraft is free software, licensed under the GNU General Public License,
+version 3 or (at your option) any later version. See `LICENSE`. The `.flp`
+importer is a Rust port of [PyFLP](https://github.com/demberto/PyFLP),
+© 2022 demberto, also GPL-3.0-or-later.

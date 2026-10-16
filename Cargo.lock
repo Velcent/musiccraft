@@ -1487,6 +1487,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "musiccraft-flp"
+version = "0.2.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "musiccraft-formula"
 version = "0.2.0"
 

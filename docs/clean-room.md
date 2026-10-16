@@ -18,17 +18,26 @@ process.
 1. The publicly published user manual and public tutorials of existing DAWs.
 2. Observable behavior of software that a contributor lawfully owns and runs
    normally (what happens when you press a key, what a dialog offers).
-3. Open standards and public specifications: MIDI, WAV/RIFF, CLAP, and any
+3. Open standards and public specifications: MIDI, WAV/RIFF, CLAP, VST3, and any
    standard whose license permits our use.
 4. Our own design decisions.
+5. Open-source code whose license is compatible with MusicCraft's
+   (GPL-3.0-or-later), copied or ported with its copyright notice and license
+   kept, and named in the spec's Sources. In particular, the `.flp` importer
+   (`musiccraft-flp`) is a Rust port of PyFLP (© 2022 demberto,
+   GPL-3.0-or-later). The project owner decided this on 2026-10-16, together
+   with licensing MusicCraft under GPL-3.0-or-later.
 
 ## Forbidden
 
 - Decompiling, disassembling, debugging, or tracing the binaries of any commercial DAW.
 - Any leaked, stolen, or otherwise unauthorized source code, documentation, or assets.
-- Reading or reverse-engineering proprietary project/preset formats (for example
-  `.flp`). Import from such formats may only be added later if the format is publicly
-  documented by its owner.
+- Reverse-engineering proprietary project/preset formats ourselves (examining
+  their files byte by byte, or the program that writes them). The one exception is
+  the `.flp` import above, which reuses PyFLP's published, open-source parser
+  instead; its authors worked the format out, not us, and we say so. Changes to the
+  importer follow PyFLP (or are checked against its output), not our own probing.
+  MusicCraft's own project format stays its own.
 - Copying icons, skins, bitmaps, fonts, sample packs, factory presets, logos, or names.
 - Using another product's trademarks in our name, branding, or marketing.
 
