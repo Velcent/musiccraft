@@ -9,6 +9,7 @@ mod pattern;
 mod playlist;
 mod plugin;
 mod project;
+mod record;
 mod transport;
 
 #[cfg(test)]
@@ -29,5 +30,6 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(playlist::commands());
     commands.extend(automation::commands());
     commands.extend(plugin::commands());
+    commands.extend(record::commands());
     commands
 }

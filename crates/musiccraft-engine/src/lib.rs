@@ -24,7 +24,7 @@ pub use graph::{
     ChannelNode, ChannelParams, EffectParams, Graph, Instrument, MAX_SENDS, Preview, SendParams,
     TrackParams,
 };
-pub use message::{EngineMessage, Garbage, LiveEvent};
+pub use message::{EngineMessage, Garbage, LiveEvent, Start};
 pub use meters::{Meters, SCOPE_LEN};
 pub use midi_out::{MIDI_OUT_CAPACITY, MidiOutEvent, MidiOutReceiver};
 pub use musiccraft_dsp::PanLaw;

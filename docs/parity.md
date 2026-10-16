@@ -127,7 +127,13 @@ of contents; see `docs/clean-room.md`.
 | Project | Export lossy audio (MP3, Ogg) | `todo` |
 | Project | Autosave and crash recovery | `done` |
 | Input | MIDI keyboard plays the selected channel | `done` |
-| Input | Record live notes into patterns | `key:R=ui.toggle_record` `done` |
+| Input | Record live notes into patterns | `cmd:record.toggle` `key:R=record.toggle` `spec:recording.md` |
+| Input | Recording count-in | `cmd:record.toggle_count_in` `key:Ctrl+P=record.toggle_count_in` |
+| Input | Wait for input before recording | `cmd:record.toggle_wait` `key:Ctrl+I=record.toggle_wait` |
+| Input | Blend or replace recording | `cmd:record.set_mode` |
+| Input | Loop recording on / off | `cmd:record.toggle_loop` |
+| Input | Step edit / step recording | `cmd:record.toggle_step_edit` `key:Ctrl+E=record.toggle_step_edit` |
+| Input | Record knob movements as automation | `cmd:automation.record` `spec:recording.md` |
 | Input | Computer keyboard as piano | `key:Ctrl+T=ui.typing_keyboard` `done` |
 | Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
 | Scripting | Headless CLI and scripts | `done` |

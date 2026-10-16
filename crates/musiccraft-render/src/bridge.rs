@@ -6,7 +6,7 @@ use musiccraft_dsp::convolution::Convolver;
 use musiccraft_dsp::{Effect, SampleBuffer};
 use musiccraft_engine::{
     ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_BLOCK,
-    MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, TrackParams,
+    MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, Start, TrackParams,
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
 use musiccraft_project::{Channel, MixerTrack, Project, Requests, base64};
@@ -76,6 +76,8 @@ struct Desc {
     playing: bool,
     paused: bool,
     metronome: bool,
+    start: Start,
+    stop_at_end: bool,
 }
 
 /// What a [`Bridge::sync`] did.
@@ -102,6 +104,24 @@ fn sample_key(sample: &str, base: Option<&Path>) -> String {
             dir.join(sample).to_string_lossy().into_owned()
         }
         _ => sample.to_owned(),
+    }
+}
+
+/// Beats of the recording count-in (one 4/4 bar).
+const COUNT_IN_BEATS: u32 = 4;
+
+/// How Play begins: count-in and wait for input apply only while armed, and
+/// waiting takes over from the count-in.
+fn start_mode(project: &Project) -> Start {
+    let options = project.record;
+    if !project.is_armed() {
+        Start::Now
+    } else if options.wait_for_input {
+        Start::WaitForInput
+    } else if options.count_in {
+        Start::CountIn(COUNT_IN_BEATS)
+    } else {
+        Start::Now
     }
 }
 
@@ -275,6 +295,8 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
         playing: project.transport().is_playing(),
         paused: project.transport().is_paused(),
         metronome: project.metronome,
+        start: start_mode(project),
+        stop_at_end: project.is_armed() && !project.record.loop_record,
     }
 }
 
@@ -661,6 +683,15 @@ impl Bridge {
             .is_none_or(|p| p.metronome != desc.metronome)
         {
             messages.push(EngineMessage::SetMetronome(desc.metronome));
+        }
+        if previous.as_ref().is_none_or(|p| p.start != desc.start) {
+            messages.push(EngineMessage::SetStart(desc.start));
+        }
+        if previous
+            .as_ref()
+            .is_none_or(|p| p.stop_at_end != desc.stop_at_end)
+        {
+            messages.push(EngineMessage::SetStopAtEnd(desc.stop_at_end));
         }
         if previous
             .as_ref()

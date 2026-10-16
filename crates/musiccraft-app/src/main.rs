@@ -95,6 +95,12 @@ struct App {
     closing: bool,
     /// Pause-marker stops seen from the engine so far.
     marker_pauses: u64,
+    /// Loop-end stops (recording without looping) seen so far.
+    end_stops: u64,
+    /// Replace recording: what the playhead has passed in this take.
+    sweep: recorder::Sweep,
+    /// Step edit: the chord being entered.
+    steps: recorder::StepEntry,
 }
 
 /// What happens after the user deals with unsaved changes.
@@ -332,6 +338,9 @@ impl App {
             pending: None,
             closing: false,
             marker_pauses: 0,
+            end_stops: 0,
+            sweep: recorder::Sweep::default(),
+            steps: recorder::StepEntry::default(),
         };
         app.refresh_devices();
         app.start_audio(ctx);
@@ -505,6 +514,8 @@ impl App {
             let meters = audio.handle.meters();
             status.position_ticks = meters.position_ticks();
             status.playing = meters.is_playing();
+            status.counting_in = meters.is_counting_in();
+            status.waiting = meters.is_waiting();
             status.voices = meters.active_voices();
             status.peaks = (0..tracks).map(|t| meters.take_peak(t)).collect();
             status.load = meters.load();
@@ -532,9 +543,13 @@ impl App {
                     self.pending = Some(Pending::Run(invocation));
                     return;
                 }
+                let invocation = self.automated(invocation);
                 self.run_invocation(&invocation)
             }
-            Action::Coalesced(invocation, key) => self.session.run_coalesced(&invocation, key),
+            Action::Coalesced(invocation, key) => {
+                let invocation = self.automated(invocation);
+                self.session.run_coalesced(&invocation, key)
+            }
             Action::Preview { channel, key, on } => {
                 let channel = u16::try_from(channel).unwrap_or(0);
                 self.send(if on {
@@ -683,18 +698,47 @@ impl App {
         }
     }
 
-    /// Feeds a live note into the recorder; velocity 0 means note off.
-    /// `position` is the engine position when the note happened, if known.
+    /// While recording in song mode, a control change also records its value
+    /// as automation at the playhead (one batch, so one gesture is one undo
+    /// step).
+    fn automated(&self, invocation: Invocation) -> Invocation {
+        let project = self.session.project();
+        let Some(audio) = &self.audio else {
+            return invocation;
+        };
+        let meters = audio.handle.meters();
+        let recording = project.is_armed()
+            && meters.is_playing()
+            && project.play_mode == musiccraft_project::PlayMode::Song;
+        if !recording {
+            return invocation;
+        }
+        let tick = meters.position_ticks().max(0.0) as u32;
+        musiccraft_commands::automation_record::with_automation_record(&invocation, tick)
+            .unwrap_or(invocation)
+    }
+
+    /// Feeds a live note into the recorder (or step edit); velocity 0 means
+    /// note off. `position` is the engine position when the note happened,
+    /// if known.
     fn record(&mut self, key: u8, velocity: u8, position: Option<f64>) {
         let Some(audio) = &self.audio else {
             return;
         };
         let meters = audio.handle.meters();
-        if !self.ui.record || !meters.is_playing() {
+        // Waiting for input counts as playing: the first note starts it.
+        let playing = meters.is_playing() || meters.is_waiting();
+        let counting_in = meters.is_counting_in();
+        let position = position.unwrap_or_else(|| meters.position_ticks());
+        if self.session.project().step_edit() && !playing && !counting_in {
+            self.step_edit(key, velocity, position);
+            return;
+        }
+        self.steps.clear();
+        if !self.session.project().is_armed() || !playing {
             self.recorder.clear();
             return;
         }
-        let position = position.unwrap_or_else(|| meters.position_ticks());
         if velocity > 0 {
             self.recorder.note_on(key, velocity, position);
             return;
@@ -726,10 +770,118 @@ impl App {
             ],
         );
         match self.session.run(&invocation) {
+            Ok(outcome) => {
+                self.sweep.recorded(note.start, note.key);
+                self.ui
+                    .set_status(format!("recorded: {}", outcome.message), false);
+            }
+            Err(err) => self.ui.set_status(err.to_string(), true),
+        }
+    }
+
+    /// Step edit: enters a played note at the playhead (snapped), and moves
+    /// the playhead one snap step on once every key is up.
+    fn step_edit(&mut self, key: u8, velocity: u8, position: f64) {
+        let snap = f64::from(self.ui.step_edit_ticks().max(1));
+        if velocity == 0 {
+            if let Some(cursor) = self.steps.note_off(key) {
+                self.send(EngineMessage::Seek(cursor + snap));
+            }
+            return;
+        }
+        let cursor = self
+            .steps
+            .note_on(key, (position.max(0.0) / snap).floor() * snap);
+        let project = self.session.project();
+        let channel = self.ui.selected_channel;
+        if channel >= project.channels.len() {
+            return;
+        }
+        let pattern_ticks = project.current_pattern().length_ticks().max(1);
+        let start = (cursor as u32) % pattern_ticks;
+        let invocation = Invocation::new(
+            "note.add",
+            [
+                (channel + 1).to_string(),
+                format!("{start}t"),
+                format!("{snap}t"),
+                key.to_string(),
+                velocity.clamp(1, 127).to_string(),
+            ],
+        );
+        match self.session.run(&invocation) {
             Ok(outcome) => self
                 .ui
-                .set_status(format!("recorded: {}", outcome.message), false),
+                .set_status(format!("step: {}", outcome.message), false),
             Err(err) => self.ui.set_status(err.to_string(), true),
+        }
+    }
+
+    /// Replace recording: removes the recording channel's notes the playhead
+    /// has just passed in the recording pattern, unless this take recorded
+    /// them.
+    fn sweep_replace(&mut self) {
+        let Some(audio) = &self.audio else {
+            return;
+        };
+        let meters = audio.handle.meters();
+        let project = self.session.project();
+        let replacing = project.is_armed()
+            && meters.is_playing()
+            && project.record.mode == musiccraft_project::RecordMode::Replace;
+        let channel = self.ui.selected_channel;
+        let Some(id) = project
+            .channels
+            .get(channel)
+            .map(|c| c.id)
+            .filter(|_| replacing)
+        else {
+            self.sweep.reset();
+            return;
+        };
+        let pattern = project.current_pattern();
+        let ranges = self
+            .sweep
+            .advance(meters.position_ticks(), pattern.length_ticks());
+        let removals: Vec<String> = pattern
+            .notes_of(id)
+            .filter(|n| self.sweep.removes(&ranges, n.start, n.key))
+            .map(|n| {
+                format!(
+                    "note.remove {} {}t {} @{}",
+                    channel + 1,
+                    n.start,
+                    n.key,
+                    project.current_pattern + 1
+                )
+            })
+            .collect();
+        if removals.is_empty() {
+            return;
+        }
+        let batch = Invocation::new(musiccraft_commands::BATCH, removals);
+        if let Err(err) = self.session.run(&batch) {
+            self.ui.set_status(err.to_string(), true);
+        }
+    }
+
+    /// Recording without looping stopped the engine at the loop end: stop the
+    /// transport to match.
+    fn follow_end_stop(&mut self) {
+        let Some(audio) = &self.audio else {
+            return;
+        };
+        let count = audio.handle.meters().end_stops();
+        if count <= self.end_stops {
+            self.end_stops = count;
+            return;
+        }
+        self.end_stops = count;
+        if self.session.project().transport().is_playing() {
+            match self.session.run(&Invocation::bare("transport.stop")) {
+                Ok(_) => self.ui.set_status("recording reached the end", false),
+                Err(err) => self.ui.set_status(err.to_string(), true),
+            }
         }
     }
 
@@ -825,7 +977,8 @@ impl App {
         };
         let meters = audio.handle.meters();
         let song = self.session.project().play_mode == musiccraft_project::PlayMode::Song;
-        let wanted = self.ui.record && self.ui.record_audio && meters.is_playing() && song;
+        let armed = self.session.project().is_armed();
+        let wanted = armed && self.ui.record_audio && meters.is_playing() && song;
         if wanted && self.take.is_none() {
             if self.input.is_none() {
                 match musiccraft_audio::AudioInput::open_default() {
@@ -1116,6 +1269,8 @@ impl eframe::App for App {
         self.selected_channel
             .store(self.ui.selected_channel, Ordering::Relaxed);
         self.follow_marker_pause();
+        self.follow_end_stop();
+        self.sweep_replace();
         self.sync();
         self.release_due_previews();
         self.update_title(&ctx);

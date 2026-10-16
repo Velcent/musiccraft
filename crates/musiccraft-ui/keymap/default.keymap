@@ -12,7 +12,10 @@ Home         = transport.jump_to_start
 Ctrl+H       = transport.panic
 L            = transport.toggle_mode
 Ctrl+M       = transport.toggle_metronome
-R            = ui.toggle_record
+R            = record.toggle
+Ctrl+E       = record.toggle_step_edit
+Ctrl+P       = record.toggle_count_in
+Ctrl+I       = record.toggle_wait
 Ctrl+T       = ui.typing_keyboard
 
 # Playlist

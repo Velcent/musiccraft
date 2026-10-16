@@ -2,7 +2,8 @@ use musiccraft_project::params::{
     INSTRUMENT_PARAMS, TICKS_PER_BAR, TICKS_PER_STEP, index_of, volume_to_unit,
 };
 use musiccraft_project::{
-    Automation, AutomationId, AutomationPoint, AutomationTarget, Clip, MAX_VOLUME, Project,
+    Automation, AutomationId, AutomationPoint, AutomationTarget, Clip, ClipSource, MAX_VOLUME,
+    PLAYLIST_TRACKS, Project,
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,7 +61,74 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "Replace every point with [[tick, value], ...] (used by undo).",
             set_points,
         ),
+        cmd(
+            "automation.record",
+            "automation.record <target> <tick>",
+            "Record the target's current value at a song position, creating an automation and clip if needed.",
+            record,
+        ),
     ]
+}
+
+/// Records `target`'s current value at song position `tick`: into an
+/// automation clip of that target covering `tick`, or a new automation whose
+/// clip covers the whole song (so later points, even after the song wraps,
+/// land in it).
+fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let target = parse_target(project, args, args.str(0)?)?;
+    let tick = args.time(1, TICKS_PER_STEP)?;
+    let (value, label) =
+        current(project, &target).ok_or_else(|| args.invalid("the target does not exist"))?;
+    let covering = project.playlist.clips.iter().find_map(|clip| {
+        let index = project.automation_position(clip.automation()?)?;
+        let covers = clip.start <= tick && tick < clip.start + clip.length;
+        (covers && project.automations[index].target == target).then_some((index, clip.start))
+    });
+    if let Some((index, start)) = covering {
+        let at = tick - start;
+        let automation = &mut project.automations[index];
+        let old = automation.points.clone();
+        automation.points.retain(|p| p.tick != at);
+        automation.points.push(AutomationPoint { tick: at, value });
+        automation.sort_points();
+        return Ok(Outcome::undoable(
+            format!("recorded {label} at {tick}t"),
+            set_points_inverse(index, &old),
+        ));
+    }
+    let length = project
+        .song_length_ticks()
+        .max(tick + 1)
+        .next_multiple_of(TICKS_PER_BAR);
+    let track = (0..PLAYLIST_TRACKS)
+        .find(|row| {
+            !project
+                .playlist
+                .clips
+                .iter()
+                .any(|c| c.track == *row && c.start < length)
+        })
+        .ok_or_else(|| args.invalid("no playlist track has room for an automation clip"))?;
+    let id = AutomationId(project.alloc_id());
+    project.automations.push(Automation {
+        id,
+        name: label.clone(),
+        target,
+        points: vec![AutomationPoint { tick, value }],
+    });
+    project.playlist.clips.push(Clip {
+        source: ClipSource::Automation(id),
+        track,
+        start: 0,
+        length,
+    });
+    project.playlist.sort_clips();
+    let number = project.automations.len();
+    Ok(Outcome::undoable(
+        format!("recording {label} into automation {number}"),
+        Invocation::new("automation.remove", [number.to_string()]),
+    ))
 }
 
 fn automation_arg(project: &Project, args: &Args<'_>, i: usize) -> Result<usize, CommandError> {

@@ -12,6 +12,7 @@
 //!   `@<pattern>` argument names another. Inverses always name the pattern.
 
 mod args;
+pub mod automation_record;
 mod cmds;
 mod command;
 mod error;

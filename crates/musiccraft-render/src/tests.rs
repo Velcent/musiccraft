@@ -1178,3 +1178,69 @@ fn pausing_the_transport_at_a_pause_marker_keeps_the_playhead_there() {
     engine.process(&mut out, 2);
     assert!(engine.position_ticks().abs() < f64::EPSILON);
 }
+
+#[test]
+fn recording_options_reach_the_engine_only_while_armed() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_sampler builtin:kick
+         step.toggle 1 0
+         record.toggle_count_in",
+    );
+    let (mut engine, mut handle) = engine_pair(48_000);
+    let mut bridge = Bridge::new(48_000);
+    let mut out = vec![0.0; 2 * 1024];
+    // Not armed: Play starts at once.
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(engine.is_playing());
+    run(&mut s, "transport.stop\nrecord.toggle");
+    let _ = bridge.sync(s.project(), &mut handle);
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(!engine.is_playing() && handle.meters().is_counting_in());
+    // One bar at 120 BPM is 2 s.
+    for _ in 0..94 {
+        engine.process(&mut out, 2);
+    }
+    assert!(engine.is_playing(), "the count-in is over");
+    // Wait for input takes over from the count-in.
+    run(&mut s, "transport.stop\nrecord.toggle_wait");
+    let _ = bridge.sync(s.project(), &mut handle);
+    run(&mut s, "transport.play");
+    let _ = bridge.sync(s.project(), &mut handle);
+    engine.process(&mut out, 2);
+    assert!(handle.meters().is_waiting());
+}
+
+#[test]
+fn recording_without_looping_stops_at_the_pattern_end() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 960
+         channel.add_sampler builtin:kick
+         record.toggle_loop
+         transport.play",
+    );
+    let (mut engine, mut handle) = engine_pair(48_000);
+    let mut bridge = Bridge::new(48_000);
+    let mut out = vec![0.0; 2 * 1024];
+    let _ = bridge.sync(s.project(), &mut handle);
+    // A bar at 960 BPM is 0.25 s: 12 000 frames.
+    for _ in 0..16 {
+        engine.process(&mut out, 2);
+    }
+    assert!(engine.is_playing(), "not armed: it loops");
+    run(&mut s, "record.toggle");
+    let _ = bridge.sync(s.project(), &mut handle);
+    for _ in 0..16 {
+        engine.process(&mut out, 2);
+    }
+    assert!(!engine.is_playing());
+    assert_eq!(handle.meters().end_stops(), 1);
+}

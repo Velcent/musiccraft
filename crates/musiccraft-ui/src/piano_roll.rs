@@ -71,7 +71,7 @@ pub struct RollState {
     pub(crate) right_erase: Vec<Note>,
     px_per_step: f32,
     key_height: f32,
-    snap: Snap,
+    pub(crate) snap: Snap,
     last_length: u32,
     velocity: u8,
     drag: Option<NoteDrag>,

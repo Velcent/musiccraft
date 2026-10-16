@@ -1044,6 +1044,91 @@ fn mono_and_polyphony_limits_cut_the_oldest_voices() {
     }
 }
 
+/// The impulse engine with a note on every beat of a four-beat sequence.
+fn beat_engine() -> (Engine, EngineHandle) {
+    let (mut engine, handle) = impulse_engine();
+    let notes = (0..4).map(|beat| note(beat, 0)).collect();
+    let seq = Sequence::new(notes, 4 * u64::from(PPQ));
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    (engine, handle)
+}
+
+#[test]
+fn a_count_in_clicks_a_bar_then_starts_on_the_exact_frame() {
+    let (mut engine, handle) = beat_engine();
+    engine.apply(EngineMessage::SetStart(Start::CountIn(4)));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 4 * BEAT + 10);
+    // Four clicks, one per beat, louder at the start of each.
+    for beat in 0..4 {
+        assert!(out[beat * BEAT + 5].abs() > 1e-3, "click {beat}");
+        assert!(
+            out[beat * BEAT + BEAT / 2].abs() < 1e-6,
+            "silence after {beat}"
+        );
+    }
+    assert!(out[4 * BEAT - 1].abs() < 1e-6);
+    // The first note (an impulse) lands on the frame the count-in ends.
+    assert!((out[4 * BEAT] - 1.0).abs() < 1e-6, "{}", out[4 * BEAT]);
+    assert!(engine.is_playing());
+    assert!(!handle.meters().is_counting_in());
+    assert!((engine.position_ticks() - 10.0 * f64::from(PPQ) / BEAT as f64).abs() < 1e-6);
+}
+
+#[test]
+fn stop_cancels_a_count_in() {
+    let (mut engine, handle) = beat_engine();
+    engine.apply(EngineMessage::SetStart(Start::CountIn(4)));
+    engine.apply(EngineMessage::Play);
+    render_mono(&mut engine, BEAT);
+    assert!(handle.meters().is_counting_in() && !engine.is_playing());
+    engine.apply(EngineMessage::Stop);
+    render_mono(&mut engine, 4 * BEAT);
+    assert!(!engine.is_playing() && !handle.meters().is_counting_in());
+    // With the start back to now, Play starts at once.
+    engine.apply(EngineMessage::SetStart(Start::Now));
+    engine.apply(EngineMessage::Play);
+    assert!(engine.is_playing());
+}
+
+#[test]
+fn waiting_for_input_starts_with_the_first_live_note() {
+    let (mut engine, handle) = beat_engine();
+    engine.apply(EngineMessage::SetStart(Start::WaitForInput));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 2 * BEAT);
+    assert!(out.iter().all(|s| s.abs() < 1e-6), "nothing plays");
+    assert!(handle.meters().is_waiting() && !engine.is_playing());
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 60,
+        velocity: 1.0,
+    });
+    assert!(engine.is_playing());
+    let out = render_mono(&mut engine, BEAT + 10);
+    // The live note and the sequence's first note both sound at once.
+    assert!((out[0] - 2.0).abs() < 1e-6, "{}", out[0]);
+    assert!((out[BEAT] - 1.0).abs() < 1e-6);
+    assert!(!handle.meters().is_waiting());
+}
+
+#[test]
+fn stop_at_end_stops_and_rewinds_instead_of_looping() {
+    let (mut engine, handle) = beat_engine();
+    engine.apply(EngineMessage::SetStopAtEnd(true));
+    engine.apply(EngineMessage::Seek(f64::from(PPQ)));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 4 * BEAT);
+    assert_eq!(
+        nonzero_frames(&out),
+        [0, BEAT, 2 * BEAT],
+        "beats 2-4, no wrap"
+    );
+    assert!(!engine.is_playing());
+    assert!(engine.position_ticks().abs() < f64::EPSILON);
+    assert_eq!(handle.meters().end_stops(), 1);
+}
+
 #[test]
 fn a_nan_burst_cannot_silence_a_reverb_for_good() {
     let (mut engine, _handle) = engine_pair(SR);

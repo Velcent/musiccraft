@@ -434,11 +434,23 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             run(actions, "transport.stop");
         }
         let record_hint = format!(
-            "Record live notes into the pattern while playing ({})",
-            shortcut(state, "ui.toggle_record")
+            "Record live notes into the pattern while playing ({}); right-click for options",
+            shortcut(state, "record.toggle")
         );
-        if icons::button(ui, Icon::Record, state.record, theme::DANGER, &record_hint).clicked() {
-            state.record = !state.record;
+        let armed = project.is_armed();
+        let rec = icons::button(ui, Icon::Record, armed, theme::DANGER, &record_hint);
+        if rec.clicked() {
+            run(actions, "record.toggle");
+        }
+        rec.context_menu(|ui| record_options(ui, state, project, actions));
+        if frame.engine.counting_in {
+            ui.label(RichText::new("COUNT-IN").strong().color(theme::DANGER));
+        } else if frame.engine.waiting {
+            ui.label(RichText::new("WAITING").strong().color(theme::DANGER))
+                .on_hover_text("Playback starts with the first note you play");
+        } else if project.step_edit() {
+            ui.label(RichText::new("STEP").strong().color(theme::HIGHLIGHT))
+                .on_hover_text("Step edit: played notes go in at the playhead");
         }
     });
 
@@ -589,5 +601,66 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             frame.engine.audio,
             frame.engine.midi
         ));
+    }
+}
+
+/// The REC button's menu: count-in, wait for input, loop, blend/replace and
+/// step edit.
+fn record_options(
+    ui: &mut egui::Ui,
+    state: &UiState,
+    project: &musiccraft_project::Project,
+    actions: &mut Vec<Action>,
+) {
+    let options = project.record;
+    let mut toggle = |ui: &mut egui::Ui, on: bool, label: &str, name: &str| {
+        let text = match shortcut(state, name) {
+            s if s.is_empty() => label.to_owned(),
+            s => format!("{label} ({s})"),
+        };
+        if ui.selectable_label(on, text).clicked() {
+            run(actions, name);
+            ui.close();
+        }
+    };
+    toggle(
+        ui,
+        options.count_in,
+        "Count-in (one bar)",
+        "record.toggle_count_in",
+    );
+    toggle(
+        ui,
+        options.wait_for_input,
+        "Wait for input",
+        "record.toggle_wait",
+    );
+    toggle(
+        ui,
+        options.loop_record,
+        "Loop recording",
+        "record.toggle_loop",
+    );
+    toggle(
+        ui,
+        project.step_edit(),
+        "Step edit",
+        "record.toggle_step_edit",
+    );
+    ui.separator();
+    for mode in [
+        musiccraft_project::RecordMode::Blend,
+        musiccraft_project::RecordMode::Replace,
+    ] {
+        if ui
+            .selectable_label(options.mode == mode, mode.label())
+            .clicked()
+        {
+            actions.push(Action::Run(Invocation::new(
+                "record.set_mode",
+                [mode.label().to_owned()],
+            )));
+            ui.close();
+        }
     }
 }

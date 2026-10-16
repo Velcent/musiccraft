@@ -114,6 +114,8 @@ const SCRIPT: &[&str] = &[
     "automation.rename 1 Filter sweep",
     "playlist.add_automation_clip 1 5 0",
     "playlist.add_automation_clip 2 6 2 1",
+    "automation.record channel:2:cutoff 4",
+    "automation.record channel:1:volume 8",
     "channel.add_sampler builtin:rim",
     "playlist.add_audio_clip 5 7 1 2",
     "playlist.move_clip 7 1 8 3",
@@ -121,6 +123,8 @@ const SCRIPT: &[&str] = &[
     "mixer.add_effect 2 chorus",
     "mixer.move_effect 2 1 2",
     "automation.remove 1",
+    "automation.remove 2",
+    // One more: the recorded volume automation came before the mix one.
     "automation.remove 2",
     "mixer.remove_track 2",
     "pattern.remove 1",
@@ -374,6 +378,43 @@ fn next_empty_selects_an_empty_pattern_or_adds_one() {
     assert_eq!(s.project().patterns.len(), 3);
     assert_eq!(s.project().current_pattern, 1);
     fails(&mut s, "pattern.next_empty 2");
+}
+
+#[test]
+fn recording_state_and_options_stay_out_of_history() {
+    use musiccraft_project::RecordMode;
+    let mut s = session();
+    let before = s.project().clone();
+    for line in ["record.toggle", "record.toggle_step_edit"] {
+        run(&mut s, line);
+    }
+    assert!(s.project().is_armed() && s.project().step_edit());
+    assert_eq!(
+        *s.project(),
+        before,
+        "armed and step edit are session state"
+    );
+    run(&mut s, "record.set off");
+    assert!(!s.project().is_armed());
+    for line in [
+        "record.toggle_count_in",
+        "record.toggle_wait",
+        "record.toggle_loop",
+        "record.set_mode replace",
+    ] {
+        run(&mut s, line);
+    }
+    let options = s.project().record;
+    assert!(options.count_in && options.wait_for_input && !options.loop_record);
+    assert_eq!(options.mode, RecordMode::Replace);
+    assert_eq!(s.undo_depth(), 0);
+    fails(&mut s, "record.set_mode overdub");
+    fails(&mut s, "record.set maybe");
+    // Options are saved with the project.
+    let json = s.project().to_json().unwrap();
+    let loaded = musiccraft_project::Project::from_json(&json).unwrap();
+    assert_eq!(loaded.record, options);
+    assert!(!loaded.is_armed());
 }
 
 #[test]

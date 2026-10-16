@@ -126,6 +126,10 @@ pub struct EngineStatus {
     pub midi: String,
     /// MIDI output description.
     pub midi_out: String,
+    /// A recording count-in is clicking.
+    pub counting_in: bool,
+    /// Playback waits for the first live note.
+    pub waiting: bool,
 }
 
 /// Undo history information for menus.
@@ -210,8 +214,6 @@ pub struct UiState {
     pub workspace: egui::Rect,
     /// Letter keys play notes on the selected channel.
     pub typing_keyboard: bool,
-    /// Live notes are written into the selected pattern while playing.
-    pub record: bool,
     /// While recording in song mode, also capture the audio input.
     pub record_audio: bool,
     /// Text that filters the plugin parameter list.
@@ -248,6 +250,16 @@ impl Default for UiState {
 }
 
 impl UiState {
+    /// How far step edit moves per note: the piano roll's snap, or one step
+    /// when snap is off.
+    #[must_use]
+    pub fn step_edit_ticks(&self) -> u32 {
+        match self.roll.snap {
+            geometry::Snap::Off => musiccraft_project::params::TICKS_PER_STEP,
+            snap => snap.ticks(),
+        }
+    }
+
     /// Fresh interface state using `keymap`.
     #[must_use]
     pub fn new(keymap: Keymap) -> Self {
@@ -265,7 +277,6 @@ impl UiState {
             automation_view: None,
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
-            record: false,
             record_audio: false,
             plugin_filter: String::new(),
             hint: None,
@@ -590,7 +601,6 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                         .unwrap_or(settings::Tab::Audio),
                 );
             }
-            "ui.toggle_record" => state.record = !state.record,
             _ => out.push(action),
         }
     }

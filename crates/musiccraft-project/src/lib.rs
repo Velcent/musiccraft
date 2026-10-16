@@ -65,6 +65,53 @@ impl Transport {
     }
 }
 
+/// How recorded notes treat what the pattern already has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordMode {
+    /// Add to the existing notes.
+    #[default]
+    Blend,
+    /// Remove the existing notes the playhead passes while recording.
+    Replace,
+}
+
+impl RecordMode {
+    /// `blend` or `replace`.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Blend => "blend",
+            Self::Replace => "replace",
+        }
+    }
+}
+
+/// Recording options, saved with the project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecordOptions {
+    /// Click one bar before playback starts while armed.
+    pub count_in: bool,
+    /// Start playback with the first live note while armed.
+    pub wait_for_input: bool,
+    /// Blend or replace.
+    pub mode: RecordMode,
+    /// Keep looping while armed; when off, playback stops at the loop end.
+    pub loop_record: bool,
+}
+
+impl Default for RecordOptions {
+    fn default() -> Self {
+        Self {
+            count_in: false,
+            wait_for_input: false,
+            mode: RecordMode::Blend,
+            loop_record: true,
+        }
+    }
+}
+
 /// Counts of one-shot transport requests. The bridge acts when a count rises;
 /// they are runtime-only and ignored by project equality.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -134,6 +181,15 @@ pub struct Project {
     /// One-shot transport requests (jump to start, panic); never saved.
     #[serde(skip)]
     requests: Requests,
+    /// Whether recording is armed; never saved.
+    #[serde(skip)]
+    armed: bool,
+    /// Whether step edit is on; never saved.
+    #[serde(skip)]
+    step_edit: bool,
+    /// Count-in, wait for input, blend/replace and loop recording.
+    #[serde(default)]
+    pub record: RecordOptions,
     /// Whether the transport loops the current pattern or plays the song.
     #[serde(default)]
     pub play_mode: PlayMode,
@@ -194,6 +250,9 @@ impl Project {
             tempo_bpm: DEFAULT_TEMPO_BPM,
             transport: Transport::Stopped,
             requests: Requests::default(),
+            armed: false,
+            step_edit: false,
+            record: RecordOptions::default(),
             play_mode: PlayMode::Pattern,
             channels: Vec::new(),
             patterns: vec![Pattern::new(PatternId(1), "Pattern 1")],
@@ -243,6 +302,28 @@ impl Project {
             return Err(ProjectError::TempoOutOfRange(bpm));
         }
         Ok(std::mem::replace(&mut self.tempo_bpm, bpm))
+    }
+
+    /// Whether recording is armed.
+    #[must_use]
+    pub fn is_armed(&self) -> bool {
+        self.armed
+    }
+
+    /// Arms or disarms recording and returns the previous state.
+    pub fn set_armed(&mut self, armed: bool) -> bool {
+        std::mem::replace(&mut self.armed, armed)
+    }
+
+    /// Whether step edit is on.
+    #[must_use]
+    pub fn step_edit(&self) -> bool {
+        self.step_edit
+    }
+
+    /// Turns step edit on or off and returns the previous state.
+    pub fn set_step_edit(&mut self, on: bool) -> bool {
+        std::mem::replace(&mut self.step_edit, on)
     }
 
     /// The first pattern after the selected one with no notes.
@@ -642,6 +723,7 @@ impl PartialEq for Project {
             && self.playlist == other.playlist
             && self.metronome == other.metronome
             && self.pan_law == other.pan_law
+            && self.record == other.record
             && self.swing == other.swing
             && self.automations == other.automations
     }

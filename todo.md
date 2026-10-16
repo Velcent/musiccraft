@@ -13,7 +13,7 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 - [x] R arms / disarms recording (FL); Ctrl+E is reserved for step edit mode.
 - [x] Piano roll: Shift+arrows move the selection (semitone / snap step),
   Ctrl+Up/Down move it an octave. Plain arrows no longer move notes.
-- [ ] Ctrl+E toggles step edit mode (notes played on a MIDI or typing keyboard
+- [x] Ctrl+E toggles step edit mode (notes played on a MIDI or typing keyboard
   are entered at the selected step and the cursor advances).
 
 ### Sound
@@ -39,13 +39,13 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 
 - [x] Cut groups / choke (a closed hi-hat cuts an open one).
 - [x] Per-channel mono mode and maximum polyphony.
-- [ ] Recording:
-  - [ ] Count-in (Ctrl+P).
-  - [ ] Wait for input before recording starts (Ctrl+I).
-  - [ ] Blend vs replace.
-  - [ ] Loop recording.
-  - [ ] Step recording.
-  - [ ] Record knob movements as automation.
+- [x] Recording:
+  - [x] Count-in (Ctrl+P).
+  - [x] Wait for input before recording starts (Ctrl+I).
+  - [x] Blend vs replace.
+  - [x] Loop recording.
+  - [x] Step recording.
+  - [x] Record knob movements as automation.
 - [ ] Transport:
   - [x] Pause with Ctrl+Space (`transport.pause`, `transport.play_pause`).
   - [x] Panic with Ctrl+H (all notes off).

@@ -28,7 +28,10 @@
 | Ctrl+H | Panic: all notes off |
 | L | Toggle pattern / song mode |
 | Ctrl+M | Metronome on / off |
-| R | Arm / disarm recording |
+| R | Arm / disarm recording (`record.toggle`) |
+| Ctrl+E | Step edit on / off |
+| Ctrl+P | Recording count-in on / off |
+| Ctrl+I | Wait for input before recording on / off |
 | Ctrl+T | Typing keyboard plays notes |
 | F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer |
 | Alt+F8 | Browser |
@@ -52,7 +55,8 @@
   are a convenience for users switching tools; the bindings are data and can be
   changed.
 - Ctrl+T (typing keyboard): own choice. New project has no default shortcut;
-  it is in the File menu. Ctrl+E is left free for step edit mode, as in the
-  manual.
+  it is in the File menu.
+- Ctrl+E (step edit), Ctrl+P (count-in) and Ctrl+I (wait for input) follow
+  the FL Studio online manual, "Keyboard shortcuts" and "Recording".
 - Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo and redo: common desktop convention (own
   choice; the manual describes a different undo toggle).
