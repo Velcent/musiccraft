@@ -8,6 +8,7 @@ pub mod character;
 pub mod convolution;
 pub mod creative;
 mod dynamics;
+pub mod edit;
 mod effect;
 mod envelope;
 pub mod fft;

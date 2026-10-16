@@ -77,7 +77,7 @@ Status:
 | Frequency Shifter | `freq_shift` | covered | Ring-mod mode is the separate `ring_mod` |
 | Pitch Shifter | `pitch_shift` | covered | |
 | Pitcher | `pitch_correct` (scale or a followed channel's notes, two harmony voices) | covered | |
-| Newtone | `pitch_correct` | partial | No offline note editing |
+| Newtone | `sample.edit … tune` and `pitch`, `pitch_correct` | partial | Offline correction to a key and scale; no per-note editing |
 | Gross Beat | `beat_shaper` (drawn time and volume envelopes), `gate`, `stutter` | covered | Eight points per envelope |
 | Fruity Scratcher | `scratch` (held span, automatable position, scratch patterns) | covered | Scratches the insert's own audio rather than a loaded sample |
 | Frequency Splitter | `band_split` (three bands to separate inserts) | covered | |
@@ -85,6 +85,6 @@ Status:
 | Fruity Spectroman, Wave Candy | Spectrum analyzer, toolbar oscilloscope | covered | |
 | Fruity dB Meter | Mixer meters | covered | |
 | Tuner | `tuner` | covered | |
-| Edison | Sampler slicing, recording to audio clips | not planned | A full audio editor is out of scope |
-| Newtime | — | not planned | Time-stretch editor |
+| Edison | Sample editor (`sample.edit`: trim, cut, silence, fades, gain, normalize, reverse, stretch, pitch, tune), recording to audio clips | partial | Edits write new files; no spectral view or noise reduction |
+| Newtime | `sample.edit … stretch` (WSOLA time-stretch) | partial | Whole-sample stretch; no warp markers |
 | Fruity Big Clock, Notebook, HTML Notebook, Control Surface | — | not planned | Not audio processing |

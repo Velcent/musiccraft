@@ -70,9 +70,9 @@ new UI editor or large DSP.
 
 ### Hard
 
-- [ ] Newtone / Newtime → offline note and time editing of audio (needs an
+- [x] Newtone / Newtime → offline note and time editing of audio (needs an
   audio editor view).
-- [ ] Edison → an audio editor/recorder window (currently "not planned").
+- [x] Edison → an audio editor/recorder window (currently "not planned").
 - [x] Vocodex → more bands (up to 100), band distribution and per-band
   envelopes for `vocoder`.
 
@@ -108,6 +108,11 @@ new UI editor or large DSP.
   (currently "not planned").
 - [ ] VST3 hosting (Fruity Wrapper) → extends the `unsafe` exception; needs
   the user's go-ahead before any work.
+
+Done as the sample editor (`docs/spec/sample-editor.md`): offline trim, cut,
+silence, fades, gain, normalize, reverse, time-stretch, pitch-shift and
+tuning of a channel's sample. Per-note editing (Newtone) and warp markers
+(Newtime) are not covered.
 
 ## Not planned (unchanged)
 

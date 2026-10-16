@@ -45,6 +45,9 @@ usage: musiccraft [project.mcproj] [--keymap <file>] [--empty] [--open <windows>
                      channel_settings, automation, settings,
                      effect:<track>:<slot>";
 
+/// A sample's key, min/max overview and length in seconds.
+type Overview = (String, Vec<(f32, f32)>, f64);
+
 /// Audio running on a device.
 struct Audio {
     _output: AudioOutput,
@@ -79,7 +82,7 @@ struct App {
     recorder: recorder::Recorder,
     midi_notes: Option<Receiver<midi::Played>>,
     /// Waveform overview of the selected channel's sample, keyed by sample.
-    overview: Option<(String, Vec<(f32, f32)>)>,
+    overview: Option<Overview>,
     /// Overviews and durations (seconds) of samples played by audio clips.
     clip_audio: Vec<ClipAudio>,
     /// Audio input, opened the first time an audio take starts.
@@ -906,7 +909,8 @@ impl App {
         {
             Some(
                 musiccraft_project::Instrument::Sampler { sample }
-                | musiccraft_project::Instrument::Granular { sample },
+                | musiccraft_project::Instrument::Granular { sample }
+                | musiccraft_project::Instrument::Resynth { sample },
             ) => sample.clone(),
             _ => {
                 self.overview = None;
@@ -916,18 +920,18 @@ impl App {
         if self
             .overview
             .as_ref()
-            .is_some_and(|(key, _)| *key == sample)
+            .is_some_and(|(key, _, _)| *key == sample)
         {
             return;
         }
         let Some(audio) = &mut self.audio else {
             return;
         };
-        let points = match audio.bridge.sample(&sample, self.session.project()) {
-            Ok(buffer) => overview(&buffer, 400),
-            Err(_) => Vec::new(),
+        let (points, seconds) = match audio.bridge.sample(&sample, self.session.project()) {
+            Ok(buffer) => (overview(&buffer, 400), buffer.duration_seconds()),
+            Err(_) => (Vec::new(), 0.0),
         };
-        self.overview = Some((sample, points));
+        self.overview = Some((sample, points, seconds));
     }
 
     /// Keeps waveform data for every channel that audio clips play.
@@ -1259,7 +1263,11 @@ impl eframe::App for App {
                 project: self.session.project(),
                 engine: &engine,
                 history: &history,
-                waveform: self.overview.as_ref().map(|(_, points)| points.as_slice()),
+                waveform: self
+                    .overview
+                    .as_ref()
+                    .map(|(_, points, _)| points.as_slice()),
+                waveform_seconds: self.overview.as_ref().map(|(_, _, seconds)| *seconds),
                 clip_waveforms: &clip_waveforms,
                 clip_durations: &clip_durations,
                 plugins: &plugins,

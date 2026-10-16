@@ -333,7 +333,9 @@ fn contents(
         Instrument::Zones { zones } => {
             crate::zone_editor::show(ui, state, frame, index, zones, actions);
         }
-        Instrument::Resynth { sample } => resynth(ui, state, index, channel, sample, actions),
+        Instrument::Resynth { sample } => {
+            resynth(ui, state, frame, index, channel, sample, actions);
+        }
         Instrument::Layer { channels } => {
             layer(ui, frame, index, channels, actions);
             return;
@@ -407,6 +409,7 @@ fn sampler(
         });
         let slices = channel.params.get(inst::SLICES).round().max(1.0) as u32;
         waveform(ui, frame.waveform, theme::palette(index), slices);
+        crate::sample_editor::show(ui, state, frame, index, actions);
         ui.horizontal(|ui| {
             param_knob(
                 ui,
@@ -947,6 +950,7 @@ fn granular(
             }
         });
         waveform(ui, frame.waveform, theme::palette(index), 1);
+        crate::sample_editor::show(ui, state, frame, index, actions);
         ui.horizontal(|ui| {
             param_knob(
                 ui,
@@ -1521,6 +1525,7 @@ fn synth(
 fn resynth(
     ui: &mut egui::Ui,
     state: &mut UiState,
+    frame: &Frame<'_>,
     index: usize,
     channel: &Channel,
     sample: &str,
@@ -1541,6 +1546,7 @@ fn resynth(
                 state.open_dialog(Dialog::set_sample(index, sample.to_owned()));
             }
         });
+        crate::sample_editor::show(ui, state, frame, index, actions);
         ui.label(
             RichText::new(
                 "The sample's harmonics are measured once and played on every note's pitch.",

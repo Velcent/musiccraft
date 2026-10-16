@@ -18,6 +18,7 @@ mod mixer;
 mod piano_roll;
 mod playlist;
 mod plugins;
+mod sample_editor;
 pub mod settings;
 mod spectrum;
 mod theme;
@@ -236,6 +237,8 @@ pub struct UiState {
     pub(crate) spectrum: (Vec<f32>, Vec<f32>),
     /// Open effect windows: (mixer track, slot index).
     pub effect_windows: Vec<(usize, usize)>,
+    /// The sample editor's state.
+    pub sample_edit: sample_editor::EditorState,
     pub(crate) effect_drag: Option<effect_window::Drag>,
     /// Where the last effect graph was drawn (tests).
     pub(crate) effect_graph: Option<egui::Rect>,
@@ -298,6 +301,7 @@ impl UiState {
             plugin_filter: String::new(),
             hint: None,
             effect_windows: Vec::new(),
+            sample_edit: sample_editor::EditorState::default(),
             spectrum: (Vec::new(), Vec::new()),
             effect_drag: None,
             effect_graph: None,
@@ -358,6 +362,8 @@ pub struct Frame<'a> {
     pub history: &'a History,
     /// Min/max overview of the selected channel's sample, if it is a sampler.
     pub waveform: Option<&'a [(f32, f32)]>,
+    /// Length of that sample in seconds.
+    pub waveform_seconds: Option<f64>,
     /// Overviews of samples played by audio clips.
     pub clip_waveforms: &'a [(musiccraft_project::ChannelId, Vec<(f32, f32)>)],
     /// Durations in ticks of samples played by audio clips.
@@ -675,6 +681,7 @@ mod tests {
             engine: &engine,
             history: &history,
             waveform: None,
+            waveform_seconds: None,
             clip_waveforms: &[],
             clip_durations: &[],
             plugins: &Plugins::default(),
@@ -715,6 +722,7 @@ mod tests {
             engine: &engine,
             history: &history,
             waveform: None,
+            waveform_seconds: None,
             clip_waveforms: &[],
             clip_durations: &[],
             plugins: &Plugins::default(),

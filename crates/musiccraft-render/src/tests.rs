@@ -885,6 +885,74 @@ fn resynth_channels_play_and_change_sample() {
 }
 
 #[test]
+fn sample_edits_write_new_files_and_undo() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-edit-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:snare");
+    assert!(
+        s.run_line("sample.edit 1 reverse").is_err(),
+        "an unsaved project has nowhere to put files"
+    );
+    s.run_line(&format!(
+        "project.save \"{}\"",
+        dir.join("p.mcproj").display()
+    ))
+    .unwrap();
+    let sample = |s: &Session| match &s.project().channels[0].instrument {
+        musiccraft_project::Instrument::Sampler { sample } => sample.clone(),
+        _ => panic!("not a sampler"),
+    };
+    let length = |s: &Session| {
+        musiccraft_samples::load_wav(&dir.join(sample(s)))
+            .unwrap()
+            .len()
+    };
+    run(&mut s, "sample.edit 1 trim 0 0.1");
+    assert!(sample(&s).starts_with("edited/snare-"), "{}", sample(&s));
+    assert_eq!(length(&s), 4_800);
+    run(&mut s, "sample.edit 1 stretch 2");
+    assert_eq!(length(&s), 9_600);
+    run(&mut s, "sample.edit 1 cut 0 0.05");
+    assert_eq!(length(&s), 7_200);
+    for op in [
+        "silence 0 0.01",
+        "fade_in 0 0.02",
+        "fade_out 0.1 0.15",
+        "gain -6",
+        "gain 3 0 0.05",
+        "normalize -1",
+        "reverse",
+        "pitch 5",
+        "tune 0 1",
+    ] {
+        run(&mut s, &format!("sample.edit 1 {op}"));
+        let audio = musiccraft_samples::load_wav(&dir.join(sample(&s))).unwrap();
+        assert!(audio.left().iter().all(|x| x.is_finite()), "{op}");
+    }
+    let peak = musiccraft_samples::load_wav(&dir.join(sample(&s)))
+        .unwrap()
+        .peak();
+    assert!(peak > 0.1, "still audible: {peak}");
+    for bad in ["trim 0.2 0.1", "stretch 9", "bogus", "gain 99"] {
+        assert!(
+            s.run_line(&format!("sample.edit 1 {bad}")).is_err(),
+            "{bad}"
+        );
+    }
+    // Undo walks back to the built-in sound.
+    while sample(&s) != "builtin:snare" {
+        s.run_line("edit.undo").unwrap();
+    }
+    run(&mut s, "channel.add_synth");
+    assert!(
+        s.run_line("sample.edit 2 reverse").is_err(),
+        "no sample to edit"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn zone_commands_check_and_undo() {
     let mut s = session();
     run(&mut s, "channel.add_zones\nchannel.add_zone 1 builtin:hat");
