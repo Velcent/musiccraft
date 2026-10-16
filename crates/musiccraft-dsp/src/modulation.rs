@@ -163,7 +163,7 @@ impl Flanger {
 
 /// Bitcrusher: fewer bits and a lower effective sample rate.
 ///
-/// Parameters: `[bits, downsample, mix, output dB]`.
+/// Parameters: `[bits, downsample, mix, output dB, squeeze]`.
 #[derive(Debug, Clone, Default)]
 pub struct Bitcrusher {
     held: [f32; 2],
@@ -182,13 +182,19 @@ impl Bitcrusher {
         let hold = (param(p, 1, 4.0).round() as u32).clamp(1, 32);
         let mix = param(p, 2, 1.0).clamp(0.0, 1.0);
         let output = db_to_gain(param(p, 3, 0.0));
+        let power = 1.0 - 0.9 * param(p, 4, 0.0).clamp(0.0, 1.0);
         let levels = 2.0_f32.powf(bits - 1.0);
+        let crush = |x: f32| {
+            let squeezed = if power < 1.0 {
+                x.signum() * x.abs().min(4.0).powf(power)
+            } else {
+                x
+            };
+            (squeezed * levels).round() / levels
+        };
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             if self.counter == 0 {
-                self.held = [
-                    (*l * levels).round() / levels,
-                    (*r * levels).round() / levels,
-                ];
+                self.held = [crush(*l), crush(*r)];
             }
             self.counter = (self.counter + 1) % hold;
             *l = (*l + (self.held[0] - *l) * mix) * output;
@@ -356,6 +362,19 @@ mod tests {
         // Two bits: levels at multiples of 0.5; held for four samples.
         assert_eq!(&l[..4], &[0.0; 4]);
         assert!(l[4..].iter().all(|s| (*s - 0.5).abs() < 1e-6), "{l:?}");
+    }
+
+    #[test]
+    fn bitcrusher_squeeze_lifts_quiet_detail() {
+        let run = |squeeze: f32| {
+            let mut l = vec![0.04, -0.04];
+            let mut r = l.clone();
+            Bitcrusher::default().process(&mut l, &mut r, &[16.0, 1.0, 1.0, 0.0, squeeze]);
+            l
+        };
+        assert!((run(0.0)[0] - 0.04).abs() < 1e-4, "off leaves it alone");
+        let squeezed = run(1.0);
+        assert!(squeezed[0] > 0.5 && squeezed[1] < -0.5, "{squeezed:?}");
     }
 
     #[test]

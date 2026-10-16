@@ -866,6 +866,7 @@ const BITCRUSHER_PARAMS: &[ParamSpec] = &[
     int_spec("downsample", 1.0, 32.0, 4.0),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 6.0, 0.0, "dB"),
+    spec("squeeze", 0.0, 1.0, 0.0, ""),
 ];
 
 const STEREO_PARAMS: &[ParamSpec] = &[
@@ -947,6 +948,8 @@ const DISTORTION_PARAMS: &[ParamSpec] = &[
     spec("drive", 0.0, 48.0, 12.0, "dB"),
     spec("mix", 0.0, 1.0, 1.0, ""),
     spec("output", -24.0, 6.0, -6.0, "dB"),
+    int_spec("mode", 0.0, 1.0, 0.0),
+    spec("threshold", -24.0, 0.0, -6.0, "dB"),
 ];
 
 impl EffectKind {

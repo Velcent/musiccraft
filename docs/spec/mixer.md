@@ -59,10 +59,10 @@
 | `chorus` | rate Hz, depth ms, delay ms, mix |
 | `compressor` | threshold dB, ratio, attack ms, release ms, makeup dB, sidechain (0 = off, else the insert whose post-fader output drives detection) |
 | `limiter` | input gain dB, ceiling dB, release ms (instant attack; output never exceeds the ceiling) |
-| `distortion` | drive dB, mix, output dB |
+| `distortion` | drive dB, mix, output dB, mode (0 soft: tanh; 1 hard: the driven signal is clipped flat at the threshold, then scaled back to full level), threshold dB (hard mode only, −24–0) |
 | `phaser` | rate Hz, depth, feedback, stages (2–12 all-pass stages), mix |
 | `flanger` | rate Hz, depth ms, delay ms, feedback (−0.95–0.95), mix |
-| `bitcrusher` | bits (1–16), downsample (hold every 1–32 samples), mix, output dB |
+| `bitcrusher` | bits (1–16), downsample (hold every 1–32 samples), mix, output dB, squeeze (0–1: before quantizing, each held sample's level is raised to the power 1 − 0.9 × squeeze, which pushes quiet detail up toward full level for a gritty, squashed sound; 0 is off) |
 | `stereo` | width (0 mono – 2 extra wide, mid/side), balance, invert left, invert right |
 | `stereo_shaper` | left_to_left, right_to_left, left_to_right, right_to_right (−1–1; each output side is a mix of both inputs, so swapping sides, mono from one side and polarity flips are all settings), delay ms (−20–20: positive delays the right side, negative the left, for Haas widening), output dB |
 | `gate` | rate (1/32 note – 1 bar per step), duty (open share of a step), depth, smooth ms, steps (16-step on/off pattern as a number, bit 0 = first step) |

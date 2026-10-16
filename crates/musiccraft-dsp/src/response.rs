@@ -69,14 +69,18 @@ pub fn limiter_db(params: &[f32], input_db: f32) -> f32 {
     (input_db + param(0, 0.0)).min(param(1, -0.3))
 }
 
-/// Output sample of the distortion for an input sample: `[drive, mix, output]`.
+/// Output sample of the distortion for an input sample:
+/// `[drive, mix, output, mode, threshold]`.
 #[must_use]
 pub fn distortion_shape(params: &[f32], x: f32) -> f32 {
     let param = |i: usize, default: f32| params.get(i).copied().unwrap_or(default);
     let drive = db_to_gain(param(0, 12.0));
     let mix = param(1, 1.0).clamp(0.0, 1.0);
     let output = db_to_gain(param(2, -6.0));
-    (x + ((x * drive).tanh() - x) * mix) * output
+    let hard = param(3, 0.0) >= 0.5;
+    let threshold = db_to_gain(param(4, -6.0).min(0.0));
+    let wet = crate::dynamics::distortion_curve(hard, threshold, x * drive);
+    (x + (wet - x) * mix) * output
 }
 
 fn at(params: &[f32], i: usize, default: f32) -> f32 {

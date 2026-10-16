@@ -783,6 +783,24 @@ const DISTORTION: &[Preset] = &[
     preset("Warm", &[("drive", 6.0), ("mix", 0.5), ("output", -2.0)]),
     preset("Crunch", &[("drive", 18.0), ("output", -6.0)]),
     preset("Fuzz", &[("drive", 36.0), ("output", -12.0)]),
+    preset(
+        "Hard clip",
+        &[
+            ("mode", 1.0),
+            ("drive", 6.0),
+            ("threshold", -6.0),
+            ("output", -6.0),
+        ],
+    ),
+    preset(
+        "Square-ish",
+        &[
+            ("mode", 1.0),
+            ("drive", 24.0),
+            ("threshold", -18.0),
+            ("output", -12.0),
+        ],
+    ),
 ];
 
 const CHORUS: &[Preset] = &[
@@ -883,6 +901,15 @@ const BITCRUSHER: &[Preset] = &[
     preset(
         "Destroyed",
         &[("bits", 3.0), ("downsample", 16.0), ("output", -6.0)],
+    ),
+    preset(
+        "Squeezed",
+        &[
+            ("bits", 10.0),
+            ("downsample", 1.0),
+            ("squeeze", 0.6),
+            ("output", -6.0),
+        ],
     ),
 ];
 

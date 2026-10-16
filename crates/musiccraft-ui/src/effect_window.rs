@@ -338,6 +338,7 @@ fn knobs(
                     pick(&["tanh", "hard clip", "fold", "sine", "asymmetric", "rectify"])
                 }
                 "shape" => pick(&["sine", "triangle", "square"]),
+                "mode" if effect.kind == EffectKind::Distortion => pick(&["soft", "hard"]),
                 "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
                 "key" => pick(&musiccraft_project::params::NOTE_NAMES),
                 "scale" => {

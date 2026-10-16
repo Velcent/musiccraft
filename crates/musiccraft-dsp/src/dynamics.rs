@@ -122,9 +122,21 @@ impl Limiter {
     }
 }
 
-/// Soft-clipping (tanh) distortion.
+/// The distortion's curve for an already driven sample: tanh in mode 0, a
+/// flat clip at `threshold` (a gain) scaled back to full level in mode 1.
+#[must_use]
+pub fn distortion_curve(hard: bool, threshold: f32, x: f32) -> f32 {
+    if hard {
+        let t = threshold.max(1e-3);
+        x.clamp(-t, t) / t
+    } else {
+        x.tanh()
+    }
+}
+
+/// Soft-clipping (tanh) or hard-clipping distortion.
 ///
-/// Parameters: `[drive dB, mix, output dB]`.
+/// Parameters: `[drive dB, mix, output dB, mode, threshold dB]`.
 #[derive(Debug, Clone, Default)]
 pub struct Distortion;
 
@@ -135,8 +147,10 @@ impl Distortion {
         let drive = db_to_gain(param(0, 12.0));
         let mix = param(1, 1.0).clamp(0.0, 1.0);
         let output = db_to_gain(param(2, -6.0));
+        let hard = param(3, 0.0) >= 0.5;
+        let threshold = db_to_gain(param(4, -6.0).min(0.0));
         for sample in left.iter_mut().chain(right.iter_mut()) {
-            let wet = (*sample * drive).tanh();
+            let wet = distortion_curve(hard, threshold, *sample * drive);
             *sample = (*sample + (wet - *sample) * mix) * output;
         }
     }
@@ -201,6 +215,18 @@ mod tests {
         let mut r = vec![0.01; 100];
         comp.process(&mut l, &mut r, &[-20.0, 4.0, 1.0, 50.0, 0.0], ctx);
         assert!((l[99] - 0.01).abs() < 1e-6);
+    }
+
+    #[test]
+    fn hard_distortion_clips_flat_at_the_threshold() {
+        let mut l = vec![0.25, 0.5, 2.0, -2.0];
+        let mut r = l.clone();
+        // No drive, hard mode, threshold -6 dB (0.5), output 0 dB.
+        Distortion::process(&mut l, &mut r, &[0.0, 1.0, 0.0, 1.0, -6.0206]);
+        let want = [0.5, 1.0, 1.0, -1.0];
+        for (got, want) in l.iter().zip(want) {
+            assert!((got - want).abs() < 1e-3, "{l:?}");
+        }
     }
 
     #[test]

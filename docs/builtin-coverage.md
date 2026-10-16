@@ -58,8 +58,8 @@ Status:
 | Transient Processor | `transient` | covered | |
 | Fruity Soft Clipper | `soft_clipper` | covered | |
 | Fruity WaveShaper | `waveshaper` | partial | Six fixed curves; the curve cannot be drawn |
-| Fruity Blood Overdrive, Fast Dist | `overdrive`, `distortion` | covered | |
-| Fruity Squeeze | `bitcrusher`, `waveshaper` | covered | |
+| Fruity Blood Overdrive, Fast Dist | `overdrive`, `distortion` (soft or hard-threshold mode) | covered | |
+| Fruity Squeeze | `bitcrusher` (with squeeze), `waveshaper` | covered | |
 | Hardcore | `overdrive`, `waveshaper`, `auto_filter`, `chorus` | partial | No single guitar-pedal chain effect |
 | Effector | Separate effects | partial | No all-in-one effect |
 | Fruity Delay 2 / 3 | `delay` | covered | |

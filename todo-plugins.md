@@ -33,9 +33,9 @@ new UI editor or large DSP.
 - [x] Maximus → `multiband_limiter`: the `multiband` crossovers with a
   limiter per band and a master ceiling.
 - [x] Soundgoodizer → one-knob "enhance" preset family on `multiband_limiter`.
-- [ ] Fruity Squeeze → add a "squeeze" (sample-and-hold amplitude) mode to
+- [x] Fruity Squeeze → add a "squeeze" (sample-and-hold amplitude) mode to
   `bitcrusher`.
-- [ ] Fruity Fast Dist → threshold-style hard clipping shape on `distortion`.
+- [x] Fruity Fast Dist → threshold-style hard clipping shape on `distortion`.
 - [ ] Vintage Chorus → `chorus` gains a "voices" (1–3) parameter and a
   bucket-brigade style low-pass on the wet path.
 - [ ] Vintage Phaser → `phaser` gains a "warm" option (soft saturation in the
