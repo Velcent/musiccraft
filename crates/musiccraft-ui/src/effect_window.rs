@@ -446,6 +446,17 @@ fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effe
     }
 }
 
+/// Short label for a pan position: `L`, `C`, `R`, or a percentage.
+fn pan_label(pan: f32) -> String {
+    match pan {
+        p if p <= -0.99 => "L".to_owned(),
+        p if p >= 0.99 => "R".to_owned(),
+        p if p.abs() < 0.01 => "C".to_owned(),
+        p if p < 0.0 => format!("{:.0}L", -p * 100.0),
+        p => format!("{:.0}R", p * 100.0),
+    }
+}
+
 /// A parameter name for display: `low_gain` → `Low gain`.
 pub(crate) fn pretty(name: &str) -> String {
     let mut text = name.replace('_', " ");
@@ -1044,7 +1055,7 @@ fn graph(
                 painter.text(
                     pos2(x + 4.0, y),
                     egui::Align2::LEFT_TOP,
-                    if tap % 2 == 1 { "L" } else { "R" },
+                    pan_label(value(effect, &format!("tap{tap}_pan"))),
                     egui::FontId::proportional(10.0),
                     theme::TEXT_DIM,
                 );
@@ -1053,7 +1064,7 @@ fn graph(
                 let l = names.get((tap - 1) * 2 + 1).map(|s| s.name);
                 handles.push((pos2(x, y), t, l));
             }
-            hint = "Four echoes over four beats: drag a tap sideways for its time, up or down for its level";
+            hint = "Four echoes over four beats: drag a tap sideways for its time, up or down for its level; each tap's pan and filters are on the knobs";
         }
         EffectKind::RingMod | EffectKind::FreqShift => {
             frequency_grid(&painter, rect);

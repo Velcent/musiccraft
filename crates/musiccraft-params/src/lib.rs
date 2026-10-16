@@ -667,6 +667,18 @@ const MULTI_TAP_PARAMS: &[ParamSpec] = &[
     spec("feedback", 0.0, 0.9, 0.3, ""),
     spec("mix", 0.0, 1.0, 0.35, ""),
     spec("damping", 0.0, 0.95, 0.3, ""),
+    spec("tap1_pan", -1.0, 1.0, -1.0, ""),
+    spec("tap2_pan", -1.0, 1.0, 1.0, ""),
+    spec("tap3_pan", -1.0, 1.0, -1.0, ""),
+    spec("tap4_pan", -1.0, 1.0, 1.0, ""),
+    spec("tap1_low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("tap2_low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("tap3_low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("tap4_low_cut", 20.0, 2_000.0, 20.0, "Hz"),
+    spec("tap1_high_cut", 500.0, 20_000.0, 20_000.0, "Hz"),
+    spec("tap2_high_cut", 500.0, 20_000.0, 20_000.0, "Hz"),
+    spec("tap3_high_cut", 500.0, 20_000.0, 20_000.0, "Hz"),
+    spec("tap4_high_cut", 500.0, 20_000.0, 20_000.0, "Hz"),
 ];
 
 const GRAPHIC_EQ_PARAMS: &[ParamSpec] = &[

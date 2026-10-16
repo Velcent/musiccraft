@@ -415,15 +415,37 @@ impl Transient {
     }
 }
 
-/// Four-tap tempo-synced delay with feedback, damping and alternating sides.
+/// Four-tap tempo-synced delay with feedback, damping, and a pan and
+/// low/high cut per tap.
 ///
 /// Parameters: `[tap1 beats, tap1 level, …, tap4 beats, tap4 level,
-/// feedback, mix, damping]`.
+/// feedback, mix, damping, tap1–4 pan, tap1–4 low cut Hz, tap1–4 high cut
+/// Hz]`.
 #[derive(Debug, Clone)]
 pub struct MultiTap {
     lines: [Vec<f32>; 2],
     write: usize,
     damp: [f32; 2],
+    /// Per tap: the low-cut filter's low-pass state and the high-cut state.
+    tone: [[f32; 2]; 4],
+}
+
+/// A multi-tap delay tap's settings for one block.
+#[derive(Debug, Clone, Copy)]
+struct Tap {
+    delay: usize,
+    gains: [f32; 2],
+    /// One-pole coefficients; `None` when the filter is off.
+    low_cut: Option<f32>,
+    high_cut: Option<f32>,
+}
+
+/// Lowest low cut and highest high cut: at these the filters are off.
+const TAP_LOW_CUT_OFF: f32 = 20.0;
+const TAP_HIGH_CUT_OFF: f32 = 20_000.0;
+
+fn one_pole(freq: f32, sample_rate: f32) -> f32 {
+    1.0 - (-TAU * freq / sample_rate.max(1.0)).exp()
 }
 
 impl MultiTap {
@@ -435,6 +457,7 @@ impl MultiTap {
             lines: [vec![0.0; len], vec![0.0; len]],
             write: 0,
             damp: [0.0; 2],
+            tone: [[0.0; 2]; 4],
         }
     }
 
@@ -443,6 +466,8 @@ impl MultiTap {
         for line in &mut self.lines {
             line.fill(0.0);
         }
+        self.damp = [0.0; 2];
+        self.tone = [[0.0; 2]; 4];
     }
 
     /// Processes a block in place.
@@ -452,28 +477,41 @@ impl MultiTap {
             return;
         }
         let samples_per_beat = 60.0 / ctx.tempo_bpm.max(1.0) as f32 * ctx.sample_rate;
-        let taps: [(usize, f32); 4] = std::array::from_fn(|t| {
+        let sr = ctx.sample_rate;
+        let taps: [Tap; 4] = std::array::from_fn(|t| {
             let beats = param(p, t * 2, [0.5, 0.75, 1.0, 1.5][t]);
-            let delay = ((beats * samples_per_beat) as usize).clamp(1, len - 1);
-            (
-                delay,
-                param(p, t * 2 + 1, [0.6, 0.45, 0.3, 0.2][t]).clamp(0.0, 1.0),
-            )
+            let level = param(p, t * 2 + 1, [0.6, 0.45, 0.3, 0.2][t]).clamp(0.0, 1.0);
+            let pan = param(p, 11 + t, if t % 2 == 0 { -1.0 } else { 1.0 }).clamp(-1.0, 1.0);
+            let angle = (pan + 1.0) * PI * 0.25;
+            let low = param(p, 15 + t, TAP_LOW_CUT_OFF);
+            let high = param(p, 19 + t, TAP_HIGH_CUT_OFF);
+            Tap {
+                delay: ((beats * samples_per_beat) as usize).clamp(1, len - 1),
+                gains: [angle.cos() * level, angle.sin() * level],
+                low_cut: (low > TAP_LOW_CUT_OFF).then(|| one_pole(low, sr)),
+                high_cut: (high < TAP_HIGH_CUT_OFF).then(|| one_pole(high, sr)),
+            }
         });
         let feedback = param(p, 8, 0.3).clamp(0.0, 0.9);
         let mix = param(p, 9, 0.35).clamp(0.0, 1.0);
         let damping = param(p, 10, 0.3).clamp(0.0, 0.95);
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             let mut wet = [0.0_f32; 2];
-            for (t, (delay, level)) in taps.iter().enumerate() {
-                let side = t % 2;
-                let read = (self.write + len - delay) % len;
-                let mono = (self.lines[0].get(read).copied().unwrap_or(0.0)
+            for (tap, tone) in taps.iter().zip(self.tone.iter_mut()) {
+                let read = (self.write + len - tap.delay) % len;
+                let mut mono = (self.lines[0].get(read).copied().unwrap_or(0.0)
                     + self.lines[1].get(read).copied().unwrap_or(0.0))
                     * 0.5;
-                if let Some(w) = wet.get_mut(side) {
-                    *w += mono * level;
+                if let Some(a) = tap.low_cut {
+                    tone[0] = flush_denormal(tone[0] + (mono - tone[0]) * a);
+                    mono -= tone[0];
                 }
+                if let Some(a) = tap.high_cut {
+                    tone[1] = flush_denormal(tone[1] + (mono - tone[1]) * a);
+                    mono = tone[1];
+                }
+                wet[0] += mono * tap.gains[0];
+                wet[1] += mono * tap.gains[1];
             }
             for (ch, (input, w)) in [*l, *r].into_iter().zip(wet).enumerate() {
                 self.damp[ch] =
@@ -764,5 +802,63 @@ mod tests {
         let (mut l, mut r) = (vec![0.5; 48_000], vec![0.5; 48_000]);
         dc.process(&mut l, &mut r, &[20.0], ctx());
         assert!(l[47_000].abs() < 0.01, "DC removed");
+    }
+
+    fn tap_params(extra: &[(usize, f32)]) -> Vec<f32> {
+        let mut p = musiccraft_params::EffectKind::MultiTap.defaults().to_vec();
+        // One tap at a quarter beat (125 ms at 120 BPM), no feedback, all wet.
+        for (i, v) in [
+            (1, 1.0),
+            (3, 0.0),
+            (5, 0.0),
+            (7, 0.0),
+            (0, 0.25),
+            (8, 0.0),
+            (9, 1.0),
+        ] {
+            p[i] = v;
+        }
+        for (i, v) in extra {
+            p[*i] = *v;
+        }
+        p
+    }
+
+    #[test]
+    fn multi_tap_pan_places_each_tap() {
+        // Default pan: tap 1 hard left, as before per-tap pan existed.
+        let mut taps = MultiTap::new(48_000.0);
+        let (mut l, mut r) = (vec![0.0; 7_000], vec![0.0; 7_000]);
+        l[0] = 1.0;
+        r[0] = 1.0;
+        taps.process(&mut l, &mut r, &tap_params(&[]), ctx());
+        assert!((l[6_000] - 1.0).abs() < 1e-6 && r[6_000].abs() < 1e-6);
+        // Centred: equal power on both sides.
+        let mut taps = MultiTap::new(48_000.0);
+        let (mut l, mut r) = (vec![0.0; 7_000], vec![0.0; 7_000]);
+        l[0] = 1.0;
+        r[0] = 1.0;
+        taps.process(&mut l, &mut r, &tap_params(&[(11, 0.0)]), ctx());
+        assert!((l[6_000] - r[6_000]).abs() < 1e-6);
+        assert!((l[6_000] - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn multi_tap_filters_shape_only_their_tap() {
+        let echo_level = |extra: &[(usize, f32)], hz: f32| {
+            let mut taps = MultiTap::new(48_000.0);
+            let mut l = sine(hz, 24_000, 0.5);
+            let mut r = l.clone();
+            let dry = l.clone();
+            taps.process(&mut l, &mut r, &tap_params(extra), ctx());
+            let wet: Vec<f32> = l.iter().zip(&dry).map(|(o, d)| o - d).collect();
+            wet[12_000..].iter().fold(0.0_f32, |m, s| m.max(s.abs()))
+        };
+        let open = echo_level(&[], 8_000.0);
+        let cut = echo_level(&[(19, 1_000.0)], 8_000.0);
+        assert!(open > 0.4 && cut < open * 0.2, "high cut: {open} vs {cut}");
+        let low_open = echo_level(&[], 60.0);
+        let low_cut = echo_level(&[(15, 1_500.0)], 60.0);
+        assert!(low_cut < low_open * 0.1, "low cut: {low_open} vs {low_cut}");
     }
 }

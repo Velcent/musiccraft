@@ -1082,6 +1082,27 @@ const MULTI_TAP: &[Preset] = &[
         "Wash",
         &[("feedback", 0.7), ("damping", 0.6), ("mix", 0.45)],
     ),
+    preset(
+        "Fading lo-fi",
+        &[
+            ("tap1_high_cut", 8_000.0),
+            ("tap2_high_cut", 4_000.0),
+            ("tap3_high_cut", 2_000.0),
+            ("tap4_high_cut", 1_000.0),
+            ("tap3_low_cut", 200.0),
+            ("tap4_low_cut", 400.0),
+        ],
+    ),
+    preset(
+        "Sweep across",
+        &[
+            ("tap1_pan", -1.0),
+            ("tap2_pan", -0.33),
+            ("tap3_pan", 0.33),
+            ("tap4_pan", 1.0),
+            ("feedback", 0.0),
+        ],
+    ),
 ];
 
 const GRAPHIC_EQ: &[Preset] = &[

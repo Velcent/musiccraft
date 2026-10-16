@@ -28,7 +28,7 @@ new UI editor or large DSP.
 - [x] Fruity Stereo Shaper → `stereo_shaper`: left/right mixing matrix plus an
   inter-channel delay (Haas widening), also covers channel swap and
   mono-from-one-side.
-- [ ] Fruity Delay Bank / Multiband Delay → per-tap low/high cut and pan for
+- [x] Fruity Delay Bank / Multiband Delay → per-tap low/high cut and pan for
   `multi_tap` (new parameters appended, old projects keep their sound).
 - [ ] Maximus → `multiband_limiter`: the `multiband` crossovers with a
   limiter per band and a master ceiling.
