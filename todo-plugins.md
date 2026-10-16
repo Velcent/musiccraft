@@ -55,9 +55,9 @@ new UI editor or large DSP.
   early reflections as a second reverb kind.
 - [x] Hardcore → `guitar_chain`: a fixed chain of compressor, overdrive, tone
   stack, chorus and cabinet filter with per-stage bypass.
-- [ ] Effector → `multi_fx`: one insert that picks one of several existing
+- [x] Effector → `multi_fx`: one insert that picks one of several existing
   effect blocks with an X/Y control.
-- [ ] Distructor → chainable multi-effect (several existing blocks in series
+- [x] Distructor → chainable multi-effect (several existing blocks in series
   inside one insert).
 - [ ] Gross Beat → drawn time (scratch/repeat) and volume envelopes per beat,
   extending `stutter` and `gate`.

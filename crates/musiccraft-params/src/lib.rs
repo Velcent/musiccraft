@@ -522,13 +522,17 @@ pub enum EffectKind {
     HallReverb,
     /// Compressor, drive, tone stack, chorus and cabinet in one insert.
     GuitarChain,
+    /// One of several effect blocks played with an X/Y pad.
+    MultiFx,
+    /// Four X/Y effect blocks in series in one insert.
+    FxChain,
     /// A hosted plugin; its parameters belong to the plugin, so its table is
     /// empty. Not in [`EFFECT_KINDS`] and not accepted by [`EffectKind::parse`].
     Plugin,
 }
 
 /// Every effect kind, in menu order.
-pub const EFFECT_KINDS: [EffectKind; 41] = [
+pub const EFFECT_KINDS: [EffectKind; 43] = [
     EffectKind::Filter,
     EffectKind::AutoFilter,
     EffectKind::Formant,
@@ -538,6 +542,8 @@ pub const EFFECT_KINDS: [EffectKind; 41] = [
     EffectKind::Delay,
     EffectKind::MultiTap,
     EffectKind::Stutter,
+    EffectKind::MultiFx,
+    EffectKind::FxChain,
     EffectKind::Reverb,
     EffectKind::HallReverb,
     EffectKind::Convolution,
@@ -741,6 +747,31 @@ const GUITAR_CHAIN_PARAMS: &[ParamSpec] = &[
     int_spec("cabinet", 0.0, 2.0, 1.0),
     spec("output", -24.0, 6.0, -6.0, "dB"),
     spec("mix", 0.0, 1.0, 1.0, ""),
+];
+
+const MULTI_FX_PARAMS: &[ParamSpec] = &[
+    int_spec("block", 0.0, 13.0, 1.0),
+    spec("x", 0.0, 1.0, 0.5, ""),
+    spec("y", 0.0, 1.0, 0.5, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
+];
+
+const FX_CHAIN_PARAMS: &[ParamSpec] = &[
+    int_spec("stage1_block", 0.0, 13.0, 3.0),
+    spec("stage1_x", 0.0, 1.0, 0.3, ""),
+    spec("stage1_y", 0.0, 1.0, 1.0, ""),
+    int_spec("stage2_block", 0.0, 13.0, 1.0),
+    spec("stage2_x", 0.0, 1.0, 0.6, ""),
+    spec("stage2_y", 0.0, 1.0, 0.3, ""),
+    int_spec("stage3_block", 0.0, 13.0, 0.0),
+    spec("stage3_x", 0.0, 1.0, 0.5, ""),
+    spec("stage3_y", 0.0, 1.0, 0.5, ""),
+    int_spec("stage4_block", 0.0, 13.0, 0.0),
+    spec("stage4_x", 0.0, 1.0, 0.5, ""),
+    spec("stage4_y", 0.0, 1.0, 0.5, ""),
+    spec("mix", 0.0, 1.0, 1.0, ""),
+    spec("output", -24.0, 6.0, 0.0, "dB"),
 ];
 
 const TRANSIENT_PARAMS: &[ParamSpec] = &[
@@ -1081,6 +1112,8 @@ impl EffectKind {
             Self::Send => "send",
             Self::HallReverb => "hall_reverb",
             Self::GuitarChain => "guitar_chain",
+            Self::MultiFx => "multi_fx",
+            Self::FxChain => "fx_chain",
             Self::Plugin => "plugin",
         }
     }
@@ -1136,6 +1169,8 @@ impl EffectKind {
             Self::Send => SEND_PARAMS,
             Self::HallReverb => HALL_REVERB_PARAMS,
             Self::GuitarChain => GUITAR_CHAIN_PARAMS,
+            Self::MultiFx => MULTI_FX_PARAMS,
+            Self::FxChain => FX_CHAIN_PARAMS,
             Self::Plugin => &[],
         }
     }

@@ -91,6 +91,8 @@
 | `pitch_shift` | pitch semitones (−24–24), fine cents, window ms (longer is smoother, shorter tracks transients better), mix |
 | `pitch_correct` | key (C–B), scale (chromatic, major, minor, harmonic minor, major pentatonic, minor pentatonic), speed ms (how quickly the pitch glides to the target; 0 snaps at once for a hard-tuned sound), amount (share of the distance to the target note that is corrected), reference Hz (the frequency of A4, 415–466), mix. For one voice or instrument at a time; see *Pitch correction and tuner* |
 | `tuner` | reference Hz (the frequency of A4). Leaves audio untouched; its window shows the note heard |
+| `multi_fx` | block (off, low-pass, high-pass, drive, crush, ring mod, phaser, flanger, chorus, reverb, width, tremolo, freq shift, fold), x and y (0–1, the block's two controls: cutoff/resonance, drive/mix, bits/rate, pitch/mix, speed/feedback, speed/depth, size/mix, width/balance, shift/mix), mix, output dB. The window is an X/Y pad: drag the point to play both controls at once. Picking another block clears the old one's tail |
+| `fx_chain` | four stages of block, x and y (the same blocks as `multi_fx`) processed in order, then mix and output dB. The window shows the four stages; empty stages are off |
 | `stutter` | slice (1/32 note – 1 bar), every (period, 1/32 note – 1 bar), portion (share at the end of each period that repeats), decay (level of each repeat relative to the last), mix |
 | `convolution` | mix, predelay ms, low cut Hz, high cut Hz, output dB; the impulse response is chosen with `mixer.set_effect_file` |
 

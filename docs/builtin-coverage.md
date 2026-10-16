@@ -61,7 +61,8 @@ Status:
 | Fruity Blood Overdrive, Fast Dist | `overdrive`, `distortion` (soft or hard-threshold mode) | covered | |
 | Fruity Squeeze | `bitcrusher` (with squeeze), `waveshaper` | covered | |
 | Hardcore | `guitar_chain` (compressor, drive, tone stack, chorus, cabinet) | covered | Fixed stage order |
-| Effector | Separate effects | partial | No all-in-one effect |
+| Effector | `multi_fx` (13 blocks on an X/Y pad) | covered | |
+| Distructor | `fx_chain` (four X/Y blocks in series) | covered | |
 | Fruity Delay 2 / 3 | `delay` (offset, modulation, feedback low cut, diffusion, saturation) | covered | |
 | Fruity Delay Bank, Multiband Delay | `multi_tap` (per-tap pan, low cut and high cut) | covered | Four taps |
 | Fruity Reeverb 2, Luxeverb | `reverb`, `hall_reverb` (dense FDN with early reflections and modulation) | covered | |

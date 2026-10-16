@@ -1657,6 +1657,61 @@ const GUITAR_CHAIN: &[Preset] = &[
     ),
 ];
 
+const MULTI_FX: &[Preset] = &[
+    preset("Default", &[]),
+    preset("Sweep down", &[("block", 1.0), ("x", 0.2), ("y", 0.6)]),
+    preset("Thin out", &[("block", 2.0), ("x", 0.6), ("y", 0.3)]),
+    preset("Lo-fi", &[("block", 4.0), ("x", 0.6), ("y", 0.3)]),
+    preset("Robot", &[("block", 5.0), ("x", 0.25), ("y", 0.8)]),
+    preset("Wash", &[("block", 9.0), ("x", 0.9), ("y", 0.6)]),
+];
+
+const FX_CHAIN: &[Preset] = &[
+    preset("Default", &[]),
+    preset(
+        "Dirty space",
+        &[
+            ("stage1_block", 4.0),
+            ("stage1_x", 0.5),
+            ("stage1_y", 0.2),
+            ("stage2_block", 7.0),
+            ("stage2_x", 0.2),
+            ("stage2_y", 0.7),
+            ("stage3_block", 9.0),
+            ("stage3_x", 0.8),
+            ("stage3_y", 0.4),
+        ],
+    ),
+    preset(
+        "Radio",
+        &[
+            ("stage1_block", 2.0),
+            ("stage1_x", 0.45),
+            ("stage1_y", 0.3),
+            ("stage2_block", 1.0),
+            ("stage2_x", 0.65),
+            ("stage2_y", 0.3),
+            ("stage3_block", 3.0),
+            ("stage3_x", 0.4),
+            ("stage3_y", 0.6),
+        ],
+    ),
+    preset(
+        "Swirl",
+        &[
+            ("stage1_block", 6.0),
+            ("stage1_x", 0.3),
+            ("stage1_y", 0.6),
+            ("stage2_block", 8.0),
+            ("stage2_x", 0.4),
+            ("stage2_y", 0.5),
+            ("stage3_block", 10.0),
+            ("stage3_x", 0.75),
+            ("stage3_y", 0.5),
+        ],
+    ),
+];
+
 /// Presets for a built-in effect.
 #[must_use]
 pub fn effect(kind: EffectKind) -> &'static [Preset] {
@@ -1702,6 +1757,8 @@ pub fn effect(kind: EffectKind) -> &'static [Preset] {
         EffectKind::Send => SEND,
         EffectKind::HallReverb => HALL_REVERB,
         EffectKind::GuitarChain => GUITAR_CHAIN,
+        EffectKind::MultiFx => MULTI_FX,
+        EffectKind::FxChain => FX_CHAIN,
         EffectKind::Plugin => &[],
     }
 }

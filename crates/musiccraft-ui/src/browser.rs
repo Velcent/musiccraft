@@ -369,6 +369,8 @@ pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static st
         K::Send => "Send",
         K::HallReverb => "Hall reverb",
         K::GuitarChain => "Guitar chain",
+        K::MultiFx => "X/Y multi-effect",
+        K::FxChain => "Effect chain",
         K::Plugin => "Plugin",
     }
 }

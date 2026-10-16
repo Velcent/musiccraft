@@ -4,6 +4,7 @@
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
+use musiccraft_dsp::blocks::{BLOCK_CONTROLS, BLOCK_NAMES, CHAIN_STAGES};
 use musiccraft_dsp::character::GRAPHIC_BANDS;
 use musiccraft_dsp::modulation::{SYNC_RATE_NAMES, autopan_shape, gate_step_on};
 use musiccraft_dsp::{SvfMode, response};
@@ -355,6 +356,7 @@ fn knobs(
                 "lfo_shape" => pick(&LFO_SHAPES),
                 "mode" if effect.kind == EffectKind::Distortion => pick(&["soft", "hard"]),
                 "drive_type" => pick(&["soft", "hard", "fuzz"]),
+                name if name.ends_with("block") => pick(&BLOCK_NAMES),
                 "cabinet" => pick(&["off", "small", "large"]),
                 "mode" => pick(&musiccraft_project::params::FILTER_TYPES),
                 "key" => pick(&musiccraft_project::params::NOTE_NAMES),
@@ -603,6 +605,11 @@ pub(crate) fn pretty(name: &str) -> String {
             return format!("{a} → {b}");
         }
     }
+    // `stage2_block` → `S2 block`.
+    let name = match name.strip_prefix("stage") {
+        Some(rest) if rest.starts_with(|c: char| c.is_ascii_digit()) => format!("s{rest}"),
+        _ => name.to_owned(),
+    };
     let mut text = name.replace('_', " ");
     if text.len() > LABEL_CHARS {
         for (word, short) in ABBREVIATIONS {
@@ -1541,6 +1548,62 @@ fn graph(
         }
         // Drawn by `crate::tuner` instead.
         EffectKind::Plugin | EffectKind::PitchCorrect | EffectKind::Tuner => {}
+        EffectKind::MultiFx => {
+            let block = value(effect, "block").round().max(0.0) as usize;
+            let (x_name, y_name) = BLOCK_CONTROLS.get(block).copied().unwrap_or(("", ""));
+            for i in 1..4 {
+                let t = i as f32 / 4.0;
+                let x = rect.left() + rect.width() * t;
+                let y = rect.top() + rect.height() * t;
+                painter.line_segment(
+                    [pos2(x, rect.top()), pos2(x, rect.bottom())],
+                    Stroke::new(1.0, theme::GRID_LINE),
+                );
+                painter.line_segment(
+                    [pos2(rect.left(), y), pos2(rect.right(), y)],
+                    Stroke::new(1.0, theme::GRID_LINE),
+                );
+            }
+            let font = egui::FontId::proportional(10.0);
+            painter.text(
+                pos2(rect.right() - 4.0, rect.bottom() - 4.0),
+                egui::Align2::RIGHT_BOTTOM,
+                format!("X: {x_name}"),
+                font.clone(),
+                theme::TEXT_DIM,
+            );
+            painter.text(
+                pos2(rect.left() + 4.0, rect.top() + 4.0),
+                egui::Align2::LEFT_TOP,
+                format!("Y: {y_name}"),
+                font,
+                theme::TEXT_DIM,
+            );
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                BLOCK_NAMES.get(block).copied().unwrap_or("?"),
+                egui::FontId::proportional(16.0),
+                color.gamma_multiply(0.5),
+            );
+            let at = pos2(
+                rect.left() + rect.width() * value(effect, "x"),
+                rect.bottom() - rect.height() * value(effect, "y"),
+            );
+            handles.push((at, Some("x"), Some("y")));
+            hint = "Drag the point: across and up play the block's two controls";
+        }
+        EffectKind::FxChain => {
+            let stages: Vec<(&str, bool)> = (1..=CHAIN_STAGES)
+                .map(|s| {
+                    let block = value(effect, &format!("stage{s}_block")).round().max(0.0) as usize;
+                    (BLOCK_NAMES.get(block).copied().unwrap_or("?"), block > 0)
+                })
+                .collect();
+            chain_diagram(&painter, rect, color, &stages);
+            hint =
+                "Four blocks in series, left to right; each stage's X and Y knobs play its block";
+        }
         EffectKind::GuitarChain => {
             let tone_on = ["bass", "mid", "treble"]
                 .iter()
@@ -1629,6 +1692,10 @@ fn graph(
                         push("threshold", db);
                     }
                     EffectKind::Limiter => push("ceiling", y_db(rect, pointer.y, 6.0, -60.0)),
+                    EffectKind::MultiFx => {
+                        push("x", (pointer.x - rect.left()) / rect.width());
+                        push("y", (rect.bottom() - pointer.y) / rect.height());
+                    }
                     EffectKind::Waveshaper => {
                         if let Some(name) = y_param {
                             let y = (rect.center().y - pointer.y) / (rect.height() * 0.4);
