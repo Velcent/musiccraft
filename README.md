@@ -55,7 +55,8 @@ channel_rack,piano_roll,playlist,mixer,browser`.
 | F4, Plus, Minus | New / next / previous pattern |
 | Ctrl+Z, Ctrl+Y | Undo / redo |
 | Ctrl+S, Ctrl+O, Ctrl+R | Save / open / export WAV |
-| Ctrl+M, Ctrl+E, Ctrl+T | Metronome / record / typing keyboard |
+| Ctrl+M, R, Ctrl+T | Metronome / record / typing keyboard |
+| Ctrl+N | Save new version |
 | F10 | Settings (audio device, buffer, MIDI port, scale, folders) |
 
 Hover any control and the hint bar at the top says what it does.
@@ -82,7 +83,8 @@ Hover any control and the hint bar at the top says what it does.
   piano roll.
 - **Piano roll**: click to draw (single notes or chords), drag to move, drag the
   right edge to resize, right-click (or right-drag across several) to delete;
-  selection with copy, paste, Ctrl+B and arrow keys; scale highlighting; other
+  selection with copy, paste, Ctrl+B, Shift+arrows (move) and Ctrl+Up/Down
+  (octave); scale highlighting; other
   channels' notes show as ghost notes. Notes can be slides, portamento or
   muted, carry a colour, and have per-note release, fine pitch and Mod X/Y
   (filter cutoff and resonance), edited in the event lane at the bottom

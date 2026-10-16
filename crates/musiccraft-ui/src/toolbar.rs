@@ -76,6 +76,13 @@ fn file_menu(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) 
     menu_item(ui, state, "Open…", "ui.open", actions);
     menu_item(ui, state, "Save", "ui.save", actions);
     menu_item(ui, state, "Save as…", "ui.save_as", actions);
+    menu_item(
+        ui,
+        state,
+        "Save new version",
+        "ui.save_new_version",
+        actions,
+    );
     ui.separator();
     menu_item(ui, state, "Export audio (WAV, FLAC)…", "ui.export", actions);
     menu_item(ui, state, "Export stems…", "ui.export_stems", actions);

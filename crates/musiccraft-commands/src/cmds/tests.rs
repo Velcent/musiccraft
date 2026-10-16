@@ -459,6 +459,49 @@ fn recover_loads_a_backup_without_adopting_its_path() {
 fn save_without_a_path_needs_one() {
     let mut s = session();
     fails(&mut s, "project.save");
+    fails(&mut s, "project.save_new_version");
+}
+
+#[test]
+fn next_version_path_numbers_siblings() {
+    use std::path::{Path, PathBuf};
+    let next = |p: &str, taken: &[&str]| {
+        super::project::next_version_path(Path::new(p), |c| taken.iter().any(|t| Path::new(t) == c))
+    };
+    assert_eq!(
+        next("/s/song.mcproj", &[]),
+        PathBuf::from("/s/song_2.mcproj")
+    );
+    assert_eq!(
+        next("/s/song_2.mcproj", &[]),
+        PathBuf::from("/s/song_3.mcproj")
+    );
+    assert_eq!(
+        next("/s/my_song.mcproj", &[]),
+        PathBuf::from("/s/my_song_2.mcproj")
+    );
+    assert_eq!(
+        next("/s/song.mcproj", &["/s/song_2.mcproj", "/s/song_3.mcproj"]),
+        PathBuf::from("/s/song_4.mcproj")
+    );
+}
+
+#[test]
+fn save_new_version_writes_a_numbered_copy_and_switches_to_it() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-version-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("song.mcproj");
+    let mut s = session();
+    run(&mut s, &format!("project.save \"{}\"", path.display()));
+    run(&mut s, "project.rename Second");
+    run(&mut s, "project.save_new_version");
+    let second = dir.join("song_2.mcproj");
+    assert!(std::fs::read_to_string(&second).unwrap().contains("Second"));
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("Second"));
+    assert!(s.project().path().unwrap().ends_with("song_2.mcproj"));
+    run(&mut s, "project.save_new_version");
+    assert!(dir.join("song_3.mcproj").exists());
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]

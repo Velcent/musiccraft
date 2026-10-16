@@ -9,7 +9,7 @@
 Space        = transport.toggle
 L            = transport.toggle_mode
 Ctrl+M       = transport.toggle_metronome
-Ctrl+E       = ui.toggle_record
+R            = ui.toggle_record
 Ctrl+T       = ui.typing_keyboard
 
 # Windows
@@ -31,7 +31,7 @@ Ctrl+Shift+Z = edit.redo
 Ctrl+Y       = edit.redo
 
 # Files
-Ctrl+N       = ui.new
+Ctrl+N       = ui.save_new_version
 Ctrl+O       = ui.open
 Ctrl+S       = ui.save
 Ctrl+Shift+S = ui.save_as
