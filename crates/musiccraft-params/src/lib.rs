@@ -954,6 +954,10 @@ const PITCH_CORRECT_PARAMS: &[ParamSpec] = &[
     spec("amount", 0.0, 1.0, 1.0, ""),
     spec("reference", 415.0, 466.0, 440.0, "Hz"),
     spec("mix", 0.0, 1.0, 1.0, ""),
+    int_spec("follow", 0.0, 999.0, 0.0),
+    int_spec("harmony_1", -12.0, 12.0, 0.0),
+    int_spec("harmony_2", -12.0, 12.0, 0.0),
+    spec("harmony_level", 0.0, 1.0, 0.7, ""),
 ];
 
 const TUNER_PARAMS: &[ParamSpec] = &[spec("reference", 415.0, 466.0, 440.0, "Hz")];
@@ -1245,6 +1249,13 @@ impl EffectKind {
         self.params()
             .get(index)
             .is_some_and(|p| p.name == "target" || p.name.ends_with("_target"))
+    }
+
+    /// Index of the parameter naming a channel by its rack position (the
+    /// pitch corrector's `follow`), for effects that have one.
+    #[must_use]
+    pub fn channel_ref_index(self) -> Option<usize> {
+        self.params().iter().position(|p| p.name == "follow")
     }
 
     /// Indices of the parameters naming other mixer tracks: sidechain

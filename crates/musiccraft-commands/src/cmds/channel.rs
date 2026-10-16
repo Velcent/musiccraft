@@ -544,7 +544,13 @@ struct ChannelSnapshot {
 fn remove(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, 1)?;
     let index = channel_arg(project, args, 0)?;
-    let channel = project.channels.remove(index);
+    if super::mixer::channel_followers(project)
+        .iter()
+        .any(|(_, _, _, position)| *position == index + 1)
+    {
+        return Err(args.invalid("a pitch corrector follows this channel; change it first"));
+    }
+    let channel = super::mixer::keeping_followers(project, |p| p.channels.remove(index));
     let mut notes = Vec::new();
     for pattern in &mut project.patterns {
         let id = pattern.id;
@@ -606,7 +612,7 @@ fn insert(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         }
     }
     let name = channel.name.clone();
-    project.channels.insert(position - 1, channel);
+    super::mixer::keeping_followers(project, |p| p.channels.insert(position - 1, channel));
     project.playlist.clips.extend(snapshot.clips);
     project.playlist.sort_clips();
     Ok(Outcome::undoable(
@@ -626,7 +632,7 @@ fn clone(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
     }
     copy.name = format!("{} copy", copy.name);
     let position = index + 2;
-    project.channels.insert(index + 1, copy);
+    super::mixer::keeping_followers(project, |p| p.channels.insert(index + 1, copy));
     Ok(Outcome::undoable(
         format!("cloned channel {} to {position}", index + 1),
         Invocation::new("channel.remove", [position.to_string()]),
@@ -637,8 +643,10 @@ fn move_channel(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     args.expect(2, 2)?;
     let from = channel_arg(project, args, 0)?;
     let to = channel_arg(project, args, 1)?;
-    let channel = project.channels.remove(from);
-    project.channels.insert(to, channel);
+    super::mixer::keeping_followers(project, |p| {
+        let channel = p.channels.remove(from);
+        p.channels.insert(to, channel);
+    });
     Ok(Outcome::undoable(
         format!("moved channel {} to {}", from + 1, to + 1),
         Invocation::new(args.name(), [(to + 1).to_string(), (from + 1).to_string()]),

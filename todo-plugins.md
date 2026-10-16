@@ -65,7 +65,7 @@ new UI editor or large DSP.
   separate mixer inserts (needs multi-output routing).
 - [x] Fruity Scratcher → turntable-style scratching of a sample or the input
   buffer (currently "not planned"; revisit).
-- [ ] Pitcher → MIDI-controlled target notes and harmonies for
+- [x] Pitcher → MIDI-controlled target notes and harmonies for
   `pitch_correct`.
 
 ### Hard

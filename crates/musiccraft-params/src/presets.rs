@@ -1387,6 +1387,15 @@ const PITCH_CORRECT: &[Preset] = &[
     preset("Gentle", &[("speed", 120.0), ("amount", 0.6)]),
     preset("C major", &[("scale", 1.0), ("speed", 10.0)]),
     preset("A minor", &[("key", 9.0), ("scale", 2.0), ("speed", 10.0)]),
+    preset("Thirds", &[("harmony_1", 4.0), ("harmony_level", 0.6)]),
+    preset(
+        "Choir",
+        &[
+            ("harmony_1", 7.0),
+            ("harmony_2", -5.0),
+            ("harmony_level", 0.5),
+        ],
+    ),
 ];
 
 const TUNER: &[Preset] = &[

@@ -345,6 +345,10 @@ fn knobs(
             let text = match spec.name {
                 "sidechain" if value < 0.5 => "off".to_owned(),
                 "sidechain" => format!("from {value:.0}"),
+                "follow" if value < 0.5 => "off".to_owned(),
+                "follow" => format!("ch {value:.0}"),
+                "harmony_1" | "harmony_2" if value.abs() < 0.5 => "off".to_owned(),
+                "harmony_1" | "harmony_2" => format!("{value:+.0} st"),
                 "target" if value < 0.5 => "off".to_owned(),
                 "target" => format!("to {value:.0}"),
                 name if name.ends_with("_target") && value < 0.5 => "stays".to_owned(),

@@ -878,6 +878,31 @@ fn slide_notes_glide_over_the_overlap_and_end_with_the_slid_note() {
 }
 
 #[test]
+fn pitch_corrector_follows_a_channels_notes() {
+    // Channel 1 sings A4 (220 Hz; middle C is C5) into insert 1; channel 2
+    // plays C5 on a muted insert and is what the corrector follows.
+    let mut s = sine_session(
+        "note.add 1 0 16 A4
+         channel.add_synth
+         note.add 2 0 16 C5
+         channel.route 1 1
+         channel.route 2 2
+         mixer.set_mute 2 on
+         mixer.add_effect 1 pitch_correct
+         mixer.set_effect_param 1 1 speed 0
+         mixer.set_effect_param 1 1 follow 2",
+    );
+    let left = render_slide(&s);
+    let hz = hz_between(&left, 0.8, 1.8);
+    assert!((hz - key_hz(60.0)).abs() < 6.0, "pulled to C5: {hz}");
+    // Moving channels keeps following the same one; removing it is refused.
+    s.run_line("channel.move 2 1").unwrap();
+    let follow = s.project().mixer[1].effects[0].values[6];
+    assert_eq!(follow, 1.0);
+    assert!(s.run_line("channel.remove 1").is_err());
+}
+
+#[test]
 fn slide_notes_without_an_overlap_are_silent() {
     let s = sine_session(
         "note.add 1 0 4 C4 100 0 slide\nnote.add 1 8 4 C4\nnote.add 1 12 4 G4 100 0 slide",

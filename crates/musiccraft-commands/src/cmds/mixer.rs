@@ -171,6 +171,51 @@ fn sidechains(project: &Project) -> Vec<(usize, usize, usize, usize)> {
     out
 }
 
+/// Effects that follow a channel, as (track, slot, parameter index, rack
+/// position counted from 1).
+pub(super) fn channel_followers(project: &Project) -> Vec<(usize, usize, usize, usize)> {
+    let mut out = Vec::new();
+    for (t, track) in project.mixer.iter().enumerate() {
+        for (s, effect) in track.effects.iter().enumerate() {
+            if let Some(index) = effect.kind.channel_ref_index() {
+                let position = effect.values.get(index).copied().unwrap_or(0.0).round() as usize;
+                if position > 0 {
+                    out.push((t, s, index, position));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Runs `change` (which reorders channels) and moves every followed channel
+/// position along with its channel; a followed channel that is gone stops
+/// being followed.
+pub(super) fn keeping_followers<T>(
+    project: &mut Project,
+    change: impl FnOnce(&mut Project) -> T,
+) -> T {
+    let followed: Vec<_> = channel_followers(project)
+        .into_iter()
+        .map(|(t, s, i, position)| (t, s, i, project.channels.get(position - 1).map(|c| c.id)))
+        .collect();
+    let out = change(project);
+    for (t, s, i, id) in followed {
+        let position = id
+            .and_then(|id| project.channel_position(id))
+            .map_or(0, |p| p + 1);
+        if let Some(value) = project
+            .mixer
+            .get_mut(t)
+            .and_then(|track| track.effects.get_mut(s))
+            .and_then(|e| e.values.get_mut(i))
+        {
+            *value = position as f32;
+        }
+    }
+    out
+}
+
 /// Shifts sidechain sources and send targets at or after `from` by `delta`.
 fn shift_sidechains(project: &mut Project, from: usize, delta: isize) {
     for (t, s, index, source) in sidechains(project) {

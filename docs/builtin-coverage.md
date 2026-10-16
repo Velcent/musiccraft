@@ -76,7 +76,8 @@ Status:
 | Fruity Vocoder, Vocodex | `vocoder` (sidechain modulator) | covered | 16 fixed bands |
 | Frequency Shifter | `freq_shift` | covered | Ring-mod mode is the separate `ring_mod` |
 | Pitch Shifter | `pitch_shift` | covered | |
-| Pitcher, Newtone | `pitch_correct` | partial | Real-time correction to a key and scale; no MIDI-controlled target notes, harmonies or offline note editing |
+| Pitcher | `pitch_correct` (scale or a followed channel's notes, two harmony voices) | covered | |
+| Newtone | `pitch_correct` | partial | No offline note editing |
 | Gross Beat | `beat_shaper` (drawn time and volume envelopes), `gate`, `stutter` | covered | Eight points per envelope |
 | Fruity Scratcher | `scratch` (held span, automatable position, scratch patterns) | covered | Scratches the insert's own audio rather than a loaded sample |
 | Frequency Splitter | `band_split` (three bands to separate inserts) | covered | |

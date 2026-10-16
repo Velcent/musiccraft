@@ -812,6 +812,7 @@ impl Engine {
             frames,
             ctx,
             transport,
+            voices: &self.voices,
         };
         mix_tracks(tracks, fx, &mut self.externals, &self.meters);
         if let Some(master) = tracks.first_mut() {
@@ -1238,16 +1239,23 @@ fn scale_ramped(buffer: &mut [f32], from: f32, to: f32) {
 
 /// What effect processing needs to know about the current block.
 #[derive(Clone, Copy)]
-struct FxContext {
+struct FxContext<'a> {
     frames: usize,
     ctx: ProcessContext,
     transport: ExternalTransport,
+    /// The voices, for effects that follow a channel's notes.
+    voices: &'a [Voice],
 }
 
 /// Processes inserts in index order, then the master. Sends only go to
 /// higher-numbered inserts, so every track has received all of its input by the
 /// time it is processed.
-fn mix_tracks(tracks: &mut [TrackNode], fx: FxContext, externals: &mut Externals, meters: &Meters) {
+fn mix_tracks(
+    tracks: &mut [TrackNode],
+    fx: FxContext<'_>,
+    externals: &mut Externals,
+    meters: &Meters,
+) {
     let frames = fx.frames;
     for i in 1..tracks.len() {
         let (before, rest) = tracks.split_at_mut(i);
@@ -1304,7 +1312,7 @@ fn publish_pitches(index: usize, track: &TrackNode, meters: &Meters) {
 /// track `j + later.1`; the master has none.
 fn process_track(
     track: &mut TrackNode,
-    fx: FxContext,
+    fx: FxContext<'_>,
     externals: &mut Externals,
     keys: &[TrackNode],
     key_offset: usize,
@@ -1314,6 +1322,7 @@ fn process_track(
         frames,
         ctx,
         transport,
+        voices,
     } = fx;
     let TrackNode {
         params,
@@ -1334,6 +1343,9 @@ fn process_track(
                 scrub(l, r);
             }
             continue;
+        }
+        if let musiccraft_dsp::Effect::PitchCorrect(corrector) = &mut slot.effect {
+            corrector.set_follow(followed_note(&slot.params.values, voices));
         }
         if let musiccraft_dsp::Effect::BandSplit(splitter) = &mut slot.effect {
             match later.as_mut() {
@@ -1407,6 +1419,26 @@ fn send(l: &mut [f32], r: &mut [f32], p: &[f32], tracks: &mut [TrackNode], offse
             *sample *= dry;
         }
     }
+}
+
+/// The highest held key on the channel a pitch corrector follows (its
+/// `follow` parameter, a rack position counted from 1; 0 is off).
+fn followed_note(values: &[f32], voices: &[Voice]) -> Option<u8> {
+    let follow = EffectKind::PitchCorrect
+        .channel_ref_index()
+        .and_then(|i| values.get(i))
+        .copied()
+        .unwrap_or(0.0)
+        .round();
+    if follow < 0.5 {
+        return None;
+    }
+    let channel = follow as usize - 1;
+    voices
+        .iter()
+        .filter(|v| v.held() && usize::from(v.channel) == channel)
+        .map(|v| v.key)
+        .max()
 }
 
 /// The band splitter: each band with a valid target insert is added to that
