@@ -7,6 +7,15 @@
   pattern, the pattern repeats; notes are cut at the clip's end.
 - Clips on one row may not overlap.
 - Rows can be muted; muted rows do not play.
+- **Track rows** have a name, a colour, mute and solo (all saved, all undoable):
+  `playlist.rename_track <track> [name]` (no name restores "Track n"),
+  `playlist.set_track_color <track> <1-16|none>`, `playlist.set_track_solo
+  <track> <on|off>` and `playlist.toggle_track_solo <track>`. While any row is
+  soloed, only soloed rows play; a muted row stays silent even when soloed.
+  Silenced rows skip pattern, audio and automation clips alike. The row header
+  shows the colour, name, a mute dot and an S (solo) button; right-click it to
+  rename it or pick a colour. A coloured row shows a stripe of its colour at the
+  left of its header; silenced rows show their name dimmed.
 - Playlist time arguments are in bars from 0 (4/4); fractions are allowed and
   `<n>t` gives exact ticks.
 - Commands: `playlist.add_clip <pattern> <track> <start> [length]` (default length:
@@ -68,14 +77,56 @@
 - `playlist.remove_clip`, `move_clip`, `resize_clip` and selection editing work
   the same for every kind. Ctrl+B duplicates any kind.
 
+## Clip editing
+
+- A clip has an **offset**: ticks into its source where it begins (0 for a
+  new clip). A pattern clip with an offset starts part-way into the pattern
+  (notes starting before it are cut); an audio clip starts part-way into the
+  sample (converted at the project tempo); an automation clip shows the curve
+  from that point. The add-clip commands take it as an optional last argument
+  and undo keeps it; project files store it only when it is not 0.
+- `playlist.slice_clip <track> <at>` cuts the clip covering `at` into two clips
+  there (the second keeps playing where the first stopped).
+- `playlist.make_unique <track> <at>` gives the clip its own copy of its
+  pattern, automation or sample channel, named "<name> #2" (#3, …); other
+  clips keep the original.
+- `playlist.merge_clips <track> <at> [<track> <at> …]` merges pattern clips
+  into one new pattern ("Merged n") holding everything they played, at their
+  positions, and one clip of it on the first of their tracks spanning them all.
+  Fails if that clip would overlap another or the pattern would exceed 1024
+  steps.
+- `playlist.consolidate <track> <at>` renders a pattern or audio clip alone
+  (effects included, 48 kHz 32-bit float) to `consolidated/<name>-<n>.wav`
+  beside the project, adds a sampler channel for it (one-shot off) and makes
+  the clip an audio clip of it. The project must be saved first. Undo puts the
+  clip back and removes the channel; the file stays.
+- `playlist.reverse_clip <track> <at>` and `playlist.set_clip_fade <track> <at>
+  <in|out> <seconds>` (0–10 s) set the sampler parameters `reverse`,
+  `fade_in` and `fade_out` of an audio clip's channel (also in channel
+  settings). Reversed samples play from their end. The fade-in rises from the
+  note's start; the fade-out falls over the last seconds before the note or the
+  sample ends. Make the clip unique first to treat one clip on its own.
+- `playlist.insert_space <start> <length>` moves every clip and marker at or
+  after `start` later by `length`; a clip across `start` is sliced there and
+  its second part moves. `playlist.delete_space <start> <length>` removes that
+  stretch: clips inside it go, clips across its edges are cut back, and later
+  clips and markers move earlier. Both are one undo step.
+- UI: the playlist's Clip menu acts on the selected clips (slice at the
+  playhead, make unique, merge, consolidate, reverse, fades) and inserts or
+  deletes the loop region's time; Ctrl+Insert and Ctrl+Delete do the same
+  (they need a loop region: Shift+drag the ruler).
+
 ## Audio recording
 
 - With File → Record audio input on, REC armed and the transport playing in song
-  mode, the default input device is captured. When playback stops or REC is
+  mode, the input device chosen in Settings → Audio (the system default unless
+  set) is captured. When playback stops or REC is
   disarmed, the take is written as a 32-bit float WAV to `recordings/` beside the
   project (the per-user data folder for unsaved projects) and placed as an audio
-  clip at the position where recording started, on the first empty track, as one
-  undo step. Takes under 0.1 s are discarded. Input arrives through a lock-free
+  clip at the position where recording started, as one undo step: on the first
+  **armed** playlist track that has room for it (`playlist.toggle_track_arm
+  <track>`, undoable, saved; the red dot in the track header), else on the
+  first empty track. Takes under 0.1 s are discarded. Input arrives through a lock-free
   ring buffer holding four seconds; no latency compensation is applied yet.
 
 ## Automation
@@ -106,7 +157,12 @@
 
 - **Tools** as in the piano roll: Draw, Paint (drag to lay the selected
   pattern end to end, skipping places taken by other clips; one undo step),
-  Delete (click or drag over clips; one undo step) and Select (box select).
+  Delete (click or drag over clips; one undo step) and Select (box select),
+  plus Mute (click a clip to mute or unmute it: `playlist.toggle_clip_mute
+  <track> <at>`, undoable; a muted clip stays, drawn faint, and does not
+  play), Slice (click a clip to cut it at the snapped click), Play (click
+  moves the playhead there and plays) and Zoom (click zooms in, Shift+click
+  out). Keys P, B, D, E, T, C, Y, Z pick them.
 
 - Left-click on an empty cell places the selected pattern at the snapped bar;
   dragging a clip moves it; dragging its right edge resizes it; right-click
@@ -129,3 +185,13 @@
   render; the loop marker drawn with a down-facing arrow), and its "Add time
   marker" shortcut Alt+T ("Keyboard shortcuts"). Glyphs, colours, the one-loop-
   point rule, resuming past a pause and command names are our own.
+- Playlist track names, colours, mute and solo follow the FL Studio online
+  manual, "Playlist" (track header options). The colour palette and command
+  names are our own.
+- Clip editing (slice, make unique, merge, consolidate, reverse, fades, insert
+  and delete space with Ctrl+Insert / Ctrl+Delete) follows the playlist clip
+  menu and shortcuts in the FL Studio online manual, "Playlist" and "Keyboard
+  shortcuts". The offset model, naming and file layout are our own.
+- Per-track arming for audio recording and input device selection follow the
+  FL Studio online manual, "Recording" (arming and input selection). Arming
+  playlist rows (rather than mixer tracks) is our own simplification.

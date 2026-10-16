@@ -116,6 +116,10 @@ Hover any control and the hint bar at the top says what it does.
   clip).
 - **Recording**: REC + playing records a MIDI or typing keyboard into the
   pattern; with File → Record audio input, song-mode takes become audio clips.
+  Right-click REC for count-in (Ctrl+P), wait for input (Ctrl+I), loop
+  recording, blend or replace, and step edit (Ctrl+E: played notes go in at
+  the playhead, which steps on). In song mode, moving a knob while recording
+  writes automation.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
 - **MIDI Out channels** (rack → More instruments) send their notes to
   external gear on a MIDI channel; pick the output port in Settings → MIDI.

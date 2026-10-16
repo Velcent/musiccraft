@@ -21,13 +21,13 @@ pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
     InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MarkerAction,
-    MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern, PatternId, PlayMode,
-    Playlist, PluginRef, PluginSlot, STEP_KEY,
+    MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern, PatternId,
+    PatternLane, PlayMode, Playlist, PluginRef, PluginSlot, STEP_KEY,
 };
 pub use musiccraft_params as params;
 
 /// Lowest tempo a project accepts, in beats per minute.
-pub const MIN_TEMPO_BPM: f64 = 20.0;
+pub const MIN_TEMPO_BPM: f64 = 10.0;
 /// Highest tempo a project accepts, in beats per minute.
 pub const MAX_TEMPO_BPM: f64 = 999.0;
 /// Tempo of a newly created project, in beats per minute.
@@ -62,6 +62,58 @@ impl Transport {
     #[must_use]
     pub fn is_paused(self) -> bool {
         self == Self::Paused
+    }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_cents(value: &f32) -> bool {
+    *value == 0.0
+}
+
+/// How recorded notes treat what the pattern already has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordMode {
+    /// Add to the existing notes.
+    #[default]
+    Blend,
+    /// Remove the existing notes the playhead passes while recording.
+    Replace,
+}
+
+impl RecordMode {
+    /// `blend` or `replace`.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Blend => "blend",
+            Self::Replace => "replace",
+        }
+    }
+}
+
+/// Recording options, saved with the project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RecordOptions {
+    /// Click one bar before playback starts while armed.
+    pub count_in: bool,
+    /// Start playback with the first live note while armed.
+    pub wait_for_input: bool,
+    /// Blend or replace.
+    pub mode: RecordMode,
+    /// Keep looping while armed; when off, playback stops at the loop end.
+    pub loop_record: bool,
+}
+
+impl Default for RecordOptions {
+    fn default() -> Self {
+        Self {
+            count_in: false,
+            wait_for_input: false,
+            mode: RecordMode::Blend,
+            loop_record: true,
+        }
     }
 }
 
@@ -134,6 +186,15 @@ pub struct Project {
     /// One-shot transport requests (jump to start, panic); never saved.
     #[serde(skip)]
     requests: Requests,
+    /// Whether recording is armed; never saved.
+    #[serde(skip)]
+    armed: bool,
+    /// Whether step edit is on; never saved.
+    #[serde(skip)]
+    step_edit: bool,
+    /// Count-in, wait for input, blend/replace and loop recording.
+    #[serde(default)]
+    pub record: RecordOptions,
     /// Whether the transport loops the current pattern or plays the song.
     #[serde(default)]
     pub play_mode: PlayMode,
@@ -159,6 +220,14 @@ pub struct Project {
     /// How channel and mixer pans split left and right.
     #[serde(default)]
     pub pan_law: PanLaw,
+    /// Master pitch in cents (-1200..=1200): every built-in instrument is
+    /// transposed by it (A4 = 440 Hz × 2^(cents/1200)).
+    #[serde(default, skip_serializing_if = "is_zero_cents")]
+    pub master_pitch: f32,
+    /// Swing, 0..=1: notes on off-beat sixteenths are delayed by up to half a
+    /// step, scaled by each channel's `swing_mix`.
+    #[serde(default)]
+    pub swing: f32,
     next_id: u32,
     #[serde(skip)]
     path: Option<PathBuf>,
@@ -190,6 +259,9 @@ impl Project {
             tempo_bpm: DEFAULT_TEMPO_BPM,
             transport: Transport::Stopped,
             requests: Requests::default(),
+            armed: false,
+            step_edit: false,
+            record: RecordOptions::default(),
             play_mode: PlayMode::Pattern,
             channels: Vec::new(),
             patterns: vec![Pattern::new(PatternId(1), "Pattern 1")],
@@ -199,6 +271,8 @@ impl Project {
             automations: Vec::new(),
             metronome: false,
             pan_law: PanLaw::Circular,
+            swing: 0.0,
+            master_pitch: 0.0,
             next_id: 2,
             path: None,
         }
@@ -238,6 +312,39 @@ impl Project {
             return Err(ProjectError::TempoOutOfRange(bpm));
         }
         Ok(std::mem::replace(&mut self.tempo_bpm, bpm))
+    }
+
+    /// Whether recording is armed.
+    #[must_use]
+    pub fn is_armed(&self) -> bool {
+        self.armed
+    }
+
+    /// Arms or disarms recording and returns the previous state.
+    pub fn set_armed(&mut self, armed: bool) -> bool {
+        std::mem::replace(&mut self.armed, armed)
+    }
+
+    /// Whether step edit is on.
+    #[must_use]
+    pub fn step_edit(&self) -> bool {
+        self.step_edit
+    }
+
+    /// Turns step edit on or off and returns the previous state.
+    pub fn set_step_edit(&mut self, on: bool) -> bool {
+        std::mem::replace(&mut self.step_edit, on)
+    }
+
+    /// The first pattern after the selected one with no notes.
+    #[must_use]
+    pub fn next_empty_pattern(&self) -> Option<usize> {
+        self.patterns
+            .iter()
+            .enumerate()
+            .skip(self.current_pattern + 1)
+            .find(|(_, p)| p.notes.is_empty())
+            .map(|(i, _)| i)
     }
 
     /// How many times jump-to-start and panic have been requested.
@@ -482,17 +589,42 @@ impl Project {
                 track.to_master = true;
             }
         }
+        let playlist = &mut self.playlist;
+        playlist.muted_tracks.retain(|t| *t < PLAYLIST_TRACKS);
+        playlist.soloed_tracks.retain(|t| *t < PLAYLIST_TRACKS);
+        playlist.armed_tracks.retain(|t| *t < PLAYLIST_TRACKS);
+        playlist.track_names.retain(|t, _| *t < PLAYLIST_TRACKS);
+        playlist
+            .track_colors
+            .retain(|t, c| *t < PLAYLIST_TRACKS && *c < 16);
+        // Older files kept swing per pattern: take the largest.
+        if self.swing == 0.0 {
+            self.swing = self
+                .patterns
+                .iter()
+                .map(|p| p.legacy_swing)
+                .filter(|s| s.is_finite())
+                .fold(0.0, f32::max);
+        }
+        for pattern in &mut self.patterns {
+            pattern.legacy_swing = 0.0;
+        }
+        self.master_pitch = if self.master_pitch.is_finite() {
+            self.master_pitch.clamp(-1200.0, 1200.0)
+        } else {
+            0.0
+        };
+        self.swing = if self.swing.is_finite() {
+            self.swing.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         let channel_ids: Vec<ChannelId> = self.channels.iter().map(|c| c.id).collect();
         for pattern in &mut self.patterns {
             pattern
                 .notes
                 .retain(|n| channel_ids.contains(&n.channel) && n.key <= 127 && n.length > 0);
             pattern.length_steps = pattern.length_steps.clamp(1, MAX_PATTERN_STEPS);
-            pattern.swing = if pattern.swing.is_finite() {
-                pattern.swing.clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
             pattern.sort_notes();
         }
         let pattern_ids: Vec<PatternId> = self.patterns.iter().map(|p| p.id).collect();
@@ -614,6 +746,9 @@ impl PartialEq for Project {
             && self.playlist == other.playlist
             && self.metronome == other.metronome
             && self.pan_law == other.pan_law
+            && self.record == other.record
+            && self.swing == other.swing
+            && self.master_pitch == other.master_pitch
             && self.automations == other.automations
     }
 }

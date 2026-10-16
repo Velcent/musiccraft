@@ -29,6 +29,8 @@ pub enum MidiInput {
 pub struct Settings {
     /// Output device name; `None` for the system default.
     pub audio_device: Option<String>,
+    /// Input device for audio recording; `None` for the system default.
+    pub audio_input: Option<String>,
     /// Sample rate; `None` for the device default.
     pub sample_rate: Option<u32>,
     /// Frames per audio callback; `None` for the device default.
@@ -55,6 +57,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             audio_device: None,
+            audio_input: None,
             sample_rate: None,
             buffer_frames: None,
             midi_input: MidiInput::Auto,
@@ -94,6 +97,8 @@ impl Settings {
 pub struct SettingsInfo {
     /// Output devices, default first.
     pub outputs: Vec<String>,
+    /// Input devices, default first.
+    pub inputs: Vec<String>,
     /// Sample rates the current device supports.
     pub sample_rates: Vec<u32>,
     /// The rate audio is running at.
@@ -212,6 +217,37 @@ fn note(ui: &mut egui::Ui, text: &str) {
 fn audio(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     let settings = frame.settings;
     let info = frame.settings_info;
+    row(ui, "Input device", |ui| {
+        let current = settings
+            .audio_input
+            .clone()
+            .unwrap_or_else(|| "System default".to_owned());
+        egui::ComboBox::from_id_salt("audio-input")
+            .width(300.0)
+            .selected_text(current)
+            .show_ui(ui, |ui| {
+                let choices = std::iter::once(None).chain(info.inputs.iter().cloned().map(Some));
+                for choice in choices {
+                    let label = choice
+                        .clone()
+                        .unwrap_or_else(|| "System default".to_owned());
+                    if ui
+                        .selectable_label(settings.audio_input == choice, label)
+                        .clicked()
+                    {
+                        changed(
+                            actions,
+                            Settings {
+                                audio_input: choice,
+                                ..settings.clone()
+                            },
+                        );
+                    }
+                }
+            })
+            .response
+            .hint("Recorded by File → Record audio input");
+    });
     row(ui, "Output device", |ui| {
         let current = settings
             .audio_device
@@ -549,7 +585,7 @@ fn project(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
         let mut tempo = project.tempo_bpm();
         let drag = ui.add(
             egui::DragValue::new(&mut tempo)
-                .range(20.0..=999.0)
+                .range(musiccraft_project::MIN_TEMPO_BPM..=musiccraft_project::MAX_TEMPO_BPM)
                 .speed(0.1)
                 .suffix(" BPM"),
         );
@@ -562,6 +598,26 @@ fn project(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
                 state.gesture(),
             ));
         }
+    });
+    row(ui, "Master pitch", |ui| {
+        let mut cents = project.master_pitch;
+        let drag = ui.add(
+            egui::DragValue::new(&mut cents)
+                .range(-1200.0..=1200.0)
+                .speed(1.0)
+                .suffix(" ct"),
+        );
+        if drag.drag_started() || drag.gained_focus() {
+            state.begin_gesture();
+        }
+        if drag.changed() {
+            actions.push(Action::Coalesced(
+                Invocation::new("project.set_master_pitch", [format!("{cents:.0}")]),
+                state.gesture(),
+            ));
+        }
+        let a4 = 440.0 * 2f64.powf(f64::from(project.master_pitch) / 1200.0);
+        ui.label(format!("A4 = {a4:.2} Hz"));
     });
     row(ui, "Pan law", |ui| {
         for law in musiccraft_project::PanLaw::ALL {

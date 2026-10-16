@@ -26,6 +26,12 @@
   `mixer.toggle_solo`, `mixer.set_send`, `mixer.route_to_master`, `mixer.add_effect`, `mixer.remove_effect`,
   `mixer.move_effect`, `mixer.set_effect_param`, `mixer.set_effect_enabled`,
   `mixer.toggle_effect`. Effect slots are numbered from 1. All are undoable.
+- **Track stereo options** (undoable, saved; right-click a strip's name):
+  `mixer.set_separation <track> <-1..1>` (-1 folds the track to mono, 0
+  leaves it, 1 doubles the side signal), `mixer.set_phase_invert <track>
+  <on|off>` (flips the polarity of both sides) and `mixer.set_swap_sides
+  <track> <on|off>` (exchanges left and right). They apply to the track's
+  input, before its effects and fader.
 - **Pan law** (project setting, `project.set_pan_law <circular|triangular>`,
   undoable, saved as `"pan_law"`; Settings → Project). It applies to every
   channel pan. Mixer track pan stays a balance (0 dB at centre; a track
@@ -182,3 +188,6 @@ Ranges and defaults are defined in `musiccraft-params`.
   formula and the handling of older files are our own choices.
 - Effect windows (preset bar, graph, knobs) follow the common layout of plugin
   windows in pattern-based DAWs; the graphs and factory presets are our own.
+- Track stereo separation, phase invert and swap left/right are mixer track
+  properties described in the FL Studio online manual, "Mixer" (track
+  properties). The mid/side formula is textbook; the ranges are our own.

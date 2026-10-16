@@ -53,6 +53,29 @@ pub(crate) enum Tool {
     Select,
     /// Click or drag over notes to mute or unmute them.
     Mute,
+    /// Click a note (or clip) to cut it in two there.
+    Slice,
+    /// Click to hear a note (piano roll) or play from there (playlist).
+    Play,
+    /// Click to zoom in, Shift+click to zoom out.
+    Zoom,
+}
+
+impl Tool {
+    /// The tool a `ui.tool` argument names.
+    pub(crate) fn parse(name: &str) -> Option<Self> {
+        Some(match name {
+            "draw" => Self::Draw,
+            "paint" => Self::Paint,
+            "delete" => Self::Delete,
+            "select" => Self::Select,
+            "mute" => Self::Mute,
+            "slice" => Self::Slice,
+            "play" => Self::Play,
+            "zoom" => Self::Zoom,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,7 +94,7 @@ pub struct RollState {
     pub(crate) right_erase: Vec<Note>,
     px_per_step: f32,
     key_height: f32,
-    snap: Snap,
+    pub(crate) snap: Snap,
     last_length: u32,
     velocity: u8,
     drag: Option<NoteDrag>,
@@ -375,27 +398,38 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             (
                 Tool::Draw,
                 Icon::Pencil,
-                "Draw: click adds a note, drag moves or resizes, Ctrl+drag selects",
+                "Draw (P): click adds a note, drag moves or resizes, Ctrl+drag selects",
             ),
             (
                 Tool::Paint,
                 Icon::Brush,
-                "Paint: drag to lay down notes one after another",
+                "Paint (B): drag to lay down notes one after another",
             ),
             (
                 Tool::Delete,
                 Icon::Eraser,
-                "Delete: click or drag over notes to delete them",
+                "Delete (D): click or drag over notes to delete them",
             ),
             (
                 Tool::Select,
                 Icon::Select,
-                "Select: drag a box around notes; click empty space to clear",
+                "Select (E): drag a box around notes; click empty space to clear",
             ),
             (
                 Tool::Mute,
                 Icon::Mute,
-                "Mute: click or drag over notes to mute or unmute them",
+                "Mute (T): click or drag over notes to mute or unmute them",
+            ),
+            (
+                Tool::Slice,
+                Icon::Slice,
+                "Slice (C): click a note to cut it in two there",
+            ),
+            (Tool::Play, Icon::Play, "Play (Y): click to hear a note or key"),
+            (
+                Tool::Zoom,
+                Icon::Zoom,
+                "Zoom (Z): click to zoom in, Shift+click to zoom out",
             ),
         ] {
             if icons::button(ui, icon, state.roll.tool == tool, theme::ACCENT, hint).clicked() {
@@ -404,9 +438,9 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
         }
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.toggle_value(&mut state.roll.slide, "Slide")
-            .hint("New notes are slide notes: they bend the notes they overlap (in their colour group) to their key");
+            .hint("(S) New notes are slide notes: they bend the notes they overlap (in their colour group) to their key");
         ui.toggle_value(&mut state.roll.porta, "Porta").hint(
-            "New notes are portamento notes: they glide from the previous note and retrigger",
+            "(O) New notes are portamento notes: they glide from the previous note and retrigger",
         );
         let label = if state.roll.color == 0 {
             "Colour: channel".to_owned()
@@ -1088,6 +1122,55 @@ fn tools_menu(
             toggled = toggle_slide.clone();
             ui.close();
         }
+        let root = state.roll.scale.map_or(0, |(root, _)| root);
+        let scale_name = state.roll.scale.map(|(_, i)| {
+            musiccraft_project::music::SCALES
+                .get(i)
+                .map_or("major", |(n, _)| n)
+                .replace(' ', "_")
+        });
+        ui.menu_button("Generate", |ui| {
+            let mut random = vec![
+                "C4".to_owned(),
+                "C6".to_owned(),
+                "50".to_owned(),
+                state.begin_gesture().to_string(),
+            ];
+            if let Some(name) = &scale_name {
+                random.extend([root.to_string(), name.clone()]);
+            }
+            item(
+                ui,
+                "Randomize",
+                "Replace the notes with random ones on the step grid (in the highlighted scale)",
+                "note.randomize",
+                random,
+            );
+            let minor = scale_name.as_deref().is_some_and(|n| n.contains("minor"));
+            for (label, degrees) in [("I–V–vi–IV", "1-5-6-4"), ("i–VI–III–VII", "1-6-3-7"), ("ii–V–I", "2-5-1")] {
+                item(
+                    ui,
+                    &format!("Chords {label}"),
+                    "Replace the notes with this progression, a bar per chord (key of the highlighted scale)",
+                    "note.chords",
+                    vec![
+                        (48 + root).to_string(),
+                        if minor { "minor" } else { "major" }.into(),
+                        degrees.into(),
+                    ],
+                );
+            }
+        });
+        ui.menu_button("Shape", |ui| {
+            item(ui, "Limit to C4–B5", "Fold notes into two octaves", "note.limit", vec!["C4".into(), "B5".into()]);
+            item(ui, "Velocity LFO", "Sine on velocity, one bar per cycle", "note.lfo", vec!["velocity".into(), "16".into(), "50".into()]);
+            item(ui, "Pan LFO", "Sine on pan, one bar per cycle", "note.lfo", vec!["pan".into(), "16".into(), "80".into()]);
+            item(ui, "Scale velocities 75%", "Bring velocities closer to the middle", "note.scale_levels", vec!["velocity".into(), "75".into()]);
+            item(ui, "Flam", "Add a quieter grace note just before each note", "note.flam", vec!["6t".into()]);
+            item(ui, "Staccato", "Half the gap to the next note; accent the beats", "note.articulate", vec!["50".into(), "10".into()]);
+            item(ui, "Tenuto", "Hold each note until the next one", "note.articulate", vec!["100".into()]);
+            item(ui, "Claw every 2nd", "Keep every second note or chord", "note.claw", vec!["2".into()]);
+        });
         ui.menu_button("Arpeggiate", |ui| {
             for (label, mode) in [
                 ("Up", "up"),
@@ -1148,6 +1231,73 @@ fn right_erase(
         }
         actions.extend(remove_notes(channel, &erased).map(Action::Run));
     }
+}
+
+/// The click tools: Slice cuts the clicked note, Play previews the clicked
+/// note or key, Zoom zooms. Returns whether the active tool is one of them.
+#[allow(clippy::too_many_arguments)]
+fn click_tool(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    response: &egui::Response,
+    notes: &[&Note],
+    boxes: &[(usize, Rect)],
+    channel: usize,
+    at: &dyn Fn(Pos2) -> (f32, Option<u8>),
+    actions: &mut Vec<Action>,
+) -> bool {
+    let tool = state.roll.tool;
+    if !matches!(tool, Tool::Slice | Tool::Play | Tool::Zoom) {
+        return false;
+    }
+    let Some(p) = response
+        .interact_pointer_pos()
+        .filter(|_| response.clicked_by(PointerButton::Primary))
+    else {
+        return true;
+    };
+    let (tick, key) = at(p);
+    let note = match hit_test(boxes.iter().copied(), p) {
+        Hit::Body(i) | Hit::Edge(i) => notes.get(i).map(|n| **n),
+        Hit::Empty => None,
+    };
+    match tool {
+        Tool::Slice => {
+            if let Some(n) = note {
+                let snapped = state.roll.snap.round(tick);
+                let cut = if snapped > n.start && snapped < n.start + n.length {
+                    snapped
+                } else {
+                    tick.max(0.0) as u32
+                };
+                if cut > n.start && cut < n.start + n.length {
+                    actions.push(Action::Run(Invocation::new(
+                        "note.slice",
+                        [
+                            (channel + 1).to_string(),
+                            format!("{}t", n.start),
+                            n.key.to_string(),
+                            format!("{cut}t"),
+                        ],
+                    )));
+                }
+            }
+        }
+        Tool::Play => {
+            if let Some(key) = note.map(|n| n.key).or(key) {
+                actions.push(Action::PreviewShort { channel, key });
+            }
+        }
+        _ => {
+            let factor = if ui.input(|i| i.modifiers.shift) {
+                1.0 / 1.5
+            } else {
+                1.5
+            };
+            state.roll.px_per_step = (state.roll.px_per_step * factor).clamp(6.0, 96.0);
+        }
+    }
+    true
 }
 
 /// Paint and delete strokes. Returns `true` when the tool handled the input.
@@ -1318,6 +1468,9 @@ fn edit(
     right_erase(state, response, notes, boxes, channel, actions);
     let tool = state.roll.tool;
     if tool_stroke(ui, state, response, notes, boxes, channel, &at, actions) {
+        return;
+    }
+    if click_tool(ui, state, response, notes, boxes, channel, &at, actions) {
         return;
     }
     if response.drag_started_by(PointerButton::Primary) {
@@ -1671,7 +1824,7 @@ pub(crate) enum LaneMode {
 }
 
 impl LaneMode {
-    const ALL: [LaneMode; 6] = [
+    pub(crate) const ALL: [LaneMode; 6] = [
         LaneMode::Velocity,
         LaneMode::Pan,
         LaneMode::Release,
@@ -1680,7 +1833,7 @@ impl LaneMode {
         LaneMode::ModY,
     ];
 
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Velocity => "Velocity",
             Self::Pan => "Pan",
@@ -1692,11 +1845,11 @@ impl LaneMode {
     }
 
     /// Whether the lane's neutral value is in the middle.
-    fn centred(self) -> bool {
+    pub(crate) fn centred(self) -> bool {
         !matches!(self, Self::Velocity)
     }
 
-    fn value(self, note: &Note) -> f32 {
+    pub(crate) fn value(self, note: &Note) -> f32 {
         let p = note.props;
         match self {
             Self::Velocity => f32::from(note.velocity.max(1) - 1) / 126.0,
@@ -1708,7 +1861,7 @@ impl LaneMode {
         }
     }
 
-    fn invocation(self, channel: usize, note: &Note, t: f32) -> Option<Invocation> {
+    pub(crate) fn invocation(self, channel: usize, note: &Note, t: f32) -> Option<Invocation> {
         // Snap to the neutral value near the middle of centred lanes.
         let snap = |v: i32, mid: i32, near: i32| if (v - mid).abs() <= near { mid } else { v };
         let p = note.props;

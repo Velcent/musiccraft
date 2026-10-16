@@ -157,10 +157,18 @@ mod tests {
         );
         // FL-familiar: R records, Ctrl+N saves a new version.
         let r = Chord::parse("R").unwrap();
-        assert_eq!(keymap.lookup(&r).unwrap().name, "ui.toggle_record");
+        assert_eq!(keymap.lookup(&r).unwrap().name, "record.toggle");
         let ctrl_n = Chord::parse("Ctrl+N").unwrap();
         assert_eq!(keymap.lookup(&ctrl_n).unwrap().name, "ui.save_new_version");
         assert!(keymap.chord_for("ui.new").is_none(), "New is menu-only");
+        for (chord, name) in [
+            ("Ctrl+E", "record.toggle_step_edit"),
+            ("Ctrl+P", "record.toggle_count_in"),
+            ("Ctrl+I", "record.toggle_wait"),
+        ] {
+            let chord = Chord::parse(chord).unwrap();
+            assert_eq!(keymap.lookup(&chord).unwrap().name, name);
+        }
         // Home jumps to the start, Ctrl+H is panic.
         let home = Chord::parse("Home").unwrap();
         assert_eq!(

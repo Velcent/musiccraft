@@ -3,7 +3,7 @@
 use crate::hint::Hint;
 use egui::{RichText, vec2};
 use musiccraft_commands::Invocation;
-use musiccraft_project::PlayMode;
+use musiccraft_project::{MAX_TEMPO_BPM, MIN_TEMPO_BPM, PlayMode};
 
 use crate::icons::{self, Icon};
 use crate::{Action, Frame, UiState, geometry::position_label, theme, widgets};
@@ -86,6 +86,7 @@ fn file_menu(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) 
     ui.separator();
     menu_item(ui, state, "Export audio (WAV, FLAC)…", "ui.export", actions);
     menu_item(ui, state, "Export stems…", "ui.export_stems", actions);
+    menu_item(ui, state, "Export MIDI…", "ui.export_midi", actions);
     if let Some(path) = state.autosave_path.clone() {
         if ui
             .button("Recover unsaved work")
@@ -434,11 +435,23 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             run(actions, "transport.stop");
         }
         let record_hint = format!(
-            "Record live notes into the pattern while playing ({})",
-            shortcut(state, "ui.toggle_record")
+            "Record live notes into the pattern while playing ({}); right-click for options",
+            shortcut(state, "record.toggle")
         );
-        if icons::button(ui, Icon::Record, state.record, theme::DANGER, &record_hint).clicked() {
-            state.record = !state.record;
+        let armed = project.is_armed();
+        let rec = icons::button(ui, Icon::Record, armed, theme::DANGER, &record_hint);
+        if rec.clicked() {
+            run(actions, "record.toggle");
+        }
+        rec.context_menu(|ui| record_options(ui, state, project, actions));
+        if frame.engine.counting_in {
+            ui.label(RichText::new("COUNT-IN").strong().color(theme::DANGER));
+        } else if frame.engine.waiting {
+            ui.label(RichText::new("WAITING").strong().color(theme::DANGER))
+                .on_hover_text("Playback starts with the first note you play");
+        } else if project.step_edit() {
+            ui.label(RichText::new("STEP").strong().color(theme::HIGHLIGHT))
+                .on_hover_text("Step edit: played notes go in at the playhead");
         }
     });
 
@@ -475,11 +488,27 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     let delta = -tempo_lcd.drag_delta().y * if fine { 0.02 } else { 0.25 }
         + scroll * if fine { 0.01 } else { 0.05 };
     if delta != 0.0 {
-        let value = (tempo + f64::from(delta)).clamp(20.0, 999.0);
+        let value = (tempo + f64::from(delta)).clamp(MIN_TEMPO_BPM, MAX_TEMPO_BPM);
         actions.push(Action::Coalesced(
             Invocation::new("project.set_tempo", [format!("{value:.3}")]),
             state.gesture(),
         ));
+    }
+    if ui
+        .small_button("TAP")
+        .hint("Tap the beat a few times to set the tempo")
+        .clicked()
+    {
+        let now = ui.input(|i| i.time);
+        if state.taps.is_empty() || state.taps.last().is_some_and(|t| now - t > 2.0) {
+            state.begin_gesture();
+        }
+        if let Some(bpm) = musiccraft_commands::tap_tempo::tap(&mut state.taps, now) {
+            actions.push(Action::Coalesced(
+                Invocation::new("project.set_tempo", [format!("{bpm:.2}")]),
+                state.gesture(),
+            ));
+        }
     }
     ui.add_space(4.0);
 
@@ -505,7 +534,11 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
         })
         .response
         .hint("Selected pattern (Plus / Minus)");
-    if ui.small_button("+").hint("New pattern (F4)").clicked() {
+    if ui
+        .small_button("+")
+        .hint("New pattern (F4: next empty pattern)")
+        .clicked()
+    {
         run(actions, "pattern.add");
     }
     ui.add_space(4.0);
@@ -585,5 +618,66 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             frame.engine.audio,
             frame.engine.midi
         ));
+    }
+}
+
+/// The REC button's menu: count-in, wait for input, loop, blend/replace and
+/// step edit.
+fn record_options(
+    ui: &mut egui::Ui,
+    state: &UiState,
+    project: &musiccraft_project::Project,
+    actions: &mut Vec<Action>,
+) {
+    let options = project.record;
+    let mut toggle = |ui: &mut egui::Ui, on: bool, label: &str, name: &str| {
+        let text = match shortcut(state, name) {
+            s if s.is_empty() => label.to_owned(),
+            s => format!("{label} ({s})"),
+        };
+        if ui.selectable_label(on, text).clicked() {
+            run(actions, name);
+            ui.close();
+        }
+    };
+    toggle(
+        ui,
+        options.count_in,
+        "Count-in (one bar)",
+        "record.toggle_count_in",
+    );
+    toggle(
+        ui,
+        options.wait_for_input,
+        "Wait for input",
+        "record.toggle_wait",
+    );
+    toggle(
+        ui,
+        options.loop_record,
+        "Loop recording",
+        "record.toggle_loop",
+    );
+    toggle(
+        ui,
+        project.step_edit(),
+        "Step edit",
+        "record.toggle_step_edit",
+    );
+    ui.separator();
+    for mode in [
+        musiccraft_project::RecordMode::Blend,
+        musiccraft_project::RecordMode::Replace,
+    ] {
+        if ui
+            .selectable_label(options.mode == mode, mode.label())
+            .clicked()
+        {
+            actions.push(Action::Run(Invocation::new(
+                "record.set_mode",
+                [mode.label().to_owned()],
+            )));
+            ui.close();
+        }
     }
 }

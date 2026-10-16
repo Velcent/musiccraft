@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use musiccraft_dsp::ProcessContext;
-use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR};
+use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR, inst};
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::graph::{ChannelNode, Instrument, TrackNode};
+use crate::Start;
+use crate::graph::{ChannelNode, ChannelParams, Instrument, TrackNode};
 use crate::midi_out::{MidiOut, MidiOutReceiver, midi_out_pair};
 use crate::voice::{Voice, VoiceStart};
 use crate::{
@@ -172,6 +173,25 @@ pub struct Engine {
     last_keys: Vec<Option<f32>>,
     /// Messages of MIDI Out channels.
     midi_out: MidiOut,
+    /// How the next Play begins.
+    start: Start,
+    /// A count-in or wait in progress.
+    pending: Pending,
+    /// Stop at the loop end instead of wrapping.
+    stop_at_end: bool,
+}
+
+/// What the engine does before the playhead moves after Play.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pending {
+    None,
+    /// Clicking: frames left and frames clicked so far.
+    CountIn {
+        left: u64,
+        elapsed: u64,
+    },
+    /// Waiting for the first live note.
+    Wait,
 }
 
 impl Drop for Engine {
@@ -218,6 +238,9 @@ pub fn engine_pair(sample_rate: u32) -> (Engine, EngineHandle) {
         free_beats: 0.0,
         last_keys: vec![None; PORTA_CHANNELS],
         midi_out,
+        start: Start::Now,
+        pending: Pending::None,
+        stop_at_end: false,
     };
     let handle = EngineHandle {
         messages: message_tx,
@@ -265,6 +288,15 @@ impl Engine {
     #[must_use]
     pub fn active_voices(&self) -> usize {
         self.voices.iter().filter(|v| v.active).count()
+    }
+
+    /// Active voices on `channel`, cut or not.
+    #[cfg(test)]
+    pub(crate) fn voices_on(&self, channel: u16) -> usize {
+        self.voices
+            .iter()
+            .filter(|v| v.active && v.channel == channel)
+            .count()
     }
 
     /// The keys of the sounding (not released) voices, lowest first.
@@ -356,18 +388,31 @@ impl Engine {
     pub fn apply(&mut self, message: EngineMessage) {
         match message {
             EngineMessage::Play => {
-                if !self.playing {
-                    self.playing = true;
-                    self.resync_cursor();
+                if !self.playing && self.pending == Pending::None {
+                    match self.start {
+                        Start::CountIn(beats) if beats > 0 => {
+                            let frames = f64::from(beats) * self.frames_per_beat();
+                            self.pending = Pending::CountIn {
+                                left: (frames.round() as u64).max(1),
+                                elapsed: 0,
+                            };
+                        }
+                        Start::WaitForInput => self.pending = Pending::Wait,
+                        _ => self.begin(),
+                    }
                 }
             }
+            EngineMessage::SetStart(start) => self.start = start,
+            EngineMessage::SetStopAtEnd(on) => self.stop_at_end = on,
             EngineMessage::Stop => {
+                self.pending = Pending::None;
                 self.playing = false;
                 self.position = self.home();
                 self.resync_cursor();
                 self.release_all(true);
             }
             EngineMessage::Pause => {
+                self.pending = Pending::None;
                 self.playing = false;
                 self.release_all(true);
             }
@@ -503,7 +548,65 @@ impl Engine {
         }
     }
 
+    /// Starts moving the playhead.
+    fn begin(&mut self) {
+        self.pending = Pending::None;
+        self.playing = true;
+        self.resync_cursor();
+    }
+
+    fn frames_per_beat(&self) -> f64 {
+        self.sample_rate * 60.0 / self.tempo_bpm.max(1.0)
+    }
+
+    /// Clicks the count-in beats that fall in the next `frames` frames.
+    fn click_count_in(&mut self, frames: usize) {
+        let Pending::CountIn { elapsed, .. } = self.pending else {
+            return;
+        };
+        let per_beat = self.frames_per_beat().max(1.0);
+        let end = elapsed + frames as u64;
+        let mut beat = (elapsed as f64 / per_beat).ceil() as u64;
+        loop {
+            let at = (beat as f64 * per_beat).round() as u64;
+            if at >= end {
+                break;
+            }
+            if at >= elapsed {
+                self.click.trigger((at - elapsed) as u32, beat == 0);
+            }
+            beat += 1;
+        }
+    }
+
+    /// Advances a count-in by `frames`; the playhead starts when it ends.
+    fn advance_count_in(&mut self, frames: usize) {
+        if let Pending::CountIn { left, elapsed } = self.pending {
+            let frames = frames as u64;
+            if frames >= left {
+                self.begin();
+            } else {
+                self.pending = Pending::CountIn {
+                    left: left - frames,
+                    elapsed: elapsed + frames,
+                };
+            }
+        }
+    }
+
+    /// Frames until a count-in ends, if one is running.
+    fn count_in_left(&self) -> Option<usize> {
+        match self.pending {
+            Pending::CountIn { left, .. } => Some(usize::try_from(left).unwrap_or(usize::MAX)),
+            _ => None,
+        }
+    }
+
     fn live_note_on(&mut self, channel: u16, key: u8, velocity: f32) {
+        // The first live note starts playback that waits for input.
+        if self.pending == Pending::Wait {
+            self.begin();
+        }
         let start = VoiceStart {
             shape: crate::NoteShape::default(),
             slide: false,
@@ -579,12 +682,24 @@ impl Engine {
             return;
         }
         for block in output.chunks_mut(channels * MAX_BLOCK) {
-            let frames = block.len() / channels;
-            self.render_block(frames);
-            self.write_block(block, channels, frames);
-            if let Some(master) = self.graph.as_deref().and_then(|g| g.tracks.first()) {
-                let mono = master.left.iter().zip(&master.right).take(frames);
-                self.meters.push_scope(mono.map(|(l, r)| (l + r) * 0.5));
+            let total = block.len() / channels;
+            let mut done = 0;
+            while done < total {
+                // A count-in ending inside the block splits it there, so the
+                // playhead starts on the exact frame.
+                let frames = self
+                    .count_in_left()
+                    .map_or(total - done, |left| left.clamp(1, total - done));
+                if let Some(part) = block.get_mut(done * channels..(done + frames) * channels) {
+                    self.render_block(frames);
+                    self.advance_count_in(frames);
+                    self.write_block(part, channels, frames);
+                    if let Some(master) = self.graph.as_deref().and_then(|g| g.tracks.first()) {
+                        let mono = master.left.iter().zip(&master.right).take(frames);
+                        self.meters.push_scope(mono.map(|(l, r)| (l + r) * 0.5));
+                    }
+                }
+                done += frames;
             }
         }
         let budget = (output.len() / channels) as f64 / self.sample_rate;
@@ -594,6 +709,10 @@ impl Engine {
         }
         let voices = self.voices.iter().filter(|v| v.active).count() as u32;
         self.meters.publish(self.position, self.playing, voices);
+        self.meters.publish_start(
+            matches!(self.pending, Pending::CountIn { .. }),
+            self.pending == Pending::Wait,
+        );
     }
 
     fn write_block(&self, block: &mut [f32], channels: usize, frames: usize) {
@@ -626,6 +745,7 @@ impl Engine {
             self.schedule(frames);
             self.frames_played += frames as u64;
         }
+        self.click_count_in(frames);
         self.midi_out.advance(frames);
         let sample_rate = self.sample_rate as f32;
         // Tempo-synced effects follow the song while playing and a free
@@ -712,6 +832,7 @@ impl Engine {
         let mut done = 0.0;
         let mut position = self.position;
         let loop_start = self.loop_start();
+        let mut ended = false;
         for _ in 0..MAX_WRAPS_PER_BLOCK {
             let segment_end = position + (total - done) * tpf;
             let wraps = segment_end >= length;
@@ -769,6 +890,15 @@ impl Engine {
                 position = segment_end;
                 break;
             }
+            if self.stop_at_end {
+                // Recording without looping: stop at the end and rewind.
+                self.playing = false;
+                self.release_all(true);
+                self.meters.record_end_stop();
+                position = self.home();
+                ended = true;
+                break;
+            }
             done += (length - position) / tpf;
             position = loop_start;
             self.cursor = self
@@ -780,6 +910,9 @@ impl Engine {
             }
         }
         self.position = position;
+        if ended {
+            self.resync_cursor();
+        }
     }
 }
 
@@ -886,6 +1019,15 @@ fn trigger(
         }
         return;
     }
+    let Some(node) = channels.get(usize::from(start.channel)) else {
+        return;
+    };
+    // A slide note on an instrument that can bend starts no sound, so it cuts
+    // nothing; every other note cuts the channels its cut group chokes.
+    let bends = start.slide && crate::voice::glides(&node.instrument);
+    if !bends {
+        cut_group(voices, channels, &node.params, start.delay);
+    }
     if let Some(ChannelNode {
         instrument: Instrument::MidiOut(midi_channel),
         params,
@@ -941,9 +1083,7 @@ fn trigger(
     }
     if start.shape.porta {
         start.glide_from = previous;
-        let Some(node) = channels.get(usize::from(start.channel)) else {
-            return;
-        };
+        make_room(voices, &node.params, start.channel, start.delay);
         if let Some(voice) = free_voice(voices) {
             *counter += 1;
             voice.start(start, &node.instrument, &node.params, *counter);
@@ -956,9 +1096,7 @@ fn trigger(
         .filter(|v| v.channel == start.channel && v.held())
         .max_by_key(|v| v.age)
         .map(Voice::current_key);
-    let Some(node) = channels.get(usize::from(start.channel)) else {
-        return;
-    };
+    make_room(voices, &node.params, start.channel, start.delay);
     if let Some(voice) = free_voice(voices) {
         *counter += 1;
         voice.start(start, &node.instrument, &node.params, *counter);
@@ -987,6 +1125,57 @@ fn slide(voices: &mut [Voice], last_keys: &mut [Option<f32>], start: &VoiceStart
     // Later portamento notes glide from where the slide ends.
     if let Some(slot) = last_keys.get_mut(usize::from(start.channel)) {
         *slot = Some(f32::from(start.key) + start.shape.fine);
+    }
+}
+
+/// An integer channel parameter (cut groups, polyphony).
+fn int_param(params: &ChannelParams, index: usize) -> u32 {
+    params
+        .instrument
+        .get(index)
+        .map_or(0, |v| v.round().max(0.0) as u32)
+}
+
+/// Cuts, `at` frames into the block, every voice of every channel that the
+/// starting note's cut group chokes.
+fn cut_group(voices: &mut [Voice], channels: &[ChannelNode], params: &ChannelParams, at: u32) {
+    let group = int_param(params, inst::CUT_GROUP);
+    if group == 0 {
+        return;
+    }
+    for voice in voices.iter_mut().filter(|v| v.active) {
+        let choked = channels
+            .get(usize::from(voice.channel))
+            .is_some_and(|node| int_param(&node.params, inst::CUT_BY) == group);
+        if choked {
+            voice.cut(at);
+        }
+    }
+}
+
+/// Cuts the channel's oldest voices until a new one fits its mono or
+/// polyphony limit.
+fn make_room(voices: &mut [Voice], params: &ChannelParams, channel: u16, at: u32) {
+    let limit = if int_param(params, inst::MONO) > 0 {
+        1
+    } else {
+        int_param(params, inst::POLY_MAX) as usize
+    };
+    if limit == 0 {
+        return;
+    }
+    let sounding = |v: &Voice| v.active && v.channel == channel && !v.is_cut();
+    let mut count = voices.iter().filter(|v| sounding(v)).count();
+    while count >= limit {
+        let Some(oldest) = voices
+            .iter_mut()
+            .filter(|v| sounding(v))
+            .min_by_key(|v| v.age)
+        else {
+            break;
+        };
+        oldest.cut(at);
+        count -= 1;
     }
 }
 
@@ -1133,6 +1322,7 @@ fn process_track(
     // Invalid samples would otherwise circulate in reverb and delay feedback
     // forever, silencing the track until the graph is rebuilt.
     scrub(l, r);
+    params.stereo(l, r);
     for slot in effects.iter_mut().filter(|s| s.params.enabled) {
         if let Some(index) = slot.external {
             if let Some(Some(external)) = externals.get_mut(usize::from(index)) {

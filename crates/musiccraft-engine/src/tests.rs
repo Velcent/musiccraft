@@ -948,6 +948,187 @@ fn a_slide_never_lengthens_the_note_it_bends() {
     assert!(engine.held_keys().is_empty());
 }
 
+/// Two channels at 120 BPM playing `events` (channel, start beat, key), each
+/// held for four beats.
+fn two_channels(
+    instrument: impl Fn() -> Instrument,
+    params: [&[(usize, f32)]; 2],
+    events: &[(u16, u64, u8)],
+) -> Engine {
+    let (mut engine, _handle) = engine_pair(SR);
+    let mut graph = Graph::new();
+    for settings in params {
+        let mut p = impulse_params();
+        for &(index, value) in settings {
+            p.instrument[index] = value;
+        }
+        graph.add_channel(instrument(), p);
+    }
+    engine.apply(EngineMessage::SetGraph(Box::new(graph)));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    let notes = events
+        .iter()
+        .map(|&(channel, start, key)| {
+            let mut event = note(start, channel);
+            event.length = 4 * u64::from(PPQ);
+            event.key = key;
+            event
+        })
+        .collect();
+    let seq = Sequence::new(notes, 16 * u64::from(PPQ));
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::Play);
+    engine
+}
+
+/// Frames a cut takes, with a little slack.
+const CUT_FRAMES: usize = (crate::voice::CUT_SECONDS * SR as f32) as usize + 8;
+
+#[test]
+fn a_cut_group_chokes_the_channels_cut_by_it() {
+    // Channel 0 is a closed hat (cuts group 1), channel 1 an open hat (cut by 1).
+    let hats = || Instrument::DrumSynth;
+    let closed: &[(usize, f32)] = &[(inst::DRUM_TYPE, 2.0), (inst::CUT_GROUP, 1.0)];
+    let open: &[(usize, f32)] = &[
+        (inst::DRUM_TYPE, 2.0),
+        (inst::DRUM_DECAY, 2.0),
+        (inst::CUT_BY, 1.0),
+    ];
+    let mut engine = two_channels(hats, [closed, open], &[(1, 0, 60), (0, 1, 60)]);
+    render_mono(&mut engine, BEAT - 10);
+    assert_eq!(engine.voices_on(1), 1, "the open hat rings");
+    render_mono(&mut engine, 10 + CUT_FRAMES);
+    assert_eq!(engine.voices_on(1), 0, "choked by the closed hat");
+    assert_eq!(engine.voices_on(0), 1);
+    // The other way round nothing is choked.
+    let mut engine = two_channels(hats, [closed, open], &[(0, 0, 60), (1, 1, 60)]);
+    render_mono(&mut engine, BEAT + CUT_FRAMES);
+    assert_eq!(engine.voices_on(1), 1);
+    assert_eq!(engine.voices_on(0), 1, "the open hat does not cut");
+}
+
+#[test]
+fn a_cut_starts_on_the_cutting_notes_frame_and_fades_quickly() {
+    // A long one-shot sample of constant level on channel 1, cut by channel 0.
+    let sample = Arc::new(SampleBuffer::mono(vec![0.5; 4 * BEAT], f64::from(SR)));
+    let cutter: &[(usize, f32)] = &[(inst::CUT_GROUP, 3.0), (inst::ONE_SHOT, 1.0)];
+    let cut: &[(usize, f32)] = &[(inst::CUT_BY, 3.0), (inst::ONE_SHOT, 1.0)];
+    let mut engine = two_channels(
+        || Instrument::Sampler(Arc::clone(&sample)),
+        [cutter, cut],
+        &[(1, 0, 60), (0, 1, 60)],
+    );
+    let out = render_mono(&mut engine, BEAT + CUT_FRAMES + 100);
+    let level = std::f32::consts::SQRT_2 * 0.5 * std::f32::consts::FRAC_1_SQRT_2;
+    assert!((out[BEAT - 1] - level).abs() < 1e-4, "{}", out[BEAT - 1]);
+    // From the cut frame on: the new note plus a fading old one.
+    assert!(out[BEAT + 1] > level && out[BEAT + 1] < 2.0 * level);
+    let after = out[BEAT + CUT_FRAMES + 50];
+    assert!((after - level).abs() < 1e-4, "only the new note: {after}");
+}
+
+#[test]
+fn mono_and_polyphony_limits_cut_the_oldest_voices() {
+    let chord = [(0, 0, 60), (0, 0, 64), (0, 0, 67), (0, 1, 72)];
+    for (settings, voices) in [
+        (&[][..], 4),
+        (&[(inst::MONO, 1.0)][..], 1),
+        (&[(inst::POLY_MAX, 2.0)][..], 2),
+        (&[(inst::POLY_MAX, 3.0)][..], 3),
+    ] {
+        let mut engine = two_channels(|| Instrument::Synth, [settings, &[]], &chord);
+        render_mono(&mut engine, BEAT + CUT_FRAMES);
+        assert_eq!(engine.voices_on(0), voices, "{settings:?}");
+        // The newest note always sounds.
+        assert!(engine.held_keys().contains(&72), "{settings:?}");
+    }
+}
+
+/// The impulse engine with a note on every beat of a four-beat sequence.
+fn beat_engine() -> (Engine, EngineHandle) {
+    let (mut engine, handle) = impulse_engine();
+    let notes = (0..4).map(|beat| note(beat, 0)).collect();
+    let seq = Sequence::new(notes, 4 * u64::from(PPQ));
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    (engine, handle)
+}
+
+#[test]
+fn a_count_in_clicks_a_bar_then_starts_on_the_exact_frame() {
+    let (mut engine, handle) = beat_engine();
+    engine.apply(EngineMessage::SetStart(Start::CountIn(4)));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 4 * BEAT + 10);
+    // Four clicks, one per beat, louder at the start of each.
+    for beat in 0..4 {
+        assert!(out[beat * BEAT + 5].abs() > 1e-3, "click {beat}");
+        assert!(
+            out[beat * BEAT + BEAT / 2].abs() < 1e-6,
+            "silence after {beat}"
+        );
+    }
+    assert!(out[4 * BEAT - 1].abs() < 1e-6);
+    // The first note (an impulse) lands on the frame the count-in ends.
+    assert!((out[4 * BEAT] - 1.0).abs() < 1e-6, "{}", out[4 * BEAT]);
+    assert!(engine.is_playing());
+    assert!(!handle.meters().is_counting_in());
+    assert!((engine.position_ticks() - 10.0 * f64::from(PPQ) / BEAT as f64).abs() < 1e-6);
+}
+
+#[test]
+fn stop_cancels_a_count_in() {
+    let (mut engine, handle) = beat_engine();
+    engine.apply(EngineMessage::SetStart(Start::CountIn(4)));
+    engine.apply(EngineMessage::Play);
+    render_mono(&mut engine, BEAT);
+    assert!(handle.meters().is_counting_in() && !engine.is_playing());
+    engine.apply(EngineMessage::Stop);
+    render_mono(&mut engine, 4 * BEAT);
+    assert!(!engine.is_playing() && !handle.meters().is_counting_in());
+    // With the start back to now, Play starts at once.
+    engine.apply(EngineMessage::SetStart(Start::Now));
+    engine.apply(EngineMessage::Play);
+    assert!(engine.is_playing());
+}
+
+#[test]
+fn waiting_for_input_starts_with_the_first_live_note() {
+    let (mut engine, handle) = beat_engine();
+    engine.apply(EngineMessage::SetStart(Start::WaitForInput));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 2 * BEAT);
+    assert!(out.iter().all(|s| s.abs() < 1e-6), "nothing plays");
+    assert!(handle.meters().is_waiting() && !engine.is_playing());
+    engine.apply(EngineMessage::NoteOn {
+        channel: 0,
+        key: 60,
+        velocity: 1.0,
+    });
+    assert!(engine.is_playing());
+    let out = render_mono(&mut engine, BEAT + 10);
+    // The live note and the sequence's first note both sound at once.
+    assert!((out[0] - 2.0).abs() < 1e-6, "{}", out[0]);
+    assert!((out[BEAT] - 1.0).abs() < 1e-6);
+    assert!(!handle.meters().is_waiting());
+}
+
+#[test]
+fn stop_at_end_stops_and_rewinds_instead_of_looping() {
+    let (mut engine, handle) = beat_engine();
+    engine.apply(EngineMessage::SetStopAtEnd(true));
+    engine.apply(EngineMessage::Seek(f64::from(PPQ)));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 4 * BEAT);
+    assert_eq!(
+        nonzero_frames(&out),
+        [0, BEAT, 2 * BEAT],
+        "beats 2-4, no wrap"
+    );
+    assert!(!engine.is_playing());
+    assert!(engine.position_ticks().abs() < f64::EPSILON);
+    assert_eq!(handle.meters().end_stops(), 1);
+}
+
 #[test]
 fn a_nan_burst_cannot_silence_a_reverb_for_good() {
     let (mut engine, _handle) = engine_pair(SR);
@@ -1153,4 +1334,32 @@ fn a_song_loop_point_wraps_there_but_stop_returns_home() {
         engine.position_ticks().abs() < 1e-9,
         "Stop returns to the start"
     );
+}
+
+#[test]
+fn track_stereo_options_invert_swap_and_separate() {
+    let block = |params: TrackParams| {
+        let (mut l, mut r) = (vec![1.0_f32, 0.5], vec![0.0_f32, 0.5]);
+        params.stereo(&mut l, &mut r);
+        (l, r)
+    };
+    let base = TrackParams::default();
+    assert_eq!(block(base), (vec![1.0, 0.5], vec![0.0, 0.5]), "untouched");
+    let swapped = block(TrackParams { swap: true, ..base });
+    assert_eq!(swapped, (vec![0.0, 0.5], vec![1.0, 0.5]));
+    let inverted = block(TrackParams {
+        invert: true,
+        ..base
+    });
+    assert_eq!(inverted, (vec![-1.0, -0.5], vec![0.0, -0.5]));
+    let mono = block(TrackParams {
+        separation: -1.0,
+        ..base
+    });
+    assert_eq!(mono, (vec![0.5, 0.5], vec![0.5, 0.5]));
+    let wide = block(TrackParams {
+        separation: 1.0,
+        ..base
+    });
+    assert_eq!(wide, (vec![1.5, 0.5], vec![-0.5, 0.5]), "the side doubles");
 }

@@ -15,6 +15,7 @@ pub enum Purpose {
     SaveAs,
     Export,
     ExportStems,
+    ExportMidi,
     AddSample,
     SetSample(usize),
     SetPad(usize, usize),
@@ -22,6 +23,8 @@ pub enum Purpose {
     RenameChannel(usize),
     RenamePattern(usize),
     RenameTrack(usize),
+    RenamePlaylistTrack(u32),
+    ChannelGroup(usize),
     AddFolder,
     AddPluginFolder,
     RenameAutomation(usize),
@@ -72,6 +75,14 @@ impl Dialog {
         Self::new(
             Purpose::Export,
             format!("{}{name}.wav", project_dir(project)),
+        )
+    }
+
+    pub fn export_midi(project: &Project) -> Self {
+        let name = project.name().replace(['/', '\\'], "-");
+        Self::new(
+            Purpose::ExportMidi,
+            format!("{}{name}.mid", project_dir(project)),
         )
     }
 
@@ -129,6 +140,14 @@ impl Dialog {
         Self::new(Purpose::AddPluginFolder, home)
     }
 
+    pub fn channel_group(channel: usize, current: &str) -> Self {
+        Self::new(Purpose::ChannelGroup(channel), current.to_owned())
+    }
+
+    pub fn rename_playlist_track(track: u32, current: &str) -> Self {
+        Self::new(Purpose::RenamePlaylistTrack(track), current.to_owned())
+    }
+
     pub fn rename_track(track: usize, current: &str) -> Self {
         Self::new(Purpose::RenameTrack(track), current.to_owned())
     }
@@ -139,6 +158,7 @@ impl Dialog {
             Purpose::SaveAs => "Save project as",
             Purpose::Export => "Export audio",
             Purpose::ExportStems => "Export stems to folder",
+            Purpose::ExportMidi => "Export MIDI file",
             Purpose::AddSample => "Add WAV sample",
             Purpose::SetSample(_) => "Change sample",
             Purpose::SetPad(_, _) => "Pad sample (file path or builtin:<sound>; - clears)",
@@ -146,6 +166,8 @@ impl Dialog {
             Purpose::RenameChannel(_) => "Rename channel",
             Purpose::RenamePattern(_) => "Rename pattern",
             Purpose::RenameTrack(_) => "Rename mixer track",
+            Purpose::RenamePlaylistTrack(_) => "Rename playlist track",
+            Purpose::ChannelGroup(_) => "Channel group (empty: none)",
             Purpose::AddFolder => "Add folder to the browser",
             Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
@@ -165,6 +187,7 @@ impl Dialog {
                 bits => Invocation::new("project.export_wav", [text, bits.to_owned()]),
             },
             Purpose::ExportStems => Invocation::new("project.export_stems", [text]),
+            Purpose::ExportMidi => Invocation::new("project.export_midi", [text]),
             Purpose::AddSample => Invocation::new("channel.add_sampler", [text]),
             Purpose::SetPad(channel, pad) => Invocation::new(
                 "channel.set_pad",
@@ -185,6 +208,16 @@ impl Dialog {
             }
             Purpose::RenameTrack(track) => {
                 Invocation::new("mixer.rename", [track.to_string(), text])
+            }
+            Purpose::ChannelGroup(channel) => {
+                let mut args = vec![(channel + 1).to_string()];
+                if !text.is_empty() {
+                    args.push(text);
+                }
+                Invocation::new("channel.set_group", args)
+            }
+            Purpose::RenamePlaylistTrack(track) => {
+                Invocation::new("playlist.rename_track", [(track + 1).to_string(), text])
             }
             Purpose::AddFolder => Invocation::new("ui.add_folder", [text]),
             Purpose::AddPluginFolder => Invocation::new("ui.add_plugin_folder", [text]),

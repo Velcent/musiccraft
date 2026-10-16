@@ -32,7 +32,7 @@ pub fn show(
         .default_width((area.width() - 200.0).clamp(420.0, 760.0))
         .constrain_to(area)
         .show(ctx, |ui| {
-            header(ui, project, actions);
+            header(ui, state, project, actions);
             ui.separator();
             egui::ScrollArea::both()
                 .id_salt("rack-scroll")
@@ -40,7 +40,13 @@ pub fn show(
                 .max_height(420.0)
                 .show(ui, |ui| {
                     for (index, channel) in project.channels.iter().enumerate() {
-                        row(ui, state, project, index, channel, actions);
+                        let shown = state
+                            .rack_group
+                            .as_ref()
+                            .is_none_or(|group| *group == channel.group);
+                        if shown {
+                            row(ui, state, project, index, channel, actions);
+                        }
                     }
                     if project.channels.is_empty() {
                         ui.label(
@@ -51,6 +57,10 @@ pub fn show(
                         );
                     }
                 });
+            if state.graph.is_some() {
+                ui.separator();
+                graph_editor(ui, state, project, actions);
+            }
             ui.separator();
             add_menu(ui, frame.plugins, actions);
         });
@@ -60,6 +70,9 @@ pub fn show(
         let over = ctx
             .pointer_hover_pos()
             .is_some_and(|p| window.response.rect.contains(p));
+        if open && over && !state.typing_keyboard && !ctx.egui_wants_keyboard_input() {
+            keys(ctx, state, project, actions);
+        }
         if over && egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ctx) {
             ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Foreground,
@@ -82,8 +95,45 @@ pub fn show(
     }
 }
 
-fn header(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
+fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
+        let mut groups: Vec<&str> = project
+            .channels
+            .iter()
+            .map(|c| c.group.as_str())
+            .filter(|g| !g.is_empty())
+            .collect();
+        groups.sort_unstable();
+        groups.dedup();
+        if state
+            .rack_group
+            .as_ref()
+            .is_some_and(|g| !g.is_empty() && !groups.contains(&g.as_str()))
+        {
+            state.rack_group = None;
+        }
+        if !groups.is_empty() {
+            egui::ComboBox::from_id_salt("rack-group")
+                .width(90.0)
+                .selected_text(match &state.rack_group {
+                    None => "All".to_owned(),
+                    Some(g) if g.is_empty() => "Unsorted".to_owned(),
+                    Some(g) => g.clone(),
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut state.rack_group, None, "All");
+                    for group in &groups {
+                        ui.selectable_value(
+                            &mut state.rack_group,
+                            Some((*group).to_owned()),
+                            *group,
+                        );
+                    }
+                    ui.selectable_value(&mut state.rack_group, Some(String::new()), "Unsorted");
+                })
+                .response
+                .on_hover_text("Show one display filter group (right-click a channel → Group…)");
+        }
         let pattern = project.current_pattern();
         ui.label(
             RichText::new(&pattern.name)
@@ -100,8 +150,19 @@ fn header(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
                 [(project.current_pattern + 1).to_string(), steps.to_string()],
             );
         }
-        ui.label(RichText::new("swing").color(theme::TEXT_DIM));
-        let mut swing = (pattern.swing * 100.0).round();
+        let mut open = state.graph.is_some();
+        if ui
+            .toggle_value(&mut open, "Graph")
+            .on_hover_text(
+                "Edit velocity, pan, fine pitch and more per step of the selected channel",
+            )
+            .changed()
+        {
+            state.graph = open.then_some(crate::piano_roll::LaneMode::Velocity);
+        }
+        ui.label(RichText::new("swing").color(theme::TEXT_DIM))
+            .on_hover_text("Project swing; each channel's swing mix scales it");
+        let mut swing = (project.swing * 100.0).round();
         let response = ui.add(
             egui::DragValue::new(&mut swing)
                 .range(0.0..=100.0)
@@ -109,14 +170,7 @@ fn header(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
                 .suffix("%"),
         );
         if response.changed() {
-            run(
-                actions,
-                "pattern.set_swing",
-                [
-                    (project.current_pattern + 1).to_string(),
-                    format!("{swing}"),
-                ],
-            );
+            run(actions, "project.set_swing", [format!("{swing}")]);
         }
     });
 }
@@ -252,6 +306,10 @@ fn context_menu(
     actions: &mut Vec<Action>,
 ) {
     let number = (index + 1).to_string();
+    if ui.button("Group…").clicked() {
+        state.open_dialog(crate::dialogs::Dialog::channel_group(index, &channel.group));
+        ui.close();
+    }
     if ui.button("Channel settings").clicked() {
         state.selected_channel = index;
         state.windows.channel_settings = true;
@@ -512,4 +570,165 @@ fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Actio
             });
         });
     });
+}
+
+/// Keys while the pointer is over the rack: 1–0 mute channels 1–10 (Ctrl:
+/// solo), and for the selected channel Alt+C clone, Alt+Delete delete,
+/// Alt+Up/Down move, Ctrl+L route to a free mixer track and
+/// Shift+Ctrl+Left/Right shift its steps.
+fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
+    use egui::{Key, Modifiers};
+    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
+    let digits = [
+        Key::Num1,
+        Key::Num2,
+        Key::Num3,
+        Key::Num4,
+        Key::Num5,
+        Key::Num6,
+        Key::Num7,
+        Key::Num8,
+        Key::Num9,
+        Key::Num0,
+    ];
+    for (i, key) in digits.into_iter().enumerate() {
+        let number = (i + 1).to_string();
+        if i >= project.channels.len() {
+            continue;
+        }
+        if pressed(Modifiers::COMMAND, key) {
+            run(actions, "channel.solo", [number]);
+        } else if pressed(Modifiers::NONE, key) {
+            run(actions, "channel.toggle_mute", [number]);
+        }
+    }
+    let selected = state.selected_channel;
+    if selected >= project.channels.len() {
+        return;
+    }
+    let number = (selected + 1).to_string();
+    if pressed(Modifiers::ALT, Key::C) {
+        run(actions, "channel.clone", [number.clone()]);
+    }
+    if pressed(Modifiers::ALT, Key::Delete) {
+        run(actions, "channel.remove", [number.clone()]);
+    }
+    if pressed(Modifiers::ALT, Key::ArrowUp) && selected > 0 {
+        run(
+            actions,
+            "channel.move",
+            [number.clone(), selected.to_string()],
+        );
+        state.selected_channel -= 1;
+    }
+    if pressed(Modifiers::ALT, Key::ArrowDown) && selected + 1 < project.channels.len() {
+        run(
+            actions,
+            "channel.move",
+            [number.clone(), (selected + 2).to_string()],
+        );
+        state.selected_channel += 1;
+    }
+    if pressed(Modifiers::COMMAND, Key::L) {
+        run(actions, "channel.route_free", [number.clone()]);
+    }
+    let shift_ctrl = Modifiers::COMMAND | Modifiers::SHIFT;
+    if pressed(shift_ctrl, Key::ArrowLeft) {
+        run(actions, "step.shift", [number.clone(), "-1".to_owned()]);
+    }
+    if pressed(shift_ctrl, Key::ArrowRight) {
+        run(actions, "step.shift", [number, "1".to_owned()]);
+    }
+}
+
+/// The step graph editor: one bar per step of the selected channel, showing
+/// the property of the note that starts on that step. Dragging a bar sets it;
+/// one drag is one undo step.
+fn graph_editor(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    actions: &mut Vec<Action>,
+) {
+    use crate::piano_roll::LaneMode;
+    let Some(mode) = state.graph else {
+        return;
+    };
+    let channel = state.selected_channel;
+    let Some(id) = project.channels.get(channel).map(|c| c.id) else {
+        ui.label(RichText::new("Select a channel").color(theme::TEXT_DIM));
+        return;
+    };
+    let pattern = project.current_pattern();
+    let steps = (pattern.length_ticks() / TICKS_PER_STEP).max(1);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(&project.channels[channel].name).strong());
+        for m in LaneMode::ALL {
+            if ui.selectable_label(mode == m, m.label()).clicked() {
+                state.graph = Some(m);
+            }
+        }
+    });
+    let size = egui::vec2(ui.available_width().max(120.0), 70.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+    state.graph_view = Some((rect, steps));
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 3.0, theme::PANEL_DARK);
+    let width = rect.width() / steps as f32;
+    let note_at = |step: u32| {
+        pattern
+            .notes_of(id)
+            .filter(|n| n.start == step * TICKS_PER_STEP)
+            .max_by_key(|n| n.key)
+            .copied()
+    };
+    let step_at = |x: f32| ((x - rect.left()) / width).floor().max(0.0) as u32;
+    let unit = |y: f32| ((rect.bottom() - 3.0 - y) / (rect.height() - 6.0)).clamp(0.0, 1.0);
+    if response.drag_started() || response.clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            state.graph_drag = note_at(step_at(pos.x).min(steps - 1));
+            state.begin_gesture();
+        }
+    }
+    let mut shown = None;
+    if let (Some(note), Some(pos)) = (state.graph_drag, response.interact_pointer_pos()) {
+        if response.dragged() || response.clicked() {
+            let t = unit(pos.y);
+            shown = Some((note.start, t));
+            if let Some(invocation) = mode.invocation(channel, &note, t) {
+                actions.push(Action::Coalesced(invocation, state.gesture()));
+            }
+        }
+    }
+    if response.drag_stopped() || (!response.dragged() && !response.clicked()) {
+        state.graph_drag = None;
+    }
+    let color = theme::palette(channel);
+    let base = if mode.centred() {
+        rect.center().y
+    } else {
+        rect.bottom() - 3.0
+    };
+    for step in 0..steps {
+        let x0 = rect.left() + width * step as f32;
+        if step % 4 == 0 {
+            painter.line_segment(
+                [egui::pos2(x0, rect.top()), egui::pos2(x0, rect.bottom())],
+                egui::Stroke::new(1.0, theme::GRID_BEAT),
+            );
+        }
+        let Some(note) = note_at(step) else {
+            continue;
+        };
+        let t = match shown {
+            Some((start, t)) if start == note.start => t,
+            _ => mode.value(&note),
+        };
+        let tip = rect.bottom() - 3.0 - t * (rect.height() - 6.0);
+        let bar = egui::Rect::from_two_pos(
+            egui::pos2(x0 + 2.0, base),
+            egui::pos2(x0 + (width - 2.0).max(3.0), tip),
+        );
+        painter.rect_filled(bar, 1.0, color);
+    }
 }

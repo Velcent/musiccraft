@@ -18,7 +18,7 @@ use crate::icons::{self, Icon};
 use crate::piano_roll::Tool;
 use crate::{Action, Frame, UiState, theme, widgets};
 
-const HEADER_WIDTH: f32 = 96.0;
+const HEADER_WIDTH: f32 = 124.0;
 const RULER_HEIGHT: f32 = 20.0;
 const LIST_WIDTH: f32 = 130.0;
 
@@ -115,22 +115,38 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
             (
                 Tool::Draw,
                 Icon::Pencil,
-                "Draw: click places the selected pattern, drag moves, edge resizes",
+                "Draw (P): click places the selected pattern, drag moves, edge resizes",
             ),
             (
                 Tool::Paint,
                 Icon::Brush,
-                "Paint: drag to lay the selected pattern end to end",
+                "Paint (B): drag to lay the selected pattern end to end",
             ),
             (
                 Tool::Delete,
                 Icon::Eraser,
-                "Delete: click or drag over clips to delete them",
+                "Delete (D): click or drag over clips to delete them",
             ),
             (
                 Tool::Select,
                 Icon::Select,
-                "Select: drag a box around clips; click empty space to clear",
+                "Select (E): drag a box around clips; click empty space to clear",
+            ),
+            (
+                Tool::Mute,
+                Icon::Mute,
+                "Mute (T): click a clip to mute or unmute it",
+            ),
+            (
+                Tool::Slice,
+                Icon::Slice,
+                "Slice (C): click a clip to cut it in two there",
+            ),
+            (Tool::Play, Icon::Play, "Play (Y): click to play from there"),
+            (
+                Tool::Zoom,
+                Icon::Zoom,
+                "Zoom (Z): click to zoom in, Shift+click to zoom out",
             ),
         ] {
             if icons::button(ui, icon, state.playlist.tool == tool, theme::ACCENT, hint).clicked() {
@@ -158,6 +174,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
         if ui.small_button("+").hint("Zoom in (Ctrl+scroll)").clicked() {
             state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
         }
+        ui.separator();
+        ui.menu_button("Clip", |ui| clip_menu(ui, state, frame, actions))
+            .response
+            .on_hover_text("Edit the selected clips");
     });
     ui.add_space(2.0);
     ui.horizontal_top(|ui| {
@@ -207,6 +227,21 @@ fn pattern_list(
                         if ui.button("Clone").clicked() {
                             actions.push(Action::Run(Invocation::new(
                                 "pattern.clone",
+                                [(i + 1).to_string()],
+                            )));
+                            ui.close();
+                        }
+                        if !pattern.automation.is_empty()
+                            && ui
+                                .button(format!(
+                                    "Clear automation ({} lanes)",
+                                    pattern.automation.len()
+                                ))
+                                .on_hover_text("Remove the knob moves recorded into this pattern")
+                                .clicked()
+                        {
+                            actions.push(Action::Run(Invocation::new(
+                                "pattern.clear_events",
                                 [(i + 1).to_string()],
                             )));
                             ui.close();
@@ -342,6 +377,8 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     track: *track,
                     start: *start,
                     length: *length,
+                    offset: 0,
+                    muted: false,
                 };
                 draw_clip(
                     &painter, &grid, frame, &preview, *track, *start, *length, true,
@@ -390,7 +427,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             edit(ui, state, project, &grid, &response, clip, &boxes, actions);
             draw_ruler(&painter, &grid, clip, project, state.playlist.loop_drag);
             ruler(ui, state, project, &grid, clip, actions);
-            headers(ui, project, &grid, clip, actions);
+            headers(ui, state, project, &grid, clip, actions);
             if response.hovered() {
                 let zoom = ui.input(|i| i.zoom_delta());
                 if zoom != 1.0 {
@@ -474,7 +511,7 @@ fn draw_clip(
         }
     };
     let rect = grid.span(track, start, length).shrink2(vec2(0.5, 1.5));
-    let muted = project.playlist.muted_tracks.contains(&track);
+    let muted = clip.muted || !project.playlist.track_audible(track);
     let alpha = if ghost {
         120
     } else if muted {
@@ -625,15 +662,16 @@ fn add_clip_invocation(project: &Project, clip: &Clip, track: u32, start: u32) -
         ),
         ClipSource::Audio(id) => ("playlist.add_audio_clip", project.channel_position(id)),
     };
-    Invocation::new(
-        name,
-        [
-            number.map_or(1, |i| i + 1).to_string(),
-            (track + 1).to_string(),
-            format!("{start}t"),
-            format!("{}t", clip.length),
-        ],
-    )
+    let mut args = vec![
+        number.map_or(1, |i| i + 1).to_string(),
+        (track + 1).to_string(),
+        format!("{start}t"),
+        format!("{}t", clip.length),
+    ];
+    if clip.offset > 0 {
+        args.push(format!("{}t", clip.offset));
+    }
+    Invocation::new(name, args)
 }
 
 fn draw_ruler(
@@ -909,6 +947,7 @@ fn ruler(
 
 fn headers(
     ui: &mut egui::Ui,
+    state: &mut UiState,
     project: &Project,
     grid: &Grid,
     clip: Rect,
@@ -930,22 +969,74 @@ fn headers(
             pos2(area.left(), y),
             pos2(area.right(), y + grid.row_height),
         );
+        let playlist = &project.playlist;
+        if let Some(&color) = playlist.track_colors.get(&row) {
+            painter.rect_filled(
+                Rect::from_min_size(r.left_top(), vec2(4.0, r.height())),
+                0.0,
+                theme::track_color(color),
+            );
+        }
         painter.line_segment(
             [r.left_bottom(), r.right_bottom()],
             Stroke::new(1.0, theme::GRID_LINE),
         );
-        painter.text(
-            r.left_center() + vec2(24.0, 0.0),
-            Align2::LEFT_CENTER,
-            format!("Track {}", row + 1),
-            FontId::proportional(11.0),
-            theme::TEXT_DIM,
+        let text = if playlist.track_audible(row) {
+            theme::TEXT
+        } else {
+            theme::TEXT_DIM
+        };
+        // The name stops short of the arm and solo buttons.
+        let name_area = Rect::from_min_max(
+            pos2(r.left() + 22.0, r.top()),
+            pos2(r.right() - 38.0, r.bottom()),
         );
+        painter.with_clip_rect(name_area).text(
+            name_area.left_center(),
+            Align2::LEFT_CENTER,
+            playlist.track_name(row),
+            FontId::proportional(11.0),
+            text,
+        );
+        let number = (row + 1).to_string();
+        // Right-click the header: rename or colour the row.
+        let header = ui.interact(r, ui.id().with(("track-header", row)), Sense::click());
+        header.context_menu(|ui| {
+            if ui.button("Rename…").clicked() {
+                state.open_dialog(crate::dialogs::Dialog::rename_playlist_track(
+                    row,
+                    &playlist.track_name(row),
+                ));
+                ui.close();
+            }
+            ui.label("Colour");
+            ui.horizontal_wrapped(|ui| {
+                for c in 0..16u8 {
+                    let (swatch, response) =
+                        ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
+                    ui.painter().rect_filled(swatch, 2.0, theme::track_color(c));
+                    if response.clicked() {
+                        actions.push(Action::Run(Invocation::new(
+                            "playlist.set_track_color",
+                            [number.clone(), (c + 1).to_string()],
+                        )));
+                        ui.close();
+                    }
+                }
+            });
+            if ui.button("No colour").clicked() {
+                actions.push(Action::Run(Invocation::new(
+                    "playlist.set_track_color",
+                    [number.clone(), "none".to_owned()],
+                )));
+                ui.close();
+            }
+        });
         let dot = Rect::from_center_size(r.left_center() + vec2(12.0, 0.0), vec2(14.0, 14.0));
         if !area.contains_rect(dot) {
             continue;
         }
-        let muted = project.playlist.muted_tracks.contains(&row);
+        let muted = playlist.muted_tracks.contains(&row);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(dot));
         if widgets::dot(&mut child, !muted, theme::ACCENT)
             .hint("Mute track")
@@ -953,7 +1044,37 @@ fn headers(
         {
             actions.push(Action::Run(Invocation::new(
                 "playlist.toggle_track_mute",
-                [(row + 1).to_string()],
+                [number.clone()],
+            )));
+        }
+        let arm = Rect::from_center_size(r.right_center() - vec2(28.0, 0.0), vec2(14.0, 14.0));
+        let armed = playlist.armed_tracks.contains(&row);
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(arm));
+        if widgets::dot(&mut child, armed, theme::DANGER)
+            .hint("Arm for audio recording: takes go to the first armed track with room")
+            .clicked()
+        {
+            actions.push(Action::Run(Invocation::new(
+                "playlist.toggle_track_arm",
+                [number.clone()],
+            )));
+        }
+        let solo = Rect::from_center_size(r.right_center() - vec2(12.0, 0.0), vec2(16.0, 14.0));
+        let soloed = playlist.soloed_tracks.contains(&row);
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(solo));
+        let label = RichText::new("S").small().color(if soloed {
+            theme::HIGHLIGHT
+        } else {
+            theme::TEXT_DIM
+        });
+        if child
+            .add(egui::Button::new(label).frame(false))
+            .on_hover_text("Solo track")
+            .clicked()
+        {
+            actions.push(Action::Run(Invocation::new(
+                "playlist.toggle_track_solo",
+                [number],
             )));
         }
     }
@@ -1009,6 +1130,195 @@ fn shifted(clip: &Clip, dt: i64, dtrack: i64) -> (u32, u32) {
         u32::try_from(i64::from(clip.track) + dtrack).unwrap_or(0),
         u32::try_from(i64::from(clip.start) + dt).unwrap_or(0),
     )
+}
+
+/// `name <track> <start>t [extra…]` for each clip, as one undo step.
+fn per_clip(clips: &[Clip], name: &str, extra: &[String]) -> Option<Invocation> {
+    batch(
+        clips
+            .iter()
+            .map(|c| {
+                let mut args = vec![(c.track + 1).to_string(), format!("{}t", c.start)];
+                args.extend(extra.iter().cloned());
+                Invocation::new(name, args)
+            })
+            .collect(),
+    )
+}
+
+/// Slices every clip that crosses `at` there.
+pub(crate) fn slice_at(clips: &[Clip], at: u32) -> Option<Invocation> {
+    batch(
+        clips
+            .iter()
+            .filter(|c| c.start < at && at < c.end())
+            .map(|c| {
+                Invocation::new(
+                    "playlist.slice_clip",
+                    [(c.track + 1).to_string(), format!("{at}t")],
+                )
+            })
+            .collect(),
+    )
+}
+
+/// Merges the selected pattern clips (two or more) into one.
+pub(crate) fn merge(clips: &[Clip]) -> Option<Invocation> {
+    let patterns: Vec<&Clip> = clips
+        .iter()
+        .filter(|c| matches!(c.source, ClipSource::Pattern(_)))
+        .collect();
+    if patterns.len() < 2 {
+        return None;
+    }
+    Some(Invocation::new(
+        "playlist.merge_clips",
+        patterns
+            .iter()
+            .flat_map(|c| [(c.track + 1).to_string(), format!("{}t", c.start)]),
+    ))
+}
+
+/// A menu entry that runs `invocation`, greyed out without one.
+fn menu_item(
+    ui: &mut egui::Ui,
+    actions: &mut Vec<Action>,
+    label: &str,
+    hint: &str,
+    invocation: Option<Invocation>,
+) {
+    if ui
+        .add_enabled(invocation.is_some(), egui::Button::new(label))
+        .on_hover_text(hint)
+        .clicked()
+    {
+        actions.extend(invocation.map(Action::Run));
+        ui.close();
+    }
+}
+
+/// The Clip menu: edits for the selected clips.
+fn clip_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    let project = frame.project;
+    let selected: Vec<Clip> = project
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| state.playlist.selection.contains(&(c.track, c.start)))
+        .copied()
+        .collect();
+    let audio: Vec<Clip> = selected
+        .iter()
+        .filter(|c| matches!(c.source, ClipSource::Audio(_)))
+        .copied()
+        .collect();
+    if selected.is_empty() {
+        ui.label(
+            RichText::new("Select clips first (Select tool or Ctrl+A)").color(theme::TEXT_DIM),
+        );
+    }
+    let playhead = frame.engine.position_ticks.max(0.0) as u32;
+    menu_item(
+        ui,
+        actions,
+        "Slice at playhead",
+        "Cut the selected clips where the playhead is (or use the slice tool)",
+        slice_at(&selected, playhead),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Make unique",
+        "Give each selected clip its own copy of its pattern, automation or sample channel",
+        per_clip(&selected, "playlist.make_unique", &[]),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Merge",
+        "Merge the selected pattern clips into one new pattern",
+        merge(&selected),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Consolidate (render to audio)",
+        "Render each selected clip to a WAV file and replace it with an audio clip",
+        per_clip(
+            &selected
+                .iter()
+                .filter(|c| !matches!(c.source, ClipSource::Automation(_)))
+                .copied()
+                .collect::<Vec<_>>(),
+            "playlist.consolidate",
+            &[],
+        ),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Reverse",
+        "Play the selected audio clips backwards (again: forwards)",
+        per_clip(&audio, "playlist.reverse_clip", &[]),
+    );
+    if let Some(first) = audio.first() {
+        let channel = match first.source {
+            ClipSource::Audio(id) => project.channel_position(id),
+            _ => None,
+        };
+        if let Some(channel) = channel.and_then(|i| project.channels.get(i)) {
+            for (label, which, param) in [
+                ("Fade in", "in", musiccraft_project::params::inst::FADE_IN),
+                (
+                    "Fade out",
+                    "out",
+                    musiccraft_project::params::inst::FADE_OUT,
+                ),
+            ] {
+                ui.horizontal(|ui| {
+                    ui.label(label);
+                    let mut seconds = channel.params.get(param);
+                    let drag = ui.add(
+                        egui::DragValue::new(&mut seconds)
+                            .range(0.0..=10.0)
+                            .speed(0.01)
+                            .suffix(" s"),
+                    );
+                    if drag.drag_started() || drag.gained_focus() {
+                        state.begin_gesture();
+                    }
+                    if drag.changed() {
+                        let fades = per_clip(
+                            &audio,
+                            "playlist.set_clip_fade",
+                            &[which.to_owned(), format!("{seconds:.3}")],
+                        );
+                        actions.extend(fades.map(|i| Action::Coalesced(i, state.gesture())));
+                    }
+                });
+            }
+        }
+    }
+    ui.separator();
+    let space = |name: &str| {
+        project.playlist.loop_range.map(|(start, end)| {
+            Invocation::new(name, [format!("{start}t"), format!("{}t", end - start)])
+        })
+    };
+    menu_item(
+        ui,
+        actions,
+        "Insert space (Ctrl+Ins)",
+        "Insert empty time the size of the loop region at its start (Shift+drag the ruler)",
+        space("playlist.insert_space"),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Delete space (Ctrl+Del)",
+        "Delete the time of the loop region; later clips and markers move earlier",
+        space("playlist.delete_space"),
+    );
 }
 
 fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
@@ -1158,8 +1468,44 @@ fn tool_stroke(
             }
             !state.playlist.painted.is_empty()
         }
-        // The playlist has no mute tool.
-        Tool::Draw | Tool::Select | Tool::Mute => false,
+        Tool::Mute | Tool::Slice | Tool::Play | Tool::Zoom => {
+            let Some(p) = pointer.filter(|_| response.clicked_by(PointerButton::Primary)) else {
+                return true;
+            };
+            let tick = grid.tick_at(p.x);
+            let clicked = under(p);
+            match (state.playlist.tool, clicked) {
+                (Tool::Mute, Some(c)) => actions.push(Action::Run(Invocation::new(
+                    "playlist.toggle_clip_mute",
+                    [(c.track + 1).to_string(), format!("{}t", c.start)],
+                ))),
+                (Tool::Slice, Some(c)) => {
+                    let at = state.playlist.snap.round(tick);
+                    let at = if at > c.start && at < c.end() {
+                        at
+                    } else {
+                        tick.max(0.0) as u32
+                    };
+                    actions.extend(slice_at(&[c], at).map(Action::Run));
+                }
+                (Tool::Play, _) => {
+                    actions.push(Action::Seek(f64::from(state.playlist.snap.floor(tick))));
+                    actions.push(Action::Run(Invocation::bare("transport.play")));
+                }
+                (Tool::Zoom, _) => {
+                    let factor = if ui.input(|i| i.modifiers.shift) {
+                        1.0 / 1.5
+                    } else {
+                        1.5
+                    };
+                    state.playlist.px_per_bar =
+                        (state.playlist.px_per_bar * factor).clamp(16.0, 400.0);
+                }
+                _ => {}
+            }
+            true
+        }
+        Tool::Draw | Tool::Select => false,
     }
 }
 
@@ -1447,6 +1793,32 @@ mod tests {
     use super::*;
     use musiccraft_project::PatternId;
 
+    fn pattern_clip(track: u32, start: u32, length: u32) -> Clip {
+        Clip {
+            source: ClipSource::Pattern(PatternId(1)),
+            track,
+            start,
+            length,
+            offset: 0,
+            muted: false,
+        }
+    }
+
+    #[test]
+    fn slicing_at_the_playhead_cuts_only_crossing_clips() {
+        let clips = [pattern_clip(0, 0, 384), pattern_clip(1, 384, 384)];
+        assert_eq!(
+            slice_at(&clips, 192).unwrap().to_string(),
+            "playlist.slice_clip 1 192t"
+        );
+        assert!(slice_at(&clips, 384).is_none(), "an edge is not a cut");
+        assert!(merge(&clips[..1]).is_none(), "merging needs two clips");
+        assert_eq!(
+            merge(&clips).unwrap().to_string(),
+            "playlist.merge_clips 1 0t 2 384t"
+        );
+    }
+
     fn drag(kind: DragKind, track: u32, start: u32, length: u32) -> ClipDrag {
         ClipDrag {
             kind,
@@ -1455,6 +1827,8 @@ mod tests {
                 track: 0,
                 start: 384,
                 length: 384,
+                offset: 0,
+                muted: false,
             },
             grab: 0.0,
             track,

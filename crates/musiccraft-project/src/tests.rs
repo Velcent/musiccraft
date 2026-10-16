@@ -33,7 +33,7 @@ fn tempo_range_edges_are_inclusive() {
 #[test]
 fn invalid_tempo_is_rejected_and_project_unchanged() {
     let mut project = Project::default();
-    for bad in [0.0, 19.9, 999.1, f64::NAN, f64::INFINITY, -120.0] {
+    for bad in [0.0, 9.9, 999.1, f64::NAN, f64::INFINITY, -120.0] {
         assert!(matches!(
             project.set_tempo_bpm(bad),
             Err(ProjectError::TempoOutOfRange(_))
@@ -148,6 +148,8 @@ fn rich_project() -> Project {
         track: 0,
         start: 0,
         length: TICKS_PER_BAR,
+        offset: 0,
+        muted: false,
     });
     project.play_mode = PlayMode::Song;
     project
@@ -185,6 +187,33 @@ fn pan_law_is_saved_and_older_files_load_as_circular() {
         Project::from_json(&older).unwrap().pan_law,
         PanLaw::Circular
     );
+}
+
+#[test]
+fn per_pattern_swing_from_older_files_becomes_the_project_swing() {
+    let mut project = Project::default();
+    project.patterns.push(Pattern::new(PatternId(9), "B"));
+    let json = project.to_json().unwrap();
+    assert!(
+        json.contains("\"swing\": 0.0"),
+        "the project swing is saved"
+    );
+    // An older file: no project swing, swing on two patterns.
+    let older = json
+        .replace("\"swing\": 0.0,", "")
+        .replace(
+            "\"length_steps\": 16,",
+            "\"length_steps\": 16, \"swing\": 0.25,",
+        )
+        .replacen("\"swing\": 0.25,", "\"swing\": 0.5,", 1);
+    let loaded = Project::from_json(&older).unwrap();
+    assert!(
+        (loaded.swing - 0.5).abs() < f32::EPSILON,
+        "{}",
+        loaded.swing
+    );
+    let saved = loaded.to_json().unwrap();
+    assert_eq!(saved.matches("\"swing\"").count(), 1, "only the project's");
 }
 
 #[test]
@@ -256,6 +285,8 @@ fn song_length_rounds_up_to_bars() {
         track: 3,
         start: TICKS_PER_BAR,
         length: 10,
+        offset: 0,
+        muted: false,
     });
     assert_eq!(project.song_length_ticks(), 2 * TICKS_PER_BAR);
     assert_eq!(project.playlist.clip_at(3, TICKS_PER_BAR + 9), Some(0));
@@ -277,6 +308,8 @@ fn clips_keep_the_old_file_shape() {
         track: 1,
         start: 0,
         length: 384,
+        offset: 0,
+        muted: false,
     };
     let json = serde_json::to_string(&clip).unwrap();
     assert_eq!(json, r#"{"pattern":3,"track":1,"start":0,"length":384}"#);
@@ -316,6 +349,8 @@ fn loading_drops_clips_of_missing_sources() {
         track: 2,
         start: 0,
         length: 10,
+        offset: 0,
+        muted: false,
     });
     let loaded = Project::from_json(&project.to_json().unwrap()).unwrap();
     assert_eq!(loaded.playlist.clips.len(), 1);

@@ -269,6 +269,9 @@ pub struct Channel {
     /// Mixer track receiving this channel; 0 is master.
     #[serde(default)]
     pub mixer_track: usize,
+    /// Display filter group ("" = none): the rack can show one group at a time.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub group: String,
 }
 
 impl Channel {
@@ -289,6 +292,7 @@ impl Channel {
             pan: 0.0,
             mute: false,
             mixer_track: 0,
+            group: String::new(),
         }
     }
 }
@@ -386,10 +390,22 @@ pub struct Pattern {
     /// Notes, kept sorted by (channel, start, key).
     #[serde(default)]
     pub notes: Vec<Note>,
-    /// Swing amount 0..=1: notes on off-beat sixteenths are delayed by up to
-    /// half a step.
-    #[serde(default)]
-    pub swing: f32,
+    /// Per-pattern swing from older files (0..=1); loading moves it into the
+    /// project's swing. Never saved.
+    #[serde(default, rename = "swing", skip_serializing)]
+    pub(crate) legacy_swing: f32,
+    /// Automation inside the pattern: lanes that play wherever it plays.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub automation: Vec<PatternLane>,
+}
+
+/// One parameter's automation inside a pattern; ticks from the pattern start.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PatternLane {
+    /// The parameter driven.
+    pub target: AutomationTarget,
+    /// Points sorted by tick, one per tick.
+    pub points: Vec<AutomationPoint>,
 }
 
 impl Pattern {
@@ -401,7 +417,8 @@ impl Pattern {
             name: name.into(),
             length_steps: 16,
             notes: Vec::new(),
-            swing: 0.0,
+            legacy_swing: 0.0,
+            automation: Vec::new(),
         }
     }
 
@@ -580,6 +597,15 @@ pub struct MixerTrack {
     /// Sends to higher-numbered inserts, sorted by target.
     #[serde(default)]
     pub sends: Vec<MixerSend>,
+    /// Stereo separation, -1 (mono) .. 0 (as is) .. 1 (side doubled).
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub separation: f32,
+    /// Flip the polarity of both sides.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub phase_invert: bool,
+    /// Exchange the left and right sides.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub swap_sides: bool,
 }
 
 impl MixerTrack {
@@ -595,8 +621,16 @@ impl MixerTrack {
             effects: Vec::new(),
             to_master: true,
             sends: Vec::new(),
+            separation: 0.0,
+            phase_invert: false,
+            swap_sides: false,
         }
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_f32(value: &f32) -> bool {
+    *value == 0.0
 }
 
 /// Stable identity of an automation.
@@ -628,6 +662,12 @@ pub struct Clip {
     pub start: u32,
     /// Duration in ticks; a pattern repeats if the clip is longer.
     pub length: u32,
+    /// Ticks into the source where the clip begins (a sliced clip).
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub offset: u32,
+    /// A muted clip stays on the playlist but does not play.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub muted: bool,
 }
 
 impl Clip {
@@ -825,6 +865,19 @@ pub struct Playlist {
     /// Track rows that are muted (0-based).
     #[serde(default)]
     pub muted_tracks: BTreeSet<u32>,
+    /// Rows armed for audio recording (0-based): takes go to the first one
+    /// with room.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub armed_tracks: BTreeSet<u32>,
+    /// Soloed track rows (0-based): while any is soloed, only they play.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub soloed_tracks: BTreeSet<u32>,
+    /// Track names by row (0-based); unnamed rows show "Track n".
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub track_names: BTreeMap<u32, String>,
+    /// Track colours by row (0-based): palette index 0..=15.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub track_colors: BTreeMap<u32, u8>,
     /// Song-mode loop region `(start, end)` in ticks, if set.
     #[serde(default)]
     pub loop_range: Option<(u32, u32)>,
@@ -834,6 +887,22 @@ pub struct Playlist {
 }
 
 impl Playlist {
+    /// Whether clips on `track` play: not muted, and soloed when any row is.
+    #[must_use]
+    pub fn track_audible(&self, track: u32) -> bool {
+        !self.muted_tracks.contains(&track)
+            && (self.soloed_tracks.is_empty() || self.soloed_tracks.contains(&track))
+    }
+
+    /// The row's name ("Track n" when it has none).
+    #[must_use]
+    pub fn track_name(&self, track: u32) -> String {
+        self.track_names
+            .get(&track)
+            .cloned()
+            .unwrap_or_else(|| format!("Track {}", track + 1))
+    }
+
     /// Where song playback returns at the end: the first song-loop marker.
     #[must_use]
     pub fn song_loop_tick(&self) -> Option<u32> {
@@ -924,4 +993,9 @@ impl PanLaw {
     pub fn from_label(label: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|law| law.label() == label)
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }

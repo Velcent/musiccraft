@@ -47,6 +47,13 @@
   has unmuted channels routed to it (`NN Name.wav`, with track 00 holding
   channels routed straight to the master). Each stem renders only its channels
   through the full mixer; all stems are padded to the same length.
+- `project.export_midi <path>` (File → Export MIDI…, Ctrl+Shift+M) writes a
+  Standard MIDI File, format 1, 96 ticks per quarter: a first track with the
+  project name, tempo and 4/4, then one track per channel that plays notes
+  (named after the channel, MIDI channel = rack position modulo 16). It holds
+  what the transport would play once (the pattern or the song by play mode,
+  swing and arpeggios applied); audio clips are left out. Velocities map
+  0..1 to 1..127.
 
 ## Autosave
 
@@ -69,6 +76,9 @@
 
 - Own design. WAV/RIFF is an open format, written with the `hound` crate. We do
   not read or write any other DAW's project format.
+- MIDI export: the Standard MIDI File format of the public MIDI 1.0
+  specification; Ctrl+Shift+M follows the FL Studio online manual ("Keyboard
+  shortcuts"). Track layout is our own.
 - Saving a new numbered version on Ctrl+N follows the "save new version"
   shortcut described in the public FL Studio online manual ("Keyboard
   shortcuts"); the naming scheme is our own.

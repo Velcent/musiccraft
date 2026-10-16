@@ -33,7 +33,9 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Route to mixer insert | `cmd:channel.route` |
 | Channel rack | Rename / clone / reorder / delete | `cmd:channel.rename` `cmd:channel.clone` `cmd:channel.move` `cmd:channel.remove` |
 | Channel rack | Instrument parameters | `cmd:channel.set_param` |
-| Channel rack | Swing | `cmd:pattern.set_swing` |
+| Channel rack | Cut groups (choke) | `spec:channel-rack.md` `done` |
+| Channel rack | Mono and maximum polyphony | `spec:channel-rack.md` `done` |
+| Channel rack | Swing: global amount, per-channel mix and truncate | `cmd:project.set_swing` `spec:channel-rack.md` |
 | Channel rack | Channel settings window (envelope, filter, sample view) | `done` |
 | Channel rack | Melodic patterns previewed in the rack | `done` |
 | Piano roll | Velocity editor lane | `cmd:note.set_velocity` `done` |
@@ -53,10 +55,17 @@ of contents; see `docs/clean-room.md`.
 | Piano roll | Portamento (glide) | `done` |
 | Piano roll | Chord and scale helpers | `cmd:note.add_chord` `done` |
 | Piano roll | Import MIDI files | `cmd:note.import_midi` |
-| Patterns | New pattern | `cmd:pattern.add` `key:F4=pattern.add` |
+| Patterns | New pattern | `cmd:pattern.add` |
+| Patterns | Next empty pattern, then name it | `cmd:pattern.next_empty` `key:F4=ui.next_empty_pattern` |
 | Patterns | Next / previous pattern | `key:Plus=pattern.next` `key:Minus=pattern.prev` |
 | Patterns | Clone / rename / delete / length | `cmd:pattern.clone` `cmd:pattern.rename` `cmd:pattern.remove` `cmd:pattern.set_length` |
+| Playlist | Track names, colours, mute and solo | `cmd:playlist.rename_track` `cmd:playlist.set_track_color` `cmd:playlist.toggle_track_mute` `cmd:playlist.toggle_track_solo` |
 | Playlist | Place, move, resize, delete clips | `cmd:playlist.add_clip` `cmd:playlist.move_clip` `cmd:playlist.resize_clip` `cmd:playlist.remove_clip` `spec:playlist.md` |
+| Playlist | Slice, make unique, merge clips | `cmd:playlist.slice_clip` `cmd:playlist.make_unique` `cmd:playlist.merge_clips` |
+| Playlist | Consolidate a clip to audio | `cmd:playlist.consolidate` |
+| Playlist | Reverse and fade audio clips | `cmd:playlist.reverse_clip` `cmd:playlist.set_clip_fade` |
+| Playlist | Insert / delete space | `cmd:playlist.insert_space` `cmd:playlist.delete_space` `key:Ctrl+Insert=ui.insert_space` `key:Ctrl+Delete=ui.delete_space` |
+| Playlist | Mute single clips | `cmd:playlist.toggle_clip_mute` |
 | Playlist | Track mute | `cmd:playlist.toggle_track_mute` |
 | Playlist | Select, duplicate, group move | `cmd:edit.batch` `done` |
 | Playlist | Click the ruler to move the playhead; follow playback | `done` |
@@ -66,6 +75,7 @@ of contents; see `docs/clean-room.md`.
 | Playlist | Pause and song-loop markers (stop at the end instead of looping) | `cmd:playlist.set_marker_action` `spec:playlist.md` |
 | Mixer | Insert tracks | `cmd:mixer.add_track` `cmd:mixer.remove_track` `spec:mixer.md` |
 | Mixer | Pan law: circular (-3 dB centre) or triangular | `cmd:project.set_pan_law` `spec:mixer.md` |
+| Mixer | Stereo separation, phase invert, swap left/right | `cmd:mixer.set_separation` `cmd:mixer.set_phase_invert` `cmd:mixer.set_swap_sides` |
 | Mixer | Volume / pan / mute / solo | `cmd:mixer.set_volume` `cmd:mixer.set_pan` `cmd:mixer.toggle_mute` `cmd:mixer.toggle_solo` |
 | Mixer | Effect slots: add, remove, reorder, bypass | `cmd:mixer.add_effect` `cmd:mixer.remove_effect` `cmd:mixer.move_effect` `cmd:mixer.toggle_effect` |
 | Mixer | Effect parameters | `cmd:mixer.set_effect_param` |
@@ -124,8 +134,31 @@ of contents; see `docs/clean-room.md`.
 | Project | Export lossy audio (MP3, Ogg) | `todo` |
 | Project | Autosave and crash recovery | `done` |
 | Input | MIDI keyboard plays the selected channel | `done` |
-| Input | Record live notes into patterns | `key:R=ui.toggle_record` `done` |
+| Input | Record live notes into patterns | `cmd:record.toggle` `key:R=record.toggle` `spec:recording.md` |
+| Input | Recording count-in | `cmd:record.toggle_count_in` `key:Ctrl+P=record.toggle_count_in` |
+| Input | Wait for input before recording | `cmd:record.toggle_wait` `key:Ctrl+I=record.toggle_wait` |
+| Input | Blend or replace recording | `cmd:record.set_mode` |
+| Input | Loop recording on / off | `cmd:record.toggle_loop` |
+| Input | Step edit / step recording | `cmd:record.toggle_step_edit` `key:Ctrl+E=record.toggle_step_edit` |
+| Input | Record knob movements as automation | `cmd:automation.record` `spec:recording.md` |
 | Input | Computer keyboard as piano | `key:Ctrl+T=ui.typing_keyboard` `done` |
 | Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
 | Scripting | Headless CLI and scripts | `done` |
 | Scripting | MCP server for AI agents | `spec:mcp.md` |
+| Input | Single-key tools (P B D E C T Y Z) | `key:P=ui.tool draw` `key:C=ui.tool slice` `key:Z=ui.tool zoom` |
+| Input | Slide / porta toggles for new notes | `key:S=ui.toggle_slide` `key:O=ui.toggle_porta` |
+| Input | Pattern select with 1–9 | `key:1=pattern.select 1` `key:9=pattern.select 9` |
+| Channel rack | Keys: mute, solo, clone, delete, move, shift steps | `spec:keymap.md` `done` |
+| Channel rack | Route to a free mixer track (Ctrl+L) | `cmd:channel.route_free` |
+| Piano roll | Slice notes | `cmd:note.slice` |
+| Export | MIDI file export | `cmd:project.export_midi` `key:Ctrl+Shift+M=ui.export_midi` `spec:project-file.md` |
+| Piano roll | Limit, LFO, scale levels, flam | `cmd:note.limit` `cmd:note.lfo` `cmd:note.scale_levels` `cmd:note.flam` |
+| Piano roll | Randomizer and chord progressions | `cmd:note.randomize` `cmd:note.chords` |
+| Piano roll | Articulate and claw machine | `cmd:note.articulate` `cmd:note.claw` |
+| Channel rack | Time shift, gate and note echo | `spec:channel-rack.md` `done` |
+| Transport | Master pitch / A4 tuning | `cmd:project.set_master_pitch` `cmd:project.set_a4` |
+| Transport | Tap tempo | `spec:transport.md` `done` |
+| Channel rack | Display filter groups | `cmd:channel.set_group` |
+| Transport | Arm playlist tracks for audio takes; choose the input device | `cmd:playlist.toggle_track_arm` `spec:settings.md` |
+| Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
+| Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |

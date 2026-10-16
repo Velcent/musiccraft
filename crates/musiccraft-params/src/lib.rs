@@ -285,6 +285,36 @@ pub mod inst {
     pub const GRAN_SPREAD: usize = 71;
     pub const GRAN_PITCH_RAND: usize = 72;
     pub const GRAN_SCAN: usize = 73;
+    /// Share of the project swing this channel follows, 0..1.
+    pub const SWING_MIX: usize = 74;
+    /// 1 = swung notes keep their end (they get shorter).
+    pub const SWING_TRUNCATE: usize = 75;
+    /// Cut group this channel's notes cut (0 = none).
+    pub const CUT_GROUP: usize = 76;
+    /// Cut group that cuts this channel (0 = none).
+    pub const CUT_BY: usize = 77;
+    /// 1 = one note at a time.
+    pub const MONO: usize = 78;
+    /// Most voices sounding at once (0 = no limit).
+    pub const POLY_MAX: usize = 79;
+    /// Sampler: 1 = play the sample backwards.
+    pub const REVERSE: usize = 80;
+    /// Sampler: fade-in time, seconds.
+    pub const FADE_IN: usize = 81;
+    /// Sampler: fade-out time before the note or sample ends, seconds.
+    pub const FADE_OUT: usize = 82;
+    /// Moves every note of the channel, ticks (negative is earlier).
+    pub const TIME_SHIFT: usize = 83;
+    /// Fixed note length in ticks (0 = the notes' own lengths).
+    pub const GATE: usize = 84;
+    /// Note echo: repeats of each note (0 = off).
+    pub const ECHO_COUNT: usize = 85;
+    /// Note echo: ticks between repeats.
+    pub const ECHO_TIME: usize = 86;
+    /// Note echo: velocity kept per repeat, 0..1.
+    pub const ECHO_FEED: usize = 87;
+    /// Note echo: semitones added per repeat.
+    pub const ECHO_PITCH: usize = 88;
 }
 
 /// Parameters shared by every instrument (sampler and synth), in array order.
@@ -363,6 +393,21 @@ pub const INSTRUMENT_PARAMS: &[ParamSpec] = &[
     spec("gran_spread", 0.0, 1.0, 0.1, ""),
     spec("gran_pitch_rand", 0.0, 12.0, 0.0, "st"),
     spec("gran_scan", -2.0, 2.0, 0.0, ""),
+    spec("swing_mix", 0.0, 1.0, 1.0, ""),
+    int_spec("swing_truncate", 0.0, 1.0, 0.0),
+    int_spec("cut_group", 0.0, 16.0, 0.0),
+    int_spec("cut_by", 0.0, 16.0, 0.0),
+    int_spec("mono", 0.0, 1.0, 0.0),
+    int_spec("poly_max", 0.0, 64.0, 0.0),
+    int_spec("reverse", 0.0, 1.0, 0.0),
+    spec("fade_in", 0.0, 10.0, 0.0, "s"),
+    spec("fade_out", 0.0, 10.0, 0.0, "s"),
+    int_spec("time_shift", -96.0, 96.0, 0.0),
+    int_spec("gate", 0.0, 384.0, 0.0),
+    int_spec("echo_count", 0.0, 8.0, 0.0),
+    int_spec("echo_time", 1.0, 384.0, 48.0),
+    spec("echo_feed", 0.0, 1.0, 0.5, ""),
+    int_spec("echo_pitch", -12.0, 12.0, 0.0),
 ];
 
 /// Names of the keys instrument's types, by `keys_type` value.
@@ -998,6 +1043,14 @@ mod tests {
             (inst::KEYS_HAMMER, "keys_hammer"),
             (inst::ADD_DECAY, "add_decay"),
             (inst::GRAN_SCAN, "gran_scan"),
+            (inst::SWING_MIX, "swing_mix"),
+            (inst::SWING_TRUNCATE, "swing_truncate"),
+            (inst::CUT_GROUP, "cut_group"),
+            (inst::POLY_MAX, "poly_max"),
+            (inst::REVERSE, "reverse"),
+            (inst::FADE_OUT, "fade_out"),
+            (inst::TIME_SHIFT, "time_shift"),
+            (inst::ECHO_PITCH, "echo_pitch"),
         ] {
             assert_eq!(INSTRUMENT_PARAMS[index].name, name);
         }

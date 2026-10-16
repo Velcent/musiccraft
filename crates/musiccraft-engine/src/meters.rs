@@ -21,6 +21,11 @@ pub struct Meters {
     /// Where playback last paused at a pause marker, and how many times it has.
     marker_pause_bits: AtomicU64,
     marker_pauses: AtomicU64,
+    /// Clicking a count-in, or waiting for the first live note.
+    counting_in: AtomicBool,
+    waiting: AtomicBool,
+    /// Times playback stopped at the loop end (recording without looping).
+    end_stops: AtomicU64,
 }
 
 impl Default for Meters {
@@ -48,6 +53,9 @@ impl Meters {
                 .collect(),
             marker_pause_bits: AtomicU64::new(0.0_f64.to_bits()),
             marker_pauses: AtomicU64::new(0),
+            counting_in: AtomicBool::new(false),
+            waiting: AtomicBool::new(false),
+            end_stops: AtomicU64::new(0),
         }
     }
 
@@ -65,6 +73,34 @@ impl Meters {
         self.marker_pause_bits
             .store(position.to_bits(), Ordering::Relaxed);
         self.marker_pauses.fetch_add(1, Ordering::Release);
+    }
+
+    /// Whether a count-in is clicking before playback starts.
+    #[must_use]
+    pub fn is_counting_in(&self) -> bool {
+        self.counting_in.load(Ordering::Relaxed)
+    }
+
+    /// Whether playback waits for the first live note.
+    #[must_use]
+    pub fn is_waiting(&self) -> bool {
+        self.waiting.load(Ordering::Relaxed)
+    }
+
+    /// How many times playback has stopped at the loop end. Front ends watch
+    /// the count to stop their transport too.
+    #[must_use]
+    pub fn end_stops(&self) -> u64 {
+        self.end_stops.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn record_end_stop(&self) {
+        self.end_stops.fetch_add(1, Ordering::Release);
+    }
+
+    pub(crate) fn publish_start(&self, counting_in: bool, waiting: bool) {
+        self.counting_in.store(counting_in, Ordering::Relaxed);
+        self.waiting.store(waiting, Ordering::Relaxed);
     }
 
     /// Fraction of the real-time budget the last callback used (1.0 = all of it).

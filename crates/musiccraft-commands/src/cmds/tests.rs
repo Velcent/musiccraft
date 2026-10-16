@@ -28,11 +28,15 @@ fn fails(s: &mut Session, line: &str) -> CommandError {
 const SCRIPT: &[&str] = &[
     "project.set_tempo 140",
     "project.set_pan_law triangular",
+    "project.set_master_pitch -50",
     "project.rename My Song",
     "channel.add_sampler builtin:kick",
     "channel.add_sampler builtin:snare Snare Drum",
     "channel.add_synth Lead",
     "channel.rename 3 Bass",
+    "channel.set_group 3 Low end",
+    "channel.set_group 1 Drums",
+    "channel.set_group 3",
     "channel.set_volume 1 0.5",
     "channel.set_pan 2 -0.25",
     "channel.set_mute 2 on",
@@ -52,6 +56,12 @@ const SCRIPT: &[&str] = &[
     "note.add 3 4 1.5 G4",
     "note.move 3 2 E4 3 F4",
     "note.resize 3 0 C4 4",
+    "note.slice 3 0 C4 1",
+    "note.limit 3 C4 B5",
+    "note.lfo 3 velocity 8 50",
+    "note.scale_levels 3 pan 50 10",
+    "note.flam 3 6t",
+    "note.articulate 3 80 5",
     "note.set_velocity 3 0 C4 127",
     "note.set_pan 3 0 C4 -40",
     "note.set_slide 3 0 C4 on",
@@ -74,9 +84,13 @@ const SCRIPT: &[&str] = &[
     "pattern.clone 1",
     "pattern.rename 2 Chorus",
     "pattern.set_length 2 32",
-    "pattern.set_swing 2 33",
+    "project.set_swing 33",
     "note.clear 3 @1",
     "mixer.add_track Drums",
+    "mixer.set_separation 1 -0.5",
+    "mixer.set_phase_invert 1 on",
+    "mixer.set_swap_sides 1 on",
+    "mixer.set_swap_sides 1 off",
     "mixer.rename 1 Kick bus",
     "mixer.set_volume 1 0.7",
     "mixer.set_pan 0 0.1",
@@ -104,6 +118,21 @@ const SCRIPT: &[&str] = &[
     "playlist.resize_clip 1 0 0.5",
     "playlist.set_track_mute 3 on",
     "playlist.toggle_track_mute 3",
+    "playlist.set_track_solo 2 on",
+    "playlist.toggle_track_solo 4",
+    "playlist.toggle_track_arm 5",
+    "playlist.rename_track 2 Drums",
+    "playlist.rename_track 2 Lead line",
+    "playlist.rename_track 2",
+    "playlist.rename_track 3 Bass",
+    "playlist.set_track_color 3 12",
+    "playlist.set_track_color 3 none",
+    "playlist.set_track_color 4 2",
+    "playlist.slice_clip 3 6",
+    "playlist.toggle_clip_mute 3 6",
+    "playlist.make_unique 3 6",
+    "playlist.insert_space 2 1",
+    "playlist.delete_space 2 1",
     "playlist.remove_clip 1 1.5",
     "automation.create channel:2:cutoff",
     "automation.create mixer:0:volume Fade out",
@@ -114,6 +143,11 @@ const SCRIPT: &[&str] = &[
     "automation.rename 1 Filter sweep",
     "playlist.add_automation_clip 1 5 0",
     "playlist.add_automation_clip 2 6 2 1",
+    "automation.record channel:2:cutoff 4",
+    "automation.record channel:1:volume 8",
+    "pattern.record_event channel:2:cutoff 2",
+    "pattern.record_event channel:2:cutoff 6",
+    "pattern.clear_events 1 channel:2:cutoff",
     "channel.add_sampler builtin:rim",
     "playlist.add_audio_clip 5 7 1 2",
     "playlist.move_clip 7 1 8 3",
@@ -121,6 +155,8 @@ const SCRIPT: &[&str] = &[
     "mixer.add_effect 2 chorus",
     "mixer.move_effect 2 1 2",
     "automation.remove 1",
+    "automation.remove 2",
+    // One more: the recorded volume automation came before the mix one.
     "automation.remove 2",
     "mixer.remove_track 2",
     "pattern.remove 1",
@@ -352,6 +388,368 @@ fn jump_to_start_and_panic_are_requests_outside_history() {
 }
 
 #[test]
+fn next_empty_selects_an_empty_pattern_or_adds_one() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C5");
+    for line in ["pattern.add", "pattern.add", "note.add 1 0 1 C5 @3"] {
+        run(&mut s, line);
+    }
+    s.run_line("pattern.select 1").unwrap();
+    let depth = s.undo_depth();
+    // Pattern 2 is empty: select it, no history.
+    run(&mut s, "pattern.next_empty");
+    assert_eq!(s.project().current_pattern, 1);
+    assert_eq!(s.undo_depth(), depth);
+    // Nothing empty after pattern 2 (3 has a note): add pattern 4.
+    run(&mut s, "pattern.next_empty");
+    assert_eq!(s.project().patterns.len(), 4);
+    assert_eq!(s.project().current_pattern, 3);
+    assert_eq!(s.undo_depth(), depth + 1);
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().patterns.len(), 3);
+    assert_eq!(s.project().current_pattern, 1);
+    fails(&mut s, "pattern.next_empty 2");
+}
+
+#[test]
+fn recording_state_and_options_stay_out_of_history() {
+    use musiccraft_project::RecordMode;
+    let mut s = session();
+    let before = s.project().clone();
+    for line in ["record.toggle", "record.toggle_step_edit"] {
+        run(&mut s, line);
+    }
+    assert!(s.project().is_armed() && s.project().step_edit());
+    assert_eq!(
+        *s.project(),
+        before,
+        "armed and step edit are session state"
+    );
+    run(&mut s, "record.set off");
+    assert!(!s.project().is_armed());
+    for line in [
+        "record.toggle_count_in",
+        "record.toggle_wait",
+        "record.toggle_loop",
+        "record.set_mode replace",
+    ] {
+        run(&mut s, line);
+    }
+    let options = s.project().record;
+    assert!(options.count_in && options.wait_for_input && !options.loop_record);
+    assert_eq!(options.mode, RecordMode::Replace);
+    assert_eq!(s.undo_depth(), 0);
+    fails(&mut s, "record.set_mode overdub");
+    fails(&mut s, "record.set maybe");
+    // Options are saved with the project.
+    let json = s.project().to_json().unwrap();
+    let loaded = musiccraft_project::Project::from_json(&json).unwrap();
+    assert_eq!(loaded.record, options);
+    assert!(!loaded.is_armed());
+}
+
+fn clip_spans(s: &Session) -> Vec<(u32, u32, u32, u32)> {
+    s.project()
+        .playlist
+        .clips
+        .iter()
+        .map(|c| (c.track, c.start, c.length, c.offset))
+        .collect()
+}
+
+#[test]
+fn slicing_a_clip_keeps_playing_where_it_left_off() {
+    let mut s = session();
+    run(&mut s, "playlist.add_clip 1 1 0 4");
+    run(&mut s, "playlist.slice_clip 1 1.5");
+    assert_eq!(clip_spans(&s), [(0, 0, 576, 0), (0, 576, 960, 576)]);
+    fails(&mut s, "playlist.slice_clip 1 0");
+    // Undoing a removal keeps the offset.
+    run(&mut s, "playlist.remove_clip 1 2");
+    run(&mut s, "edit.undo");
+    assert_eq!(clip_spans(&s)[1], (0, 576, 960, 576));
+    run(&mut s, "edit.undo");
+    assert_eq!(clip_spans(&s), [(0, 0, 1536, 0)]);
+}
+
+#[test]
+fn make_unique_copies_the_source_for_one_clip() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C5");
+    run(&mut s, "playlist.add_clip 1 1 0");
+    run(&mut s, "playlist.add_clip 1 1 1");
+    run(&mut s, "playlist.make_unique 1 1");
+    let project = s.project();
+    assert_eq!(project.patterns.len(), 2);
+    assert_eq!(project.patterns[1].name, "Pattern 1 #2");
+    assert_eq!(project.patterns[1].notes, project.patterns[0].notes);
+    let sources: Vec<_> = project.playlist.clips.iter().map(|c| c.pattern()).collect();
+    assert_eq!(
+        sources,
+        [Some(project.patterns[0].id), Some(project.patterns[1].id)]
+    );
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().patterns.len(), 1);
+    assert!(
+        s.project()
+            .playlist
+            .clips
+            .iter()
+            .all(|c| c.pattern() == Some(s.project().patterns[0].id))
+    );
+}
+
+#[test]
+fn merging_pattern_clips_makes_one_pattern() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C5");
+    run(&mut s, "pattern.add");
+    run(&mut s, "note.add 1 2 1 E5 @2");
+    run(&mut s, "playlist.add_clip 1 1 0");
+    run(&mut s, "playlist.add_clip 2 2 1");
+    run(&mut s, "playlist.merge_clips 1 0 2 1");
+    let project = s.project();
+    assert_eq!(project.patterns.len(), 3);
+    let merged = &project.patterns[2];
+    let notes: Vec<(u32, u8)> = merged.notes.iter().map(|n| (n.start, n.key)).collect();
+    assert_eq!(notes, [(0, 60), (384 + 48, 64)]);
+    assert_eq!(clip_spans(&s), [(0, 0, 768, 0)]);
+    fails(&mut s, "playlist.merge_clips 1");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().patterns.len(), 2);
+    assert_eq!(clip_spans(&s).len(), 2);
+}
+
+#[test]
+fn audio_clips_reverse_and_fade_through_their_channel() {
+    use musiccraft_project::params::inst;
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    run(&mut s, "playlist.add_audio_clip 1 1 0 1");
+    run(&mut s, "playlist.reverse_clip 1 0");
+    run(&mut s, "playlist.set_clip_fade 1 0 out 0.5");
+    let params = &s.project().channels[0].params;
+    assert!((params.get(inst::REVERSE) - 1.0).abs() < f32::EPSILON);
+    assert!((params.get(inst::FADE_OUT) - 0.5).abs() < f32::EPSILON);
+    fails(&mut s, "playlist.set_clip_fade 1 0 sideways 1");
+    fails(&mut s, "playlist.set_clip_fade 1 0 in 11");
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert!(s.project().channels[0].params.get(inst::REVERSE) < 0.5);
+    run(&mut s, "playlist.add_clip 1 2 0");
+    fails(&mut s, "playlist.reverse_clip 2 0");
+}
+
+#[test]
+fn inserting_and_deleting_time_moves_clips_and_markers() {
+    let mut s = session();
+    run(&mut s, "playlist.add_clip 1 1 0 2");
+    run(&mut s, "playlist.add_clip 1 2 3 1");
+    run(&mut s, "playlist.add_marker 3 Drop");
+    let before = s.project().clone();
+    run(&mut s, "playlist.insert_space 1 2");
+    // The first clip is cut at bar 1; its rest and everything later move 2 bars.
+    assert_eq!(
+        clip_spans(&s),
+        [(0, 0, 384, 0), (0, 1152, 384, 384), (1, 1920, 384, 0)]
+    );
+    assert_eq!(s.project().playlist.markers[0].tick, 5 * 384);
+    run(&mut s, "playlist.delete_space 1 2");
+    assert_eq!(
+        clip_spans(&s),
+        [(0, 0, 384, 0), (0, 384, 384, 384), (1, 1152, 384, 0)]
+    );
+    assert_eq!(s.project().playlist.markers[0].tick, 3 * 384);
+    // Deleting across a marker removes it; a clip spanning the stretch is split.
+    run(&mut s, "playlist.delete_space 2.5 1");
+    assert!(s.project().playlist.markers.is_empty());
+    for _ in 0..3 {
+        run(&mut s, "edit.undo");
+    }
+    assert_eq!(*s.project(), before);
+}
+
+#[test]
+fn route_free_takes_an_unused_insert_or_adds_one() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth Bass");
+    run(&mut s, "channel.add_synth Lead");
+    run(&mut s, "channel.route 2 1");
+    run(&mut s, "mixer.add_effect 2 reverb");
+    run(&mut s, "channel.route_free 1");
+    // Insert 1 feeds Lead, insert 2 has an effect: insert 3 is free.
+    assert_eq!(s.project().channels[0].mixer_track, 3);
+    assert_eq!(s.project().mixer[3].name, "Bass");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().channels[0].mixer_track, 0);
+    assert_eq!(s.project().mixer[3].name, "Insert 3");
+    // With every insert in use a new one is added.
+    let tracks = s.project().mixer.len();
+    for t in 3..tracks {
+        run(&mut s, &format!("mixer.add_effect {t} reverb"));
+    }
+    run(&mut s, "channel.route_free 1");
+    assert_eq!(s.project().mixer.len(), tracks + 1);
+    assert_eq!(s.project().channels[0].mixer_track, tracks);
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().mixer.len(), tracks);
+}
+
+/// (start, length, key, velocity) of channel 1's notes in pattern 1.
+fn note_rows(s: &Session) -> Vec<(u32, u32, u8, u8)> {
+    s.project().patterns[0]
+        .notes
+        .iter()
+        .map(|n| (n.start, n.length, n.key, n.velocity))
+        .collect()
+}
+
+fn synth_with(notes: &[&str]) -> Session {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    for line in notes {
+        run(&mut s, line);
+    }
+    s
+}
+
+#[test]
+fn limit_folds_notes_into_the_range_by_octaves() {
+    let mut s = synth_with(&[
+        "note.add 1 0 1 C3",
+        "note.add 1 1 1 G7",
+        "note.add 1 2 1 E5",
+    ]);
+    run(&mut s, "note.limit 1 C5 B5");
+    let keys: Vec<u8> = note_rows(&s).iter().map(|n| n.2).collect();
+    assert_eq!(keys, [60, 67, 64]);
+    fails(&mut s, "note.limit 1 C6 C5");
+}
+
+#[test]
+fn lfo_and_scale_levels_shape_velocities() {
+    let mut s = synth_with(&[
+        "note.add 1 0 1 C5 100",
+        "note.add 1 4 1 C5 100",
+        "note.add 1 8 1 C5 100",
+    ]);
+    // A square LFO over 8 steps at full depth: high, low, high.
+    run(&mut s, "note.lfo 1 velocity 8 100 square");
+    let vels: Vec<u8> = note_rows(&s).iter().map(|n| n.3).collect();
+    assert_eq!(vels, [127, 1, 127]);
+    // Halving around the centre (64).
+    run(&mut s, "note.scale_levels 1 velocity 50");
+    let vels: Vec<u8> = note_rows(&s).iter().map(|n| n.3).collect();
+    assert_eq!(vels, [96, 33, 96]);
+    fails(&mut s, "note.lfo 1 volume 8 100");
+    run(&mut s, "note.lfo 1 pan 16 50");
+    assert_eq!(
+        s.project().patterns[0].notes[1].pan,
+        50,
+        "a quarter cycle in"
+    );
+}
+
+#[test]
+fn flam_adds_quieter_grace_notes_before() {
+    let mut s = synth_with(&["note.add 1 4 1 C5 100", "note.add 1 0 1 E5 100"]);
+    run(&mut s, "note.flam 1 6t 2 50");
+    let rows = note_rows(&s);
+    assert!(rows.contains(&(90, 6, 60, 50)) && rows.contains(&(84, 6, 60, 25)));
+    assert_eq!(rows.len(), 4, "the note at 0 has no room for grace notes");
+}
+
+#[test]
+fn randomize_is_repeatable_and_stays_in_range_and_scale() {
+    let mut s = synth_with(&[]);
+    run(&mut s, "note.randomize 1 C5 C6 50 7 C major");
+    let first = note_rows(&s);
+    assert!(!first.is_empty() && first.len() < 16);
+    for (_, _, key, _) in &first {
+        assert!((60..=72).contains(key));
+        assert!([0, 2, 4, 5, 7, 9, 11].contains(&(key % 12)), "{key}");
+    }
+    run(&mut s, "note.randomize 1 C5 C6 50 7 C major");
+    assert_eq!(note_rows(&s), first, "same seed, same notes");
+    run(&mut s, "note.randomize 1 C5 C6 100 8");
+    assert_eq!(note_rows(&s).len(), 16);
+}
+
+#[test]
+fn chords_lay_down_a_progression() {
+    let mut s = synth_with(&[]);
+    run(&mut s, "note.chords 1 C4 major 1-5-6-4");
+    let rows = note_rows(&s);
+    let at = |bar: u32| -> Vec<u8> {
+        rows.iter()
+            .filter(|n| n.0 == bar * 384)
+            .map(|n| n.2)
+            .collect()
+    };
+    assert_eq!(at(0), [48, 52, 55], "C");
+    assert_eq!(at(1), [55, 59, 62], "G");
+    assert_eq!(at(2), [57, 60, 64], "Am");
+    assert_eq!(at(3), [53, 57, 60], "F");
+    fails(&mut s, "note.chords 1 C4 major 1-9");
+}
+
+#[test]
+fn articulate_and_claw() {
+    let mut s = synth_with(&[
+        "note.add 1 0 1 C5 90",
+        "note.add 1 2 1 D5 90",
+        "note.add 1 3 1 E5 90",
+        "note.add 1 4 4 F5 90",
+    ]);
+    run(&mut s, "note.articulate 1 50 10");
+    let rows = note_rows(&s);
+    assert_eq!(
+        rows[0],
+        (0, 24, 60, 100),
+        "half the gap; accented on the beat"
+    );
+    assert_eq!(rows[1], (48, 12, 62, 90));
+    run(&mut s, "note.claw 1 2");
+    let keys: Vec<u8> = note_rows(&s).iter().map(|n| n.2).collect();
+    assert_eq!(keys, [60, 64]);
+    fails(&mut s, "note.claw 1 0");
+}
+
+#[test]
+fn master_pitch_and_a4_tuning() {
+    let mut s = session();
+    run(&mut s, "project.set_a4 432");
+    assert!(
+        (s.project().master_pitch - -31.77).abs() < 0.01,
+        "{}",
+        s.project().master_pitch
+    );
+    run(&mut s, "project.set_master_pitch 1200");
+    fails(&mut s, "project.set_master_pitch 1300");
+    fails(&mut s, "project.set_a4 500");
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert!(s.project().master_pitch.abs() < f32::EPSILON);
+}
+
+#[test]
+fn channel_groups_are_saved_and_undoable() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.set_group 1 Drums");
+    assert_eq!(s.project().channels[0].group, "Drums");
+    let json = s.project().to_json().unwrap();
+    assert!(json.contains("\"group\": \"Drums\""));
+    run(&mut s, "channel.set_group 1");
+    assert!(s.project().channels[0].group.is_empty());
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().channels[0].group, "Drums");
+}
+
+#[test]
 fn pattern_navigation_clamps() {
     let mut s = session();
     run(&mut s, "pattern.add");
@@ -426,7 +824,8 @@ fn errors_leave_the_project_unchanged() {
         "note.set_all 1 [[0,0,60,100]]",
         "step.toggle 1 99999",
         "pattern.set_length 1 0",
-        "pattern.set_swing 1 101",
+        "project.set_swing 101",
+        "project.set_swing -1",
         "pattern.select 4",
         "mixer.add_effect 1 theremin",
         "mixer.set_send 2 1 0.5",
