@@ -1,5 +1,7 @@
 use musiccraft_project::params::TICKS_PER_BAR;
-use musiccraft_project::{Clip, ClipSource, Instrument, PLAYLIST_TRACKS, Project};
+use musiccraft_project::{
+    Clip, ClipSource, Instrument, Marker, MarkerAction, PLAYLIST_TRACKS, Project,
+};
 
 use crate::args::{Args, on_off, ticks};
 use crate::command::cmd;
@@ -66,6 +68,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "playlist.remove_marker <bar>",
             "Remove the marker at a position.",
             remove_marker,
+        ),
+        cmd(
+            "playlist.set_marker_action",
+            "playlist.set_marker_action <bar> <none|pause|song_loop>",
+            "Make a marker a label, a pause point or the song loop point (only one marker is the song loop).",
+            set_marker_action,
+        ),
+        cmd(
+            "playlist.set_markers",
+            "playlist.set_markers <json>",
+            "Replace every marker (used by undo).",
+            set_markers,
         ),
         cmd(
             "playlist.clear",
@@ -370,22 +384,32 @@ fn set_clips(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     replace_clips(project, args, clips)
 }
 
+/// An inverse that puts every marker back exactly as it was.
+fn restore_markers(args: &Args<'_>, markers: &[Marker]) -> Result<Invocation, CommandError> {
+    let json = serde_json::to_string(markers).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Invocation::new("playlist.set_markers", [json]))
+}
+
 fn add_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, usize::MAX)?;
     let tick = args.time(0, TICKS_PER_BAR)?;
     let name = args.rest(1)?;
+    let before = project.playlist.markers.clone();
     let markers = &mut project.playlist.markers;
     let replaced = markers
         .iter()
         .position(|m| m.tick == tick)
         .map(|i| markers.remove(i));
-    markers.push(musiccraft_project::Marker {
+    // Renaming a marker keeps what it does.
+    let action = replaced.as_ref().map_or(MarkerAction::None, |m| m.action);
+    markers.push(Marker {
         tick,
         name: name.clone(),
+        action,
     });
     markers.sort_by_key(|m| m.tick);
     let inverse = match replaced {
-        Some(old) => Invocation::new("playlist.add_marker", [ticks(old.tick), old.name]),
+        Some(_) => restore_markers(args, &before)?,
         None => Invocation::new("playlist.remove_marker", [ticks(tick)]),
     };
     Ok(Outcome::undoable(
@@ -397,6 +421,7 @@ fn add_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
 fn remove_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, 1)?;
     let tick = args.time(0, TICKS_PER_BAR)?;
+    let before = project.playlist.markers.clone();
     let markers = &mut project.playlist.markers;
     let index = markers
         .iter()
@@ -405,6 +430,61 @@ fn remove_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comm
     let old = markers.remove(index);
     Ok(Outcome::undoable(
         format!("removed marker {}", old.name),
-        Invocation::new("playlist.add_marker", [ticks(old.tick), old.name]),
+        restore_markers(args, &before)?,
+    ))
+}
+
+fn set_marker_action(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let tick = args.time(0, TICKS_PER_BAR)?;
+    let raw = args.str(1)?;
+    let action = MarkerAction::parse(raw).ok_or_else(|| {
+        let names: Vec<_> = MarkerAction::ALL.iter().map(|a| a.name()).collect();
+        args.invalid(format!(
+            "`{raw}` is not a marker action; choose from {}",
+            names.join(", ")
+        ))
+    })?;
+    let before = project.playlist.markers.clone();
+    let markers = &mut project.playlist.markers;
+    let index = markers
+        .iter()
+        .position(|m| m.tick == tick)
+        .ok_or_else(|| args.invalid(format!("there is no marker at {tick}t")))?;
+    let name = markers[index].name.clone();
+    if markers[index].action == action {
+        return Ok(Outcome::done(format!(
+            "marker {name} is already {}",
+            action.name()
+        )));
+    }
+    if action == MarkerAction::SongLoop {
+        // The song has one loop point: it moves to this marker.
+        for marker in markers
+            .iter_mut()
+            .filter(|m| m.action == MarkerAction::SongLoop)
+        {
+            marker.action = MarkerAction::None;
+        }
+    }
+    markers[index].action = action;
+    Ok(Outcome::undoable(
+        format!("marker {name}: {}", action.name()),
+        restore_markers(args, &before)?,
+    ))
+}
+
+fn set_markers(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let mut markers: Vec<Marker> =
+        serde_json::from_str(args.str(0)?).map_err(|e| args.invalid(e.to_string()))?;
+    markers.sort_by_key(|m| m.tick);
+    if markers.windows(2).any(|pair| pair[0].tick == pair[1].tick) {
+        return Err(args.invalid("two markers share a position"));
+    }
+    let before = std::mem::replace(&mut project.playlist.markers, markers);
+    Ok(Outcome::undoable(
+        format!("{} markers", project.playlist.markers.len()),
+        restore_markers(args, &before)?,
     ))
 }

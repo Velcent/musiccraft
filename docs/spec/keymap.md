@@ -29,6 +29,7 @@
 | Ctrl+T | Typing keyboard plays notes |
 | F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer |
 | Alt+F8 | Browser |
+| Alt+T | Add a playlist marker at the playhead |
 | F10 | Settings |
 | F4 | New pattern |
 | Plus / Minus | Next / previous pattern |
@@ -41,9 +42,9 @@
 
 ## Sources
 
-- Space, L, Ctrl+M, F4, F5, F6, F7, F9, Alt+F8, numeric-keypad plus/minus, Ctrl+S,
-  Ctrl+Shift+S, Ctrl+O, Ctrl+N (save new version), Ctrl+R and R (record) follow
-  the default shortcuts listed in
+- Space, L, Ctrl+M, F4, F5, F6, F7, F9, Alt+F8, Alt+T, numeric-keypad plus/minus,
+  Ctrl+S, Ctrl+Shift+S, Ctrl+O, Ctrl+N (save new version), Ctrl+R and R
+  (record) follow the default shortcuts listed in
   the publicly published FL Studio online manual ("Keyboard shortcuts"). Shortcuts
   are a convenience for users switching tools; the bindings are data and can be
   changed.

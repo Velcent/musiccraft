@@ -93,6 +93,8 @@ struct App {
     pending: Option<Pending>,
     /// Set once the window may close without asking again.
     closing: bool,
+    /// Pause-marker stops seen from the engine so far.
+    marker_pauses: u64,
 }
 
 /// What happens after the user deals with unsaved changes.
@@ -329,6 +331,7 @@ impl App {
             saved_json,
             pending: None,
             closing: false,
+            marker_pauses: 0,
         };
         app.refresh_devices();
         app.start_audio(ctx);
@@ -1024,6 +1027,33 @@ impl App {
         }
     }
 
+    /// Song playback stopped at a pause marker: stop the transport too, and keep
+    /// the playhead on the marker so Play continues from there.
+    fn follow_marker_pause(&mut self) {
+        let Some(audio) = &self.audio else {
+            return;
+        };
+        let (count, position) = audio.handle.meters().marker_pause();
+        if count <= self.marker_pauses {
+            // Nothing new (or a restarted engine counting from zero again).
+            self.marker_pauses = count;
+            return;
+        }
+        self.marker_pauses = count;
+        if !self.session.project().transport().is_playing() {
+            return;
+        }
+        if let Err(err) = self.session.run(&Invocation::bare("transport.stop")) {
+            self.ui.set_status(err.to_string(), true);
+            return;
+        }
+        // Stop rewinds; move the playhead back onto the marker afterwards.
+        self.sync();
+        self.send(EngineMessage::Seek(position));
+        self.ui
+            .set_status("paused at a marker; press Space to continue", false);
+    }
+
     fn update_title(&mut self, ctx: &egui::Context) {
         let project = self.session.project();
         let title = format!("MusicCraft — {}", project.name());
@@ -1087,6 +1117,7 @@ impl eframe::App for App {
         self.record_audio();
         self.selected_channel
             .store(self.ui.selected_channel, Ordering::Relaxed);
+        self.follow_marker_pause();
         self.sync();
         self.release_due_previews();
         self.update_title(&ctx);

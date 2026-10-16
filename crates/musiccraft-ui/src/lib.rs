@@ -535,6 +535,12 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                 Some(_) => out.push(Action::Run(Invocation::bare("project.save_new_version"))),
                 None => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
             },
+            "ui.add_marker" => {
+                // A marker at the playhead, on the beat.
+                let tick = frame.engine.position_ticks.max(0.0) as u32;
+                let tick = tick - tick % musiccraft_project::params::PPQ;
+                state.dialog = Some(dialogs::Dialog::add_marker(tick));
+            }
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.export_stems" => state.dialog = Some(dialogs::Dialog::export_stems(frame.project)),
             "ui.quit" => out.push(Action::Quit),

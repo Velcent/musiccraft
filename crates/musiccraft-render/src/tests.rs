@@ -866,3 +866,32 @@ fn midi_out_channels_reach_the_midi_queue_and_render_silent() {
     let (left, right, _) = render(s.project(), RenderOptions::default());
     assert!(left.iter().chain(&right).all(|x| *x == 0.0));
 }
+
+#[test]
+fn markers_pause_and_loop_song_playback_but_not_exports() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick
+         step.toggle 1 0
+         playlist.add_clip 1 1 0 4
+         transport.set_mode song
+         playlist.add_marker 2 Break
+         playlist.set_marker_action 2 pause
+         playlist.add_marker 1 Groove
+         playlist.set_marker_action 1 song_loop",
+    );
+    let bar = f64::from(TICKS_PER_BAR);
+    let seq = build_sequence(s.project());
+    assert_eq!(seq.next_pause(0.0, 4.0 * bar), Some(2.0 * bar));
+    assert_eq!(seq.loop_start(), u64::from(TICKS_PER_BAR));
+    assert_eq!(seq.home(), 0);
+    // Exports render the whole song once, ignoring pause markers.
+    let full = crate::sequence::build_full_sequence(s.project());
+    assert_eq!(full.next_pause(0.0, 4.0 * bar), None);
+    // A loop region takes over from the markers while it is set.
+    run(&mut s, "transport.set_loop 2 4");
+    let seq = build_sequence(s.project());
+    assert_eq!(seq.next_pause(0.0, 4.0 * bar), None);
+    assert_eq!(seq.loop_start(), 2 * u64::from(TICKS_PER_BAR));
+}

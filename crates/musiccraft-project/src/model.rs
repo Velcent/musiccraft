@@ -764,6 +764,46 @@ impl Clip {
     }
 }
 
+/// What a marker does when song playback reaches it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkerAction {
+    /// Only a label.
+    #[default]
+    None,
+    /// Playback pauses here; the playhead stays on the marker.
+    Pause,
+    /// At the end of the song, playback returns here instead of to the start.
+    SongLoop,
+}
+
+impl MarkerAction {
+    /// Every action, in menu order.
+    pub const ALL: [Self; 3] = [Self::None, Self::Pause, Self::SongLoop];
+
+    /// The name used by commands and the project file.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Pause => "pause",
+            Self::SongLoop => "song_loop",
+        }
+    }
+
+    /// Parses a name from [`MarkerAction::name`].
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.name() == name)
+    }
+
+    /// Whether this is a plain label.
+    #[must_use]
+    pub fn is_none(&self) -> bool {
+        *self == Self::None
+    }
+}
+
 /// A named position on the song timeline.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Marker {
@@ -771,6 +811,9 @@ pub struct Marker {
     pub tick: u32,
     /// Label.
     pub name: String,
+    /// What the marker does during song playback.
+    #[serde(default, skip_serializing_if = "MarkerAction::is_none")]
+    pub action: MarkerAction,
 }
 
 /// The song arrangement.
@@ -791,6 +834,25 @@ pub struct Playlist {
 }
 
 impl Playlist {
+    /// Where song playback returns at the end: the first song-loop marker.
+    #[must_use]
+    pub fn song_loop_tick(&self) -> Option<u32> {
+        self.markers
+            .iter()
+            .find(|m| m.action == MarkerAction::SongLoop)
+            .map(|m| m.tick)
+    }
+
+    /// Positions of pause markers, in order.
+    #[must_use]
+    pub fn pause_ticks(&self) -> Vec<u32> {
+        self.markers
+            .iter()
+            .filter(|m| m.action == MarkerAction::Pause)
+            .map(|m| m.tick)
+            .collect()
+    }
+
     /// Keeps clips in canonical order.
     pub fn sort_clips(&mut self) {
         self.clips.sort_by_key(|c| (c.track, c.start));

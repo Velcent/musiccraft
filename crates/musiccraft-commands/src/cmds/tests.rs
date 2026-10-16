@@ -132,6 +132,13 @@ const SCRIPT: &[&str] = &[
     "playlist.add_marker 3 Drop",
     "playlist.add_marker 1 Intro",
     "playlist.remove_marker 3",
+    "playlist.set_marker_action 1 pause",
+    "playlist.add_marker 5 End",
+    "playlist.set_marker_action 5 song_loop",
+    "playlist.add_marker 2 Chorus",
+    "playlist.set_marker_action 2 song_loop",
+    "playlist.add_marker 1 Intro again",
+    "playlist.remove_marker 2",
     "playlist.clear",
     r#"edit.batch "project.set_tempo 90" "channel.set_volume 1 0.3""#,
 ];
@@ -453,6 +460,83 @@ fn recover_loads_a_backup_without_adopting_its_path() {
     fails(&mut s, "project.save");
     fails(&mut s, "project.recover /no/such/backup.mcproj");
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn marker_actions_pause_and_song_loop() {
+    use musiccraft_project::MarkerAction;
+    let mut s = session();
+    run(&mut s, "playlist.add_marker 3 Break");
+    run(&mut s, "playlist.add_marker 5 Outro");
+    run(&mut s, "playlist.set_marker_action 3 pause");
+    // Playlist bars count from 0.
+    assert_eq!(s.project().playlist.pause_ticks(), [3 * TICKS_PER_BAR]);
+    assert_eq!(s.project().playlist.song_loop_tick(), None);
+    // Only one marker is the song loop point.
+    run(&mut s, "playlist.set_marker_action 3 song_loop");
+    run(&mut s, "playlist.set_marker_action 5 song_loop");
+    let actions: Vec<_> = s
+        .project()
+        .playlist
+        .markers
+        .iter()
+        .map(|m| m.action)
+        .collect();
+    assert_eq!(actions, [MarkerAction::None, MarkerAction::SongLoop]);
+    assert_eq!(
+        s.project().playlist.song_loop_tick(),
+        Some(5 * TICKS_PER_BAR)
+    );
+    // Undo restores the previous loop point in one step.
+    run(&mut s, "edit.undo");
+    assert_eq!(
+        s.project().playlist.song_loop_tick(),
+        Some(3 * TICKS_PER_BAR)
+    );
+    run(&mut s, "edit.redo");
+    // Renaming keeps the action.
+    run(&mut s, "playlist.add_marker 5 Coda");
+    assert_eq!(s.project().playlist.markers[1].name, "Coda");
+    assert_eq!(
+        s.project().playlist.markers[1].action,
+        MarkerAction::SongLoop
+    );
+    fails(&mut s, "playlist.set_marker_action 5 stop");
+    fails(&mut s, "playlist.set_marker_action 9 pause");
+    fails(
+        &mut s,
+        r#"playlist.set_markers "[{\"tick\":0,\"name\":\"a\"},{\"tick\":0,\"name\":\"b\"}]""#,
+    );
+}
+
+#[test]
+fn a_song_loop_marker_past_the_last_clip_extends_the_song() {
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    run(&mut s, "step.toggle 1 0");
+    run(&mut s, "playlist.add_clip 1 1 0");
+    assert_eq!(s.project().song_length_ticks(), TICKS_PER_BAR);
+    run(&mut s, "playlist.add_marker 4.5 Tail");
+    assert_eq!(
+        s.project().song_length_ticks(),
+        TICKS_PER_BAR,
+        "a plain marker"
+    );
+    run(&mut s, "playlist.set_marker_action 4.5 song_loop");
+    assert_eq!(s.project().song_length_ticks(), 5 * TICKS_PER_BAR);
+}
+
+#[test]
+fn plain_markers_store_no_action_in_the_project_file() {
+    let mut s = session();
+    run(&mut s, "playlist.add_marker 2 Verse");
+    let json = s.project().to_json().unwrap();
+    assert!(!json.contains("\"action\""), "{json}");
+    run(&mut s, "playlist.set_marker_action 2 pause");
+    let json = s.project().to_json().unwrap();
+    assert!(json.contains("\"action\": \"pause\""), "{json}");
+    let loaded = Project::from_json(&json).unwrap();
+    assert_eq!(loaded.playlist.pause_ticks(), [2 * TICKS_PER_BAR]);
 }
 
 #[test]

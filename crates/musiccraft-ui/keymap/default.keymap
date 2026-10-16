@@ -12,6 +12,9 @@ Ctrl+M       = transport.toggle_metronome
 R            = ui.toggle_record
 Ctrl+T       = ui.typing_keyboard
 
+# Playlist
+Alt+T        = ui.add_marker
+
 # Windows
 F5           = view.toggle playlist
 F6           = view.toggle channel_rack

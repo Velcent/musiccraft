@@ -24,9 +24,35 @@
   `transport.clear_loop` removes it. Exports always render the whole song.
   UI: Shift+drag on the ruler; right-click the ruler → Clear loop.
 - `playlist.add_marker <bar> <name>` / `playlist.remove_marker <bar>` manage named
-  markers (one per position). UI: right-click the ruler → Add marker here;
-  clicking a marker's label jumps the playhead to it.
+  markers (one per position; re-adding at a position renames the marker and keeps
+  its action). UI: right-click the ruler → Add marker here, or Alt+T for a marker
+  at the playhead (on the beat); clicking a marker's label jumps the playhead to it.
 - Both are saved and undoable.
+
+### Marker actions: making a song stop instead of looping
+
+- Song playback loops by default: at the end of the song it starts again from the
+  beginning. Markers change that. `playlist.set_marker_action <bar>
+  <none|pause|song_loop>` (undoable) sets what a marker does; UI: right-click a
+  marker → No action / Pause / Song loop, or right-click the ruler → Add pause
+  marker here (a marker named "Pause", one undo step).
+  - `none` (default): only a label, drawn as a flag.
+  - `pause`: when song playback reaches the marker it stops there; the playhead
+    stays on the marker and Play continues from it (it does not pause again on the
+    marker it starts from). Put one at the end of the song to stop instead of
+    looping. Drawn as two red bars.
+  - `song_loop`: when playback reaches the end of the song it returns to this
+    marker instead of the beginning; Stop still returns to the beginning. Only one
+    marker is the song loop: choosing it moves it there (one undo step). A
+    song-loop marker at or past the last clip extends the song to it (so exports
+    include the silence up to it) and playback then wraps to the beginning. Drawn as
+    a down-facing arrow.
+- Marker actions apply in song mode while no loop region is set; a loop region
+  takes over until it is cleared. Pattern mode always loops the pattern.
+- Exports always render the whole song once and ignore pause markers.
+- Project files store `"action"` only for markers that have one.
+- `playlist.set_markers <json>` replaces every marker; undo uses it to restore
+  markers exactly.
 
 ## Clip kinds
 
@@ -96,3 +122,9 @@
 - Pattern clips arranged on a playlist and a song/pattern mode switch follow the
   workflow described in the FL Studio online manual, "Playlist" section. Row
   count, overlap rule and command names are our own.
+- Marker actions follow the time-marker actions described in the same manual
+  section ("Pause": playback pauses at the marker; "Loop": playback returns to the
+  marker at the end of the song, and one placed past the last data extends the
+  render; the loop marker drawn with a down-facing arrow), and its "Add time
+  marker" shortcut Alt+T ("Keyboard shortcuts"). Glyphs, colours, the one-loop-
+  point rule, resuming past a pause and command names are our own.

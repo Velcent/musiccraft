@@ -18,6 +18,9 @@ pub struct Meters {
     scope_write: AtomicUsize,
     load_bits: AtomicU32,
     pitches: Vec<AtomicU32>,
+    /// Where playback last paused at a pause marker, and how many times it has.
+    marker_pause_bits: AtomicU64,
+    marker_pauses: AtomicU64,
 }
 
 impl Default for Meters {
@@ -43,7 +46,25 @@ impl Meters {
             pitches: (0..MAX_MIXER_TRACKS * MAX_EFFECT_SLOTS)
                 .map(|_| AtomicU32::new(0))
                 .collect(),
+            marker_pause_bits: AtomicU64::new(0.0_f64.to_bits()),
+            marker_pauses: AtomicU64::new(0),
         }
+    }
+
+    /// How many times playback has paused at a pause marker, and the position
+    /// (ticks) of the latest pause. Front ends watch the count to stop their
+    /// transport and keep the playhead on the marker.
+    #[must_use]
+    pub fn marker_pause(&self) -> (u64, f64) {
+        let count = self.marker_pauses.load(Ordering::Acquire);
+        let position = f64::from_bits(self.marker_pause_bits.load(Ordering::Relaxed));
+        (count, position)
+    }
+
+    pub(crate) fn record_marker_pause(&self, position: f64) {
+        self.marker_pause_bits
+            .store(position.to_bits(), Ordering::Relaxed);
+        self.marker_pauses.fetch_add(1, Ordering::Release);
     }
 
     /// Fraction of the real-time budget the last callback used (1.0 = all of it).

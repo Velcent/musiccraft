@@ -57,6 +57,7 @@ channel_rack,piano_roll,playlist,mixer,browser`.
 | Ctrl+S, Ctrl+O, Ctrl+R | Save / open / export WAV |
 | Ctrl+M, R, Ctrl+T | Metronome / record / typing keyboard |
 | Ctrl+N | Save new version |
+| Alt+T | Add a playlist marker at the playhead |
 | F10 | Settings (audio device, buffer, MIDI port, scale, folders) |
 
 Hover any control and the hint bar at the top says what it does.
@@ -75,7 +76,9 @@ Hover any control and the hint bar at the top says what it does.
 - **Playlist** (main workspace): paint patterns, automation or audio clips;
   click, Shift+click or Ctrl+drag to select; drag to move or resize; Delete,
   Ctrl+B duplicate. Click the ruler to seek, Shift+drag it to set a loop,
-  right-click it for markers.
+  right-click it for markers. Songs loop by default; right-click the ruler →
+  Add pause marker here at the end to stop there instead, or make a marker the
+  Song loop point to return to it.
 - **Channel rack**: click steps; knobs for pan and volume (double-click resets);
   click a channel name for its settings. The synth has presets, two
   oscillators with unison and spread, sub, drive, low/band/high-pass filter
