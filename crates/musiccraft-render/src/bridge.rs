@@ -112,7 +112,8 @@ pub struct SyncReport {
 }
 
 fn sample_key(sample: &str, base: Option<&Path>) -> String {
-    if sample.starts_with(BUILTIN_PREFIX) {
+    // An empty sampler stays empty instead of naming the project folder.
+    if sample.is_empty() || sample.starts_with(BUILTIN_PREFIX) {
         return sample.to_owned();
     }
     match base {
@@ -608,6 +609,10 @@ impl Bridge {
 
     /// Loads a channel's sample, substituting silence (and a warning) on error.
     fn load(&mut self, key: &str, warnings: &mut Vec<String>) -> Arc<SampleBuffer> {
+        if key.is_empty() {
+            // A sampler without a sample is silent by design, not an error.
+            return Arc::new(SampleBuffer::silent(f64::from(self.sample_rate)));
+        }
         match self.samples.get(key, None, self.sample_rate) {
             Ok(buffer) => buffer,
             Err(err) => {

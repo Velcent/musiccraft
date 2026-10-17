@@ -2139,3 +2139,48 @@ fn shaped_automation_segments_reach_the_engine_lane() {
     assert!(lane.points.len() > 10, "a bent segment is sampled");
     assert!(lane.value_at(192.0).unwrap() < -0.8, "slow start");
 }
+
+#[test]
+fn a_loop_region_does_not_change_an_export() {
+    let render_song = |lines: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_synth
+                 note.add 1 0 16 C5 100
+                 playlist.add_clip 1 1 0
+                 transport.set_mode song
+                 {lines}"
+            ),
+        );
+        render(s.project(), RenderOptions::default()).0
+    };
+    let plain = render_song("");
+    // A loop region past the song's end (as FL projects can carry).
+    let looped = render_song("transport.set_loop 10 14");
+    assert_eq!(plain.len(), looped.len());
+    let diff = plain
+        .iter()
+        .zip(&looped)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0_f32, f32::max);
+    assert!(diff < 1e-4, "exports differ by {diff}");
+}
+
+#[test]
+fn an_empty_sampler_is_silent_without_a_warning() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-empty-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    let mut project = s.project().clone();
+    project.channels[0].instrument = musiccraft_project::Instrument::Sampler {
+        sample: String::new(),
+    };
+    // Saved next to a folder, an empty path must not resolve to that folder.
+    project.set_path(Some(dir.join("p.mcp.json")));
+    let (_, _, warnings) = render(&project, RenderOptions::default());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

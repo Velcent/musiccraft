@@ -28,7 +28,7 @@ Times in ticks are rescaled from the file's PPQ to MusicCraft's 96 (rounded).
   - Sampler with a sample: a sampler playing that path as written. FL's factory
     paths (`%FLStudioFactoryData%…`) and files that are not on this computer
     stay in the project and play silence until relocated.
-  - Sampler without a sample: an empty sampler (silent).
+  - Sampler without a sample: an empty sampler (silent, with no warning).
   - VST3 plugin: a plugin instrument with the VST3 class id MusicCraft uses
     (`vst3:<32 hex>`). The id's byte order follows the platform that saved the
     file: a Windows path to the plugin means COM order. It is converted to the
