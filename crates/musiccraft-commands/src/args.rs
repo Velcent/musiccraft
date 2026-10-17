@@ -2,8 +2,8 @@
 
 use std::str::FromStr;
 
-use musiccraft_project::{Meter, Project, TimeSig};
 use musiccraft_project::music::parse_key;
+use musiccraft_project::{Meter, Project, TimeSig};
 
 use crate::CommandError;
 
@@ -194,7 +194,9 @@ impl<'a> Args<'a> {
                 .parse::<f64>()
                 .ok()
                 .filter(|v| v.is_finite() && *v >= 0.0 && *v <= f64::from(u32::MAX / 2))
-                .ok_or_else(|| self.invalid(format!("`{raw}` is not a length (e.g. 4, 0.5 or 96t)")))?;
+                .ok_or_else(|| {
+                    self.invalid(format!("`{raw}` is not a length (e.g. 4, 0.5 or 96t)"))
+                })?;
             meter.span(start, bars)
         };
         if ticks == 0 {

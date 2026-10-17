@@ -23,6 +23,8 @@ of contents; see `docs/clean-room.md`.
 | Transport | Pattern / song mode | `cmd:transport.set_mode` `key:L=transport.toggle_mode` |
 | Transport | Tempo | `cmd:project.set_tempo` `spec:transport.md` |
 | Transport | Metronome | `cmd:transport.toggle_metronome` `key:Ctrl+M=transport.toggle_metronome` |
+| Transport | Time signatures: project, per pattern, and changes along the song | `cmd:project.set_time_signature` `cmd:pattern.set_time_signature` `cmd:playlist.set_time_signature` `spec:time-signatures.md` |
+| Transport | Metronome, count-in, grids and snap follow the time signature | `done` |
 | Transport | Loop a time range of the song | `cmd:transport.set_loop` `cmd:transport.clear_loop` |
 | Transport | Record audio into the playlist | `done` |
 | Channel rack | Sampler channels with built-in sounds | `cmd:channel.add_sampler` `spec:channel-rack.md` |

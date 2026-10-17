@@ -83,7 +83,8 @@ impl Command for ConsolidateCommand {
             .ok()
             .and_then(|t| t.checked_sub(1))
             .ok_or_else(|| invalid(format!("`{track}` is not a playlist track")))?;
-        let at = time(at, &project.song_meter()).ok_or_else(|| invalid(format!("`{at}` is not a time")))?;
+        let at = time(at, &project.song_meter())
+            .ok_or_else(|| invalid(format!("`{at}` is not a time")))?;
         let index = project
             .playlist
             .clip_at(track, at)

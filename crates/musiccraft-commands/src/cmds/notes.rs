@@ -643,10 +643,9 @@ fn import_midi(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
     });
     let notes_inverse = target.set_all_inverse(&old);
     let inverse = match meter_inverse {
-        Some(meter) => Invocation::new(
-            crate::BATCH,
-            [notes_inverse.to_string(), meter.to_string()],
-        ),
+        Some(meter) => {
+            Invocation::new(crate::BATCH, [notes_inverse.to_string(), meter.to_string()])
+        }
         None => notes_inverse,
     };
     let message = format!("imported {count} notes into channel {}", target.channel + 1);

@@ -30,7 +30,8 @@
   selected pattern; `song` plays the playlist arrangement and loops at its end.
   `transport.toggle_mode` switches between them (default key: `L`).
 - `transport.toggle_metronome` (default key Ctrl+M) turns a click on every beat
-  on or off: a short decaying sine, higher on each bar's first beat. The setting
+  on or off: a short decaying sine on every beat of the time signature
+  (`time-signatures.md`), higher on each bar's first beat. The setting
   is saved with the project but the click is never part of an export.
 - **Tap tempo**: the TAP button next to the tempo display. Each tap sets the
   tempo from the average interval of the last eight taps (clamped to the
@@ -47,7 +48,7 @@
 
 ## Engine mapping
 
-- The engine tracks position in ticks (96 per beat). While playing, each processed
+- The engine tracks position in ticks (96 per quarter note). While playing, each processed
   block advances position by `frames * bpm / 60 * 96 / sample_rate`. Tempo changes
   apply from the next block; position never jumps.
 - While stopped the engine does not advance; held voices finish their release.

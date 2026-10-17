@@ -407,8 +407,7 @@ impl Engine {
                     match self.start {
                         Start::CountIn(bars) if bars > 0 => {
                             let sig = self.meter().sig_at(self.position.max(0.0) as u32);
-                            let per_beat = self.frames_per_beat()
-                                * f64::from(sig.beat_ticks())
+                            let per_beat = self.frames_per_beat() * f64::from(sig.beat_ticks())
                                 / f64::from(PPQ);
                             let beats = bars.saturating_mul(sig.num());
                             let frames = f64::from(beats) * per_beat;

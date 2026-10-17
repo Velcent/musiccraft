@@ -91,9 +91,8 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
 - [x] Automation of individual notes or events inside a pattern.
 - [x] Channel display filter groups.
 - [x] Per-track arm and audio input selection.
-- [ ] Time signatures (known deferred). Still deferred: 4/4 bars of 384 ticks
-  are assumed across the model, commands, UI grids and file format, so this
-  needs its own milestone and spec.
+- [x] Time signatures: project, per-pattern and song changes
+  (`docs/spec/time-signatures.md`).
 
 ## Sources
 

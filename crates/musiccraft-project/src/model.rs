@@ -2,11 +2,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use musiccraft_meter::TimeSig;
 use musiccraft_params::{
     EffectKind, INSTRUMENT_PARAMS, MAX_EFFECT_PARAMS, MAX_INSTRUMENT_PARAMS, ParamSpec,
     RACK_BRANCHES, defaults, inst,
 };
-use musiccraft_meter::TimeSig;
 use serde::{Deserialize, Serialize};
 
 /// Stable identity of a channel; survives reordering and removal of others.

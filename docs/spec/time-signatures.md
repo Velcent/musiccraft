@@ -71,7 +71,8 @@
 - Playlist: the ruler, the grid and bar numbers follow the song meter;
   signature markers are drawn on the ruler with their signature. Right-click the
   ruler → Time signature here… adds one at the bar under the pointer.
-- Automation editor: grid and numbers follow the song meter.
+- Automation editor: grid and numbers are bars of the project signature (a
+  curve's ticks count from its clip's start, wherever it is placed).
 - Snap to Beat and Bar snap to beats and bars of the meter.
 
 ## Files and exchange

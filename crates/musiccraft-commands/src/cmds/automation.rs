@@ -1,6 +1,4 @@
-use musiccraft_project::params::{
-    INSTRUMENT_PARAMS, TICKS_PER_STEP, index_of, volume_to_unit,
-};
+use musiccraft_project::params::{INSTRUMENT_PARAMS, TICKS_PER_STEP, index_of, volume_to_unit};
 use musiccraft_project::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Clip, ClipSource, MAX_VOLUME,
     PLAYLIST_TRACKS, PatternLane, Project,

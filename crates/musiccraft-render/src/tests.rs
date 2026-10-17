@@ -2063,10 +2063,16 @@ fn signatures_reach_the_sequence_and_midi_files() {
     let sequence = build_sequence(s.project());
     assert_eq!(sequence.meter().sig_at(384), "3/4".parse().unwrap());
     let path = dir.join("song.mid");
-    run(&mut s, &format!("project.export_midi \"{}\"", path.display()));
+    run(
+        &mut s,
+        &format!("project.export_midi \"{}\"", path.display()),
+    );
     let bytes = std::fs::read(&path).unwrap();
     // Delta 384 (0x83 0x00), then 3/4.
     let change = [0x83, 0x00, 0xff, 0x58, 4, 3, 2, 24, 8];
-    assert!(bytes.windows(9).any(|w| w == change), "the change is written");
+    assert!(
+        bytes.windows(9).any(|w| w == change),
+        "the change is written"
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }

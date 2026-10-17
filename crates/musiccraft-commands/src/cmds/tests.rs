@@ -1571,7 +1571,11 @@ fn the_project_signature_carries_patterns_that_follow_it() {
     assert_eq!(p.time_signature, sig("7/8"));
     assert_eq!(p.patterns[0].time_signature, sig("7/8"));
     assert_eq!(p.patterns[0].length_steps, 14, "one bar stays one bar");
-    assert_eq!(p.patterns[1].time_signature, sig("3/4"), "its own signature stays");
+    assert_eq!(
+        p.patterns[1].time_signature,
+        sig("3/4"),
+        "its own signature stays"
+    );
     run(&mut s, "pattern.add");
     assert_eq!(s.project().patterns[2].time_signature, sig("7/8"));
     assert_eq!(s.project().patterns[2].length_ticks(), 336);

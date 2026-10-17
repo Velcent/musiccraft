@@ -796,16 +796,19 @@ impl App {
     /// Step edit: enters a played note at the playhead (snapped), and moves
     /// the playhead one snap step on once every key is up.
     fn step_edit(&mut self, key: u8, velocity: u8, position: f64) {
-        let snap = f64::from(self.ui.step_edit_ticks().max(1));
+        let meter = self.session.project().playing_meter();
+        let snap_at =
+            |ui: &UiState, at: f64| f64::from(ui.step_edit_ticks(at as u32, &meter).max(1));
         if velocity == 0 {
             if let Some(cursor) = self.steps.note_off(key) {
+                let snap = snap_at(&self.ui, cursor);
                 self.send(EngineMessage::Seek(cursor + snap));
             }
             return;
         }
-        let cursor = self
-            .steps
-            .note_on(key, (position.max(0.0) / snap).floor() * snap);
+        let here = f64::from(self.ui.step_edit_floor(position.max(0.0), &meter));
+        let cursor = self.steps.note_on(key, here);
+        let snap = snap_at(&self.ui, cursor);
         let project = self.session.project();
         let channel = self.ui.selected_channel;
         if channel >= project.channels.len() {

@@ -8,8 +8,8 @@ use egui::{
 };
 use musiccraft_commands::Invocation;
 use musiccraft_project::music::key_name;
-use musiccraft_project::params::{PPQ, TICKS_PER_BAR, TICKS_PER_STEP};
-use musiccraft_project::{Note, PlayMode, Project};
+use musiccraft_project::params::TICKS_PER_STEP;
+use musiccraft_project::{Meter, Note, PlayMode, Project};
 
 use crate::geometry::{Grid, Hit, Snap, hit_test};
 use crate::icons::{self, Icon};
@@ -82,6 +82,8 @@ impl Tool {
 pub struct RollState {
     /// The active tool.
     pub(crate) tool: Tool,
+    /// The selected pattern's bars and beats, refreshed every frame.
+    pub(crate) meter: Meter,
     /// New notes are slide notes.
     pub(crate) slide: bool,
     /// New notes are portamento notes.
@@ -135,6 +137,7 @@ impl Default for RollState {
             px_per_step: 24.0,
             key_height: 14.0,
             snap: Snap::Step,
+            meter: Meter::default(),
             last_length: TICKS_PER_STEP,
             velocity: 100,
             drag: None,
@@ -356,6 +359,7 @@ pub fn show(
 ) {
     let mut open = state.windows.piano_roll;
     let project = frame.project;
+    state.roll.meter = project.current_pattern().meter();
     let title = match project.channels.get(state.selected_channel) {
         Some(channel) => format!("Piano roll — {}", channel.name),
         None => "Piano roll".to_owned(),
@@ -537,7 +541,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
         {
             actions.push(Action::Run(Invocation::new(
                 "note.quantize",
-                [number.clone(), format!("{}t", state.roll.snap.ticks())],
+                [number.clone(), format!("{}t", state.roll.snap.ticks_at(0, &state.roll.meter))],
             )));
         }
         let selected: Vec<Note> = project
@@ -587,7 +591,8 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         state.roll.selection_for = Some(context);
     }
     let length = pattern.length_ticks();
-    let visible_ticks = length.max(2 * TICKS_PER_BAR) + TICKS_PER_BAR;
+    let bar = pattern.time_signature.bar_ticks();
+    let visible_ticks = length.max(2 * bar) + bar;
     let px_per_tick = state.roll.px_per_step / TICKS_PER_STEP as f32;
     let key_h = state.roll.key_height;
     let size = vec2(
@@ -620,7 +625,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         };
         state.roll.last_view = Some((grid, clip));
         let painter = ui.painter_at(clip);
-        draw_background(&painter, &grid, clip, rect, length);
+        draw_background(&painter, &grid, (clip, rect), length, &state.roll.meter);
         if let Some((root, scale)) = state.roll.scale {
             draw_scale(&painter, &grid, clip, rect, root, scale);
         }
@@ -824,7 +829,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             channel_index,
             actions,
         );
-        draw_ruler(&painter, &grid, clip, length);
+        draw_ruler(&painter, &grid, clip, length, &state.roll.meter);
         velocity_lane(ui, state, &grid, clip, &notes, channel_index, actions);
         if response.hovered() {
             let zoom = ui.input(|i| i.zoom_delta());
@@ -875,7 +880,13 @@ fn draw_note(
     }
 }
 
-fn draw_background(painter: &egui::Painter, grid: &Grid, clip: Rect, rect: Rect, length: u32) {
+fn draw_background(
+    painter: &egui::Painter,
+    grid: &Grid,
+    (clip, rect): (Rect, Rect),
+    length: u32,
+    meter: &Meter,
+) {
     let first = grid.row_at(clip.top().max(grid.origin.y)).unwrap_or(0);
     let last = grid.row_at(clip.bottom() - 1.0).unwrap_or(KEYS - 1);
     for row in first..=last {
@@ -913,10 +924,11 @@ fn draw_background(painter: &egui::Painter, grid: &Grid, clip: Rect, rect: Rect,
     );
     let first_tick = grid.tick_at(clip.left()) as u32 / TICKS_PER_STEP * TICKS_PER_STEP;
     let last_tick = grid.tick_at(clip.right()) as u32;
+    let sig = meter.first();
     for tick in (first_tick..=last_tick).step_by(TICKS_PER_STEP as usize) {
-        let color = if tick % TICKS_PER_BAR == 0 {
+        let color = if tick % sig.bar_ticks() == 0 {
             theme::GRID_BAR
-        } else if tick % PPQ == 0 {
+        } else if tick % sig.beat_ticks() == 0 {
             theme::GRID_BEAT
         } else {
             theme::GRID_LINE
@@ -959,17 +971,18 @@ fn draw_scale(
     }
 }
 
-fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, length: u32) {
+fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, length: u32, meter: &Meter) {
     let ruler = Rect::from_min_max(
         pos2(clip.left(), clip.top()),
         pos2(clip.right(), clip.top() + RULER_HEIGHT),
     );
     painter.rect_filled(ruler, 0.0, theme::PANEL_DARK);
-    let first_bar = grid.tick_at(clip.left()) as u32 / TICKS_PER_BAR;
-    let last_bar = grid.tick_at(clip.right()) as u32 / TICKS_PER_BAR + 1;
+    let first_bar = meter.bar(grid.tick_at(clip.left()) as u32).index;
+    let last_bar = meter.bar(grid.tick_at(clip.right()) as u32).index + 1;
     for bar in first_bar..=last_bar {
-        let x = grid.x((bar * TICKS_PER_BAR) as f32);
-        let color = if bar * TICKS_PER_BAR < length {
+        let start = meter.bar_start(bar);
+        let x = grid.x(start as f32);
+        let color = if start < length {
             theme::TEXT
         } else {
             theme::TEXT_DIM
@@ -1023,7 +1036,7 @@ fn tools_menu(
         .collect();
     let toggle_slide = batch(toggles);
     let mut toggled = None;
-    let grid = format!("{}t", state.roll.snap.ticks());
+    let grid = format!("{}t", state.roll.snap.ticks_at(0, &state.roll.meter));
     let mut run = |args: Vec<String>, name: &str| {
         let mut all = vec![number.to_owned()];
         all.extend(args);
@@ -1264,7 +1277,7 @@ fn click_tool(
     match tool {
         Tool::Slice => {
             if let Some(n) = note {
-                let snapped = state.roll.snap.round(tick);
+                let snapped = state.roll.snap.round(tick, &state.roll.meter);
                 let cut = if snapped > n.start && snapped < n.start + n.length {
                     snapped
                 } else {
@@ -1317,6 +1330,7 @@ fn tool_stroke(
         return false;
     }
     let snap = state.roll.snap;
+    let meter = state.roll.meter.clone();
     let pointer = response.interact_pointer_pos();
     let under = |p: Pos2| match hit_test(boxes.iter().copied(), p) {
         Hit::Body(i) | Hit::Edge(i) => notes.get(i).map(|n| **n),
@@ -1405,7 +1419,7 @@ fn tool_stroke(
                 .flatten();
             for p in origin.into_iter().chain(pointer.filter(|_| painting)) {
                 if let (tick, Some(key)) = at(p) {
-                    let start = snap.floor(tick);
+                    let start = snap.floor(tick, &meter);
                     let length = state.roll.last_length.max(1);
                     let free = state
                         .roll
@@ -1457,13 +1471,14 @@ fn edit(
             && p.y < clip.bottom() - LANE_HEIGHT
     };
     let snap = state.roll.snap;
+    let meter = state.roll.meter.clone();
     let at =
         |p: Pos2| -> (f32, Option<u8>) { (grid.tick_at(p.x), grid.row_at(p.y).map(key_of_row)) };
     let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
     state.roll.hover_tick = response
         .hover_pos()
         .filter(|p| editable(*p))
-        .map(|p| snap.floor(grid.tick_at(p.x)));
+        .map(|p| snap.floor(grid.tick_at(p.x), &meter));
 
     right_erase(state, response, notes, boxes, channel, actions);
     let tool = state.roll.tool;
@@ -1503,7 +1518,7 @@ fn edit(
                     }),
                     Hit::Empty => key.map(|key| {
                         state.roll.selection.clear();
-                        let start = snap.floor(tick);
+                        let start = snap.floor(tick, &meter);
                         NoteDrag {
                             kind: DragKind::Create,
                             original: Note {
@@ -1542,7 +1557,10 @@ fn edit(
             let (tick, key) = at(pos);
             match drag.kind {
                 DragKind::Create | DragKind::Move => {
-                    drag.start = snap.floor(tick - drag.grab + snap.ticks() as f32 / 2.0);
+                    drag.start = snap.floor(
+                        tick - drag.grab + snap.ticks_at(0, &meter) as f32 / 2.0,
+                        &meter,
+                    );
                     if let Some(key) = key {
                         if key != drag.key {
                             drag.key = key;
@@ -1563,8 +1581,8 @@ fn edit(
                 }
                 DragKind::Resize => {
                     let end = snap
-                        .round(tick)
-                        .max(drag.start + snap.ticks().min(TICKS_PER_STEP));
+                        .round(tick, &meter)
+                        .max(drag.start + snap.ticks_at(0, &meter).min(TICKS_PER_STEP));
                     drag.length = end.saturating_sub(drag.start).max(1);
                 }
             }
@@ -1662,7 +1680,7 @@ fn edit(
                 }
                 (Hit::Empty, _) if tool == Tool::Select => state.roll.selection.clear(),
                 (Hit::Empty, (tick, Some(key))) => {
-                    let start = snap.floor(tick);
+                    let start = snap.floor(tick, &meter);
                     let length = ticks(state.roll.last_length);
                     let velocity = state.roll.velocity.to_string();
                     let ch = (channel + 1).to_string();
@@ -1727,7 +1745,7 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         .filter(|n| state.roll.selection.contains(&(n.start, n.key)))
         .copied()
         .collect();
-    let snap = i64::from(state.roll.snap.ticks());
+    let snap = i64::from(state.roll.snap.ticks_at(0, &state.roll.meter));
     let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
 
     if pressed(Modifiers::COMMAND, Key::A) {

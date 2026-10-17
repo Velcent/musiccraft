@@ -7,15 +7,16 @@ use egui::{
     Align2, Color32, FontId, PointerButton, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2,
 };
 use musiccraft_commands::Invocation;
-use musiccraft_project::params::{PPQ, TICKS_PER_BAR};
+use musiccraft_project::params::PPQ;
 use musiccraft_project::{
-    AutomationId, Clip, ClipSource, MarkerAction, PLAYLIST_TRACKS, PlayMode, Project,
+    AutomationId, Clip, ClipSource, MarkerAction, Meter, PLAYLIST_TRACKS, PlayMode, Project,
 };
 
 use crate::dialogs::Dialog;
 use crate::geometry::{Grid, Hit, Snap, hit_test};
 use crate::icons::{self, Icon};
 use crate::piano_roll::Tool;
+use crate::signature;
 use crate::{Action, Frame, UiState, theme, widgets};
 
 const HEADER_WIDTH: f32 = 124.0;
@@ -37,6 +38,10 @@ struct ClipDrag {
     start: u32,
     length: u32,
 }
+
+/// Ticks the zoom (`px_per_bar`) measures: a 4/4 bar, whatever the song's
+/// signature.
+const ZOOM_TICKS: u32 = 4 * PPQ;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaylistState {
@@ -61,6 +66,8 @@ pub struct PlaylistState {
     painted: Vec<(u32, u32, u32)>,
     /// Clips touched by the delete stroke in progress.
     erased: Vec<Clip>,
+    /// The song's bars and beats, refreshed every frame.
+    pub(crate) meter: Meter,
 }
 
 impl Default for PlaylistState {
@@ -78,6 +85,7 @@ impl Default for PlaylistState {
             tool: Tool::Draw,
             painted: Vec::new(),
             erased: Vec::new(),
+            meter: Meter::default(),
         }
     }
 }
@@ -106,6 +114,7 @@ fn finish(drag: &ClipDrag) -> Option<Invocation> {
 
 /// Draws the playlist as the main workspace.
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    state.playlist.meter = frame.project.song_meter();
     ui.horizontal(|ui| {
         ui.label(RichText::new("Playlist").strong().size(15.0));
         ui.label(RichText::new("Arrangement").color(theme::TEXT_DIM));
@@ -231,6 +240,17 @@ fn pattern_list(
                             )));
                             ui.close();
                         }
+                        let sig = pattern.time_signature;
+                        ui.menu_button(format!("Time signature ({sig})…"), |ui| {
+                            if let Some(new) =
+                                signature::picker(ui, Some(sig), &mut state.sig_draft)
+                            {
+                                actions.push(Action::Run(Invocation::new(
+                                    "pattern.set_time_signature",
+                                    [(i + 1).to_string(), new.to_string()],
+                                )));
+                            }
+                        });
                         if !pattern.automation.is_empty()
                             && ui
                                 .button(format!(
@@ -312,11 +332,12 @@ fn pattern_list(
 
 fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     let project = frame.project;
-    let px_per_tick = state.playlist.px_per_bar / TICKS_PER_BAR as f32;
+    let px_per_tick = state.playlist.px_per_bar / ZOOM_TICKS as f32;
     let row_h = state.playlist.row_height;
-    let bars = (project.playlist.length_ticks() / TICKS_PER_BAR + 16).max(32);
+    let meter = state.playlist.meter.clone();
+    let bars = (meter.bar(project.playlist.length_ticks()).index + 16).max(32);
     let size = vec2(
-        HEADER_WIDTH + (bars * TICKS_PER_BAR) as f32 * px_per_tick,
+        HEADER_WIDTH + meter.bar_start(bars) as f32 * px_per_tick,
         RULER_HEIGHT + PLAYLIST_TRACKS as f32 * row_h,
     );
     egui::ScrollArea::both()
@@ -333,7 +354,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             };
             state.playlist.last_view = Some((grid, clip));
             let painter = ui.painter_at(clip);
-            draw_grid(&painter, &grid, clip, rect);
+            draw_grid(&painter, &grid, (clip, rect), &meter);
 
             let clips = &project.playlist.clips;
             let moving = moving_clips(state, clips);
@@ -425,7 +446,14 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 .map(|(i, c)| (i, grid.span(c.track, c.start, c.length)))
                 .collect();
             edit(ui, state, project, &grid, &response, clip, &boxes, actions);
-            draw_ruler(&painter, &grid, clip, project, state.playlist.loop_drag);
+            draw_ruler(
+                &painter,
+                &grid,
+                clip,
+                project,
+                state.playlist.loop_drag,
+                &meter,
+            );
             ruler(ui, state, project, &grid, clip, actions);
             headers(ui, state, project, &grid, clip, actions);
             if response.hovered() {
@@ -438,7 +466,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         });
 }
 
-fn draw_grid(painter: &egui::Painter, grid: &Grid, clip: Rect, rect: Rect) {
+fn draw_grid(painter: &egui::Painter, grid: &Grid, (clip, rect): (Rect, Rect), meter: &Meter) {
     let first = grid.row_at(clip.top().max(grid.origin.y)).unwrap_or(0);
     let last = grid
         .row_at(clip.bottom() - 1.0)
@@ -459,16 +487,15 @@ fn draw_grid(painter: &egui::Painter, grid: &Grid, clip: Rect, rect: Rect) {
             fill,
         );
     }
-    let first_beat = grid.tick_at(clip.left()) as u32 / PPQ;
-    let last_beat = grid.tick_at(clip.right()) as u32 / PPQ + 1;
-    for beat in first_beat..=last_beat {
-        let tick = beat * PPQ;
-        let color = if tick % TICKS_PER_BAR == 0 {
+    let first = grid.tick_at(clip.left()) as u32;
+    let last = grid.tick_at(clip.right()) as u32 + 1;
+    for beat in meter.beats(first, last) {
+        let color = if beat.downbeat {
             theme::GRID_BAR
         } else {
             theme::GRID_LINE
         };
-        let x = grid.x(tick as f32);
+        let x = grid.x(beat.tick as f32);
         painter.line_segment(
             [pos2(x, grid.origin.y), pos2(x, rect.bottom())],
             Stroke::new(1.0, color),
@@ -680,6 +707,7 @@ fn draw_ruler(
     clip: Rect,
     project: &Project,
     dragging: Option<(u32, u32)>,
+    meter: &Meter,
 ) {
     let ruler = Rect::from_min_max(
         pos2(clip.left(), clip.top()),
@@ -732,15 +760,15 @@ fn draw_ruler(
             }
         }
     }
-    let first_bar = grid.tick_at(clip.left()) as u32 / TICKS_PER_BAR;
-    let last_bar = grid.tick_at(clip.right()) as u32 / TICKS_PER_BAR + 1;
-    let every = if grid.px_per_tick * TICKS_PER_BAR as f32 >= 28.0 {
+    let first = meter.bar(grid.tick_at(clip.left()) as u32);
+    let last_bar = meter.bar(grid.tick_at(clip.right()) as u32).index + 1;
+    let every = if grid.px_per_tick * first.len as f32 >= 28.0 {
         1
     } else {
         4
     };
-    for bar in (first_bar..=last_bar).filter(|b| b % every == 0) {
-        let x = grid.x((bar * TICKS_PER_BAR) as f32);
+    for bar in (first.index..=last_bar).filter(|b| b % every == 0) {
+        let x = grid.x(meter.bar_start(bar) as f32);
         painter.text(
             pos2(x + 3.0, ruler.center().y),
             Align2::LEFT_CENTER,
@@ -756,11 +784,13 @@ fn draw_ruler(
         }
         let top = ruler.top();
         // Each action has its own glyph: a flag for a label, two bars for a
-        // pause, a down-facing arrow for the song loop point.
+        // pause, a down-facing arrow for the song loop point, a bracket for a
+        // time signature change.
         let color = match marker.action {
             MarkerAction::None => theme::AUTOMATION,
             MarkerAction::Pause => theme::DANGER,
             MarkerAction::SongLoop => theme::ACCENT,
+            MarkerAction::TimeSignature(_) => theme::HIGHLIGHT,
         };
         match marker.action {
             MarkerAction::None => {
@@ -794,6 +824,18 @@ fn draw_ruler(
                     Stroke::NONE,
                 ));
             }
+            MarkerAction::TimeSignature(_) => {
+                painter.rect_filled(
+                    Rect::from_min_size(pos2(x, top + 2.0), egui::vec2(2.5, 9.0)),
+                    0.0,
+                    color,
+                );
+                painter.rect_filled(
+                    Rect::from_min_size(pos2(x, top + 2.0), egui::vec2(7.0, 2.5)),
+                    0.0,
+                    color,
+                );
+            }
         }
         let [r, g, b, _] = color.to_array();
         painter.line_segment(
@@ -822,6 +864,7 @@ fn ruler(
     actions: &mut Vec<Action>,
 ) {
     let snap = state.playlist.snap;
+    let meter = state.playlist.meter.clone();
     let area = Rect::from_min_max(
         pos2(clip.left() + HEADER_WIDTH, clip.top()),
         pos2(clip.right(), clip.top() + RULER_HEIGHT),
@@ -844,13 +887,13 @@ fn ruler(
     };
     if response.drag_started() && shift {
         if let Some(pos) = ui.input(|i| i.pointer.press_origin()) {
-            let start = Snap::Bar.floor(tick_at(pos.x));
+            let start = Snap::Bar.floor(tick_at(pos.x), &meter);
             state.playlist.loop_drag = Some((start, start));
         }
     }
     if let Some((start, end)) = &mut state.playlist.loop_drag {
         if let Some(pos) = response.interact_pointer_pos() {
-            *end = Snap::Bar.round(tick_at(pos.x));
+            *end = Snap::Bar.round(tick_at(pos.x), &meter);
         }
         if response.drag_stopped() {
             let (a, b) = (*start.min(end), *start.max(end));
@@ -867,8 +910,8 @@ fn ruler(
             let tick = match marker_at(pos.x).filter(|_| response.clicked()) {
                 Some(marker) => marker.tick,
                 None => snap
-                    .floor(tick_at(pos.x))
-                    .min(Snap::Beat.floor(tick_at(pos.x))),
+                    .floor(tick_at(pos.x), &meter)
+                    .min(Snap::Beat.floor(tick_at(pos.x), &meter)),
             };
             actions.push(Action::Seek(f64::from(tick)));
         }
@@ -876,7 +919,7 @@ fn ruler(
     let press = response.interact_pointer_pos().or(response.hover_pos());
     response.context_menu(|ui| {
         let x = press.map_or(area.left(), |p| p.x);
-        let tick = Snap::Bar.floor(tick_at(x));
+        let tick = Snap::Bar.floor(tick_at(x), &meter);
         if ui
             .button("Add marker here…")
             .hint("Alt+T adds one at the playhead")
@@ -899,6 +942,27 @@ fn ruler(
             )));
             ui.close();
         }
+        let here = meter.sig_at(tick);
+        ui.menu_button("Time signature here…", |ui| {
+            if tick == 0 {
+                ui.label(
+                    RichText::new("The start is the project signature (toolbar)")
+                        .color(theme::TEXT_DIM),
+                );
+            }
+            if let Some(sig) = signature::picker(ui, Some(here), &mut state.sig_draft) {
+                actions.push(Action::Run(if tick == 0 {
+                    Invocation::new("project.set_time_signature", [sig.to_string()])
+                } else {
+                    Invocation::new(
+                        "playlist.set_time_signature",
+                        [format!("{tick}t"), sig.to_string()],
+                    )
+                }));
+            }
+        })
+        .response
+        .hint("A new bar starts here in this signature");
         if let Some(marker) = marker_at(x) {
             ui.separator();
             ui.label(format!("Marker \"{}\"", marker.name));
@@ -912,6 +976,7 @@ fn ruler(
                         "Song loop",
                         "At the end of the song, playback returns here instead of to the start",
                     ),
+                    MarkerAction::TimeSignature(_) => continue,
                 };
                 if ui
                     .radio(marker.action == action, label)
@@ -1434,7 +1499,10 @@ fn tool_stroke(
                 let Some(track) = grid.row_at(p.y) else {
                     continue;
                 };
-                let start = state.playlist.snap.floor(grid.tick_at(p.x));
+                let start = state
+                    .playlist
+                    .snap
+                    .floor(grid.tick_at(p.x), &state.playlist.meter);
                 let after_last = state
                     .playlist
                     .painted
@@ -1480,7 +1548,7 @@ fn tool_stroke(
                     [(c.track + 1).to_string(), format!("{}t", c.start)],
                 ))),
                 (Tool::Slice, Some(c)) => {
-                    let at = state.playlist.snap.round(tick);
+                    let at = state.playlist.snap.round(tick, &state.playlist.meter);
                     let at = if at > c.start && at < c.end() {
                         at
                     } else {
@@ -1489,7 +1557,8 @@ fn tool_stroke(
                     actions.extend(slice_at(&[c], at).map(Action::Run));
                 }
                 (Tool::Play, _) => {
-                    actions.push(Action::Seek(f64::from(state.playlist.snap.floor(tick))));
+                    let at = state.playlist.snap.floor(tick, &state.playlist.meter);
+                    actions.push(Action::Seek(f64::from(at)));
                     actions.push(Action::Run(Invocation::bare("transport.play")));
                 }
                 (Tool::Zoom, _) => {
@@ -1522,6 +1591,7 @@ fn edit(
 ) {
     let editable = |p: Pos2| p.x > clip.left() + HEADER_WIDTH && p.y > clip.top() + RULER_HEIGHT;
     let snap = state.playlist.snap;
+    let meter = state.playlist.meter.clone();
     let clips = &project.playlist.clips;
     let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
     if tool_stroke(
@@ -1571,13 +1641,15 @@ fn edit(
             let tick = grid.tick_at(pos.x);
             match drag.kind {
                 DragKind::Move => {
-                    drag.start = snap.round(tick - drag.grab);
+                    drag.start = snap.round(tick - drag.grab, &meter);
                     if let Some(row) = grid.row_at(pos.y) {
                         drag.track = row;
                     }
                 }
                 DragKind::Resize => {
-                    let end = snap.round(tick).max(drag.start + snap.ticks());
+                    let end = snap
+                        .round(tick, &meter)
+                        .max(drag.start + snap.ticks_at(drag.start, &meter));
                     drag.length = end - drag.start;
                 }
             }
@@ -1644,7 +1716,7 @@ fn edit(
                 }
                 (Hit::Empty, _) if tool == Tool::Select => state.playlist.selection.clear(),
                 (Hit::Empty, Some(row)) => {
-                    let start = snap.floor(grid.tick_at(pos.x));
+                    let start = snap.floor(grid.tick_at(pos.x), &meter);
                     let painted = state
                         .playlist
                         .paint_automation
@@ -1707,7 +1779,7 @@ fn edit(
                         actions.push(Action::DropAudio {
                             sample,
                             track: row,
-                            start: snap.floor(grid.tick_at(pos.x)),
+                            start: snap.floor(grid.tick_at(pos.x), &meter),
                         });
                     }
                 }

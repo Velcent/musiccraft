@@ -448,7 +448,12 @@ fn metronome_follows_the_meter() {
     assert_eq!(onsets, (0..8).map(|k| k * eighth).collect::<Vec<_>>());
     // Bars of six eighths: clicks 0 and 6 are accented (higher).
     let pitch = |k: usize| crossings(&out[k * eighth..k * eighth + 2000]);
-    assert!(pitch(0) > pitch(1) && pitch(6) > pitch(5), "{} {}", pitch(0), pitch(1));
+    assert!(
+        pitch(0) > pitch(1) && pitch(6) > pitch(5),
+        "{} {}",
+        pitch(0),
+        pitch(1)
+    );
     assert_eq!(pitch(1), pitch(2));
 }
 
@@ -466,7 +471,10 @@ fn a_count_in_is_a_bar_of_the_signature_where_playback_starts() {
     for k in 0..7 {
         assert!(out[k * eighth + 5].abs() > 1e-3, "click {k}");
     }
-    assert!((out[7 * eighth] - 1.0).abs() < 1e-6, "the first note after seven eighths");
+    assert!(
+        (out[7 * eighth] - 1.0).abs() < 1e-6,
+        "the first note after seven eighths"
+    );
     assert!(engine.is_playing());
 }
 

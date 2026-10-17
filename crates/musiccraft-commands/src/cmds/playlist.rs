@@ -701,7 +701,9 @@ fn set_time_signature(project: &mut Project, args: &Args<'_>) -> Result<Outcome,
     let action = MarkerAction::TimeSignature(sig);
     match existing {
         Some(i) if markers[i].action == action => {
-            return Ok(Outcome::done(format!("the song is already {sig} at {tick}t")));
+            return Ok(Outcome::done(format!(
+                "the song is already {sig} at {tick}t"
+            )));
         }
         Some(i) => {
             // A label keeps its name; one named after its old signature follows.

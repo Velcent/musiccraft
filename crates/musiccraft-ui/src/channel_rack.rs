@@ -427,10 +427,12 @@ fn steps(
 ) {
     let pattern = project.current_pattern();
     let count = pattern.length_ticks().div_ceil(TICKS_PER_STEP);
+    // Alternate beats of the pattern's signature are shaded.
+    let beat_steps = (pattern.time_signature.beat_ticks() / TICKS_PER_STEP).max(1) as usize;
     let notes: Vec<&musiccraft_project::Note> = pattern.notes_of(channel.id).collect();
     ui.add_space(6.0);
     if !is_step_only(&notes) {
-        mini_roll(ui, state, index, &notes, count);
+        mini_roll(ui, state, (index, beat_steps as u32), &notes, count);
         return;
     }
     let mut on = vec![false; count as usize];
@@ -506,7 +508,7 @@ fn steps(
                 shown = stroke.on;
             }
         }
-        let base = if (step / 4) % 2 == 0 {
+        let base = if (step / beat_steps) % 2 == 0 {
             theme::STEP_A
         } else {
             theme::STEP_B
@@ -549,7 +551,7 @@ pub(crate) struct StepStroke {
 fn mini_roll(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    index: usize,
+    (index, beat_steps): (usize, u32),
     notes: &[&musiccraft_project::Note],
     steps: u32,
 ) {
@@ -557,15 +559,13 @@ fn mini_roll(
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect.shrink(1.0), 3.0, theme::PANEL_DARK);
-    for bar in 0..steps.div_ceil(4) {
-        let x = rect.left() + bar as f32 * 4.0 * STEP_SIZE.x;
-        if bar % 2 == 1 {
+    let beat = beat_steps as f32 * STEP_SIZE.x;
+    for k in 0..steps.div_ceil(beat_steps) {
+        let x = rect.left() + k as f32 * beat;
+        if k % 2 == 1 {
             let band = egui::Rect::from_min_max(
                 egui::pos2(x, rect.top() + 1.0),
-                egui::pos2(
-                    (x + 4.0 * STEP_SIZE.x).min(rect.right()),
-                    rect.bottom() - 1.0,
-                ),
+                egui::pos2((x + beat).min(rect.right()), rect.bottom() - 1.0),
             );
             painter.rect_filled(band, 0.0, theme::BLACK_KEY_ROW);
         }
@@ -758,6 +758,7 @@ fn graph_editor(
     };
     let pattern = project.current_pattern();
     let steps = (pattern.length_ticks() / TICKS_PER_STEP).max(1);
+    let beat_steps = (pattern.time_signature.beat_ticks() / TICKS_PER_STEP).max(1);
     ui.horizontal(|ui| {
         ui.label(RichText::new(&project.channels[channel].name).strong());
         for m in LaneMode::ALL {
@@ -808,7 +809,7 @@ fn graph_editor(
     };
     for step in 0..steps {
         let x0 = rect.left() + width * step as f32;
-        if step % 4 == 0 {
+        if step % beat_steps == 0 {
             painter.line_segment(
                 [egui::pos2(x0, rect.top()), egui::pos2(x0, rect.bottom())],
                 egui::Stroke::new(1.0, theme::GRID_BEAT),
