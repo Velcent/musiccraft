@@ -223,6 +223,8 @@ pub struct UiState {
     pub taps: Vec<f64>,
     /// The custom time signature being entered in a signature menu.
     pub sig_draft: (u32, u32),
+    /// The channel settings window's page.
+    pub channel_tab: channel_settings::ChannelTab,
     /// The channel rack shows only this display filter group (`None`: all).
     pub rack_group: Option<String>,
     /// The channel rack's step graph editor: open, what it edits, and the
@@ -312,6 +314,7 @@ impl UiState {
             typing_keyboard: false,
             taps: Vec::new(),
             sig_draft: (4, 4),
+            channel_tab: channel_settings::ChannelTab::default(),
             rack_group: None,
             graph: None,
             graph_drag: None,

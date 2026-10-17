@@ -1216,3 +1216,28 @@ fn the_rack_and_roll_follow_the_pattern_signature() {
         TICKS_PER_STEP
     );
 }
+
+#[test]
+fn channel_settings_pages_switch_and_keep_the_header() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    for tab in [
+        crate::channel_settings::ChannelTab::Functions,
+        crate::channel_settings::ChannelTab::Envelope,
+        crate::channel_settings::ChannelTab::Sound,
+    ] {
+        h.state.channel_tab = tab;
+        h.settle();
+        assert_eq!(h.state.channel_tab, tab);
+    }
+    // A drum synth has no shared envelope: its page falls back to Sound.
+    h.session.run_line("channel.add_drum kick").unwrap();
+    h.state.selected_channel = 1;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Envelope;
+    h.settle();
+    assert_eq!(
+        h.state.channel_tab,
+        crate::channel_settings::ChannelTab::Sound
+    );
+}

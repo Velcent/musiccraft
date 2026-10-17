@@ -73,14 +73,14 @@
   - `swing_truncate` (channel parameter, 0 or 1, default 0): a swung note
     keeps its original end and so gets shorter by the delay (never below one
     tick) instead of moving whole, so it cannot run into the next step.
-  - Both are in channel settings → SWING. The channel rack's swing box sets
+  - Both are in channel settings → Functions → SWING. The channel rack's swing box sets
     the global amount.
   - Older files stored swing per pattern. On load, a project without a global
     swing takes the largest pattern swing.
 
 ## Timing and echo
 
-Channel parameters (channel settings → TIMING AND ECHO), applied when the
+Channel parameters (channel settings → Functions → TIMING AND ECHO), applied when the
 sequence is built, after swing and the arpeggiator; they change what the
 channel plays, not the stored notes:
 
@@ -313,7 +313,26 @@ Out channels voice their own notes and are never cut.
 synthesized deterministically at load time (swept sines, filtered noise, metallic
 square partials), normalized to a 0.9 peak and faded out at the end.
 
+## Channel settings window
+
+- Clicking a channel's name opens its
+  settings window. A **fixed header** stays at the top: the channel name and
+  instrument, volume, pan and pitch knobs, mute, and the mixer track it feeds
+  as a number box (drag or type; `channel.route`).
+- Below it, **tabs**: *Sound* (the instrument's own sections: sample, oscillators,
+  operators, plugin parameters…), *Envelope* (the amplitude envelope, for
+  instruments that use it) and *Functions* (arpeggiator, swing, timing and
+  echo, voices). Only the tab's contents scroll. The last tab used stays
+  selected while the window is open.
+- MIDI Out channels have no sound settings: the window shows their MIDI page
+  only.
+
 ## Sources
+
+- The channel settings window's fixed header and tabbed pages follow the
+  layout described in the FL Studio online manual, "Channel settings"
+  (sampler and instrument pages, miscellaneous functions), with our own
+  grouping and names.
 
 - Channel rack layout (rows of instruments with step buttons, volume, pan, mute
   and mixer routing) follows the general workflow described in the FL Studio

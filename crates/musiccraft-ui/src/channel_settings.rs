@@ -102,7 +102,6 @@ pub fn show(
         .default_width(440.0)
         .resizable(false)
         .constrain_to(area)
-        .vscroll(true)
         .min_height((area.height() - 60.0).clamp(300.0, 760.0))
         .max_height((area.height() - 40.0).max(300.0))
         .show(ctx, |ui| {
@@ -145,9 +144,77 @@ fn contents(
     ui.add_space(4.0);
     if let Instrument::MidiOut { midi_channel } = &channel.instrument {
         // Sound settings do not apply to external gear.
-        midi_out(ui, state, frame, number, channel, *midi_channel, actions);
+        egui::ScrollArea::vertical()
+            .id_salt("channel-settings-scroll")
+            .show(ui, |ui| {
+                midi_out(ui, state, frame, number, channel, *midi_channel, actions);
+            });
         return;
     }
+    header(ui, state, frame, number, channel, actions);
+    ui.add_space(4.0);
+    let has_envelope = uses_envelope(&channel.instrument);
+    if state.channel_tab == ChannelTab::Envelope && !has_envelope {
+        state.channel_tab = ChannelTab::Sound;
+    }
+    ui.horizontal(|ui| {
+        for (tab, label, shown) in [
+            (ChannelTab::Sound, "Sound", true),
+            (ChannelTab::Envelope, "Envelope", has_envelope),
+            (ChannelTab::Functions, "Functions", true),
+        ] {
+            if shown {
+                ui.selectable_value(&mut state.channel_tab, tab, label);
+            }
+        }
+    });
+    ui.separator();
+    egui::ScrollArea::vertical()
+        .id_salt("channel-settings-scroll")
+        .auto_shrink([false, false])
+        .show(ui, |ui| match state.channel_tab {
+            ChannelTab::Sound => sound(ui, state, frame, index, channel, actions),
+            ChannelTab::Envelope => envelope_section(ui, state, number, channel, actions),
+            ChannelTab::Functions => functions(ui, state, number, channel, actions),
+        });
+}
+
+/// Pages of the channel settings window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChannelTab {
+    /// The instrument's own sections.
+    #[default]
+    Sound,
+    /// The amplitude envelope.
+    Envelope,
+    /// Arpeggiator, swing, timing and echo, voices.
+    Functions,
+}
+
+/// Whether the instrument has the shared amplitude envelope.
+fn uses_envelope(instrument: &Instrument) -> bool {
+    matches!(
+        instrument,
+        Instrument::Sampler { .. }
+            | Instrument::Synth
+            | Instrument::Fm
+            | Instrument::Keys
+            | Instrument::Additive
+            | Instrument::Granular { .. }
+            | Instrument::Zones { .. }
+            | Instrument::Resynth { .. }
+    )
+}
+
+/// The fixed header: volume, pan, pitch, mute and the mixer track.
+fn header(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
     ui.horizontal(|ui| {
         let volume = widgets::labeled_knob(
             ui,
@@ -198,15 +265,41 @@ fn contents(
         if channel.instrument.plugin().is_none() {
             param_knob(ui, state, number, channel, inst::PITCH, "Pitch", actions);
         }
-        let mut mute = channel.mute;
-        if ui.checkbox(&mut mute, "Mute").changed() {
-            actions.push(Action::Run(Invocation::new(
-                "channel.toggle_mute",
-                [number.to_string()],
-            )));
-        }
+        ui.vertical(|ui| {
+            let mut mute = channel.mute;
+            if ui.checkbox(&mut mute, "Mute").changed() {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.toggle_mute",
+                    [number.to_string()],
+                )));
+            }
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Track").small().color(theme::TEXT_DIM));
+                let last = frame.project.mixer.len().saturating_sub(1);
+                let mut track = channel.mixer_track;
+                if ui
+                    .add(egui::DragValue::new(&mut track).range(0..=last))
+                    .hint("Mixer track this channel feeds (0 = master)")
+                    .changed()
+                {
+                    actions.push(Action::Run(Invocation::new(
+                        "channel.route",
+                        [number.to_string(), track.to_string()],
+                    )));
+                }
+            });
+        });
     });
-    ui.add_space(6.0);
+}
+
+/// The Functions page: arpeggiator, swing, timing and echo, voices.
+fn functions(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
     section(ui, "ARPEGGIATOR", |ui| {
         ui.horizontal(|ui| {
             choice(
@@ -300,7 +393,18 @@ fn contents(
             choice(ui, number, channel, inst::MONO, &["Poly", "Mono"], actions);
         });
     });
-    ui.add_space(6.0);
+}
+
+/// The Sound page: the instrument's own sections.
+fn sound(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    index: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    let number = index + 1;
     match &channel.instrument {
         Instrument::Sampler { sample } => {
             sampler(ui, state, frame, index, channel, sample, actions)
@@ -346,11 +450,8 @@ fn contents(
             // Plugins shape their own sound; the built-in sections do not apply.
             let target = crate::plugins::Target::Channel(number);
             crate::plugins::panel(ui, state, frame.plugins, plugin, target, actions);
-            return;
         }
     }
-    ui.add_space(6.0);
-    envelope_section(ui, state, number, channel, actions);
 }
 
 /// The amplitude envelope knobs and their graph.
@@ -725,8 +826,6 @@ fn fm(
             );
         });
     });
-    ui.add_space(4.0);
-    envelope_section(ui, state, number, channel, actions);
 }
 
 fn keys(
@@ -786,8 +885,6 @@ fn keys(
             );
         });
     });
-    ui.add_space(4.0);
-    envelope_section(ui, state, number, channel, actions);
 }
 
 fn additive(
