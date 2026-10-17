@@ -13,10 +13,6 @@ use serde::{Deserialize, Serialize};
 pub const PPQ: u32 = 96;
 /// Ticks per sixteenth-note step.
 pub const TICKS_PER_STEP: u32 = PPQ / 4;
-/// Beats per bar. MusicCraft uses 4/4 time throughout for now.
-pub const BEATS_PER_BAR: u32 = 4;
-/// Ticks per bar.
-pub const TICKS_PER_BAR: u32 = PPQ * BEATS_PER_BAR;
 
 /// Capacity of an effect parameter array.
 pub const MAX_EFFECT_PARAMS: usize = 24;

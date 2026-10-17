@@ -31,6 +31,9 @@ fn transport() -> ExternalTransport {
         tempo_bpm: 120.0,
         position_beats: 0.0,
         sample_rate: f64::from(RATE),
+        time_signature: musiccraft_engine::TimeSig::COMMON,
+        bar_start_beats: 0.0,
+        bar_number: 0,
     }
 }
 

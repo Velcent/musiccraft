@@ -10,8 +10,14 @@ pub struct ExternalTransport {
     pub playing: bool,
     /// Tempo in beats per minute.
     pub tempo_bpm: f64,
-    /// Playhead at the start of the block, in beats.
+    /// Playhead at the start of the block, in beats (quarter notes).
     pub position_beats: f64,
+    /// The time signature in force at the playhead.
+    pub time_signature: musiccraft_meter::TimeSig,
+    /// Start of the bar holding the playhead, in beats (quarter notes).
+    pub bar_start_beats: f64,
+    /// That bar's number, from 0.
+    pub bar_number: u32,
     /// Engine sample rate.
     pub sample_rate: f64,
 }

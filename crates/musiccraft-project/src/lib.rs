@@ -26,6 +26,8 @@ pub use model::{
     MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern, PatternId,
     PatternLane, PlayMode, Playlist, PluginRef, PluginSlot, STEP_KEY, SampleZone,
 };
+pub use musiccraft_meter as meter;
+pub use musiccraft_meter::{Meter, TimeSig};
 pub use musiccraft_params as params;
 
 /// Lowest tempo a project accepts, in beats per minute.
@@ -233,6 +235,9 @@ pub struct Project {
     /// step, scaled by each channel's `swing_mix`.
     #[serde(default)]
     pub swing: f32,
+    /// The song's time signature from its start; new patterns take it.
+    #[serde(default, skip_serializing_if = "TimeSig::is_common")]
+    pub time_signature: TimeSig,
     next_id: u32,
     #[serde(skip)]
     path: Option<PathBuf>,
@@ -279,6 +284,7 @@ impl Project {
             pan_law: PanLaw::Circular,
             swing: 0.0,
             master_pitch: 0.0,
+            time_signature: TimeSig::COMMON,
             next_id: 2,
             path: None,
         }
@@ -526,7 +532,24 @@ impl Project {
             .playlist
             .length_ticks()
             .max(self.playlist.song_loop_tick().unwrap_or(0));
-        music::round_up_to_bar(end)
+        self.song_meter().round_up_to_bar(end)
+    }
+
+    /// The song's bar and beat grid: the project signature and the signature
+    /// markers.
+    #[must_use]
+    pub fn song_meter(&self) -> Meter {
+        Meter::with_changes(self.time_signature, self.playlist.signature_changes())
+    }
+
+    /// The grid of what plays: the selected pattern's in pattern mode, the
+    /// song's in song mode.
+    #[must_use]
+    pub fn playing_meter(&self) -> Meter {
+        match self.play_mode {
+            PlayMode::Pattern => self.current_pattern().meter(),
+            PlayMode::Song => self.song_meter(),
+        }
     }
 
     /// Serializes the project to the versioned JSON file format.
@@ -770,6 +793,7 @@ impl PartialEq for Project {
             && self.record == other.record
             && self.swing == other.swing
             && self.master_pitch == other.master_pitch
+            && self.time_signature == other.time_signature
             && self.automations == other.automations
     }
 }

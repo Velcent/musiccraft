@@ -123,8 +123,8 @@ fn sample_key(sample: &str, base: Option<&Path>) -> String {
     }
 }
 
-/// Beats of the recording count-in (one 4/4 bar).
-const COUNT_IN_BEATS: u32 = 4;
+/// Bars of the recording count-in (of the signature where playback starts).
+const COUNT_IN_BARS: u32 = 1;
 
 /// How Play begins: count-in and wait for input apply only while armed, and
 /// waiting takes over from the count-in.
@@ -135,7 +135,7 @@ fn start_mode(project: &Project) -> Start {
     } else if options.wait_for_input {
         Start::WaitForInput
     } else if options.count_in {
-        Start::CountIn(COUNT_IN_BEATS)
+        Start::CountIn(COUNT_IN_BARS)
     } else {
         Start::Now
     }

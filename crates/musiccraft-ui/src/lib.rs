@@ -21,6 +21,7 @@ mod plugins;
 mod rack_view;
 mod sample_editor;
 pub mod settings;
+mod signature;
 mod spectrum;
 mod theme;
 mod toolbar;
@@ -220,6 +221,8 @@ pub struct UiState {
     pub typing_keyboard: bool,
     /// Times (seconds) of the latest tempo taps.
     pub taps: Vec<f64>,
+    /// The custom time signature being entered in a signature menu.
+    pub sig_draft: (u32, u32),
     /// The channel rack shows only this display filter group (`None`: all).
     pub rack_group: Option<String>,
     /// The channel rack's step graph editor: open, what it edits, and the
@@ -271,13 +274,22 @@ impl Default for UiState {
 }
 
 impl UiState {
-    /// How far step edit moves per note: the piano roll's snap, or one step
-    /// when snap is off.
+    /// How far step edit moves per note from `tick` of `meter`: the piano
+    /// roll's snap, or one step when snap is off.
     #[must_use]
-    pub fn step_edit_ticks(&self) -> u32 {
+    pub fn step_edit_ticks(&self, tick: u32, meter: &musiccraft_project::Meter) -> u32 {
         match self.roll.snap {
             geometry::Snap::Off => musiccraft_project::params::TICKS_PER_STEP,
-            snap => snap.ticks(),
+            snap => snap.ticks_at(tick, meter),
+        }
+    }
+
+    /// The step edit grid line at or before `tick` of `meter`.
+    #[must_use]
+    pub fn step_edit_floor(&self, tick: f64, meter: &musiccraft_project::Meter) -> u32 {
+        match self.roll.snap {
+            geometry::Snap::Off => geometry::Snap::Step.floor(tick as f32, meter),
+            snap => snap.floor(tick as f32, meter),
         }
     }
 
@@ -299,6 +311,7 @@ impl UiState {
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             taps: Vec::new(),
+            sig_draft: (4, 4),
             rack_group: None,
             graph: None,
             graph_drag: None,

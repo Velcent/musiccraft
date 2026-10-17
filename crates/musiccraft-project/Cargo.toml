@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 musiccraft-params.workspace = true
+musiccraft-meter.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

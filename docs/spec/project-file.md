@@ -52,7 +52,8 @@
   through the full mixer; all stems are padded to the same length.
 - `project.export_midi <path>` (File → Export MIDI…, Ctrl+Shift+M) writes a
   Standard MIDI File, format 1, 96 ticks per quarter: a first track with the
-  project name, tempo and 4/4, then one track per channel that plays notes
+  project name, tempo and time signatures (the pattern's, or the song's with
+  its changes), then one track per channel that plays notes
   (named after the channel, MIDI channel = rack position modulo 16). It holds
   what the transport would play once (the pattern or the song by play mode,
   swing and arpeggios applied); audio clips are left out. Velocities map

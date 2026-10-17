@@ -10,7 +10,6 @@
 use musiccraft_cli::{full_registry, plugin_host};
 use musiccraft_commands::{Invocation, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
-use musiccraft_project::params::TICKS_PER_BAR;
 use musiccraft_render::{RenderOptions, render_with};
 use serde_json::{Value, json};
 
@@ -20,8 +19,9 @@ pub const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-0
 const INSTRUCTIONS: &str = "\
 MusicCraft is a pattern-based DAW. Every change is a command. Channels, patterns, \
 playlist tracks and effect slots are numbered from 1; mixer track 0 is the master. \
-Note times are in steps (1/16 notes) and playlist times in bars; fractions are \
-allowed and `<n>t` is exact ticks (96 per beat). Keys are MIDI numbers or names \
+Note times are in steps (1/16 notes) and playlist times in bars of the song's \
+time signatures (`project_set_time_signature`, `playlist_set_time_signature`); \
+fractions are allowed and `<n>t` is exact ticks (96 per quarter note). Keys are MIDI numbers or names \
 with C5 = 60. Start with `run_script` for multi-step work, check results with \
 `get_state` or `get_project`, and listen with `analyze_audio`. Every edit is \
 undoable with `edit_undo`. Automate a parameter with `automation_create` (targets \
@@ -310,9 +310,10 @@ impl Server {
         use musiccraft_project::music::key_name;
         let p = self.session.project();
         let mut out = vec![format!(
-            "{} — {} BPM, {} mode, transport {}, pattern {}/{} selected",
+            "{} — {} BPM in {}, {} mode, transport {}, pattern {}/{} selected",
             p.name(),
             p.tempo_bpm(),
+            p.time_signature,
             p.play_mode.label(),
             p.transport(),
             p.current_pattern + 1,
@@ -362,11 +363,12 @@ impl Server {
         out.push("Patterns:".to_owned());
         for (i, pattern) in p.patterns.iter().enumerate() {
             out.push(format!(
-                "  {} {} ({} steps, {} ticks)",
+                "  {} {} ({} steps, {} ticks, {})",
                 i + 1,
                 pattern.name,
                 pattern.length_steps,
-                pattern.length_ticks()
+                pattern.length_ticks(),
+                pattern.time_signature
             ));
             for (ci, c) in p.channels.iter().enumerate() {
                 let notes: Vec<String> = pattern
@@ -414,6 +416,7 @@ impl Server {
             }
         }
         out.push(format!("Playlist ({} clips):", p.playlist.clips.len()));
+        let meter = p.song_meter();
         for clip in &p.playlist.clips {
             let name = match clip.source {
                 musiccraft_project::ClipSource::Pattern(id) => {
@@ -432,12 +435,20 @@ impl Server {
                     })
                 }
             };
+            let start = meter.ticks_to_bars(f64::from(clip.start));
+            let end = meter.ticks_to_bars(f64::from(clip.end()));
             out.push(format!(
-                "  track {} bar {:.2} len {:.2} bars: {name}",
+                "  track {} bar {start:.2} len {:.2} bars: {name}",
                 clip.track + 1,
-                f64::from(clip.start) / f64::from(TICKS_PER_BAR),
-                f64::from(clip.length) / f64::from(TICKS_PER_BAR)
+                end - start
             ));
+        }
+        let changes: Vec<String> = meter
+            .changes()
+            .map(|(tick, sig)| format!("{sig} at bar {}", meter.bar(tick).index + 1))
+            .collect();
+        if !changes.is_empty() {
+            out.push(format!("Time signature changes: {}", changes.join(", ")));
         }
         out.join("\n")
     }
@@ -450,7 +461,9 @@ impl Server {
         };
         let (left, right, warnings) = render_with(project, options, plugin_host().as_ref());
         let sr = options.sample_rate as f32;
-        let bar_seconds = 240.0 / project.tempo_bpm() as f32;
+        let quarters = project.playing_meter().first().bar_ticks() as f32
+            / musiccraft_project::params::PPQ as f32;
+        let bar_seconds = quarters * 60.0 / project.tempo_bpm() as f32;
         let bar_frames = (bar_seconds * sr).max(1.0) as usize;
         let mono: Vec<f32> = left
             .iter()

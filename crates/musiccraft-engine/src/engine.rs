@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use musiccraft_dsp::ProcessContext;
 use musiccraft_dsp::mastering::BandSplitter;
-use musiccraft_params::{EffectKind, PPQ, TICKS_PER_BAR, inst};
+use musiccraft_meter::Meter;
+use musiccraft_params::{EffectKind, PPQ, inst};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::Start;
@@ -189,13 +190,16 @@ pub struct Engine {
 }
 
 /// What the engine does before the playhead moves after Play.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum Pending {
     None,
-    /// Clicking: frames left and frames clicked so far.
+    /// Clicking: frames left, frames clicked so far, frames per beat and
+    /// beats per bar.
     CountIn {
         left: u64,
         elapsed: u64,
+        per_beat: f64,
+        bar: u32,
     },
     /// Waiting for the first live note.
     Wait,
@@ -330,7 +334,7 @@ impl Engine {
     fn loop_length(&self) -> f64 {
         match self.sequence.as_deref() {
             Some(seq) if seq.length() > 0 => seq.length() as f64,
-            _ => f64::from(TICKS_PER_BAR),
+            _ => f64::from(4 * PPQ),
         }
     }
 
@@ -401,11 +405,17 @@ impl Engine {
             EngineMessage::Play => {
                 if !self.playing && self.pending == Pending::None {
                     match self.start {
-                        Start::CountIn(beats) if beats > 0 => {
-                            let frames = f64::from(beats) * self.frames_per_beat();
+                        Start::CountIn(bars) if bars > 0 => {
+                            let sig = self.meter().sig_at(self.position.max(0.0) as u32);
+                            let per_beat = self.frames_per_beat() * f64::from(sig.beat_ticks())
+                                / f64::from(PPQ);
+                            let beats = bars.saturating_mul(sig.num());
+                            let frames = f64::from(beats) * per_beat;
                             self.pending = Pending::CountIn {
                                 left: (frames.round() as u64).max(1),
                                 elapsed: 0,
+                                per_beat,
+                                bar: sig.num(),
                             };
                         }
                         Start::WaitForInput => self.pending = Pending::Wait,
@@ -595,16 +605,29 @@ impl Engine {
         self.resync_cursor();
     }
 
+    /// Frames per quarter note.
     fn frames_per_beat(&self) -> f64 {
         self.sample_rate * 60.0 / self.tempo_bpm.max(1.0)
     }
 
+    /// The bars and beats of what is playing.
+    fn meter(&self) -> &Meter {
+        static COMMON: Meter = Meter::COMMON;
+        self.sequence.as_deref().map_or(&COMMON, Sequence::meter)
+    }
+
     /// Clicks the count-in beats that fall in the next `frames` frames.
     fn click_count_in(&mut self, frames: usize) {
-        let Pending::CountIn { elapsed, .. } = self.pending else {
+        let Pending::CountIn {
+            elapsed,
+            per_beat,
+            bar,
+            ..
+        } = self.pending
+        else {
             return;
         };
-        let per_beat = self.frames_per_beat().max(1.0);
+        let per_beat = per_beat.max(1.0);
         let end = elapsed + frames as u64;
         let mut beat = (elapsed as f64 / per_beat).ceil() as u64;
         loop {
@@ -613,7 +636,8 @@ impl Engine {
                 break;
             }
             if at >= elapsed {
-                self.click.trigger((at - elapsed) as u32, beat == 0);
+                self.click
+                    .trigger((at - elapsed) as u32, beat % u64::from(bar.max(1)) == 0);
             }
             beat += 1;
         }
@@ -621,7 +645,13 @@ impl Engine {
 
     /// Advances a count-in by `frames`; the playhead starts when it ends.
     fn advance_count_in(&mut self, frames: usize) {
-        if let Pending::CountIn { left, elapsed } = self.pending {
+        if let Pending::CountIn {
+            left,
+            elapsed,
+            per_beat,
+            bar,
+        } = self.pending
+        {
             let frames = frames as u64;
             if frames >= left {
                 self.begin();
@@ -629,6 +659,8 @@ impl Engine {
                 self.pending = Pending::CountIn {
                     left: left - frames,
                     elapsed: elapsed + frames,
+                    per_beat,
+                    bar,
                 };
             }
         }
@@ -775,11 +807,15 @@ impl Engine {
 
     fn render_block(&mut self, frames: usize) {
         let frames = frames.min(MAX_BLOCK);
+        let bar = self.meter().bar(self.position.max(0.0) as u32);
         let transport = ExternalTransport {
             playing: self.playing,
             tempo_bpm: self.tempo_bpm,
             position_beats: self.position_beats(),
             sample_rate: self.sample_rate,
+            time_signature: bar.sig,
+            bar_start_beats: f64::from(bar.start) / f64::from(PPQ),
+            bar_number: bar.index,
         };
         if self.midi_clock && self.playing != self.clock_was_playing {
             let byte = if !self.playing {
@@ -923,14 +959,16 @@ impl Engine {
                 }
             }
             if self.metronome {
-                let ppq = f64::from(PPQ);
-                let mut beat = (position / ppq).ceil() * ppq;
-                while beat < stop {
-                    let offset = done + (beat - position) / tpf;
-                    let accent = (beat as u64) % u64::from(TICKS_PER_BAR) == 0;
+                let mut beat = self.meter().next_beat(position);
+                while f64::from(beat.tick) < stop {
+                    let offset = done + (f64::from(beat.tick) - position) / tpf;
                     self.click
-                        .trigger((offset - 1e-6).ceil().max(0.0) as u32, accent);
-                    beat += ppq;
+                        .trigger((offset - 1e-6).ceil().max(0.0) as u32, beat.downbeat);
+                    let next = self.meter().next_beat(f64::from(beat.tick) + 1.0);
+                    if next.tick <= beat.tick {
+                        break;
+                    }
+                    beat = next;
                 }
             }
             if let (Some(seq), Some(graph)) = (self.sequence.as_deref(), self.graph.as_deref()) {

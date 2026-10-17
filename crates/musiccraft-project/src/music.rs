@@ -1,6 +1,6 @@
 //! Note names and musical time helpers.
 
-use musiccraft_params::{TICKS_PER_BAR, TICKS_PER_STEP};
+use musiccraft_params::TICKS_PER_STEP;
 
 const NAMES: [&str; 12] = [
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
@@ -88,18 +88,6 @@ pub fn ticks_to_steps(ticks: u32) -> f64 {
     f64::from(ticks) / f64::from(TICKS_PER_STEP)
 }
 
-/// Converts ticks to bars for display.
-#[must_use]
-pub fn ticks_to_bars(ticks: u32) -> f64 {
-    f64::from(ticks) / f64::from(TICKS_PER_BAR)
-}
-
-/// Rounds `ticks` up to a whole number of bars (at least one).
-#[must_use]
-pub fn round_up_to_bar(ticks: u32) -> u32 {
-    ticks.div_ceil(TICKS_PER_BAR).max(1) * TICKS_PER_BAR
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,12 +121,5 @@ mod tests {
         let major = SCALES[0].1;
         assert!(in_scale(60, 0, major) && in_scale(64, 0, major) && !in_scale(61, 0, major));
         assert!(in_scale(66, 2, major), "F# is in D major");
-    }
-
-    #[test]
-    fn bar_rounding() {
-        assert_eq!(round_up_to_bar(0), TICKS_PER_BAR);
-        assert_eq!(round_up_to_bar(1), TICKS_PER_BAR);
-        assert_eq!(round_up_to_bar(TICKS_PER_BAR + 1), 2 * TICKS_PER_BAR);
     }
 }

@@ -15,6 +15,8 @@ pub(crate) struct FileNote {
 pub(crate) struct MidiFile {
     pub ticks_per_quarter: u16,
     pub notes: Vec<FileNote>,
+    /// The earliest time signature: numerator and denominator.
+    pub time_signature: Option<(u32, u32)>,
 }
 
 /// Most notes accepted from one file.
@@ -66,7 +68,10 @@ impl<'a> Reader<'a> {
     }
 }
 
-fn read_track(data: &[u8], notes: &mut Vec<FileNote>) -> Result<(), String> {
+/// The earliest time signature seen: (time, numerator, denominator).
+type FirstSig = Option<(u64, u32, u32)>;
+
+fn read_track(data: &[u8], notes: &mut Vec<FileNote>, sig: &mut FirstSig) -> Result<(), String> {
     let mut r = Reader { data, pos: 0 };
     let mut time = 0_u64;
     let mut running: Option<u8> = None;
@@ -87,7 +92,13 @@ fn read_track(data: &[u8], notes: &mut Vec<FileNote>) -> Result<(), String> {
                 running = None;
                 let kind = r.byte()?;
                 let len = usize::try_from(r.vlq()?).map_err(|e| e.to_string())?;
-                r.bytes(len)?;
+                let body = r.bytes(len)?;
+                if let (0x58, [num, power, ..]) = (kind, body)
+                    && sig.is_none_or(|(at, ..)| time < at)
+                {
+                    let den = 1_u32.checked_shl(u32::from(*power)).unwrap_or(0);
+                    *sig = Some((time, u32::from(*num), den));
+                }
                 if kind == 0x2f {
                     break;
                 }
@@ -163,6 +174,7 @@ pub(crate) fn parse(data: &[u8]) -> Result<MidiFile, String> {
         return Err("SMPTE-timed MIDI files are not supported".to_owned());
     }
     let mut notes = Vec::new();
+    let mut sig = None;
     for _ in 0..tracks {
         if r.pos >= data.len() {
             break;
@@ -171,13 +183,14 @@ pub(crate) fn parse(data: &[u8]) -> Result<MidiFile, String> {
         let len = r.u32()? as usize;
         let chunk = r.bytes(len)?;
         if kind == b"MTrk" {
-            read_track(chunk, &mut notes)?;
+            read_track(chunk, &mut notes, &mut sig)?;
         }
     }
     notes.sort_by_key(|n| (n.start, n.key));
     Ok(MidiFile {
         ticks_per_quarter: division,
         notes,
+        time_signature: sig.map(|(_, num, den)| (num, den)),
     })
 }
 

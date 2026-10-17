@@ -3,8 +3,7 @@
 
 use egui::{Align2, Color32, FontId, PointerButton, Pos2, RichText, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
-use musiccraft_project::params::{PPQ, TICKS_PER_BAR};
-use musiccraft_project::{Automation, PLAYLIST_TRACKS, Project};
+use musiccraft_project::{Automation, Meter, PLAYLIST_TRACKS, Project};
 
 use crate::geometry::Snap;
 use crate::{Action, Frame, UiState, theme};
@@ -111,7 +110,10 @@ pub fn show(
                         .color(theme::TEXT_DIM),
                 );
             });
-            canvas(ui, state, index, automation, actions);
+            // Curve ticks count from the clip start: bars of the project
+            // signature.
+            let meter = Meter::new(project.time_signature);
+            canvas(ui, state, (index, automation), &meter, actions);
         });
     if !open {
         state.automation_editor = None;
@@ -121,11 +123,12 @@ pub fn show(
 fn canvas(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    index: usize,
-    automation: &Automation,
+    (index, automation): (usize, &Automation),
+    meter: &Meter,
     actions: &mut Vec<Action>,
 ) {
-    let length = automation.length_ticks().max(4 * TICKS_PER_BAR) + TICKS_PER_BAR;
+    let length =
+        meter.round_up_to_bar(automation.length_ticks().max(meter.bar_start(4))) + meter.bar(0).len;
     let width = ui.available_width().max(200.0);
     let (rect, response) = ui.allocate_exact_size(vec2(width, HEIGHT), Sense::click_and_drag());
     let painter = ui.painter_at(rect);
@@ -136,9 +139,9 @@ fn canvas(
     let tick_of = |x: f32| ((x - inner.left()) / inner.width() * length as f32).max(0.0);
     let y_of = |v: f32| inner.bottom() - v * inner.height();
     let value_of = |y: f32| ((inner.bottom() - y) / inner.height()).clamp(0.0, 1.0);
-    for beat in (0..=length).step_by(PPQ as usize) {
-        let x = x_of(beat as f32);
-        let color = if beat % TICKS_PER_BAR == 0 {
+    for beat in meter.beats(0, length + 1) {
+        let x = x_of(beat.tick as f32);
+        let color = if beat.downbeat {
             theme::GRID_BAR
         } else {
             theme::GRID_LINE
@@ -147,11 +150,11 @@ fn canvas(
             [pos2(x, rect.top()), pos2(x, rect.bottom())],
             Stroke::new(1.0, color),
         );
-        if beat % TICKS_PER_BAR == 0 {
+        if beat.downbeat {
             painter.text(
                 pos2(x + 3.0, rect.top() + 2.0),
                 Align2::LEFT_TOP,
-                (beat / TICKS_PER_BAR + 1).to_string(),
+                (beat.bar + 1).to_string(),
                 FontId::monospace(10.0),
                 theme::TEXT_DIM,
             );
@@ -208,7 +211,7 @@ fn canvas(
     }
     if let (Some(d), Some(pos)) = (&mut state.automation_drag, response.interact_pointer_pos()) {
         if response.dragged() {
-            d.tick = snap.round(tick_of(pos.x));
+            d.tick = snap.round(tick_of(pos.x), meter);
             d.value = value_of(pos.y);
         }
     }
@@ -228,7 +231,7 @@ fn canvas(
     if response.clicked_by(PointerButton::Primary) {
         if let Some(pos) = response.interact_pointer_pos() {
             if hit(pos).is_none() && inner.expand(4.0).contains(pos) {
-                let tick = snap.round(tick_of(pos.x)).min(length);
+                let tick = snap.round(tick_of(pos.x), meter).min(length);
                 actions.push(Action::Run(Invocation::new(
                     "automation.add_point",
                     [number.clone(), t(tick), format!("{:.4}", value_of(pos.y))],

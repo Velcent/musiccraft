@@ -403,6 +403,7 @@ pub fn build_sequence(project: &Project) -> Sequence {
                 .with_automation(lanes)
                 .with_controllers(controllers)
                 .with_loop_start(u64::from(start))
+                .with_meter(full.meter().clone())
         }
         (PlayMode::Song, None) => {
             let pauses = project.playlist.pause_ticks();
@@ -464,6 +465,7 @@ pub fn build_full_sequence(project: &Project) -> Sequence {
                 u64::from(pattern.length_ticks()),
             ))
             .with_controllers(controller_lanes(project))
+            .with_meter(pattern.meter())
         }
         PlayMode::Song => Sequence::new(
             crate::delivery::apply(project, crate::arp::apply(project, song_events(project))),
@@ -474,6 +476,7 @@ pub fn build_full_sequence(project: &Project) -> Sequence {
             lanes.extend(song_pattern_lanes(project));
             lanes
         })
-        .with_controllers(controller_lanes(project)),
+        .with_controllers(controller_lanes(project))
+        .with_meter(project.song_meter()),
     }
 }

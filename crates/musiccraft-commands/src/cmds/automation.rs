@@ -1,6 +1,4 @@
-use musiccraft_project::params::{
-    INSTRUMENT_PARAMS, TICKS_PER_BAR, TICKS_PER_STEP, index_of, volume_to_unit,
-};
+use musiccraft_project::params::{INSTRUMENT_PARAMS, TICKS_PER_STEP, index_of, volume_to_unit};
 use musiccraft_project::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Clip, ClipSource, MAX_VOLUME,
     PLAYLIST_TRACKS, PatternLane, Project,
@@ -186,9 +184,8 @@ fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         ));
     }
     let length = project
-        .song_length_ticks()
-        .max(tick + 1)
-        .next_multiple_of(TICKS_PER_BAR);
+        .song_meter()
+        .round_up_to_bar(project.song_length_ticks().max(tick + 1));
     let track = (0..PLAYLIST_TRACKS)
         .find(|row| {
             !project
@@ -338,7 +335,7 @@ fn create(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         points: vec![
             AutomationPoint { tick: 0, value },
             AutomationPoint {
-                tick: 4 * TICKS_PER_BAR,
+                tick: project.song_meter().bar_start(4),
                 value,
             },
         ],

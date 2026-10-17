@@ -625,13 +625,36 @@ fn import_midi(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
         })
         .collect();
     let count = imported.len();
+    // The file's signature becomes the pattern's.
+    let sig = file
+        .time_signature
+        .and_then(|(num, den)| musiccraft_project::TimeSig::new(num, den))
+        .filter(|sig| *sig != project.patterns[target.pattern].time_signature);
+    let meter_inverse = match sig {
+        Some(_) => Some(super::meter::snapshot(project, args)?),
+        None => None,
+    };
+    if let Some(sig) = sig {
+        project.patterns[target.pattern].set_time_signature(sig);
+    }
     let (old, _) = rewrite(project, &target, |mut notes| {
         notes.extend(imported);
         notes
     });
+    let notes_inverse = target.set_all_inverse(&old);
+    let inverse = match meter_inverse {
+        Some(meter) => {
+            Invocation::new(crate::BATCH, [notes_inverse.to_string(), meter.to_string()])
+        }
+        None => notes_inverse,
+    };
+    let message = format!("imported {count} notes into channel {}", target.channel + 1);
     Ok(Outcome::undoable(
-        format!("imported {count} notes into channel {}", target.channel + 1),
-        target.set_all_inverse(&old),
+        match sig {
+            Some(sig) => format!("{message}, pattern in {sig}"),
+            None => message,
+        },
+        inverse,
     ))
 }
 

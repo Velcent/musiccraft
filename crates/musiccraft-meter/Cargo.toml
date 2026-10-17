@@ -1,0 +1,18 @@
+[package]
+name = "musiccraft-meter"
+description = "Time signatures and bar/beat positions for MusicCraft"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+musiccraft-params.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -4,6 +4,7 @@ mod automation;
 mod channel;
 mod clip_edit;
 mod controller;
+mod meter;
 mod mixer;
 mod note_gen;
 mod note_tools;
@@ -27,6 +28,7 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     let mut commands = Vec::new();
     commands.extend(transport::commands());
     commands.extend(project::commands());
+    commands.extend(meter::commands());
     commands.extend(channel::commands());
     commands.extend(notes::commands());
     commands.extend(note_tools::commands());

@@ -6,7 +6,7 @@ use musiccraft_commands::Invocation;
 use musiccraft_project::{MAX_TEMPO_BPM, MIN_TEMPO_BPM, PlayMode};
 
 use crate::icons::{self, Icon};
-use crate::{Action, Frame, UiState, geometry::position_label, theme, widgets};
+use crate::{Action, Frame, UiState, geometry::position_label, signature, theme, widgets};
 
 fn run(actions: &mut Vec<Action>, line: &str) {
     if let Ok(invocation) = Invocation::parse(line) {
@@ -462,7 +462,7 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     icons::lcd(
         ui,
         92.0,
-        position_label(ticks).trim(),
+        position_label(ticks, &project.playing_meter()).trim(),
         &time,
         egui::Sense::hover(),
     )
@@ -511,6 +511,16 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             ));
         }
     }
+    let sig = project.time_signature;
+    ui.menu_button(RichText::new(sig.to_string()).monospace(), |ui| {
+        if let Some(new) = signature::picker(ui, Some(sig), &mut state.sig_draft) {
+            run(actions, &format!("project.set_time_signature {new}"));
+        }
+    })
+    .response
+    .hint(
+        "Time signature of the song and of new patterns (changes: right-click the playlist ruler)",
+    );
     ui.add_space(4.0);
 
     let current = project.current_pattern;

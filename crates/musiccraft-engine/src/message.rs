@@ -113,7 +113,8 @@ pub enum Start {
     /// The playhead moves at once.
     #[default]
     Now,
-    /// Click this many beats first, then move.
+    /// Click this many bars (of the signature where playback starts) first,
+    /// then move.
     CountIn(u32),
     /// Move when the first live note arrives.
     WaitForInput,

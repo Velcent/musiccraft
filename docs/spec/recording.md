@@ -8,8 +8,9 @@
 - Recording options are saved with the project but, like the metronome, are
   not undoable:
   - `record.toggle_count_in` (Ctrl+P): **count-in**. When playback starts while
-    recording is armed, the metronome clicks one bar (four beats, the first one
-    accented) before the playhead moves. The click sounds even with the
+    recording is armed, the metronome clicks one bar of the time signature
+    where playback starts (its beats, the first one accented) before the
+    playhead moves. The click sounds even with the
     metronome off. Notes played during the count-in are not recorded.
   - `record.toggle_wait` (Ctrl+I): **wait for input**. When playback starts
     while recording is armed, the playhead waits until the first live note
@@ -94,7 +95,7 @@
 ## Engine mapping
 
 - `SetStart(Start)` tells the engine how the next Play begins: `Now`,
-  `CountIn(beats)` or `WaitForInput`. The bridge sends it whenever the project's
+  `CountIn(bars)` or `WaitForInput`. The bridge sends it whenever the project's
   armed state or options change it. Stop and Pause cancel a pending count-in or
   wait. The engine reports `counting_in` and `waiting` in its meters; it is not
   `playing` during either.

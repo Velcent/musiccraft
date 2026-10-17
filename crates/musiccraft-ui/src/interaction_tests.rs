@@ -6,13 +6,16 @@ use std::collections::BTreeSet;
 use egui::{Event, Modifiers, PointerButton, Pos2, Rect, pos2, vec2};
 use musiccraft_commands::{Registry, Session};
 use musiccraft_project::Project;
-use musiccraft_project::params::{TICKS_PER_BAR, TICKS_PER_STEP};
+use musiccraft_project::params::TICKS_PER_STEP;
 
 use crate::piano_roll::row_of_key;
 use crate::{
     Action, EngineStatus, Frame, History, LivePluginView, PluginEntry, PluginParamView, Plugins,
     Settings, SettingsInfo, UiState, show,
 };
+
+/// A 4/4 bar.
+const TICKS_PER_BAR: u32 = 384;
 
 struct Harness {
     ctx: egui::Context,
@@ -1170,4 +1173,46 @@ fn step_buttons_paint_with_the_left_button_and_erase_with_the_right() {
     // A left drag from a lit step clears the steps it passes.
     h.drag(step(6), step(7));
     assert_eq!(lit_steps(&h, 1), [2, 4, 5]);
+}
+
+#[test]
+fn the_playlist_snaps_to_bars_of_the_song_meter() {
+    // 3/4 bars of 288 ticks, then 7/8 bars of 336 from the third bar.
+    let mut h = Harness::new(&[
+        "pattern.add Verse",
+        "project.set_time_signature 3/4",
+        "playlist.set_time_signature 2 7/8",
+    ]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let placed = h.click(h.playlist_point(288 + 10, 1), PointerButton::Primary);
+    assert_eq!(placed, ["playlist.add_clip 2 2 288t"]);
+    h.settle();
+    let placed = h.click(h.playlist_point(576 + 300, 2), PointerButton::Primary);
+    assert_eq!(placed, ["playlist.add_clip 2 3 576t"]);
+    h.settle();
+    // Shift+drag on the ruler sets a loop on bar lines of the meter.
+    let (grid, clip) = h.state.playlist.last_view.unwrap();
+    let on_ruler = |tick: u32| pos2(grid.x(tick as f32), clip.top() + 10.0);
+    h.modifiers = Modifiers::SHIFT;
+    let set = h.drag(on_ruler(288 + 10), on_ruler(576 + 336 - 10));
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(set, ["transport.set_loop 288t 912t"]);
+}
+
+#[test]
+fn the_rack_and_roll_follow_the_pattern_signature() {
+    let mut h = Harness::new(&[
+        "channel.add_sampler builtin:kick",
+        "pattern.set_time_signature 1 7/8",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    // One bar of 7/8 is 14 steps; the roll's bar snap is a 7/8 bar.
+    assert_eq!(h.session.project().current_pattern().length_steps, 14);
+    assert_eq!(h.state.roll.meter.first().to_string(), "7/8");
+    assert_eq!(
+        h.state.step_edit_ticks(0, &h.state.roll.meter),
+        TICKS_PER_STEP
+    );
 }

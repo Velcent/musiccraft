@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use musiccraft_commands::{BATCH, Command, CommandError, Invocation, Outcome};
-use musiccraft_params::{PPQ, TICKS_PER_BAR, inst};
+use musiccraft_params::{PPQ, inst};
 use musiccraft_project::{Channel, ChannelId, Clip, ClipSource, Instrument, PlayMode, Project};
 use musiccraft_samples::{WavFormat, write_wav};
 
@@ -20,15 +20,15 @@ pub struct ConsolidateCommand {
 /// Sample rate of consolidated audio.
 const RATE: u32 = 48_000;
 
-/// A time argument: bars from 0, or `<n>t` ticks.
-fn time(raw: &str) -> Option<u32> {
+/// A time argument: bars of `meter` from 0, or `<n>t` ticks.
+fn time(raw: &str, meter: &musiccraft_project::Meter) -> Option<u32> {
     match raw.strip_suffix('t') {
         Some(ticks) => ticks.parse().ok(),
         None => raw
             .parse::<f64>()
             .ok()
             .filter(|bars| bars.is_finite() && *bars >= 0.0)
-            .map(|bars| (bars * f64::from(TICKS_PER_BAR)).round() as u32),
+            .map(|bars| meter.bars_to_ticks(bars)),
     }
 }
 
@@ -83,7 +83,8 @@ impl Command for ConsolidateCommand {
             .ok()
             .and_then(|t| t.checked_sub(1))
             .ok_or_else(|| invalid(format!("`{track}` is not a playlist track")))?;
-        let at = time(at).ok_or_else(|| invalid(format!("`{at}` is not a time")))?;
+        let at = time(at, &project.song_meter())
+            .ok_or_else(|| invalid(format!("`{at}` is not a time")))?;
         let index = project
             .playlist
             .clip_at(track, at)

@@ -21,12 +21,14 @@ musiccraft-app ──► musiccraft-ui ──► musiccraft-commands ──► m
 musiccraft-cli ──► commands, render, audio                                             │
 musiccraft-mcp ──► commands, render                                                    │
 xtask ──► commands, render, ui (keymap) ───────────────────────────────────────────────┘
+musiccraft-project, musiccraft-engine ──► musiccraft-meter ──► musiccraft-params
 ```
 
 | Crate | Responsibility |
 | --- | --- |
 | `musiccraft-formula` | The formula controllers' expression language: parsing on the main thread, allocation-free evaluation on the audio thread. No dependencies. |
 | `musiccraft-params` | Shared tables: timing (PPQ), instrument and effect parameter specs, built-in sound names. No logic. |
+| `musiccraft-meter` | Time signatures and the bar and beat grid of a timeline (`TimeSig`, `Meter`). Queries are allocation-free, so the engine uses it too. |
 | `musiccraft-project` | Project data model and JSON file format. No audio, no UI. |
 | `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`; converts FL Studio projects for `project.import_flp`. |
 | `musiccraft-flp` | Reads FL Studio projects and presets: a Rust port of PyFLP (GPL-3.0), tested against PyFLP on PyFLP's own test files. No dependencies; safe code. |
@@ -119,9 +121,12 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 
 ## Time
 
-- 96 ticks per beat (PPQ), 24 ticks per sixteenth-note step, 4/4 bars of 384
-  ticks. The engine keeps the playhead as fractional ticks and starts each note on
-  the first frame at or after its tick.
+- 96 ticks per quarter note (PPQ), 24 ticks per sixteenth-note step. Bars and
+  beats come from time signatures (`docs/spec/time-signatures.md`): every bar
+  and beat position goes through a `musiccraft_meter::Meter`, never a fixed bar
+  length. The engine keeps the playhead as fractional ticks and starts each note
+  on the first frame at or after its tick; its sequence carries the meter for
+  the metronome, the count-in and the plugin transport.
 
 ## Testing strategy
 
@@ -159,4 +164,4 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 - Honoring a plugin's restart request (latency or port changes) while running.
 - Decoding compressed samples (FLAC, Ogg, MP3), likely via `symphonia`; lossy
   export formats.
-- Time signatures other than 4/4 and tempo automation.
+- Tempo automation.

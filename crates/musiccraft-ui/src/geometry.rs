@@ -1,7 +1,8 @@
 //! Pure layout maths shared by the piano roll and playlist editors.
 
 use egui::{Pos2, Rect, pos2};
-use musiccraft_project::params::{PPQ, TICKS_PER_BAR, TICKS_PER_STEP};
+use musiccraft_project::Meter;
+use musiccraft_project::params::TICKS_PER_STEP;
 
 /// Grid resolution for placing and moving things in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,9 +15,9 @@ pub enum Snap {
     HalfStep,
     /// One step (1/16 note).
     Step,
-    /// One beat (1/4 note).
+    /// One beat of the time signature.
     Beat,
-    /// One bar.
+    /// One bar of the time signature.
     Bar,
 }
 
@@ -31,16 +32,17 @@ impl Snap {
         Self::Bar,
     ];
 
-    /// Grid size in ticks.
+    /// Grid size in ticks at `tick` of `meter` (beats and bars vary with the
+    /// time signature).
     #[must_use]
-    pub fn ticks(self) -> u32 {
+    pub fn ticks_at(self, tick: u32, meter: &Meter) -> u32 {
         match self {
             Self::Off => 1,
             Self::QuarterStep => TICKS_PER_STEP / 4,
             Self::HalfStep => TICKS_PER_STEP / 2,
             Self::Step => TICKS_PER_STEP,
-            Self::Beat => PPQ,
-            Self::Bar => TICKS_PER_BAR,
+            Self::Beat => meter.sig_at(tick).beat_ticks(),
+            Self::Bar => meter.bar(tick).len,
         }
     }
 
@@ -57,18 +59,36 @@ impl Snap {
         }
     }
 
-    /// Rounds a non-negative tick position down to the grid.
+    /// Rounds a non-negative tick position down to the grid of `meter`.
     #[must_use]
-    pub fn floor(self, ticks: f32) -> u32 {
-        let grid = self.ticks();
-        (ticks.max(0.0) as u32 / grid) * grid
+    pub fn floor(self, ticks: f32, meter: &Meter) -> u32 {
+        let tick = ticks.max(0.0) as u32;
+        match self {
+            Self::Beat => meter.floor_to_beat(tick),
+            Self::Bar => meter.floor_to_bar(tick),
+            _ => {
+                let grid = self.ticks_at(tick, meter);
+                tick / grid * grid
+            }
+        }
     }
 
-    /// Rounds a non-negative tick position to the nearest grid line.
+    /// Rounds a non-negative tick position to the nearest grid line of
+    /// `meter`.
     #[must_use]
-    pub fn round(self, ticks: f32) -> u32 {
-        let grid = self.ticks() as f32;
-        ((ticks.max(0.0) / grid).round() * grid) as u32
+    pub fn round(self, ticks: f32, meter: &Meter) -> u32 {
+        let ticks = ticks.max(0.0);
+        let below = self.floor(ticks, meter);
+        // The next line: a grid step on, but never past the bar line.
+        let bar_end = meter.bar(below).end();
+        let above = below
+            .saturating_add(self.ticks_at(below, meter))
+            .min(bar_end);
+        if ticks - below as f32 >= (above - below) as f32 / 2.0 {
+            above
+        } else {
+            below
+        }
     }
 }
 
@@ -151,14 +171,12 @@ pub fn hit_test(boxes: impl DoubleEndedIterator<Item = (usize, Rect)>, pos: Pos2
     Hit::Empty
 }
 
-/// Formats a tick position as `bar.beat.step` (1-based), as shown in the toolbar.
+/// Formats a tick position as `bar.beat.step` (1-based) in `meter`, as shown
+/// in the toolbar.
 #[must_use]
-pub fn position_label(ticks: f64) -> String {
-    let ticks = ticks.max(0.0) as u32;
-    let bar = ticks / TICKS_PER_BAR + 1;
-    let beat = ticks % TICKS_PER_BAR / PPQ + 1;
-    let step = ticks % PPQ / TICKS_PER_STEP + 1;
-    format!("{bar:>3}.{beat}.{step}")
+pub fn position_label(ticks: f64, meter: &Meter) -> String {
+    let p = meter.position(ticks.max(0.0) as u32);
+    format!("{:>3}.{}.{}", p.bar, p.beat, p.step)
 }
 
 #[cfg(test)]
@@ -193,11 +211,25 @@ mod tests {
 
     #[test]
     fn snapping() {
-        assert_eq!(Snap::Step.floor(47.9), 24);
-        assert_eq!(Snap::Step.round(36.0), 48);
-        assert_eq!(Snap::Bar.floor(383.0), 0);
-        assert_eq!(Snap::Off.floor(7.6), 7);
-        assert_eq!(Snap::Beat.floor(-5.0), 0);
+        let m = Meter::default();
+        assert_eq!(Snap::Step.floor(47.9, &m), 24);
+        assert_eq!(Snap::Step.round(36.0, &m), 48);
+        assert_eq!(Snap::Bar.floor(383.0, &m), 0);
+        assert_eq!(Snap::Off.floor(7.6, &m), 7);
+        assert_eq!(Snap::Beat.floor(-5.0, &m), 0);
+    }
+
+    #[test]
+    fn snapping_follows_the_signature() {
+        let sig = |s: &str| s.parse::<musiccraft_project::TimeSig>().unwrap();
+        // 6/8, then 3/4 from tick 200 (cutting the first bar short).
+        let m = Meter::with_changes(sig("6/8"), [(200, sig("3/4"))]);
+        assert_eq!(Snap::Beat.floor(100.0, &m), 96);
+        assert_eq!(Snap::Beat.round(198.0, &m), 200, "a change is a bar line");
+        assert_eq!(Snap::Bar.floor(250.0, &m), 200);
+        assert_eq!(Snap::Bar.round(450.0, &m), 488);
+        assert_eq!(Snap::Bar.ticks_at(10, &m), 200);
+        assert_eq!(Snap::Beat.ticks_at(300, &m), 96);
     }
 
     #[test]
@@ -213,10 +245,10 @@ mod tests {
 
     #[test]
     fn position_labels() {
-        assert_eq!(position_label(0.0), "  1.1.1");
-        assert_eq!(
-            position_label(f64::from(TICKS_PER_BAR + PPQ + TICKS_PER_STEP)),
-            "  2.2.2"
-        );
+        let m = Meter::default();
+        assert_eq!(position_label(0.0, &m), "  1.1.1");
+        assert_eq!(position_label(f64::from(384 + 96 + 24), &m), "  2.2.2");
+        let m = Meter::new("7/8".parse().unwrap());
+        assert_eq!(position_label(f64::from(336 + 48), &m), "  2.2.1");
     }
 }

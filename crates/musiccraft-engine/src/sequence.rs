@@ -116,6 +116,8 @@ pub struct Sequence {
     home: Option<u64>,
     /// Ticks where playback pauses (pause markers), sorted.
     pauses: Vec<u64>,
+    /// Bars and beats: metronome, count-in and the plugin transport.
+    meter: musiccraft_meter::Meter,
 }
 
 impl Sequence {
@@ -134,7 +136,21 @@ impl Sequence {
             loop_start: 0,
             home: None,
             pauses: Vec::new(),
+            meter: musiccraft_meter::Meter::default(),
         }
+    }
+
+    /// Plays in `meter` (4/4 otherwise).
+    #[must_use]
+    pub fn with_meter(mut self, meter: musiccraft_meter::Meter) -> Self {
+        self.meter = meter;
+        self
+    }
+
+    /// The sequence's bars and beats.
+    #[must_use]
+    pub fn meter(&self) -> &musiccraft_meter::Meter {
+        &self.meter
     }
 
     /// Makes Stop return to `tick` instead of the loop start (a song that wraps

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use musiccraft_commands::{Command, CommandError, Outcome};
 use musiccraft_params::PPQ;
-use musiccraft_project::Project;
+use musiccraft_project::{Meter, Project, TimeSig};
 
 use crate::sequence::midi_events;
 
@@ -43,6 +43,27 @@ fn meta(out: &mut Vec<u8>, kind: u8, payload: &[u8]) {
     out.extend(payload);
 }
 
+/// The FF 58 payload of `sig`: numerator, denominator as a power of two,
+/// MIDI clocks per beat and 32nd notes per quarter.
+fn sig_payload(sig: TimeSig) -> [u8; 4] {
+    let num = u8::try_from(sig.num()).unwrap_or(4);
+    let power = u8::try_from(sig.den().trailing_zeros()).unwrap_or(2);
+    let clocks = u8::try_from(96 / sig.den().max(1)).unwrap_or(24);
+    [num, power, clocks, 8]
+}
+
+/// Time signature events: the start's, then one per change.
+fn signatures(out: &mut Vec<u8>, meter: &Meter) {
+    meta(out, 0x58, &sig_payload(meter.first()));
+    let mut last = 0;
+    for (tick, sig) in meter.changes() {
+        vlq(out, tick - last);
+        last = tick;
+        out.extend([0xff, 0x58, 4]);
+        out.extend(sig_payload(sig));
+    }
+}
+
 /// The whole file: a tempo track, then one track per channel with notes.
 #[must_use]
 pub fn midi_file(project: &Project) -> Vec<u8> {
@@ -52,7 +73,7 @@ pub fn midi_file(project: &Project) -> Vec<u8> {
     meta(&mut tempo, 0x03, project.name().as_bytes());
     let micros = (60_000_000.0 / project.tempo_bpm()).round() as u32;
     meta(&mut tempo, 0x51, &micros.to_be_bytes()[1..]);
-    meta(&mut tempo, 0x58, &[4, 2, 24, 8]);
+    signatures(&mut tempo, &project.playing_meter());
     tracks.push(chunk(tempo));
     for (index, channel) in project.channels.iter().enumerate() {
         let mine: Vec<_> = events

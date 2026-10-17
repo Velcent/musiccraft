@@ -86,7 +86,10 @@ fn add(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> 
     };
     let previous = project.current_pattern;
     let id = PatternId(project.alloc_id());
-    project.patterns.push(Pattern::new(id, name.clone()));
+    let sig = project.time_signature;
+    project
+        .patterns
+        .push(Pattern::with_signature(id, name.clone(), sig));
     let number = project.patterns.len();
     project.current_pattern = number - 1;
     Ok(Outcome::undoable(

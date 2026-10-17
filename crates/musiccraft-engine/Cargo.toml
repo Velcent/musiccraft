@@ -11,6 +11,7 @@ license.workspace = true
 musiccraft-formula.workspace = true
 musiccraft-dsp.workspace = true
 musiccraft-params.workspace = true
+musiccraft-meter.workspace = true
 rtrb.workspace = true
 
 [lints]

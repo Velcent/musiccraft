@@ -1483,6 +1483,7 @@ version = "0.2.1"
 dependencies = [
  "musiccraft-dsp",
  "musiccraft-formula",
+ "musiccraft-meter",
  "musiccraft-params",
  "rtrb",
 ]
@@ -1510,6 +1511,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "musiccraft-meter"
+version = "0.2.1"
+dependencies = [
+ "musiccraft-params",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "musiccraft-params"
 version = "0.2.1"
 dependencies = [
@@ -1527,6 +1537,7 @@ dependencies = [
 name = "musiccraft-project"
 version = "0.2.1"
 dependencies = [
+ "musiccraft-meter",
  "musiccraft-params",
  "serde",
  "serde_json",

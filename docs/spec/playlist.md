@@ -16,8 +16,8 @@
   shows the colour, name, a mute dot and an S (solo) button; right-click it to
   rename it or pick a colour. A coloured row shows a stripe of its colour at the
   left of its header; silenced rows show their name dimmed.
-- Playlist time arguments are in bars from 0 (4/4); fractions are allowed and
-  `<n>t` gives exact ticks.
+- Playlist time arguments are in bars from 0 of the song's time signatures
+  (`time-signatures.md`); fractions are allowed and `<n>t` gives exact ticks.
 - Commands: `playlist.add_clip <pattern> <track> <start> [length]` (default length:
   the pattern's length), `playlist.remove_clip <track> <at>` and
   `playlist.move_clip`/`playlist.resize_clip` (the clip covering a position),
