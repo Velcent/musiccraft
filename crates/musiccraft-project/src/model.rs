@@ -30,7 +30,7 @@ pub const MAX_PATTERN_STEPS: u32 = 1024;
 /// Number of playlist track rows.
 pub const PLAYLIST_TRACKS: u32 = 64;
 /// Inserts in a new project's mixer (plus master).
-pub const DEFAULT_INSERTS: usize = 8;
+pub const DEFAULT_INSERTS: usize = 16;
 /// Key that steps toggled in the channel rack play.
 pub const STEP_KEY: u8 = 60;
 /// Velocity of notes created without an explicit velocity.
@@ -559,6 +559,8 @@ pub struct EffectSlot {
     /// The parallel branches of an effect rack, each a chain of effects;
     /// empty for every other effect.
     pub branches: Vec<Vec<EffectSlot>>,
+    /// Dry/wet mix, 0..=1: the output is `dry + (wet - dry) * mix`.
+    pub mix: f32,
 }
 
 impl EffectSlot {
@@ -571,6 +573,7 @@ impl EffectSlot {
             values: kind.defaults(),
             plugin: None,
             file: None,
+            mix: 1.0,
             branches: if kind == EffectKind::Rack {
                 vec![Vec::new(); RACK_BRANCHES]
             } else {
@@ -610,6 +613,17 @@ struct EffectRepr {
     file: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     branches: Vec<Vec<EffectSlot>>,
+    #[serde(default = "full_mix", skip_serializing_if = "is_full_mix")]
+    mix: f32,
+}
+
+fn full_mix() -> f32 {
+    1.0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_full_mix(mix: &f32) -> bool {
+    *mix >= 1.0
 }
 
 impl From<EffectSlot> for EffectRepr {
@@ -621,6 +635,7 @@ impl From<EffectSlot> for EffectRepr {
             plugin: slot.plugin.map(|p| *p),
             file: slot.file,
             branches: slot.branches,
+            mix: slot.mix,
         }
     }
 }
@@ -636,6 +651,11 @@ impl From<EffectRepr> for EffectSlot {
             values: params_from_map(repr.kind.params(), &repr.params),
             plugin: repr.plugin.map(Box::new),
             file: repr.file,
+            mix: if repr.mix.is_finite() {
+                repr.mix.clamp(0.0, 1.0)
+            } else {
+                1.0
+            },
             // A rack always has its four branches; nothing else has any.
             branches: if repr.kind == EffectKind::Rack {
                 let mut branches = repr.branches;
@@ -698,6 +718,9 @@ pub struct MixerTrack {
     /// Exchange the left and right sides.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub swap_sides: bool,
+    /// The built-in three-band EQ.
+    #[serde(default, skip_serializing_if = "TrackEq::is_flat")]
+    pub eq: TrackEq,
 }
 
 impl MixerTrack {
@@ -716,6 +739,46 @@ impl MixerTrack {
             separation: 0.0,
             phase_invert: false,
             swap_sides: false,
+            eq: TrackEq::default(),
+        }
+    }
+}
+
+/// A mixer track's built-in EQ: low shelf, peak (Q 0.7) and high shelf.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct TrackEq {
+    /// Gain in dB (-18..=18) and frequency in Hz of the low, mid and high
+    /// bands.
+    pub bands: [(f32, f32); 3],
+}
+
+impl TrackEq {
+    /// Band names, in order.
+    pub const BANDS: [&'static str; 3] = ["low", "mid", "high"];
+    /// Frequency ranges of the bands, in Hz.
+    pub const RANGES: [(f32, f32); 3] = [(20.0, 1_000.0), (100.0, 10_000.0), (1_000.0, 20_000.0)];
+    /// Gain limit in dB.
+    pub const MAX_GAIN: f32 = 18.0;
+
+    /// Whether every band is at 0 dB with its default frequency.
+    #[must_use]
+    pub fn is_flat(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Parameters in the order of the engine's three-band EQ:
+    /// `[low gain, low freq, mid gain, mid freq, mid q, high gain, high freq]`.
+    #[must_use]
+    pub fn params(&self) -> [f32; 7] {
+        let [(lg, lf), (mg, mf), (hg, hf)] = self.bands;
+        [lg, lf, mg, mf, 0.7, hg, hf]
+    }
+}
+
+impl Default for TrackEq {
+    fn default() -> Self {
+        Self {
+            bands: [(0.0, 120.0), (0.0, 1_000.0), (0.0, 8_000.0)],
         }
     }
 }

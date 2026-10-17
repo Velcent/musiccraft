@@ -1637,3 +1637,26 @@ fn chords_last_a_bar_of_the_pattern() {
     assert_eq!(notes[0].length, 288);
     assert!(notes.iter().any(|n| n.start == 288));
 }
+
+#[test]
+fn track_eq_and_slot_mix_are_undoable_and_saved() {
+    let mut s = session();
+    let before = s.project().clone();
+    run(&mut s, "mixer.set_eq 1 low 6 200");
+    run(&mut s, "mixer.add_effect 1 reverb");
+    run(&mut s, "mixer.set_effect_mix 1 1 0.25");
+    let track = &s.project().mixer[1];
+    assert_eq!(track.eq.bands[0], (6.0, 200.0));
+    assert!((track.effects[0].mix - 0.25).abs() < 1e-6);
+    let json = s.project().to_json().unwrap();
+    let back = Project::from_json(&json).unwrap();
+    assert_eq!(back.mixer[1], s.project().mixer[1]);
+    fails(&mut s, "mixer.set_eq 1 low 30");
+    fails(&mut s, "mixer.set_eq 1 mid 3 5");
+    fails(&mut s, "mixer.set_eq 1 bass 3");
+    fails(&mut s, "mixer.set_effect_mix 1 1 2");
+    for _ in 0..3 {
+        run(&mut s, "edit.undo");
+    }
+    assert_eq!(*s.project(), before);
+}

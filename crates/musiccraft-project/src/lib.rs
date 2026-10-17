@@ -24,7 +24,7 @@ pub use model::{
     ClipSource, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot, Instrument,
     InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker, MarkerAction,
     MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern, PatternId,
-    PatternLane, PlayMode, Playlist, PluginRef, PluginSlot, STEP_KEY, SampleZone,
+    PatternLane, PlayMode, Playlist, PluginRef, PluginSlot, STEP_KEY, SampleZone, TrackEq,
 };
 pub use musiccraft_meter as meter;
 pub use musiccraft_meter::{Meter, TimeSig};

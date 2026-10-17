@@ -312,6 +312,7 @@ fn bypassed_and_enabled_effects() {
     let fx = EffectParams {
         enabled: true,
         values,
+        mix: 1.0,
     };
     graph.set_master(
         TrackParams::default(),
@@ -331,6 +332,7 @@ fn bypassed_and_enabled_effects() {
         params: EffectParams {
             enabled: false,
             values,
+            mix: 1.0,
         },
     });
     let out = render_mono(&mut engine, 100);
@@ -824,6 +826,7 @@ fn plugin_effects_process_their_track_and_take_parameters() {
             EffectParams {
                 enabled: true,
                 values: [0.0; musiccraft_params::MAX_EFFECT_PARAMS],
+                mix: 1.0,
             },
         )],
     );
@@ -1199,6 +1202,7 @@ fn a_nan_burst_cannot_silence_a_reverb_for_good() {
     let fx = EffectParams {
         enabled: true,
         values: EffectKind::Reverb.defaults(),
+        mix: 1.0,
     };
     graph.set_master(
         TrackParams::default(),
@@ -1238,6 +1242,7 @@ fn tuner_publishes_the_pitch_it_hears() {
             EffectParams {
                 enabled,
                 values: kind.defaults(),
+                mix: 1.0,
             },
         )
     };

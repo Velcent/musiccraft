@@ -2076,3 +2076,36 @@ fn signatures_reach_the_sequence_and_midi_files() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn track_eq_and_slot_mix_change_the_sound() {
+    let level = |lines: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_synth
+                 note.add 1 0 8 C3 100
+                 channel.route 1 1
+                 {lines}"
+            ),
+        );
+        let (l, r, _) = render(s.project(), RenderOptions::default());
+        rms(&l) + rms(&r)
+    };
+    let plain = level("");
+    let cut = level("mixer.set_eq 1 low -18 1000\nmixer.set_eq 1 mid -18 1000");
+    assert!(cut < plain * 0.7, "EQ cut {cut} vs {plain}");
+    // A gain effect at a quarter mix moves the level a quarter of the way.
+    let full = level("mixer.add_effect 1 distortion");
+    let quarter = level("mixer.add_effect 1 distortion\nmixer.set_effect_mix 1 1 0.25");
+    let off = level("mixer.add_effect 1 distortion\nmixer.set_effect_mix 1 1 0");
+    assert!(
+        (off - plain).abs() < plain * 0.01,
+        "mix 0 is dry: {off} vs {plain}"
+    );
+    assert!(
+        (quarter - plain).abs() < (full - plain).abs(),
+        "{plain} {quarter} {full}"
+    );
+}

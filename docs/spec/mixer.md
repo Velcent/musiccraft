@@ -3,7 +3,7 @@
 ## Behavior
 
 - Mixer track 0 is the **master**; tracks 1… are **inserts**. New projects have
-  eight inserts. At most 128 tracks.
+  sixteen inserts. At most 128 tracks.
 - Each track has a name, volume (linear 0–1.25, default 1.0), pan (-1–1, a
   balance), mute,
   solo and up to ten insert effects processed in order. The mixer is a floating
@@ -124,6 +124,36 @@ stopped. The gate's window shows the 16 steps; clicking one turns it on or off.
 
 Ranges and defaults are defined in `musiccraft-params`.
 
+## Track EQ and slot mix
+
+- Every track has a built-in **three-band EQ** after its stereo options and
+  before its effect slots: a low shelf, a peak and a high shelf, each with a
+  gain (-18…18 dB, 0 = off) and a frequency (low 20–1000 Hz, default 120;
+  mid 100–10000 Hz, default 1000, Q 0.7; high 1000–20000 Hz, default 8000).
+  `mixer.set_eq <track> <low|mid|high> <gain dB> [freq Hz]` (undoable, saved
+  as `"eq"` only when a band is changed). A flat EQ costs nothing.
+- Every effect slot has a **mix** (0–1, default 1): the slot's output is
+  `dry + (wet − dry) × mix`. `mixer.set_effect_mix <track> <slot> <0-1>`
+  (undoable, saved as `"mix"` only when below 1). Send and band-split slots
+  ignore it.
+
+## Layout
+
+- The mixer window opens across the whole workspace. Each strip shows, top to
+  bottom: number, name, pan and stereo separation knobs, the peak meter beside
+  the fader, the level readout, ON and S buttons, the effect count and the
+  route arrow.
+- **Routing**: the arrow under every strip the selected insert may feed shows
+  whether it does and toggles it. The selected strip itself shows where it
+  goes (`→ M`, `→ 3`, or `→ M, 3, 5`). With the master selected no arrows
+  apply, as the master feeds nothing.
+- The panel beside the strips shows, for the selected track: its **input**
+  (the audio input device, as in Settings → Audio, for recording), the ten
+  effect slots (each with an enable switch, its name and a mix knob), the
+  track EQ (three gain knobs; right-click one to set its frequency), and its
+  **output** (inserts: where they route; the master: the
+  audio output device).
+
 ## Effect rack
 
 - The `rack` effect holds up to four parallel **branches** inside one slot,
@@ -202,6 +232,11 @@ Ranges and defaults are defined in `musiccraft-params`.
 - The engine publishes a peak level per track; the UI shows it decaying.
 
 ## Sources
+
+- The track EQ, slot mix knobs and the input/output pickers beside the slots
+  follow the mixer layout described in the FL Studio online manual, "Mixer"
+  (per-insert parametric EQ, effect slot mix levels, audio input/output
+  selection), in our own drawing; band ranges and defaults are our own.
 
 - Mixer layout (master plus numbered inserts, channel routing, per-insert effect
   slots) follows the workflow described in the FL Studio online manual, "Mixer"

@@ -36,8 +36,8 @@ pub fn show(
         .id(egui::Id::new("mixer-window"))
         .open(&mut open)
         .default_pos(area.left_bottom() + egui::vec2(8.0, -(STRIPS_HEIGHT + 90.0)))
-        .default_width((area.width() - 72.0).clamp(500.0, 1200.0))
-        .max_width((area.width() - 72.0).max(500.0))
+        .default_width((area.width() - 16.0).max(500.0))
+        .max_width((area.width() - 8.0).max(500.0))
         .constrain_to(area)
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -73,7 +73,7 @@ pub fn show(
                         });
                     });
                 ui.separator();
-                effects(ui, state, project, frame.plugins, actions);
+                effects(ui, state, frame, actions);
             });
         });
     state.windows.mixer = open;
@@ -215,18 +215,39 @@ fn strip(
                     ui.close();
                 }
             });
-            let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
-            crate::automation::menu(&pan.response, &format!("mixer:{index}:pan"), actions);
-            if pan.started {
-                state.begin_gesture();
-            }
-            if let Some(value) = pan.changed {
-                actions.push(Action::Coalesced(
-                    Invocation::new("mixer.set_pan", [number.clone(), format!("{value:.3}")]),
-                    state.gesture(),
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.add_space((STRIP_WIDTH - 48.0) / 2.0);
+                let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
+                crate::automation::menu(&pan.response, &format!("mixer:{index}:pan"), actions);
+                if pan.started {
+                    state.begin_gesture();
+                }
+                if let Some(value) = pan.changed {
+                    actions.push(Action::Coalesced(
+                        Invocation::new("mixer.set_pan", [number.clone(), format!("{value:.3}")]),
+                        state.gesture(),
+                    ));
+                }
+                pan.response.hint(format!("Pan {:+.0}", track.pan * 100.0));
+                let sep = widgets::knob(ui, track.separation, -1.0, 1.0, 0.0, true);
+                if sep.started {
+                    state.begin_gesture();
+                }
+                if let Some(value) = sep.changed {
+                    actions.push(Action::Coalesced(
+                        Invocation::new(
+                            "mixer.set_separation",
+                            [number.clone(), format!("{value:.3}")],
+                        ),
+                        state.gesture(),
+                    ));
+                }
+                sep.response.hint(format!(
+                    "Stereo separation {:+.0} (left: mono, right: wider)",
+                    track.separation * 100.0
                 ));
-            }
-            pan.response.hint(format!("Pan {:+.0}", track.pan * 100.0));
+            });
             let fader_height = (ui.available_height() - 72.0).max(80.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
@@ -304,6 +325,17 @@ fn route_arrow(
     let Some(from) = project.mixer.get(source) else {
         return;
     };
+    if target == source && source > 0 {
+        // The selected insert shows where it goes.
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            route_summary(from),
+            egui::FontId::monospace(10.0),
+            theme::HIGHLIGHT,
+        );
+        return;
+    }
     let possible = source > 0 && (target == 0 || target > source);
     if !possible {
         return;
@@ -358,13 +390,167 @@ fn route_arrow(
     }
 }
 
-fn effects(
+/// Where an insert's output goes: `→ M`, `→ 3`, `→ M, 3, 5` or `→ none`.
+fn route_summary(track: &MixerTrack) -> String {
+    let mut to: Vec<String> = Vec::new();
+    if track.to_master {
+        to.push("M".to_owned());
+    }
+    to.extend(track.sends.iter().map(|s| s.target.to_string()));
+    if to.is_empty() {
+        "→ none".to_owned()
+    } else {
+        format!("→ {}", to.join(", "))
+    }
+}
+
+/// A device picker; `None` is the system default. Returns the choice made.
+fn device_picker(
     ui: &mut egui::Ui,
-    state: &mut UiState,
-    project: &Project,
-    plugins: &crate::Plugins,
+    id: &str,
+    current: Option<&String>,
+    devices: &[String],
+) -> Option<Option<String>> {
+    let mut picked = None;
+    egui::ComboBox::from_id_salt(id)
+        .width(EFFECTS_WIDTH - 50.0)
+        .selected_text(current.map_or("System default", String::as_str))
+        .show_ui(ui, |ui| {
+            let choices = std::iter::once(None).chain(devices.iter().cloned().map(Some));
+            for choice in choices {
+                let label = choice
+                    .clone()
+                    .unwrap_or_else(|| "System default".to_owned());
+                if ui
+                    .selectable_label(current == choice.as_ref(), label)
+                    .clicked()
+                {
+                    picked = Some(choice);
+                }
+            }
+        });
+    picked
+}
+
+/// The selected track's input: the audio input device recorded from.
+fn input_row(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("In").small().color(theme::TEXT_DIM))
+            .hint("Audio input recorded from (Settings → Audio)");
+        let settings = frame.settings;
+        let inputs = &frame.settings_info.inputs;
+        if let Some(choice) =
+            device_picker(ui, "mixer-input", settings.audio_input.as_ref(), inputs)
+        {
+            actions.push(Action::Settings(Box::new(crate::Settings {
+                audio_input: choice,
+                ..settings.clone()
+            })));
+        }
+    });
+}
+
+/// The selected track's output: where an insert routes, or the master's
+/// audio device.
+fn output_row(
+    ui: &mut egui::Ui,
+    frame: &Frame<'_>,
+    index: usize,
+    track: &MixerTrack,
     actions: &mut Vec<Action>,
 ) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Out").small().color(theme::TEXT_DIM));
+        if index > 0 {
+            ui.label(RichText::new(route_summary(track)).monospace())
+                .hint("Set with the arrows under the strips, or To master / Send below");
+            return;
+        }
+        let settings = frame.settings;
+        let outputs = &frame.settings_info.outputs;
+        if let Some(choice) =
+            device_picker(ui, "mixer-output", settings.audio_device.as_ref(), outputs)
+        {
+            actions.push(Action::Settings(Box::new(crate::Settings {
+                audio_device: choice,
+                ..settings.clone()
+            })));
+        }
+    });
+}
+
+/// The track's built-in EQ: a gain knob per band; right-click for its
+/// frequency.
+fn eq_row(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    index: usize,
+    track: &MixerTrack,
+    actions: &mut Vec<Action>,
+) {
+    use musiccraft_project::TrackEq;
+    let number = index.to_string();
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("EQ").small().color(theme::TEXT_DIM));
+        for (band, name) in TrackEq::BANDS.iter().enumerate() {
+            let (gain, freq) = track.eq.bands[band];
+            ui.vertical(|ui| {
+                let max = TrackEq::MAX_GAIN;
+                let knob = widgets::knob(ui, gain, -max, max, 0.0, true);
+                if knob.started {
+                    state.begin_gesture();
+                }
+                if let Some(value) = knob.changed {
+                    actions.push(Action::Coalesced(
+                        Invocation::new(
+                            "mixer.set_eq",
+                            [number.clone(), (*name).to_owned(), format!("{value:.2}")],
+                        ),
+                        state.gesture(),
+                    ));
+                }
+                let response = knob.response.hint(format!(
+                    "{name}: {gain:+.1} dB at {freq:.0} Hz (right-click: frequency)"
+                ));
+                response.context_menu(|ui| {
+                    let (lo, hi) = TrackEq::RANGES[band];
+                    let mut f = freq;
+                    ui.horizontal(|ui| {
+                        ui.label("Frequency");
+                        let drag = ui.add(
+                            egui::DragValue::new(&mut f)
+                                .range(lo..=hi)
+                                .speed(f64::from(freq) * 0.01)
+                                .suffix(" Hz"),
+                        );
+                        if drag.drag_started() || drag.gained_focus() {
+                            state.begin_gesture();
+                        }
+                        if drag.changed() {
+                            actions.push(Action::Coalesced(
+                                Invocation::new(
+                                    "mixer.set_eq",
+                                    [
+                                        number.clone(),
+                                        (*name).to_owned(),
+                                        format!("{gain:.2}"),
+                                        format!("{f:.1}"),
+                                    ],
+                                ),
+                                state.gesture(),
+                            ));
+                        }
+                    });
+                });
+                ui.label(RichText::new(*name).small().color(theme::TEXT_DIM));
+            });
+        }
+    });
+}
+
+fn effects(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    let project = frame.project;
+    let plugins = frame.plugins;
     let index = state.selected_track;
     let Some(track) = project.mixer.get(index) else {
         return;
@@ -383,6 +569,7 @@ fn effects(
             format!("{title} — {}", track.name)
         };
         ui.label(RichText::new(heading).strong().size(14.0));
+        input_row(ui, frame, actions);
         egui::ScrollArea::vertical()
             .id_salt("effect-chain")
             .show(ui, |ui| {
@@ -394,6 +581,9 @@ fn effects(
                         .small()
                         .color(theme::TEXT_DIM),
                 );
+                ui.separator();
+                eq_row(ui, state, index, track, actions);
+                output_row(ui, frame, index, track, actions);
                 if index > 0 {
                     routing(ui, state, project, index, track, actions);
                 }
@@ -464,6 +654,20 @@ fn slot_row(
                                     [number.to_owned(), slot_no.clone()],
                                 );
                             }
+                            let mix = widgets::knob(ui, effect.mix, 0.0, 1.0, 1.0, false);
+                            if mix.started {
+                                state.begin_gesture();
+                            }
+                            if let Some(value) = mix.changed {
+                                actions.push(Action::Coalesced(
+                                    Invocation::new(
+                                        "mixer.set_effect_mix",
+                                        [number.to_owned(), slot_no.clone(), format!("{value:.3}")],
+                                    ),
+                                    state.gesture(),
+                                ));
+                            }
+                            mix.response.hint(format!("Mix {:.0}%", effect.mix * 100.0));
                             if slot + 1 < track.effects.len()
                                 && ui
                                     .small_button(RichText::new("▼").monospace())
@@ -621,5 +825,24 @@ fn routing(
                 );
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn route_summaries_name_every_destination() {
+        let mut track = MixerTrack::new("A");
+        assert_eq!(route_summary(&track), "→ M");
+        track.sends.push(musiccraft_project::MixerSend {
+            target: 5,
+            level: 1.0,
+        });
+        assert_eq!(route_summary(&track), "→ M, 5");
+        track.to_master = false;
+        track.sends.clear();
+        assert_eq!(route_summary(&track), "→ none");
     }
 }
