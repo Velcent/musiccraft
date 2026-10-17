@@ -1397,7 +1397,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-app"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "eframe",
  "midir",
@@ -1415,7 +1415,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-audio"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cpal",
  "musiccraft-engine",
@@ -1424,7 +1424,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-clap"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clap-sys",
  "libc",
@@ -1441,14 +1441,14 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-clap-testplugin"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clap-sys",
 ]
 
 [[package]]
 name = "musiccraft-cli"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-audio",
  "musiccraft-clap",
@@ -1461,7 +1461,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-commands"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-flp",
  "musiccraft-formula",
@@ -1472,14 +1472,14 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-dsp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-params",
 ]
 
 [[package]]
 name = "musiccraft-engine"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-dsp",
  "musiccraft-formula",
@@ -1490,18 +1490,18 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-flp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "musiccraft-formula"
-version = "0.2.1"
+version = "0.2.2"
 
 [[package]]
 name = "musiccraft-mcp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-cli",
  "musiccraft-commands",
@@ -1512,7 +1512,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-meter"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-params",
  "serde",
@@ -1521,21 +1521,21 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-params"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "musiccraft-plugin-window"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "x11rb",
 ]
 
 [[package]]
 name = "musiccraft-project"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-meter",
  "musiccraft-params",
@@ -1545,7 +1545,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-render"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-commands",
  "musiccraft-dsp",
@@ -1559,7 +1559,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-samples"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "hound",
  "musiccraft-dsp",
@@ -1568,7 +1568,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-ui"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "egui",
  "musiccraft-commands",
@@ -1579,7 +1579,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-vst3"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "libc",
  "libloading 0.8.9",
@@ -1595,7 +1595,7 @@ dependencies = [
 
 [[package]]
 name = "musiccraft-vst3-testplugin"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "vst3",
 ]
@@ -3668,7 +3668,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "musiccraft-commands",
  "musiccraft-params",
