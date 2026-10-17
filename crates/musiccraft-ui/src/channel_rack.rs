@@ -2,7 +2,7 @@
 //! and step buttons for the selected pattern.
 
 use crate::hint::Hint;
-use egui::{RichText, Sense, vec2};
+use egui::{PointerButton, RichText, Sense, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES, TICKS_PER_STEP};
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME, Project};
@@ -25,6 +25,7 @@ pub fn show(
     let mut open = state.windows.channel_rack;
     let project = frame.project;
     let area = state.workspace;
+    state.step_layout.clear();
     let window = egui::Window::new("Channel rack")
         .id(egui::Id::new("channel-rack"))
         .open(&mut open)
@@ -65,6 +66,10 @@ pub fn show(
             add_menu(ui, frame.plugins, actions);
         });
     state.windows.channel_rack = open;
+    // A stroke whose row was not drawn when the button was let go is dropped.
+    if !ctx.input(|i| i.pointer.any_down()) {
+        state.step_paint = None;
+    }
     // Sounds dragged from the browser and released over the rack become channels.
     if let Some(window) = window {
         let over = ctx
@@ -236,19 +241,31 @@ fn row(
 
         let mut track = channel.mixer_track;
         let route = ui
-            .add(
+            .add_sized(
+                vec2(46.0, 18.0),
                 egui::DragValue::new(&mut track)
                     .range(0..=project.mixer.len().saturating_sub(1))
                     .speed(0.1)
                     .custom_formatter(|v, _| {
                         if v < 0.5 {
-                            "M".to_owned()
+                            "→ Mst".to_owned()
                         } else {
-                            format!("{v:.0}")
+                            format!("→ {v:.0}")
+                        }
+                    })
+                    .custom_parser(|text| {
+                        let text = text.trim().trim_start_matches('→').trim();
+                        if text.eq_ignore_ascii_case("mst") || text.eq_ignore_ascii_case("m") {
+                            Some(0.0)
+                        } else {
+                            text.parse().ok()
                         }
                     }),
             )
-            .hint("Mixer track (M = master)");
+            .hint(format!(
+                "Plays through mixer track: {}. Drag up or down to change",
+                route_name(project, channel.mixer_track)
+            ));
         if route.changed() && track != channel.mixer_track {
             run(
                 actions,
@@ -422,33 +439,110 @@ fn steps(
             *slot = true;
         }
     }
+    let pointer = ui.input(|i| {
+        (
+            i.pointer.latest_pos(),
+            i.pointer.button_pressed(PointerButton::Primary),
+            i.pointer.button_pressed(PointerButton::Secondary),
+            i.pointer.any_down(),
+        )
+    });
+    let (pos, left_pressed, right_pressed, down) = pointer;
+    // The stroke ends when the button is let go: every step it passed
+    // changes in one undo step.
+    if !down
+        && state
+            .step_paint
+            .as_ref()
+            .is_some_and(|s| s.channel == index)
+    {
+        if let Some(stroke) = state.step_paint.take() {
+            let changes = stroke
+                .steps
+                .iter()
+                .filter(|step| on.get(**step).copied() != Some(stroke.on))
+                .map(|step| {
+                    Invocation::new(
+                        "step.set",
+                        [
+                            (index + 1).to_string(),
+                            step.to_string(),
+                            if stroke.on { "on" } else { "off" }.to_owned(),
+                        ],
+                    )
+                })
+                .collect();
+            actions.extend(batch(changes).map(Action::Run));
+        }
+    }
     for (step, lit) in on.iter().enumerate() {
-        let (rect, response) = ui.allocate_exact_size(STEP_SIZE, Sense::click());
-        let base = if (step / 4) % 2 == 0 {
-            theme::STEP_A
-        } else {
-            theme::STEP_B
-        };
-        let fill = if *lit { theme::palette(index) } else { base };
-        let fill = if response.hovered() && !lit {
-            theme::RAISED
-        } else {
-            fill
-        };
-        ui.painter().rect_filled(rect.shrink(1.0), 3.0, fill);
-        if response.clicked() {
-            actions.push(Action::Run(Invocation::new(
-                "step.toggle",
-                [(index + 1).to_string(), step.to_string()],
-            )));
-            if !lit {
+        let (rect, response) = ui.allocate_exact_size(STEP_SIZE, Sense::click_and_drag());
+        if step < 2 {
+            state.step_layout.push((index, rect));
+        }
+        let under = pos.is_some_and(|p| rect.contains(p));
+        // A press starts a stroke: the left button sets the opposite of
+        // this step, the right button clears.
+        if under && (left_pressed || right_pressed) && response.hovered() {
+            let paint = left_pressed && !lit;
+            state.step_paint = Some(StepStroke {
+                channel: index,
+                on: paint,
+                steps: Vec::new(),
+            });
+            if paint {
                 actions.push(Action::PreviewShort {
                     channel: index,
                     key: 60,
                 });
             }
         }
+        let mut shown = *lit;
+        if let Some(stroke) = state.step_paint.as_mut().filter(|s| s.channel == index) {
+            if under && down && !stroke.steps.contains(&step) {
+                stroke.steps.push(step);
+            }
+            if stroke.steps.contains(&step) {
+                shown = stroke.on;
+            }
+        }
+        let base = if (step / 4) % 2 == 0 {
+            theme::STEP_A
+        } else {
+            theme::STEP_B
+        };
+        let fill = if shown { theme::palette(index) } else { base };
+        let fill = if response.hovered() && !shown {
+            theme::RAISED
+        } else {
+            fill
+        };
+        ui.painter().rect_filled(rect.shrink(1.0), 3.0, fill);
     }
+}
+
+/// Wraps several invocations into one undo step.
+fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
+    match invocations.len() {
+        0 => None,
+        1 => invocations.into_iter().next(),
+        _ => Some(Invocation::new(
+            musiccraft_commands::BATCH,
+            invocations.iter().map(ToString::to_string),
+        )),
+    }
+}
+
+/// A drag across a channel's step buttons.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StepStroke {
+    /// The channel row.
+    pub channel: usize,
+    /// Whether the steps passed turn on (left button from an unlit step) or
+    /// off.
+    pub on: bool,
+    /// The steps passed so far.
+    pub steps: Vec<usize>,
 }
 
 /// A miniature piano roll in place of the step buttons, for melodic channels.
@@ -733,5 +827,14 @@ fn graph_editor(
             egui::pos2(x0 + (width - 2.0).max(3.0), tip),
         );
         painter.rect_filled(bar, 1.0, color);
+    }
+}
+
+/// The name of the mixer track a channel plays through, for tooltips.
+fn route_name(project: &Project, track: usize) -> String {
+    match project.mixer.get(track) {
+        Some(_) if track == 0 => "Master".to_owned(),
+        Some(t) => format!("{track} ({})", t.name),
+        None => track.to_string(),
     }
 }

@@ -78,7 +78,8 @@
 ## Sources
 
 - Own design. WAV/RIFF is an open format, written with the `hound` crate. We do
-  not read or write any other DAW's project format.
+  not write any other DAW's project format; the one we read, FL Studio's, is
+  read through a port of PyFLP (see `flp-import.md`).
 - MIDI export: the Standard MIDI File format of the public MIDI 1.0
   specification; Ctrl+Shift+M follows the FL Studio online manual ("Keyboard
   shortcuts"). Track layout is our own.

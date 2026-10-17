@@ -42,6 +42,20 @@
   adds a one-step note at key C5 (60) and velocity 100 if the channel has no note
   starting there, otherwise removes every note of that channel starting there.
   `step.set` forces a state. Steps and piano-roll notes are the same data.
+- **Step buttons** (UI): left-click toggles a step; dragging with the left
+  button across a channel's row paints every step it passes to the state
+  the first click gave (on or off). Right-click turns a step off, and
+  dragging with the right button erases every step it passes. A whole drag
+  is one undo step. Turning a step on previews the channel's sound.
+- **Mixer routing box** (UI): each row shows where the channel plays to:
+  "→ Mst" for the master track, "→ 3" for insert 3. Drag it up or down (or
+  scroll over it) to change the track; the tooltip names the track.
+- **Browser** (UI): in the plugin database, a single click only selects an
+  entry (it is highlighted). Double-clicking a generator adds it as a new
+  channel; dragging it onto the channel rack does the same. Double-clicking
+  an effect adds it to the selected mixer track. Sounds in packs and folders
+  preview on a single click and are added on a double click or by dragging,
+  as before.
 
 - **Next empty pattern**: `pattern.next_empty` selects the first pattern
   after the selected one that has no notes; when there is none it adds a new
@@ -305,6 +319,10 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   and mixer routing) follows the general workflow described in the FL Studio
   online manual, "Channel Rack" section. Command names, value ranges and defaults
   are our own.
+- Step buttons that toggle on left-click, erase on right-click and paint or
+  erase when dragged follow the step sequencer workflow described in the FL
+  Studio online manual, "Channel Rack". The routing box's labels and the
+  browser's select-then-double-click behaviour are our own design.
 - F4 selecting the next empty pattern and offering to name it follows the FL
   Studio online manual, "Keyboard shortcuts" and the pattern selector.
   "Empty" meaning "no notes" and adding a pattern when none is left are our

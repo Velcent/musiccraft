@@ -17,8 +17,12 @@ shortcuts. Cross-platform: Linux, macOS, Windows. Developed primarily on CachyOS
   terms permitting, WAV, etc.).
 - Never decompile, disassemble, or inspect the binaries or internals of any
   commercial DAW. Never use leaked or proprietary source, assets, or samples.
-- Do not read, parse, or reverse-engineer proprietary project formats (e.g. `.flp`).
-  MusicCraft has its own project format.
+- Do not reverse-engineer proprietary project formats yourself. The one exception
+  (owner's decision, 2026-10-16): `.flp` import in `musiccraft-flp`, a Rust port of
+  the GPL-3.0 PyFLP parser, kept in step with PyFLP. MusicCraft has its own project
+  format.
+- MusicCraft is licensed GPL-3.0-or-later (`LICENSE`). Code copied or ported from
+  other projects must be GPL-3.0-compatible and keep its copyright notice.
 - Do not copy icons, skins, fonts, sample packs, logos, or names. Match layout and
   default shortcuts through our own implementation and our own artwork.
 - Every spec in `docs/spec/` ends with a **Sources** section naming where the
@@ -35,9 +39,10 @@ Inside anything that runs on the audio thread (`musiccraft-engine`, `musiccraft-
 - Communicate with the rest of the app only through lock-free, fixed-size messages
   (plain `Copy` data) and pre-allocated buffers.
 - `unsafe` is forbidden workspace-wide. If a future dependency forces an exception,
-  raise it with the user first. The one approved exception (plugin hosting, approved
-  by the user on 2026-10-10) is `musiccraft-clap` plus its test fixture
-  `musiccraft-clap-testplugin`: every `unsafe` block there carries a `SAFETY:`
+  raise it with the user first. The approved exceptions (plugin hosting: CLAP
+  approved by the user on 2026-10-10, VST3 on 2026-10-16) are `musiccraft-clap`
+  and `musiccraft-vst3` plus their test fixtures `musiccraft-clap-testplugin` and
+  `musiccraft-vst3-testplugin`: every `unsafe` block there carries a `SAFETY:`
   comment (enforced by clippy), and nothing else may use `unsafe`.
 
 ## Architecture rules
@@ -78,7 +83,7 @@ cargo test --workspace
 - [x] M5 Playlist with patterns and clips
 - [x] M6 Project save/load, WAV export
 - [x] M7 MCP server
-- [x] M7 Plugin hosting, CLAP (`docs/spec/plugins.md`); VST3 is a `todo`
+- [x] M7 Plugin hosting, CLAP and VST3 (`docs/spec/plugins.md`)
 - [x] M8 Parity checklist (`cargo xtask parity`) and UI polish
 
 Open items are tracked as `todo` rows in `docs/parity.md`.

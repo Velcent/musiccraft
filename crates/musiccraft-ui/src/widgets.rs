@@ -2,7 +2,7 @@
 
 use std::f32::consts::PI;
 
-use egui::{Color32, Pos2, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
+use egui::{Color32, PointerButton, Pos2, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use crate::theme;
 
@@ -16,7 +16,15 @@ pub struct KnobOutput {
     pub response: Response,
 }
 
-/// A rotary knob. Drag vertically to change; double-click resets to `default`.
+/// Whether the user asked to reset a control to its default: a middle-click
+/// or a double-click (see `docs/spec/controls.md`).
+#[must_use]
+pub fn wants_reset(response: &Response) -> bool {
+    response.middle_clicked() || response.double_clicked()
+}
+
+/// A rotary knob. Drag vertically to change; middle-click or double-click
+/// resets to `default`.
 pub fn knob(
     ui: &mut Ui,
     value: f32,
@@ -29,7 +37,7 @@ pub fn knob(
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
     let range = (max - min).max(1e-6);
     let mut changed = None;
-    if response.dragged() {
+    if response.dragged_by(PointerButton::Primary) {
         let fine = ui.input(|i| i.modifiers.shift);
         let speed = if fine { 1_000.0 } else { 160.0 };
         let delta = -response.drag_delta().y / speed * range;
@@ -37,7 +45,7 @@ pub fn knob(
             changed = Some((value + delta).clamp(min, max));
         }
     }
-    if response.double_clicked() {
+    if wants_reset(&response) {
         changed = Some(default);
     }
     let shown = changed.unwrap_or(value);
@@ -63,7 +71,8 @@ pub fn knob(
         [center, center + vec2(a.cos(), a.sin()) * (radius - 2.0)],
         Stroke::new(2.0, theme::TEXT),
     );
-    let started = response.drag_started();
+    // A reset is its own undo step.
+    let started = response.drag_started_by(PointerButton::Primary) || wants_reset(&response);
     KnobOutput {
         changed,
         started,
@@ -72,7 +81,8 @@ pub fn knob(
 }
 
 /// A larger knob over a normalized 0..1 value, with a caption that shows the
-/// formatted value while hovered or dragged. Double-click resets to `default`.
+/// formatted value while hovered or dragged. Middle-click or double-click
+/// resets to `default`.
 pub fn labeled_knob(
     ui: &mut Ui,
     label: &str,
@@ -84,7 +94,7 @@ pub fn labeled_knob(
     let size = vec2(52.0, 60.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let mut changed = None;
-    if response.dragged() {
+    if response.dragged_by(PointerButton::Primary) {
         let fine = ui.input(|i| i.modifiers.shift);
         let delta = -response.drag_delta().y / if fine { 600.0 } else { 150.0 };
         if delta != 0.0 {
@@ -97,7 +107,7 @@ pub fn labeled_knob(
             changed = Some((t + scroll / 600.0).clamp(0.0, 1.0));
         }
     }
-    if response.double_clicked() {
+    if wants_reset(&response) {
         changed = Some(default);
     }
     let shown = changed.unwrap_or(t);
@@ -146,7 +156,8 @@ pub fn labeled_knob(
             theme::TEXT_DIM
         },
     );
-    let started = response.drag_started();
+    // A reset is its own undo step.
+    let started = response.drag_started_by(PointerButton::Primary) || wants_reset(&response);
     KnobOutput {
         changed,
         started: started
@@ -161,13 +172,14 @@ pub use musiccraft_project::params::{
     volume_from_unit as fader_to_gain, volume_to_unit as gain_to_fader,
 };
 
-/// A vertical mixer fader. Drag the cap; double-click returns to unity.
+/// A vertical mixer fader. Drag the cap; middle-click or double-click returns
+/// to unity.
 pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let travel = rect.shrink2(vec2(0.0, 10.0));
     let mut changed = None;
     let position = gain_to_fader(gain, max);
-    if response.dragged() {
+    if response.dragged_by(PointerButton::Primary) {
         let fine = ui.input(|i| i.modifiers.shift);
         let delta = -response.drag_delta().y / travel.height() * if fine { 0.25 } else { 1.0 };
         if delta != 0.0 {
@@ -180,7 +192,7 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
             changed = Some(fader_to_gain(position + scroll / 800.0, max));
         }
     }
-    if response.double_clicked() {
+    if wants_reset(&response) {
         changed = Some(1.0);
     }
     let shown = changed.map_or(position, |g| gain_to_fader(g, max));
@@ -217,7 +229,8 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
         ],
         Stroke::new(2.0, theme::ACCENT),
     );
-    let started = response.drag_started()
+    let started = response.drag_started_by(PointerButton::Primary)
+        || wants_reset(&response)
         || (response.hovered()
             && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
             && !response.dragged());
@@ -292,6 +305,105 @@ mod tests {
             let back = fader_to_gain(gain_to_fader(gain, max), max);
             assert!((back - gain).abs() / gain < 1e-3, "{gain} -> {back}");
         }
+    }
+
+    /// Runs `widget` at the top left for a few frames of `events` each and
+    /// returns every value it reported changing to, with whether a gesture
+    /// started then.
+    fn drive(
+        frames: Vec<Vec<egui::Event>>,
+        mut widget: impl FnMut(&mut Ui) -> KnobOutput,
+    ) -> Vec<(f32, bool)> {
+        let ctx = egui::Context::default();
+        let mut out = Vec::new();
+        for (i, events) in frames.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 400.0))),
+                time: Some(i as f64 / 60.0),
+                events,
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| {
+                let result = widget(ui);
+                if let Some(value) = result.changed {
+                    out.push((value, result.started));
+                }
+            })
+            .textures_delta
+            .clear();
+        }
+        out
+    }
+
+    fn click(at: Pos2, button: PointerButton) -> Vec<Vec<egui::Event>> {
+        let press = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        vec![
+            vec![],
+            vec![egui::Event::PointerMoved(at), press(true)],
+            vec![press(false)],
+            vec![],
+        ]
+    }
+
+    fn drag(from: Pos2, to: Pos2, button: PointerButton) -> Vec<Vec<egui::Event>> {
+        let press = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let mut frames = vec![
+            vec![],
+            vec![egui::Event::PointerMoved(from), press(from, true)],
+        ];
+        for i in 1..=4 {
+            frames.push(vec![egui::Event::PointerMoved(
+                from + (to - from) * (i as f32 / 4.0),
+            )]);
+        }
+        frames.push(vec![press(to, false)]);
+        frames
+    }
+
+    #[test]
+    fn middle_click_resets_knobs_and_faders_as_their_own_gesture() {
+        // Every widget sits at the top left of the panel; aim inside it.
+        let at = pos2(20.0, 20.0);
+        let knob_run = drive(click(at, PointerButton::Middle), |ui| {
+            knob(ui, 0.3, 0.0, 1.0, 0.8, false)
+        });
+        assert_eq!(knob_run, [(0.8, true)]);
+        let labeled = drive(click(at, PointerButton::Middle), |ui| {
+            labeled_knob(ui, "Cutoff", 0.2, 0.6, false, "")
+        });
+        assert_eq!(labeled, [(0.6, true)]);
+        let fader_run = drive(click(at, PointerButton::Middle), |ui| {
+            fader(ui, 0.2, 1.25, vec2(30.0, 120.0))
+        });
+        assert_eq!(fader_run, [(1.0, true)]);
+    }
+
+    #[test]
+    fn only_the_left_button_drags_a_knob() {
+        let (from, to) = (pos2(18.0, 18.0), pos2(18.0, -40.0));
+        for button in [PointerButton::Secondary, PointerButton::Middle] {
+            let moved = drive(drag(from, to, button), |ui| {
+                knob(ui, 0.3, 0.0, 1.0, 0.8, false)
+            });
+            assert!(
+                moved.iter().all(|(value, _)| (*value - 0.8).abs() < 1e-6),
+                "{button:?} drag moved the knob: {moved:?}"
+            );
+        }
+        let moved = drive(drag(from, to, PointerButton::Primary), |ui| {
+            knob(ui, 0.3, 0.0, 1.0, 0.8, false)
+        });
+        assert!(moved.iter().any(|(value, _)| *value > 0.3), "{moved:?}");
     }
 
     #[test]

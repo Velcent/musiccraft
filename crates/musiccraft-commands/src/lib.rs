@@ -16,6 +16,7 @@ pub mod automation_record;
 mod cmds;
 mod command;
 mod error;
+mod flp_import;
 mod invocation;
 mod midi_file;
 mod registry;

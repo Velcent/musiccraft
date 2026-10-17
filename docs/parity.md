@@ -129,7 +129,7 @@ of contents; see `docs/clean-room.md`.
 | Instruments | Third synth oscillator | `spec:channel-rack.md` `done` |
 | Effects | Effect windows with response graphs and presets | `spec:mixer.md` `done` |
 | Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |
-| Instruments | VST3 plugins | `todo` |
+| Instruments | VST3 plugins (instruments, effects, Linux plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `spec:plugins.md` `done` |
 | Windows | Playlist / rack / piano roll / mixer shortcuts | `key:F5=view.toggle playlist` `key:F6=view.toggle channel_rack` `key:F7=view.toggle piano_roll` `key:F9=view.toggle mixer` `spec:keymap.md` |
 | Windows | Browser | `key:Alt+F8=view.toggle browser` |
 | Options | Settings window: audio device, rate, buffer, MIDI port, scale, folders, project info | `key:F10=ui.settings` `spec:settings.md` |
@@ -140,6 +140,9 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Fill every N steps, shift steps | `cmd:step.fill` `cmd:step.shift` |
 | Channel | Arpeggiator (up, down, up-down, random; rate, octaves, gate) | `spec:piano-roll.md` `done` |
 | Browser | Folders, search, click to preview, drag to rack or playlist | `done` |
+| Browser | Plugin database: click selects, double-click or drag adds | `spec:channel-rack.md` `done` |
+| Channel rack | Step buttons: right-click erases, left/right drag paints or erases | `spec:channel-rack.md` `done` |
+| Controls | Middle-click or double-click resets any knob, fader or slider | `spec:controls.md` `done` |
 | Transport | Oscilloscope, CPU meter, master volume | `done` |
 | Project | New / open / save / save as | `cmd:project.new` `cmd:project.load` `cmd:project.save` `cmd:project.save_new_version` `key:Ctrl+S=ui.save` `key:Ctrl+N=ui.save_new_version` `key:Ctrl+O=ui.open` `spec:project-file.md` |
 | Project | Undo / redo | `key:Ctrl+Z=edit.undo` `key:Ctrl+Y=edit.redo` `spec:commands.md` |
@@ -148,6 +151,7 @@ of contents; see `docs/clean-room.md`.
 | Project | Export FLAC (lossless) | `cmd:project.export_flac` |
 | Project | Export lossy audio (MP3, Ogg) | `todo` |
 | Project | Autosave and crash recovery | `done` |
+| Project | Import FL Studio projects (.flp) | `cmd:project.import_flp` `spec:flp-import.md` |
 | Input | MIDI keyboard plays the selected channel | `done` |
 | Input | Record live notes into patterns | `cmd:record.toggle` `key:R=record.toggle` `spec:recording.md` |
 | Input | Recording count-in | `cmd:record.toggle_count_in` `key:Ctrl+P=record.toggle_count_in` |

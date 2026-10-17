@@ -593,7 +593,14 @@ fn routing(
             if response.drag_started() {
                 state.begin_gesture();
             }
-            if response.changed() && level > 0.0 {
+            let reset = crate::widgets::wants_reset(&response);
+            if reset {
+                run(
+                    actions,
+                    "mixer.set_send",
+                    [number.clone(), send.target.to_string(), "1".to_owned()],
+                );
+            } else if response.changed() && level > 0.0 {
                 actions.push(Action::Coalesced(
                     Invocation::new(
                         "mixer.set_send",

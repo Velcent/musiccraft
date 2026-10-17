@@ -5,8 +5,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [dependencies]
+musiccraft-flp.workspace = true
 musiccraft-formula.workspace = true
 musiccraft-project.workspace = true
 serde.workspace = true

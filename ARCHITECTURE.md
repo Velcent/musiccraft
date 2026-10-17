@@ -12,7 +12,7 @@
 
 ```
 musiccraft-app ──► musiccraft-ui ──► musiccraft-commands ──► musiccraft-project ──► musiccraft-params
-      │                                     ▲                                         ▲
+      │                                     ▲    └──► musiccraft-flp                  ▲
       ├──► musiccraft-render ───────────────┤                                         │
       │        ├──► musiccraft-engine ──► musiccraft-dsp ─────────────────────────────┤
       │        └──► musiccraft-samples ──► musiccraft-dsp                              │
@@ -28,11 +28,14 @@ xtask ──► commands, render, ui (keymap) ───────────�
 | `musiccraft-formula` | The formula controllers' expression language: parsing on the main thread, allocation-free evaluation on the audio thread. No dependencies. |
 | `musiccraft-params` | Shared tables: timing (PPQ), instrument and effect parameter specs, built-in sound names. No logic. |
 | `musiccraft-project` | Project data model and JSON file format. No audio, no UI. |
-| `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`. |
+| `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`; converts FL Studio projects for `project.import_flp`. |
+| `musiccraft-flp` | Reads FL Studio projects and presets: a Rust port of PyFLP (GPL-3.0), tested against PyFLP on PyFLP's own test files. No dependencies; safe code. |
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects (incl. a small radix-2 FFT for convolution and the analyzer), sample buffers. Allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voices, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
-| `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **The only crate (with its test fixture `musiccraft-clap-testplugin`) allowed to use `unsafe`.** |
+| `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-clap-testplugin`). |
+| `musiccraft-vst3` | VST3 plugin host: scanning modules, component and controller setup, parameters, state, the audio-thread processor, embedded plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-vst3-testplugin`). |
+| `musiccraft-plugin-window` | The plain X11 window both plugin hosts embed plugin views in. Safe code. |
 | `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`; the safe plugin boundary (`PluginFactory`, `PluginInstance`) and plugin instance management. |
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
@@ -82,21 +85,25 @@ xtask ──► commands, render, ui (keymap) ───────────�
   number and installs its processor in one of the engine's fixed external
   slots (`SetExternal`), which survive graph rebuilds. Replaced processors come
   back as garbage, already stopped, and are destroyed on the main thread.
-- `musiccraft_cli::plugin_host()` creates the one `ClapHost` per process
-  (shared by the app, CLI sessions and the MCP server); `MUSICCRAFT_NO_PLUGINS`
-  turns hosting off. Without a host, plugin channels are silent and plugin
+- `musiccraft_cli::plugin_host()` creates the one plugin host per process
+  (shared by the app, CLI sessions and the MCP server): render's
+  `CombinedHost` over a `ClapHost` and a `Vst3Host`, so both kinds appear in
+  one catalog. `MUSICCRAFT_NO_PLUGINS` turns hosting off. Without a host, plugin channels are silent and plugin
   effects pass audio through.
 
 ### The `unsafe` exception
 
 Hosting a plugin means calling a shared library through the C ABI, so
-`musiccraft-clap` (and the test plugin it is tested against) opts out of the
-workspace's `unsafe_code = "forbid"`. The user approved this on 2026-10-10.
-Rules inside it: `unsafe_op_in_unsafe_fn` is denied and clippy's
+`musiccraft-clap` and `musiccraft-vst3` (and the test plugins they are tested
+against) opt out of the workspace's `unsafe_code = "forbid"`. The user
+approved CLAP on 2026-10-10 and extended the exception to VST3 on 2026-10-16.
+Rules inside them: `unsafe_op_in_unsafe_fn` is denied and clippy's
 `undocumented_unsafe_blocks` requires a `SAFETY:` comment on every block;
-plugin function pointers are checked before use; main-thread CLAP functions are
-called only from the main thread and audio-thread functions only from the
-processor; the processor allocates nothing after construction. A crashing
+plugin function pointers and interface pointers are checked before use; VST3
+reference counts are managed by `ComPtr`/`ComWrapper`, never by hand;
+main-thread plugin functions are called only from the main thread and
+audio-thread functions only from the processor; the processor allocates
+nothing (and the VST3 processor locks nothing) after construction. A crashing
 plugin still takes the app down (no sandboxing).
 
 ### Message rule (refines the CLAUDE.md audio-thread rule)
@@ -137,14 +144,16 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `eframe` (egui) | Cross-platform immediate-mode UI; kept swappable behind commands. |
 | `midir` | MIDI keyboard input and MIDI Out channels' output port in the app. |
 | `clap-sys` | Rust declarations of the CLAP plugin ABI (types and constants only). |
-| `libloading` | Opens `.clap` shared libraries and finds their entry point. |
+| `libloading` | Opens `.clap` and `.vst3` shared libraries and finds their entry points. |
+| `vst3` | Rust declarations of the VST3 interfaces, generated from Steinberg's (MIT-licensed) SDK headers, plus `ComPtr`/`ComWrapper` reference counting; MIT or Apache-2.0. |
 | `libc` | `poll(2)` for file descriptors plugin windows register (Unix only). |
 | `x11rb` | A pure-Rust X11 window for plugins that embed their editor (Linux only; already in the tree through the windowing stack). |
 
 ## Deferred decisions
 
 - Custom `wgpu` renderer if egui cannot reach the target look.
-- VST3 hosting (would extend the `unsafe` exception; needs the user's go-ahead).
+- VST3 on macOS (the module entry needs a CoreFoundation bundle reference) and
+  VST3 windows on Windows and macOS.
 - Out-of-process plugin scanning/hosting, so a crashing plugin cannot take the
   app down.
 - Honoring a plugin's restart request (latency or port changes) while running.

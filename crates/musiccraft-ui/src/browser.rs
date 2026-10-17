@@ -1,7 +1,8 @@
 //! Side panel for finding things: the current project, the plugin database
-//! (generators and effects), sound packs and folders on disk. Click previews,
-//! double-click adds a channel, and sounds can be dragged onto the channel
-//! rack or the playlist.
+//! (generators and effects), sound packs and folders on disk. Clicking a sound
+//! previews it and clicking a plugin selects it; double-clicking adds either,
+//! and sounds and generators can be dragged onto the channel rack (sounds also
+//! onto the playlist).
 
 use crate::hint::Hint;
 use std::collections::BTreeMap;
@@ -14,26 +15,45 @@ use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES, EFFECT_KINDS};
 
 use crate::{Action, Frame, UiState, dialogs::Dialog, theme};
 
-/// Something being dragged out of the browser: a sample reference, or `None`
-/// for a new synth.
+/// Something being dragged out of the browser: a sample, or a generator
+/// that becomes a new channel.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Dragged(pub Option<String>);
+pub enum Dragged {
+    /// A sample reference (a file path or a built-in sound).
+    Sample(String),
+    /// A generator from the plugin database.
+    Generator {
+        /// Its name in the browser.
+        label: String,
+        /// The command that adds it as a channel.
+        add: Invocation,
+    },
+}
 
 impl Dragged {
+    /// The sample, for things that can also become audio clips.
+    #[must_use]
+    pub fn sample(&self) -> Option<&str> {
+        match self {
+            Self::Sample(sample) => Some(sample),
+            Self::Generator { .. } => None,
+        }
+    }
+
     /// The command that adds this item as a channel.
     #[must_use]
     pub fn add_channel(&self) -> Invocation {
-        match &self.0 {
-            Some(sample) => Invocation::new("channel.add_sampler", [sample.clone()]),
-            None => Invocation::bare("channel.add_synth"),
+        match self {
+            Self::Sample(sample) => Invocation::new("channel.add_sampler", [sample.clone()]),
+            Self::Generator { add, .. } => add.clone(),
         }
     }
 
     /// Short label for the drag ghost.
     #[must_use]
     pub fn label(&self) -> String {
-        match &self.0 {
-            Some(sample) => sample
+        match self {
+            Self::Sample(sample) => sample
                 .strip_prefix(BUILTIN_PREFIX)
                 .map(str::to_owned)
                 .or_else(|| {
@@ -42,7 +62,7 @@ impl Dragged {
                         .map(|n| n.to_string_lossy().into_owned())
                 })
                 .unwrap_or_else(|| sample.clone()),
-            None => "Synth".to_owned(),
+            Self::Generator { label, .. } => label.clone(),
         }
     }
 }
@@ -105,6 +125,10 @@ fn matches(search: &str, name: &str) -> bool {
 
 /// One browser entry. Returns nothing; pushes actions as the user interacts.
 fn item(ui: &mut egui::Ui, label: &str, dragged: Dragged, actions: &mut Vec<Action>) {
+    let Dragged::Sample(sample) = &dragged else {
+        return;
+    };
+    let sample = sample.clone();
     let response = ui
         .add(
             egui::Button::new(RichText::new(format!("♪  {label}")))
@@ -115,7 +139,7 @@ fn item(ui: &mut egui::Ui, label: &str, dragged: Dragged, actions: &mut Vec<Acti
     if response.drag_started() {
         response.dnd_set_drag_payload(dragged.clone());
     }
-    if let Some(sample) = dragged.0.clone() {
+    {
         response.context_menu(|ui| {
             if ui.button("Add as sampler").clicked() {
                 actions.push(Action::Run(dragged.add_channel()));
@@ -140,10 +164,47 @@ fn item(ui: &mut egui::Ui, label: &str, dragged: Dragged, actions: &mut Vec<Acti
     if response.double_clicked() {
         actions.push(Action::Run(dragged.add_channel()));
     } else if response.clicked() {
-        match &dragged.0 {
-            Some(sample) => actions.push(Action::PreviewSample(sample.clone())),
-            None => actions.push(Action::Run(dragged.add_channel())),
+        actions.push(Action::PreviewSample(sample));
+    }
+}
+
+/// The plugin database entry selected by a single click.
+fn selected_id() -> egui::Id {
+    egui::Id::new("browser-selected-plugin")
+}
+
+/// One plugin database entry: a click selects it, a double-click runs `add`,
+/// and a generator (`drag` set) can be dragged onto the channel rack.
+fn plugin_entry(
+    ui: &mut egui::Ui,
+    label: &str,
+    hint: String,
+    add: Invocation,
+    drag: Option<Dragged>,
+    actions: &mut Vec<Action>,
+) {
+    let key = label.to_owned();
+    let selected = ui
+        .data(|d| d.get_temp::<String>(selected_id()))
+        .is_some_and(|s| s == key);
+    let response = ui
+        .add(
+            egui::Button::selectable(selected, label)
+                .frame_when_inactive(false)
+                .truncate()
+                .sense(Sense::click_and_drag()),
+        )
+        .hint(hint);
+    if let Some(dragged) = drag {
+        if response.drag_started() {
+            response.dnd_set_drag_payload(dragged);
         }
+    }
+    if response.clicked() {
+        ui.data_mut(|d| d.insert_temp(selected_id(), key));
+    }
+    if response.double_clicked() {
+        actions.push(Action::Run(add));
     }
 }
 
@@ -173,7 +234,7 @@ fn folder(
                     item(
                         ui,
                         &name,
-                        Dragged(Some(path.display().to_string())),
+                        Dragged::Sample(path.display().to_string()),
                         actions,
                     );
                 }
@@ -185,14 +246,31 @@ fn heading(text: &str) -> RichText {
     RichText::new(text).strong()
 }
 
-fn plugin_button(ui: &mut egui::Ui, label: &str, hint: String) -> bool {
-    ui.add(egui::Button::new(label).frame(false).truncate())
-        .hint(hint)
-        .clicked()
+/// A generator entry: double-click or drag onto the channel rack to add it.
+fn generator(
+    ui: &mut egui::Ui,
+    label: &str,
+    hint: &str,
+    add: Invocation,
+    actions: &mut Vec<Action>,
+) {
+    let dragged = Dragged::Generator {
+        label: label.to_owned(),
+        add: add.clone(),
+    };
+    plugin_entry(
+        ui,
+        &format!("♪  {label}"),
+        format!("{hint}. Double-click or drag onto the channel rack to add a channel"),
+        add,
+        Some(dragged),
+        actions,
+    );
 }
 
-/// Generators (instruments) and effects, built-in and installed. Click a
-/// generator to add a channel, an effect to add it to the selected mixer track.
+/// Generators (instruments) and effects, built-in and installed. A click
+/// selects an entry; a double-click adds a generator as a channel or an effect
+/// to the selected mixer track, and generators can be dragged onto the rack.
 fn plugin_database(
     ui: &mut egui::Ui,
     state: &UiState,
@@ -209,28 +287,34 @@ fn plugin_database(
                 .default_open(true)
                 .show(ui, |ui| {
                     if matches(search, "synth") {
-                        item(ui, "Synth", Dragged(None), actions);
+                        generator(
+                            ui,
+                            "Synth",
+                            "Subtractive synth",
+                            Invocation::bare("channel.add_synth"),
+                            actions,
+                        );
                     }
                     for kind in musiccraft_project::params::DRUM_TYPES {
                         let label = format!("Drum synth: {kind}");
-                        if matches(search, &label)
-                            && plugin_button(
+                        if matches(search, &label) {
+                            generator(
                                 ui,
-                                &format!("♪  {label}"),
-                                "Built-in drum synth — click to add a channel".to_owned(),
-                            )
-                        {
-                            actions.push(Action::Run(Invocation::new("channel.add_drum", [kind])));
+                                &label,
+                                "Built-in drum synth",
+                                Invocation::new("channel.add_drum", [kind]),
+                                actions,
+                            );
                         }
                     }
-                    if matches(search, "pluck")
-                        && plugin_button(
+                    if matches(search, "pluck") {
+                        generator(
                             ui,
-                            "♪  Pluck",
-                            "Built-in plucked string — click to add a channel".to_owned(),
-                        )
-                    {
-                        actions.push(Action::Run(Invocation::bare("channel.add_pluck")));
+                            "Pluck",
+                            "Built-in plucked string",
+                            Invocation::bare("channel.add_pluck"),
+                            actions,
+                        );
                     }
                     let more: [(&str, &str, Invocation); 9] = [
                         (
@@ -280,25 +364,22 @@ fn plugin_database(
                         ),
                     ];
                     for (label, hint, invocation) in more {
-                        if matches(search, label)
-                            && plugin_button(
-                                ui,
-                                &format!("♪  {label}"),
-                                format!("{hint} — click to add a channel"),
-                            )
-                        {
-                            actions.push(Action::Run(invocation));
+                        if matches(search, label) {
+                            generator(ui, label, hint, invocation, actions);
                         }
                     }
                     for entry in plugins.of_kind(true).filter(|p| matches(search, &p.name)) {
-                        let hint =
-                            format!("{} · {} — click to add a channel", entry.vendor, entry.id);
-                        if plugin_button(ui, &format!("♪  {}", entry.name), hint) {
-                            actions.push(Action::Run(Invocation::new(
+                        let hint = format!("{} · {}", entry.vendor, entry.id);
+                        generator(
+                            ui,
+                            &entry.name,
+                            &hint,
+                            Invocation::new(
                                 "channel.add_plugin",
                                 [entry.id.clone(), entry.name.clone()],
-                            )));
-                        }
+                            ),
+                            actions,
+                        );
                     }
                 });
             egui::CollapsingHeader::new("Effects")
@@ -306,27 +387,37 @@ fn plugin_database(
                 .show(ui, |ui| {
                     for kind in EFFECT_KINDS.iter().filter(|k| matches(search, k.name())) {
                         let hint = format!(
-                            "Built-in {} — click to add to the selected mixer track",
+                            "Built-in {}. Double-click to add it to the selected mixer track",
                             kind.name()
                         );
-                        if plugin_button(ui, &format!("fx  {}", effect_title(*kind)), hint) {
-                            actions.push(Action::Run(Invocation::new(
+                        plugin_entry(
+                            ui,
+                            &format!("fx  {}", effect_title(*kind)),
+                            hint,
+                            Invocation::new(
                                 "mixer.add_effect",
                                 [track.clone(), kind.name().to_owned()],
-                            )));
-                        }
+                            ),
+                            None,
+                            actions,
+                        );
                     }
                     for entry in plugins.of_kind(false).filter(|p| matches(search, &p.name)) {
                         let hint = format!(
-                            "{} · {} — click to add to the selected mixer track",
+                            "{} · {}. Double-click to add it to the selected mixer track",
                             entry.vendor, entry.id
                         );
-                        if plugin_button(ui, &format!("fx  {}", entry.name), hint) {
-                            actions.push(Action::Run(Invocation::new(
+                        plugin_entry(
+                            ui,
+                            &format!("fx  {}", entry.name),
+                            hint,
+                            Invocation::new(
                                 "mixer.add_plugin",
                                 [track.clone(), entry.id.clone(), entry.name.clone()],
-                            )));
-                        }
+                            ),
+                            None,
+                            actions,
+                        );
                     }
                 });
             if plugins.available && ui.small_button("Rescan plugins").clicked() {
@@ -450,7 +541,7 @@ fn current_project(ui: &mut egui::Ui, frame: &Frame<'_>, search: &str, actions: 
                         .file_name()
                         .map_or_else(|| sample.to_owned(), |n| n.to_string_lossy().into_owned());
                     if matches(search, &name) {
-                        item(ui, &name, Dragged(Some(sample.to_owned())), actions);
+                        item(ui, &name, Dragged::Sample(sample.to_owned()), actions);
                     }
                 }
             });
@@ -501,7 +592,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                                         item(
                                             ui,
                                             &name.replace('_', " "),
-                                            Dragged(Some(format!("{BUILTIN_PREFIX}{name}"))),
+                                            Dragged::Sample(format!("{BUILTIN_PREFIX}{name}")),
                                             actions,
                                         );
                                     }
@@ -540,19 +631,78 @@ mod tests {
 
     #[test]
     fn dragged_items_add_the_right_channel() {
-        let kick = Dragged(Some("builtin:kick".into()));
+        let kick = Dragged::Sample("builtin:kick".into());
         assert_eq!(
             kick.add_channel().to_string(),
             "channel.add_sampler builtin:kick"
         );
         assert_eq!(kick.label(), "kick");
-        let file = Dragged(Some("/x/My Loop.wav".into()));
+        let file = Dragged::Sample("/x/My Loop.wav".into());
         assert_eq!(
             file.add_channel().to_string(),
             "channel.add_sampler \"/x/My Loop.wav\""
         );
         assert_eq!(file.label(), "My Loop.wav");
-        assert_eq!(Dragged(None).add_channel().to_string(), "channel.add_synth");
+        let synth = Dragged::Generator {
+            label: "Synth".into(),
+            add: Invocation::bare("channel.add_synth"),
+        };
+        assert_eq!(synth.add_channel().to_string(), "channel.add_synth");
+        assert_eq!(synth.sample(), None);
+    }
+
+    /// Clicks a Synth generator entry `clicks` times in quick succession and
+    /// returns the commands it asked for.
+    fn click_generator(clicks: usize) -> Vec<String> {
+        let ctx = egui::Context::default();
+        let at = egui::pos2(30.0, 14.0);
+        let press = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let mut frames = vec![vec![egui::Event::PointerMoved(at)]];
+        for _ in 0..clicks {
+            frames.push(vec![press(true)]);
+            frames.push(vec![press(false)]);
+        }
+        frames.push(vec![]);
+        let mut commands = Vec::new();
+        for (i, events) in frames.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(300.0, 200.0),
+                )),
+                time: Some(i as f64 * 0.05),
+                events,
+                ..Default::default()
+            };
+            let mut actions = Vec::new();
+            ctx.run_ui(input, |ui| {
+                generator(
+                    ui,
+                    "Synth",
+                    "Subtractive synth",
+                    Invocation::bare("channel.add_synth"),
+                    &mut actions,
+                );
+            })
+            .textures_delta
+            .clear();
+            commands.extend(actions.into_iter().filter_map(|a| match a {
+                Action::Run(invocation) => Some(invocation.to_string()),
+                _ => None,
+            }));
+        }
+        commands
+    }
+
+    #[test]
+    fn a_click_selects_a_generator_and_a_double_click_adds_one_channel() {
+        assert!(click_generator(1).is_empty(), "a single click only selects");
+        assert_eq!(click_generator(2), ["channel.add_synth"]);
     }
 
     #[test]

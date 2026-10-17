@@ -108,8 +108,9 @@ new UI editor or large DSP.
   to six built-in effects inside one insert slot, mixed with the dry signal
   (`mixer.rack_*`). Instrument graphs are covered by layer channels and
   mixer routing.
-- [ ] VST3 hosting (Fruity Wrapper) → extends the `unsafe` exception; needs
-  the user's go-ahead before any work.
+- [x] VST3 hosting (Fruity Wrapper) → `musiccraft-vst3`, approved by the user
+  on 2026-10-16: instruments and effects, parameters, state, plugin windows on
+  Linux. Still open: VST3 on macOS and VST3 windows on Windows and macOS.
 
 Done as the sample editor (`docs/spec/sample-editor.md`): offline trim, cut,
 silence, fades, gain, normalize, reverse, time-stretch, pitch-shift and

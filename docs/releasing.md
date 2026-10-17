@@ -65,12 +65,12 @@ to the run as artifacts.
     signing, `packaging/macos/entitlements.plist` is applied so the hardened runtime
     still allows loading third-party CLAP plugins and recording audio. Windows
     signing (for example with `signtool` or Azure Trusted Signing) is not wired in.
-- **No license yet.** The repository has no `LICENSE` file, and the Flatpak metainfo
-  has a TODO for `<project_license>`. Choose a license before sharing releases widely.
+- **License.** MusicCraft is GPL-3.0-or-later (`LICENSE`). Under the GPL, every
+  binary release must come with its source (or a written offer of it): the GitHub
+  release's tag provides it; keep releases tagged.
 - **Flatpak is not Flathub-ready.** It packages the binary CI built. Flathub requires a
   build from source: switch the manifest to the `org.freedesktop.Sdk.Extension.rust-stable`
-  extension with vendored crates (`cargo vendor`), and add `project_license` and
-  screenshots to the metainfo.
+  extension with vendored crates (`cargo vendor`), and add screenshots to the metainfo.
 - **Plugins in the Flatpak.** CLAP plugins are found in `~/.clap` and `CLAP_PATH`
   folders under the home directory, but the sandbox cannot see system-wide folders such
   as `/usr/lib/clap`, and plugins that depend on host libraries may not load. Use the

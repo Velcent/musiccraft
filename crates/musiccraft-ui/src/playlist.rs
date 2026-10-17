@@ -1703,7 +1703,7 @@ fn edit(
                 if let Some(dragged) =
                     egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ui.ctx())
                 {
-                    if let Some(sample) = dragged.0.clone() {
+                    if let Some(sample) = dragged.sample().map(str::to_owned) {
                         actions.push(Action::DropAudio {
                             sample,
                             track: row,

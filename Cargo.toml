@@ -7,6 +7,7 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 publish = false
+license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 musiccraft-project = { path = "crates/musiccraft-project" }
@@ -21,6 +22,9 @@ musiccraft-audio = { path = "crates/musiccraft-audio" }
 musiccraft-cli = { path = "crates/musiccraft-cli" }
 musiccraft-clap = { path = "crates/musiccraft-clap" }
 musiccraft-formula = { path = "crates/musiccraft-formula" }
+musiccraft-flp = { path = "crates/musiccraft-flp" }
+musiccraft-plugin-window = { path = "crates/musiccraft-plugin-window" }
+musiccraft-vst3 = { path = "crates/musiccraft-vst3" }
 cpal = "0.18"
 rtrb = "0.4"
 serde = { version = "1", features = ["derive"] }

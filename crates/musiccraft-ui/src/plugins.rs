@@ -258,13 +258,14 @@ fn param_row(
     if response.is_pointer_button_down_on() && ui.input(|i| i.pointer.any_pressed()) {
         state.begin_gesture();
     }
-    if response.changed() && value != param.value {
+    let reset = crate::widgets::wants_reset(&response);
+    if response.changed() && value != param.value && !reset {
         actions.push(Action::Coalesced(
             target.set_param(param.id, &value.to_string()),
             state.gesture(),
         ));
     }
-    if response.double_clicked() {
+    if reset {
         actions.push(Action::Run(
             target.set_param(param.id, &param.default.to_string()),
         ));

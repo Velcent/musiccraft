@@ -73,14 +73,16 @@ Hover any control and the hint bar at the top says what it does.
   types, LFO, presets), FM synth (4 operators), keys (piano, e-piano, organ),
   additive synth, granular sampler, drum synth (kick, snare, hat, tom, clap),
   16-pad drum kit, plucked string, layer (one channel plays several), sampler
-  with loop slicing, and CLAP plugins. Every channel has an arpeggiator.
+  with loop slicing, and CLAP and VST3 plugins. Every channel has an arpeggiator.
 - **Playlist** (main workspace): paint patterns, automation or audio clips;
   click, Shift+click or Ctrl+drag to select; drag to move or resize; Delete,
   Ctrl+B duplicate. Click the ruler to seek, Shift+drag it to set a loop,
   right-click it for markers. Songs loop by default; right-click the ruler →
   Add pause marker here at the end to stop there instead, or make a marker the
   Song loop point to return to it.
-- **Channel rack**: click steps; knobs for pan and volume (double-click resets;
+- **Channel rack**: click steps, drag to paint them, right-click or right-drag
+  to erase; knobs for pan and volume (middle-click or double-click resets any
+  knob or fader;
   pan follows the project's circular or triangular pan law);
   click a channel name for its settings. The synth has presets, two
   oscillators with unison and spread, sub, drive, low/band/high-pass filter
@@ -114,9 +116,9 @@ Hover any control and the hint bar at the top says what it does.
 - **Automation**: right-click any knob or fader → Create automation clip;
   double-click the clip to edit its curve.
 - **Browser**: current project, plugin database (generators and effects),
-  packs and your folders, with search; click previews,
-  double-click adds, drag onto the rack (new channel) or the playlist (audio
-  clip).
+  packs and your folders, with search; click previews a sound (or selects a
+  plugin), double-click adds, drag onto the rack (new channel) or the
+  playlist (audio clip).
 - **Recording**: REC + playing records a MIDI or typing keyboard into the
   pattern; with File → Record audio input, song-mode takes become audio clips.
   Right-click REC for count-in (Ctrl+P), wait for input (Ctrl+I), loop
@@ -124,13 +126,19 @@ Hover any control and the hint bar at the top says what it does.
   the playhead, which steps on). In song mode, moving a knob while recording
   writes automation.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
+- **FL Studio projects**: `project.import_flp song.flp` converts tempo,
+  channels, patterns and notes, the playlist and the mixer. FL's own plugins
+  become synths and VST3 plugins carry over without their settings; the
+  message lists what was left out (see `docs/spec/flp-import.md`).
 - **MIDI Out channels** (rack → More instruments) send their notes to
   external gear on a MIDI channel; pick the output port in Settings → MIDI.
-- **Plugins (CLAP)**: instruments and effects from `~/.clap`, `/usr/lib/clap`
-  and `CLAP_PATH` show up in the browser, the rack's add menu and mixer slots.
-  Each gets a parameter panel and can open its own window; parameters and
-  state are saved in the project and exports render them. Tested with
-  Surge XT and LSP plugins.
+- **Plugins (CLAP and VST3)**: instruments and effects from `~/.clap`,
+  `/usr/lib/clap` and `CLAP_PATH`, and from `~/.vst3`, `/usr/lib/vst3` and
+  `VST3_PATH`, show up in the browser, the rack's add menu and mixer slots.
+  Each gets a parameter panel and can open its own window (VST3 windows on
+  Linux for now); parameters and state are saved in the project and exports
+  render them. CLAP is tested with Surge XT and LSP plugins; VST3 with the
+  bundled test plugins (third-party VST3 plugins are not tested yet).
 
 Built-in sounds (`builtin:kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`,
 `rim`, `crash`) are synthesized at start-up; WAV files can be loaded as samples.
@@ -170,3 +178,10 @@ cargo xtask parity          # feature checklist (docs/parity.md)
 - `MUSICCRAFT_SCREENSHOT=out.png musiccraft …` saves one frame and exits.
 
 MusicCraft is an independent project and is not affiliated with any other DAW.
+
+## License
+
+MusicCraft is free software, licensed under the GNU General Public License,
+version 3 or (at your option) any later version. See `LICENSE`. The `.flp`
+importer is a Rust port of [PyFLP](https://github.com/demberto/PyFLP),
+© 2022 demberto, also GPL-3.0-or-later.

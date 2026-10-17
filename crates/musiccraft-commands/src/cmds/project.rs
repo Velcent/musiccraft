@@ -70,6 +70,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             load,
         ),
         cmd(
+            "project.import_flp",
+            "project.import_flp <file.flp>",
+            "Replace the project with one converted from an FL Studio project (clears undo history).",
+            import_flp,
+        ),
+        cmd(
             "project.recover",
             "project.recover <path>",
             "Load a crash backup as unsaved work: saving asks for a file (clears undo history).",
@@ -251,6 +257,36 @@ fn load(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
     ));
     *project = loaded;
     Ok(Outcome::reset(format!("loaded {}", path.display())))
+}
+
+fn import_flp(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let path = PathBuf::from(args.str(0)?);
+    let bytes = fs::read(&path)
+        .map_err(|e| CommandError::Io(format!("cannot read {}: {e}", path.display())))?;
+    let stem = path.file_stem().map_or_else(
+        || "Imported".to_owned(),
+        |s| s.to_string_lossy().into_owned(),
+    );
+    let (imported, report) = crate::flp_import::convert(&bytes, &stem)
+        .map_err(|reason| args.invalid(format!("cannot import {}: {reason}", path.display())))?;
+    *project = imported;
+    let mut message = format!(
+        "imported {}: {} channels, {} patterns, {} clips, {} mixer tracks",
+        path.display(),
+        project.channels.len(),
+        project.patterns.len(),
+        project.playlist.clips.len(),
+        project.mixer.len()
+    );
+    if !report.replaced.is_empty() {
+        message.push_str(&format!("; replaced {}", report.replaced.join(", ")));
+    }
+    if !report.dropped.is_empty() {
+        message.push_str(&format!("; not imported: {}", report.dropped.join("; ")));
+    }
+    message.push_str("; volumes and pans keep FL's fader positions, not its loudness");
+    Ok(Outcome::reset(message))
 }
 
 fn recover(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

@@ -1,0 +1,23 @@
+[package]
+name = "musiccraft-vst3-testplugin"
+description = "Tiny VST3 plugins used to test the MusicCraft host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+vst3 = "0.3"
+
+# Not `workspace = true`: this crate is exempt from the workspace `unsafe` ban
+# (see ARCHITECTURE.md). Every other lint matches the workspace.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "warn"
