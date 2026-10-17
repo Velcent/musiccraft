@@ -3,7 +3,7 @@
 
 use egui::{Align2, Color32, FontId, PointerButton, Pos2, RichText, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
-use musiccraft_project::{Automation, Meter, PLAYLIST_TRACKS, Project};
+use musiccraft_project::{Automation, AutomationPoint, Curve, Meter, PLAYLIST_TRACKS, Project};
 
 use crate::geometry::Snap;
 use crate::{Action, Frame, UiState, theme};
@@ -65,6 +65,17 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
 }
 const HEIGHT: f32 = 180.0;
 const POINT_RADIUS: f32 = 5.0;
+
+/// A segment's tension being dragged (Alt+drag).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TensionDrag {
+    /// The point that starts the segment.
+    tick: u32,
+    /// Its shape.
+    curve: Curve,
+    /// The tension shown.
+    tension: f32,
+}
 
 /// A point being dragged: (original tick, current tick, current value).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -162,23 +173,41 @@ fn canvas(
     }
     let snap = Snap::Step;
     let drag = state.automation_drag;
-    // Points as currently shown (with the drag applied).
-    let mut shown: Vec<(u32, f32)> = automation
-        .points
-        .iter()
-        .filter(|p| drag.is_none_or(|d| d.from != p.tick))
-        .map(|p| (p.tick, p.value))
-        .collect();
-    if let Some(d) = drag {
-        shown.push((d.tick, d.value));
+    let bend = state.tension_drag;
+    // Points as currently shown (with a point or tension drag applied).
+    let mut shown: Vec<AutomationPoint> = Vec::new();
+    for p in &automation.points {
+        match drag {
+            Some(d) if d.from == p.tick => shown.push(AutomationPoint {
+                tick: d.tick,
+                value: d.value,
+                ..*p
+            }),
+            _ => shown.push(*p),
+        }
+        if let (Some(b), Some(last)) = (bend, shown.last_mut()) {
+            if b.tick == p.tick {
+                last.tension = b.tension;
+            }
+        }
     }
-    shown.sort_by_key(|p| p.0);
-    if let (Some(first), Some(last)) = (shown.first(), shown.last()) {
-        let mut line = vec![pos2(inner.left(), y_of(first.1))];
-        line.extend(shown.iter().map(|(t, v)| pos2(x_of(*t as f32), y_of(*v))));
-        line.push(pos2(inner.right(), y_of(last.1)));
+    shown.sort_by_key(|p| p.tick);
+    let curve = Automation {
+        points: shown.clone(),
+        ..automation.clone()
+    };
+    if !shown.is_empty() {
+        let steps = (inner.width() / 2.0).max(2.0) as usize;
+        let line: Vec<Pos2> = (0..=steps)
+            .filter_map(|i| {
+                let x = inner.left() + inner.width() * i as f32 / steps as f32;
+                let v = curve.value_at(f64::from(tick_of(x)))?;
+                Some(pos2(x, y_of(v)))
+            })
+            .collect();
         painter.add(egui::Shape::line(line, Stroke::new(2.0, theme::AUTOMATION)));
     }
+    let shown: Vec<(u32, f32)> = shown.iter().map(|p| (p.tick, p.value)).collect();
     for (t, v) in &shown {
         painter.circle_filled(
             pos2(x_of(*t as f32), y_of(*v)),
@@ -200,13 +229,49 @@ fn canvas(
     };
     let number = (index + 1).to_string();
     let t = |ticks: u32| format!("{ticks}t");
+    // The point that starts the segment under `x`.
+    let segment = |x: f32| {
+        let tick = tick_of(x) as u32;
+        automation
+            .points
+            .windows(2)
+            .find(|w| w[0].tick <= tick && tick < w[1].tick)
+            .map(|w| w[0])
+    };
+    let alt = ui.input(|i| i.modifiers.alt);
     if response.drag_started_by(PointerButton::Primary) {
-        if let Some(point) = ui.input(|i| i.pointer.press_origin()).and_then(hit) {
+        let origin = ui.input(|i| i.pointer.press_origin());
+        if let Some(point) = origin.and_then(hit) {
             state.automation_drag = Some(PointDrag {
                 from: point.tick,
                 tick: point.tick,
                 value: point.value,
             });
+        } else if let Some(start) = origin.filter(|_| alt).and_then(|p| segment(p.x)) {
+            // Alt+drag on a segment bends it.
+            state.tension_drag = Some(TensionDrag {
+                tick: start.tick,
+                curve: start.curve,
+                tension: start.tension,
+            });
+        }
+    }
+    if let Some(b) = &mut state.tension_drag {
+        if response.dragged() {
+            let dy = response.drag_delta().y;
+            b.tension = (b.tension + dy / 80.0).clamp(-1.0, 1.0);
+        }
+        if response.drag_stopped() {
+            actions.push(Action::Run(Invocation::new(
+                "automation.set_curve",
+                [
+                    number.clone(),
+                    t(b.tick),
+                    b.curve.name().to_owned(),
+                    format!("{:.3}", b.tension),
+                ],
+            )));
+            state.tension_drag = None;
         }
     }
     if let (Some(d), Some(pos)) = (&mut state.automation_drag, response.interact_pointer_pos()) {
@@ -240,15 +305,64 @@ fn canvas(
         }
     }
     if response.secondary_clicked() {
-        if let Some(point) = response.interact_pointer_pos().and_then(hit) {
+        let pos = response.interact_pointer_pos();
+        state.automation_menu = None;
+        if let Some(point) = pos.and_then(hit) {
             if automation.points.len() > 1 {
                 actions.push(Action::Run(Invocation::new(
                     "automation.remove_point",
-                    [number, t(point.tick)],
+                    [number.clone(), t(point.tick)],
                 )));
             }
+        } else if let Some(start) = pos.and_then(|p| segment(p.x)) {
+            state.automation_menu = Some(start.tick);
         }
     }
+    response.context_menu(|ui| {
+        let Some(start) = state
+            .automation_menu
+            .and_then(|tick| automation.points.iter().find(|p| p.tick == tick))
+        else {
+            ui.close();
+            return;
+        };
+        ui.label(
+            RichText::new("Segment shape")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+        for (curve, label) in [
+            (Curve::Single, "Single curve"),
+            (Curve::Double, "Double curve"),
+            (Curve::Hold, "Hold"),
+            (Curve::Stairs, "Stairs"),
+        ] {
+            if ui.radio(start.curve == curve, label).clicked() {
+                actions.push(Action::Run(Invocation::new(
+                    "automation.set_curve",
+                    [
+                        number.clone(),
+                        t(start.tick),
+                        curve.name().to_owned(),
+                        format!("{:.3}", start.tension),
+                    ],
+                )));
+                ui.close();
+            }
+        }
+        if ui.button("Reset tension").clicked() {
+            actions.push(Action::Run(Invocation::new(
+                "automation.set_curve",
+                [number.clone(), t(start.tick), start.curve.name().to_owned()],
+            )));
+            ui.close();
+        }
+        ui.label(
+            RichText::new("Alt+drag a segment to bend it")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+    });
     if let Some(pos) = response.hover_pos() {
         if let Some(point) = hit(pos) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);

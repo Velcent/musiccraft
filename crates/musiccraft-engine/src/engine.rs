@@ -1499,6 +1499,9 @@ fn process_track(
         effects,
         left,
         right,
+        eq,
+        dry_left,
+        dry_right,
         ..
     } = track;
     let (l, r) = (prefix(left, frames), prefix(right, frames));
@@ -1506,11 +1509,34 @@ fn process_track(
     // forever, silencing the track until the graph is rebuilt.
     scrub(l, r);
     params.stereo(l, r);
+    if params.eq_active() {
+        eq.process(l, r, &params.eq, ctx);
+        scrub(l, r);
+    }
     for slot in effects.iter_mut().filter(|s| s.params.enabled) {
+        // A partial mix blends the slot's output with what went in.
+        let mix = slot.params.mix.clamp(0.0, 1.0);
+        let blend = mix < 0.999
+            && slot.effect.kind() != EffectKind::Send
+            && !matches!(slot.effect, musiccraft_dsp::Effect::BandSplit(_));
+        let (dl, dr) = (prefix(dry_left, frames), prefix(dry_right, frames));
+        if blend {
+            // Zipped copies cannot panic on a length mismatch.
+            for (d, s) in dl
+                .iter_mut()
+                .zip(l.iter())
+                .chain(dr.iter_mut().zip(r.iter()))
+            {
+                *d = *s;
+            }
+        }
         if let Some(index) = slot.external {
             if let Some(Some(external)) = externals.get_mut(usize::from(index)) {
                 external.process(l, r, &transport);
                 scrub(l, r);
+            }
+            if blend {
+                mix_dry(l, r, dl, dr, mix);
             }
             continue;
         }
@@ -1558,12 +1584,22 @@ fn process_track(
             // The effect's own state went bad; start it afresh.
             slot.effect.reset();
         }
+        if blend {
+            mix_dry(l, r, dl, dr, mix);
+        }
     }
     let from = *gains;
     let to = params.gains();
     *gains = to;
     scale_ramped(l, from.0, to.0);
     scale_ramped(r, from.1, to.1);
+}
+
+/// Blends a slot's output with its input: `dry + (wet - dry) * mix`.
+fn mix_dry(l: &mut [f32], r: &mut [f32], dl: &[f32], dr: &[f32], mix: f32) {
+    for (wet, dry) in l.iter_mut().zip(dl).chain(r.iter_mut().zip(dr)) {
+        *wet = dry + (*wet - dry) * mix;
+    }
 }
 
 /// A send effect: adds this point of the chain to its target track, panned

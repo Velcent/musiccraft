@@ -166,6 +166,7 @@ fn track_params(track: &MixerTrack, index: usize, audible: Option<&[bool]>) -> T
         separation: track.separation,
         invert: track.phase_invert,
         swap: track.swap_sides,
+        eq: track.eq.params(),
         mute: track.mute || soloed_out,
         to_master: track.to_master || index == 0,
         ..TrackParams::default()
@@ -327,6 +328,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     .map(|e| EffectParams {
                         enabled: e.enabled,
                         values: e.values,
+                        mix: e.mix,
                     })
                     .collect()
             })
@@ -358,6 +360,7 @@ fn rack_params(project: &Project) -> Vec<RackParams> {
                     let params = EffectParams {
                         enabled: e.enabled,
                         values: e.values,
+                        mix: e.mix,
                     };
                     out.push((at, params));
                 }
@@ -717,6 +720,7 @@ impl Bridge {
                         EffectParams {
                             enabled: e.enabled,
                             values: e.values,
+                            mix: e.mix,
                         },
                     )
                 })

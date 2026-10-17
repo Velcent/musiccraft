@@ -459,14 +459,28 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     let ticks = frame.engine.position_ticks.max(0.0);
     let seconds = ticks / f64::from(musiccraft_project::params::PPQ) * 60.0 / project.tempo_bpm();
     let time = format!("{}:{:05.2}", (seconds / 60.0) as u32, seconds % 60.0);
-    icons::lcd(
-        ui,
-        92.0,
-        position_label(ticks, &project.playing_meter()).trim(),
-        &time,
-        egui::Sense::hover(),
-    )
-    .hint("Song position: bar . beat . step, and time");
+    let bars = position_label(ticks, &project.playing_meter());
+    let (main, caption) = if state.show_seconds {
+        (time.as_str(), "MIN:SEC")
+    } else {
+        (bars.trim(), "BAR.BEAT.STEP")
+    };
+    let position = icons::lcd(ui, 92.0, main, caption, egui::Sense::click()).hint(format!(
+        "Song position ({}). Click to show {}",
+        if state.show_seconds {
+            bars.trim()
+        } else {
+            &time
+        },
+        if state.show_seconds {
+            "bars and beats"
+        } else {
+            "minutes and seconds"
+        }
+    ));
+    if position.clicked() {
+        state.show_seconds = !state.show_seconds;
+    }
 
     let tempo = project.tempo_bpm();
     let tempo_lcd = icons::lcd(

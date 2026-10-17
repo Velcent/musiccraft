@@ -213,6 +213,10 @@ pub struct UiState {
     /// Automation shown in the automation editor.
     pub automation_editor: Option<musiccraft_project::AutomationId>,
     automation_drag: Option<automation::PointDrag>,
+    /// A segment tension being dragged in the automation editor.
+    tension_drag: Option<automation::TensionDrag>,
+    /// The segment (by its first point's tick) whose shape menu is open.
+    automation_menu: Option<u32>,
     /// The automation editor's drawing area and length in ticks, last frame.
     pub(crate) automation_view: Option<(egui::Rect, u32)>,
     /// The area between the side and bottom panels, where windows float.
@@ -223,6 +227,11 @@ pub struct UiState {
     pub taps: Vec<f64>,
     /// The custom time signature being entered in a signature menu.
     pub sig_draft: (u32, u32),
+    /// The toolbar's position display shows minutes and seconds instead of
+    /// bars and beats.
+    pub show_seconds: bool,
+    /// The channel settings window's page.
+    pub channel_tab: channel_settings::ChannelTab,
     /// The channel rack shows only this display filter group (`None`: all).
     pub rack_group: Option<String>,
     /// The channel rack's step graph editor: open, what it edits, and the
@@ -307,11 +316,15 @@ impl UiState {
             autosave_path: None,
             automation_editor: None,
             automation_drag: None,
+            tension_drag: None,
+            automation_menu: None,
             automation_view: None,
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             taps: Vec::new(),
             sig_draft: (4, 4),
+            channel_tab: channel_settings::ChannelTab::default(),
+            show_seconds: false,
             rack_group: None,
             graph: None,
             graph_drag: None,

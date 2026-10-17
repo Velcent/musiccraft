@@ -33,7 +33,7 @@
   through the usual note commands; one drag is one undo step.
 - **Display filter groups**: `channel.set_group <n> [group]` (undoable,
   saved as `"group"`; no name removes it) puts a channel in a named group. The
-  rack's group menu (shown once any channel has a group) shows All, one
+  rack's group menu (always at the top left of the rack) shows All, one
   group, or Unsorted (channels without one). Right-click a channel → Group…
   sets it. Filtering only hides rows; numbering and keys stay the same.
 - `channel.solo <n>` mutes every other channel; running it again on an already
@@ -47,9 +47,13 @@
   the first click gave (on or off). Right-click turns a step off, and
   dragging with the right button erases every step it passes. A whole drag
   is one undo step. Turning a step on previews the channel's sound.
-- **Mixer routing box** (UI): each row shows where the channel plays to:
-  "→ Mst" for the master track, "→ 3" for insert 3. Drag it up or down (or
-  scroll over it) to change the track; the tooltip names the track.
+- **Row layout** (UI), left to right: mute dot, pan knob, volume knob, the
+  mixer track box, the name button, the steps (or a miniature roll), and a
+  **selection switch** that selects the channel without opening its
+  settings (lit for the selected channel).
+- **Mixer track box** (UI): each row shows the mixer track the channel plays
+  to as a small number box: "M" for the master track, "3" for insert 3. Drag
+  it up or down (or type) to change the track; the tooltip names the track.
 - **Browser** (UI): in the plugin database, a single click only selects an
   entry (it is highlighted). Double-clicking a generator adds it as a new
   channel; dragging it onto the channel rack does the same. Double-clicking
@@ -73,14 +77,14 @@
   - `swing_truncate` (channel parameter, 0 or 1, default 0): a swung note
     keeps its original end and so gets shorter by the delay (never below one
     tick) instead of moving whole, so it cannot run into the next step.
-  - Both are in channel settings → SWING. The channel rack's swing box sets
+  - Both are in channel settings → Functions → SWING. The channel rack's swing box sets
     the global amount.
   - Older files stored swing per pattern. On load, a project without a global
     swing takes the largest pattern swing.
 
 ## Timing and echo
 
-Channel parameters (channel settings → TIMING AND ECHO), applied when the
+Channel parameters (channel settings → Functions → TIMING AND ECHO), applied when the
 sequence is built, after swing and the arpeggiator; they change what the
 channel plays, not the stored notes:
 
@@ -313,7 +317,26 @@ Out channels voice their own notes and are never cut.
 synthesized deterministically at load time (swept sines, filtered noise, metallic
 square partials), normalized to a 0.9 peak and faded out at the end.
 
+## Channel settings window
+
+- Clicking a channel's name opens its
+  settings window. A **fixed header** stays at the top: the channel name and
+  instrument, volume, pan and pitch knobs, mute, and the mixer track it feeds
+  as a number box (drag or type; `channel.route`).
+- Below it, **tabs**: *Sound* (the instrument's own sections: sample, oscillators,
+  operators, plugin parameters…), *Envelope* (the amplitude envelope, for
+  instruments that use it) and *Functions* (arpeggiator, swing, timing and
+  echo, voices). Only the tab's contents scroll. The last tab used stays
+  selected while the window is open.
+- MIDI Out channels have no sound settings: the window shows their MIDI page
+  only.
+
 ## Sources
+
+- The channel settings window's fixed header and tabbed pages follow the
+  layout described in the FL Studio online manual, "Channel settings"
+  (sampler and instrument pages, miscellaneous functions), with our own
+  grouping and names.
 
 - Channel rack layout (rows of instruments with step buttons, volume, pan, mute
   and mixer routing) follows the general workflow described in the FL Studio

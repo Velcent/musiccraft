@@ -41,6 +41,9 @@
   `project.set_a4 <hz>`, 392–494 Hz, which sets the equivalent cents;
   undoable, saved as `"master_pitch"`; Settings → Project) transposes every
   built-in instrument. Plugins and MIDI Out channels are not retuned.
+- The toolbar's **position display** shows the playhead as bar.beat.step in
+  the meter that is playing; clicking it switches to minutes:seconds and
+  back (a view setting, not saved). Its tooltip shows the other form.
 - `project.set_tempo <bpm>` sets the tempo. It is undoable; setting the same value
   records no history entry.
 - Transport and mode commands are not part of undo history. The transport state

@@ -327,14 +327,8 @@ fn automation_interpolates_and_holds_ends() {
         name: "Cutoff".into(),
         target: AutomationTarget::MixerVolume { track: 1 },
         points: vec![
-            AutomationPoint {
-                tick: 96,
-                value: 0.0,
-            },
-            AutomationPoint {
-                tick: 192,
-                value: 1.0,
-            },
+            AutomationPoint::new(96, 0.0),
+            AutomationPoint::new(192, 1.0),
         ],
     };
     assert_eq!(automation.value_at(0.0), Some(0.0));
@@ -393,4 +387,32 @@ fn signatures_shape_patterns_and_the_song() {
     assert!(json.contains("\"time_signature\": \"3/4\""), "{json}");
     assert!(json.contains("\"action\": {\n            \"time_signature\": \"7/8\""));
     assert_eq!(Project::from_json(&json).unwrap(), project);
+}
+
+#[test]
+fn curve_shapes_bend_hold_and_step() {
+    let at = |c: Curve, t: f32, k: f32| c.shape(t, k);
+    assert!((at(Curve::Single, 0.5, 0.0) - 0.5).abs() < 1e-6);
+    assert!(at(Curve::Single, 0.5, 1.0) < 0.1, "slow start");
+    assert!(at(Curve::Single, 0.5, -1.0) > 0.8, "fast start");
+    assert!((at(Curve::Double, 0.5, 0.7) - 0.5).abs() < 1e-6);
+    assert!(at(Curve::Double, 0.25, 1.0) < 0.25 && at(Curve::Double, 0.75, 1.0) > 0.75);
+    assert_eq!(at(Curve::Hold, 0.99, 0.0), 0.0);
+    assert_eq!(at(Curve::Hold, 1.0, 0.0), 1.0);
+    assert_eq!(at(Curve::Stairs, 0.6, -1.0), 0.5, "two steps");
+    assert_eq!(at(Curve::Stairs, 0.99, 1.0), 15.0 / 16.0, "sixteen steps");
+    let mut a = AutomationPoint::new(0, 0.0);
+    a.curve = Curve::Hold;
+    let automation = Automation {
+        id: AutomationId(1),
+        name: "a".into(),
+        target: AutomationTarget::MixerVolume { track: 0 },
+        points: vec![a, AutomationPoint::new(96, 1.0)],
+    };
+    assert_eq!(automation.value_at(95.0), Some(0.0));
+    assert_eq!(automation.value_at(96.0), Some(1.0));
+    let json = serde_json::to_string(&automation).unwrap();
+    assert!(json.contains("\"curve\":\"hold\""), "{json}");
+    let back: Automation = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, automation);
 }

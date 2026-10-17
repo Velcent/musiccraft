@@ -113,7 +113,13 @@ pub struct TrackParams {
     pub invert: bool,
     /// Exchange left and right.
     pub swap: bool,
+    /// The built-in EQ, as the three-band EQ effect's parameters
+    /// `[low gain, low freq, mid gain, mid freq, mid q, high gain, high freq]`.
+    pub eq: [f32; 7],
 }
+
+/// A flat track EQ.
+pub const FLAT_EQ: [f32; 7] = [0.0, 120.0, 0.0, 1_000.0, 0.7, 0.0, 8_000.0];
 
 impl Default for TrackParams {
     fn default() -> Self {
@@ -127,11 +133,20 @@ impl Default for TrackParams {
             separation: 0.0,
             invert: false,
             swap: false,
+            eq: FLAT_EQ,
         }
     }
 }
 
 impl TrackParams {
+    /// Whether the EQ changes anything (any band has gain).
+    #[must_use]
+    pub fn eq_active(&self) -> bool {
+        [0, 2, 5]
+            .iter()
+            .any(|&i| self.eq.get(i).is_some_and(|g| g.abs() > 1e-4))
+    }
+
     /// The active sends.
     #[must_use]
     pub fn active_sends(&self) -> &[SendParams] {
@@ -147,6 +162,8 @@ pub struct EffectParams {
     pub enabled: bool,
     /// Parameter values in the order of the effect's parameter table.
     pub values: [f32; MAX_EFFECT_PARAMS],
+    /// Dry/wet mix, 0..=1.
+    pub mix: f32,
 }
 
 /// One sample of a zone sampler and the notes that play it.
@@ -242,6 +259,11 @@ pub struct TrackNode {
     pub(crate) right: Vec<f32>,
     /// Louder side's peak in the last block, for peak controllers.
     pub(crate) last_peak: f32,
+    /// The built-in EQ's filter state.
+    pub(crate) eq: musiccraft_dsp::ThreeBandEq,
+    /// The input of an effect slot with a partial mix, kept for blending.
+    pub(crate) dry_left: Vec<f32>,
+    pub(crate) dry_right: Vec<f32>,
 }
 
 /// Most tracks whose peaks controllers can follow.
@@ -307,6 +329,9 @@ impl Graph {
             left: vec![0.0; MAX_BLOCK],
             right: vec![0.0; MAX_BLOCK],
             last_peak: 0.0,
+            eq: musiccraft_dsp::ThreeBandEq::default(),
+            dry_left: vec![0.0; MAX_BLOCK],
+            dry_right: vec![0.0; MAX_BLOCK],
         });
         self.tracks.len() - 1
     }

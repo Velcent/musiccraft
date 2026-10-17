@@ -30,7 +30,7 @@ pub const MAX_PATTERN_STEPS: u32 = 1024;
 /// Number of playlist track rows.
 pub const PLAYLIST_TRACKS: u32 = 64;
 /// Inserts in a new project's mixer (plus master).
-pub const DEFAULT_INSERTS: usize = 8;
+pub const DEFAULT_INSERTS: usize = 16;
 /// Key that steps toggled in the channel rack play.
 pub const STEP_KEY: u8 = 60;
 /// Velocity of notes created without an explicit velocity.
@@ -559,6 +559,8 @@ pub struct EffectSlot {
     /// The parallel branches of an effect rack, each a chain of effects;
     /// empty for every other effect.
     pub branches: Vec<Vec<EffectSlot>>,
+    /// Dry/wet mix, 0..=1: the output is `dry + (wet - dry) * mix`.
+    pub mix: f32,
 }
 
 impl EffectSlot {
@@ -571,6 +573,7 @@ impl EffectSlot {
             values: kind.defaults(),
             plugin: None,
             file: None,
+            mix: 1.0,
             branches: if kind == EffectKind::Rack {
                 vec![Vec::new(); RACK_BRANCHES]
             } else {
@@ -610,6 +613,17 @@ struct EffectRepr {
     file: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     branches: Vec<Vec<EffectSlot>>,
+    #[serde(default = "full_mix", skip_serializing_if = "is_full_mix")]
+    mix: f32,
+}
+
+fn full_mix() -> f32 {
+    1.0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_full_mix(mix: &f32) -> bool {
+    *mix >= 1.0
 }
 
 impl From<EffectSlot> for EffectRepr {
@@ -621,6 +635,7 @@ impl From<EffectSlot> for EffectRepr {
             plugin: slot.plugin.map(|p| *p),
             file: slot.file,
             branches: slot.branches,
+            mix: slot.mix,
         }
     }
 }
@@ -636,6 +651,11 @@ impl From<EffectRepr> for EffectSlot {
             values: params_from_map(repr.kind.params(), &repr.params),
             plugin: repr.plugin.map(Box::new),
             file: repr.file,
+            mix: if repr.mix.is_finite() {
+                repr.mix.clamp(0.0, 1.0)
+            } else {
+                1.0
+            },
             // A rack always has its four branches; nothing else has any.
             branches: if repr.kind == EffectKind::Rack {
                 let mut branches = repr.branches;
@@ -698,6 +718,9 @@ pub struct MixerTrack {
     /// Exchange the left and right sides.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub swap_sides: bool,
+    /// The built-in three-band EQ.
+    #[serde(default, skip_serializing_if = "TrackEq::is_flat")]
+    pub eq: TrackEq,
 }
 
 impl MixerTrack {
@@ -716,6 +739,46 @@ impl MixerTrack {
             separation: 0.0,
             phase_invert: false,
             swap_sides: false,
+            eq: TrackEq::default(),
+        }
+    }
+}
+
+/// A mixer track's built-in EQ: low shelf, peak (Q 0.7) and high shelf.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct TrackEq {
+    /// Gain in dB (-18..=18) and frequency in Hz of the low, mid and high
+    /// bands.
+    pub bands: [(f32, f32); 3],
+}
+
+impl TrackEq {
+    /// Band names, in order.
+    pub const BANDS: [&'static str; 3] = ["low", "mid", "high"];
+    /// Frequency ranges of the bands, in Hz.
+    pub const RANGES: [(f32, f32); 3] = [(20.0, 1_000.0), (100.0, 10_000.0), (1_000.0, 20_000.0)];
+    /// Gain limit in dB.
+    pub const MAX_GAIN: f32 = 18.0;
+
+    /// Whether every band is at 0 dB with its default frequency.
+    #[must_use]
+    pub fn is_flat(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Parameters in the order of the engine's three-band EQ:
+    /// `[low gain, low freq, mid gain, mid freq, mid q, high gain, high freq]`.
+    #[must_use]
+    pub fn params(&self) -> [f32; 7] {
+        let [(lg, lf), (mg, mf), (hg, hf)] = self.bands;
+        [lg, lf, mg, mf, 0.7, hg, hf]
+    }
+}
+
+impl Default for TrackEq {
+    fn default() -> Self {
+        Self {
+            bands: [(0.0, 120.0), (0.0, 1_000.0), (0.0, 8_000.0)],
         }
     }
 }
@@ -840,6 +903,111 @@ pub struct AutomationPoint {
     pub tick: u32,
     /// Control position 0..=1, mapped through the target's curve.
     pub value: f32,
+    /// Shape of the segment from this point to the next.
+    #[serde(default, skip_serializing_if = "Curve::is_single")]
+    pub curve: Curve,
+    /// Bend of that segment, -1..=1.
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub tension: f32,
+}
+
+impl AutomationPoint {
+    /// A point starting a straight segment.
+    #[must_use]
+    pub fn new(tick: u32, value: f32) -> Self {
+        Self {
+            tick,
+            value,
+            curve: Curve::Single,
+            tension: 0.0,
+        }
+    }
+
+    /// Whether the segment from here is a plain straight line.
+    #[must_use]
+    pub fn is_straight(&self) -> bool {
+        self.curve == Curve::Single && self.tension == 0.0
+    }
+}
+
+/// Shape of an automation segment (see `docs/spec/playlist.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Curve {
+    /// One curve bent by the tension (straight at 0).
+    #[default]
+    Single,
+    /// An S-curve.
+    Double,
+    /// The value holds until the next point.
+    Hold,
+    /// Equal steps; the tension sets how many.
+    Stairs,
+}
+
+impl Curve {
+    /// Every shape, in menu order.
+    pub const ALL: [Self; 4] = [Self::Single, Self::Double, Self::Hold, Self::Stairs];
+
+    /// The name used by commands and files.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::Double => "double",
+            Self::Hold => "hold",
+            Self::Stairs => "stairs",
+        }
+    }
+
+    /// Parses [`Curve::name`].
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.name() == name)
+    }
+
+    /// Whether this is the default shape.
+    #[must_use]
+    pub fn is_single(&self) -> bool {
+        *self == Self::Single
+    }
+
+    /// How far (0..=1) the segment has moved at `t` (0..=1) of its length.
+    #[must_use]
+    pub fn shape(self, t: f32, tension: f32) -> f32 {
+        let t = t.clamp(0.0, 1.0);
+        let tension = if tension.is_finite() {
+            tension.clamp(-1.0, 1.0)
+        } else {
+            0.0
+        };
+        let bend = |t: f32| t.powf(4.0_f32.powf(tension));
+        match self {
+            Self::Single => bend(t),
+            Self::Double => {
+                if t < 0.5 {
+                    bend(2.0 * t) / 2.0
+                } else {
+                    1.0 - bend(2.0 - 2.0 * t) / 2.0
+                }
+            }
+            Self::Hold => {
+                if t >= 1.0 {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Self::Stairs => {
+                let steps = 2.0 + ((tension + 1.0) / 2.0 * 14.0).round();
+                if t >= 1.0 {
+                    1.0
+                } else {
+                    (t * steps).floor() / steps
+                }
+            }
+        }
+    }
 }
 
 /// A curve that moves one parameter over time when its clips play.
@@ -875,7 +1043,7 @@ impl Automation {
             if tick <= f64::from(b.tick) {
                 let span = f64::from(b.tick.saturating_sub(a.tick)).max(1e-9);
                 let t = ((tick - f64::from(a.tick)) / span) as f32;
-                return Some(a.value + (b.value - a.value) * t);
+                return Some(a.value + (b.value - a.value) * a.curve.shape(t, a.tension));
             }
         }
         self.points.last().map(|p| p.value)

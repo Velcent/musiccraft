@@ -117,7 +117,9 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
         {
             state.rack_group = None;
         }
-        if !groups.is_empty() {
+        // Always shown, as a fixed part of the header, even before any
+        // channel has a group.
+        {
             egui::ComboBox::from_id_salt("rack-group")
                 .width(90.0)
                 .selected_text(match &state.rack_group {
@@ -242,15 +244,15 @@ fn row(
         let mut track = channel.mixer_track;
         let route = ui
             .add_sized(
-                vec2(46.0, 18.0),
+                vec2(28.0, 18.0),
                 egui::DragValue::new(&mut track)
                     .range(0..=project.mixer.len().saturating_sub(1))
                     .speed(0.1)
                     .custom_formatter(|v, _| {
                         if v < 0.5 {
-                            "→ Mst".to_owned()
+                            "M".to_owned()
                         } else {
-                            format!("→ {v:.0}")
+                            format!("{v:.0}")
                         }
                     })
                     .custom_parser(|text| {
@@ -313,6 +315,18 @@ fn row(
         response.context_menu(|ui| context_menu(ui, state, project, index, channel, actions));
 
         steps(ui, state, project, index, channel, actions);
+        // The selection switch at the end of the row.
+        let (rect, switch) = ui.allocate_exact_size(vec2(8.0, STEP_SIZE.y), egui::Sense::click());
+        let fill = if selected {
+            theme::ACCENT
+        } else {
+            theme::RAISED
+        };
+        ui.painter()
+            .rect_filled(rect.shrink2(vec2(1.0, 2.0)), 2.0, fill);
+        if switch.hint("Select this channel").clicked() {
+            state.selected_channel = index;
+        }
     });
 }
 

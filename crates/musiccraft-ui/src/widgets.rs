@@ -198,10 +198,14 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
     let shown = changed.map_or(position, |g| gain_to_fader(g, max));
     let painter = ui.painter_at(rect.expand(2.0));
     let x = rect.center().x;
-    painter.rect_filled(
-        egui::Rect::from_center_size(egui::pos2(x, travel.center().y), vec2(4.0, travel.height())),
+    let groove =
+        egui::Rect::from_center_size(egui::pos2(x, travel.center().y), vec2(4.0, travel.height()));
+    painter.rect_filled(groove, 2.0, theme::METER_BG);
+    painter.rect_stroke(
+        groove,
         2.0,
-        theme::METER_BG,
+        Stroke::new(1.0, theme::LCD_EDGE),
+        egui::StrokeKind::Outside,
     );
     let unity = travel.bottom() - travel.height() * 0.75;
     painter.line_segment(
@@ -265,6 +269,13 @@ pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 2.0, theme::METER_BG);
+    // The edge keeps a silent meter visible on any background.
+    painter.rect_stroke(
+        rect,
+        2.0,
+        Stroke::new(1.0, theme::LCD_EDGE),
+        egui::StrokeKind::Inside,
+    );
     let half = rect.width() / 2.0;
     for (i, level) in [levels.0, levels.1].into_iter().enumerate() {
         let x0 = rect.left() + half * i as f32 + 1.0;

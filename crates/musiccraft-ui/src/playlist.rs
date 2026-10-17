@@ -58,6 +58,10 @@ pub struct PlaylistState {
     /// When set, clicking the playlist places this automation instead of the
     /// selected pattern.
     pub(crate) paint_automation: Option<AutomationId>,
+    /// When set, clicking the playlist places an audio clip of this channel.
+    pub(crate) paint_audio: Option<musiccraft_project::ChannelId>,
+    /// What the picker beside the playlist lists.
+    pub(crate) picker: Picker,
     /// Loop range being drawn on the ruler.
     loop_drag: Option<(u32, u32)>,
     /// The active tool.
@@ -81,6 +85,8 @@ impl Default for PlaylistState {
             selection: BTreeSet::new(),
             marquee: None,
             paint_automation: None,
+            paint_audio: None,
+            picker: Picker::All,
             loop_drag: None,
             tool: Tool::Draw,
             painted: Vec::new(),
@@ -203,6 +209,92 @@ fn pattern_list(
 ) {
     ui.vertical(|ui| {
         ui.set_width(LIST_WIDTH);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (picker, label, hint) in [
+                (Picker::All, "All", "Patterns, audio and automation clips"),
+                (Picker::Patterns, "Pat", "Patterns"),
+                (Picker::Audio, "Aud", "Audio clips"),
+                (Picker::Automation, "Aut", "Automation clips"),
+            ] {
+                ui.selectable_value(
+                    &mut state.playlist.picker,
+                    picker,
+                    RichText::new(label).small(),
+                )
+                .hint(hint);
+            }
+        });
+        let picker = state.playlist.picker;
+        if matches!(picker, Picker::All | Picker::Patterns) {
+            pattern_section(ui, state, project, actions);
+        }
+        if matches!(picker, Picker::All | Picker::Audio) {
+            audio_section(ui, state, project);
+        }
+        if matches!(picker, Picker::All | Picker::Automation) {
+            automation_section(ui, state, project, actions);
+        }
+    });
+}
+
+/// What the picker lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Picker {
+    All,
+    Patterns,
+    Audio,
+    Automation,
+}
+
+/// Channels that have audio clips; clicking one paints its clips.
+fn audio_section(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
+    let mut sources: Vec<musiccraft_project::ChannelId> = Vec::new();
+    for clip in &project.playlist.clips {
+        if let ClipSource::Audio(id) = clip.source {
+            if !sources.contains(&id) {
+                sources.push(id);
+            }
+        }
+    }
+    ui.add_space(8.0);
+    ui.label(
+        RichText::new("AUDIO")
+            .small()
+            .strong()
+            .color(theme::TEXT_DIM),
+    );
+    if sources.is_empty() {
+        ui.label(
+            RichText::new("Drop a sound on the playlist")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+    }
+    for id in sources {
+        let Some(index) = project.channel_position(id) else {
+            continue;
+        };
+        let selected = state.playlist.paint_audio == Some(id);
+        let text = RichText::new(format!("♪ {}", project.channels[index].name))
+            .color(theme::palette(index));
+        let response = ui
+            .selectable_label(selected, text)
+            .hint("Click to paint this audio clip on the playlist");
+        if response.clicked() {
+            state.playlist.paint_audio = Some(id);
+            state.playlist.paint_automation = None;
+        }
+    }
+}
+
+fn pattern_section(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    actions: &mut Vec<Action>,
+) {
+    {
         ui.label(
             RichText::new("PATTERNS")
                 .small()
@@ -217,10 +309,12 @@ fn pattern_list(
                     let selected = i == project.current_pattern;
                     let text =
                         RichText::new(format!("■ {}", pattern.name)).color(theme::palette(i));
-                    let painting = state.playlist.paint_automation.is_none();
+                    let painting = state.playlist.paint_automation.is_none()
+                        && state.playlist.paint_audio.is_none();
                     let response = ui.selectable_label(selected && painting, text);
                     if response.clicked() {
                         state.playlist.paint_automation = None;
+                        state.playlist.paint_audio = None;
                         if !selected {
                             actions.push(Action::Run(Invocation::new(
                                 "pattern.select",
@@ -283,8 +377,19 @@ fn pattern_list(
             });
         if ui.button("+ New pattern").clicked() {
             state.playlist.paint_automation = None;
+            state.playlist.paint_audio = None;
             actions.push(Action::Run(Invocation::bare("pattern.add")));
         }
+    }
+}
+
+fn automation_section(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    actions: &mut Vec<Action>,
+) {
+    {
         if !project.automations.is_empty() {
             ui.add_space(8.0);
             ui.label(
@@ -301,6 +406,7 @@ fn pattern_list(
                     .hint("Click to paint it on the playlist · double-click to edit");
                 if response.clicked() {
                     state.playlist.paint_automation = Some(automation.id);
+                    state.playlist.paint_audio = None;
                 }
                 if response.double_clicked() {
                     state.automation_editor = Some(automation.id);
@@ -327,7 +433,7 @@ fn pattern_list(
                 });
             }
         }
-    });
+    }
 }
 
 fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
@@ -564,7 +670,27 @@ fn draw_clip(
         ),
         egui::StrokeKind::Inside,
     );
-    let body = rect.shrink2(vec2(2.0, 4.0));
+    // A title strip with the name; the preview fills the rest.
+    let title_h = TITLE_HEIGHT.min(rect.height() / 2.0);
+    let title = Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + title_h));
+    painter.rect_filled(
+        title,
+        egui::CornerRadius {
+            nw: 4,
+            ne: 4,
+            sw: 0,
+            se: 0,
+        },
+        Color32::from_black_alpha(if matches!(clip.source, ClipSource::Automation(_)) {
+            0
+        } else {
+            70
+        }),
+    );
+    let body = Rect::from_min_max(
+        pos2(rect.left() + 2.0, title.bottom() + 1.0),
+        pos2(rect.right() - 2.0, rect.bottom() - 2.0),
+    );
     match clip.source {
         ClipSource::Pattern(id) => {
             if let Some(pattern) = project
@@ -624,18 +750,19 @@ fn draw_clip(
             }
         }
     }
-    painter.text(
-        rect.left_top() + vec2(4.0, 2.0),
-        Align2::LEFT_TOP,
-        name,
-        FontId::proportional(10.5),
-        if matches!(clip.source, ClipSource::Automation(_)) {
-            theme::TEXT
-        } else {
-            theme::BACKGROUND
-        },
-    );
+    painter
+        .with_clip_rect(title.intersect(painter.clip_rect()))
+        .text(
+            pos2(title.left() + 4.0, title.center().y),
+            Align2::LEFT_CENTER,
+            name,
+            FontId::proportional(10.0),
+            theme::TEXT,
+        );
 }
+
+/// Height of a clip's title strip.
+const TITLE_HEIGHT: f32 = 11.0;
 
 /// Miniature of a pattern's notes, repeated across the clip.
 fn pattern_preview(
@@ -1051,10 +1178,11 @@ fn headers(
         } else {
             theme::TEXT_DIM
         };
-        // The name stops short of the arm and solo buttons.
+        // The name stops short of the arm, solo and mute buttons at the
+        // right.
         let name_area = Rect::from_min_max(
-            pos2(r.left() + 22.0, r.top()),
-            pos2(r.right() - 38.0, r.bottom()),
+            pos2(r.left() + 8.0, r.top()),
+            pos2(r.right() - 56.0, r.bottom()),
         );
         painter.with_clip_rect(name_area).text(
             name_area.left_center(),
@@ -1097,7 +1225,7 @@ fn headers(
                 ui.close();
             }
         });
-        let dot = Rect::from_center_size(r.left_center() + vec2(12.0, 0.0), vec2(14.0, 14.0));
+        let dot = Rect::from_center_size(r.right_center() - vec2(12.0, 0.0), vec2(14.0, 14.0));
         if !area.contains_rect(dot) {
             continue;
         }
@@ -1112,7 +1240,7 @@ fn headers(
                 [number.clone()],
             )));
         }
-        let arm = Rect::from_center_size(r.right_center() - vec2(28.0, 0.0), vec2(14.0, 14.0));
+        let arm = Rect::from_center_size(r.right_center() - vec2(46.0, 0.0), vec2(14.0, 14.0));
         let armed = playlist.armed_tracks.contains(&row);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(arm));
         if widgets::dot(&mut child, armed, theme::DANGER)
@@ -1124,7 +1252,7 @@ fn headers(
                 [number.clone()],
             )));
         }
-        let solo = Rect::from_center_size(r.right_center() - vec2(12.0, 0.0), vec2(16.0, 14.0));
+        let solo = Rect::from_center_size(r.right_center() - vec2(29.0, 0.0), vec2(16.0, 14.0));
         let soloed = playlist.soloed_tracks.contains(&row);
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(solo));
         let label = RichText::new("S").small().color(if soloed {
@@ -1721,8 +1849,25 @@ fn edit(
                         .playlist
                         .paint_automation
                         .and_then(|id| project.automation_position(id));
-                    let invocation = match painted {
-                        Some(i) => Invocation::new(
+                    let audio = state.playlist.paint_audio.and_then(|id| {
+                        // New audio clips are as long as the channel's others.
+                        let length = clips
+                            .iter()
+                            .find(|c| c.source == ClipSource::Audio(id))
+                            .map(|c| c.length)?;
+                        Some((project.channel_position(id)?, length))
+                    });
+                    let invocation = match (audio, painted) {
+                        (Some((channel, length)), _) => Invocation::new(
+                            "playlist.add_audio_clip",
+                            [
+                                (channel + 1).to_string(),
+                                (row + 1).to_string(),
+                                format!("{start}t"),
+                                format!("{length}t"),
+                            ],
+                        ),
+                        (None, Some(i)) => Invocation::new(
                             "playlist.add_automation_clip",
                             [
                                 (i + 1).to_string(),
@@ -1730,7 +1875,7 @@ fn edit(
                                 format!("{start}t"),
                             ],
                         ),
-                        None => Invocation::new(
+                        (None, None) => Invocation::new(
                             "playlist.add_clip",
                             [
                                 (project.current_pattern + 1).to_string(),

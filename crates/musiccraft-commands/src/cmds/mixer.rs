@@ -44,6 +44,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_volume,
         ),
         cmd(
+            "mixer.set_eq",
+            "mixer.set_eq <track> <low|mid|high> <gain dB> [freq Hz]",
+            "Set a band of a mixer track's built-in EQ (gain -18..18 dB; 0 is off).",
+            set_eq,
+        ),
+        cmd(
+            "mixer.set_effect_mix",
+            "mixer.set_effect_mix <track> <slot> <0-1>",
+            "Set how much of an effect slot's output is heard (dry/wet mix).",
+            set_effect_mix,
+        ),
+        cmd(
             "mixer.set_separation",
             "mixer.set_separation <track> <-1..1>",
             "Set a mixer track's stereo separation: -1 mono, 0 as is, 1 wider.",
@@ -444,6 +456,58 @@ fn set_separation(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Com
         |t| &mut t.separation,
         num,
         "separation",
+    ))
+}
+
+fn set_eq(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 4)?;
+    let index = track_arg(project, args, 0)?;
+    let raw = args.str(1)?;
+    let band = musiccraft_project::TrackEq::BANDS
+        .iter()
+        .position(|b| *b == raw)
+        .ok_or_else(|| args.invalid(format!("`{raw}` is not low, mid or high")))?;
+    let max = musiccraft_project::TrackEq::MAX_GAIN;
+    let gain = musiccraft_project::check_range("EQ gain", args.f32(2, "gain")?, -max, max)?;
+    let old = project.mixer[index].eq.bands[band];
+    let freq = match args.opt(3) {
+        Some(_) => {
+            let (lo, hi) = musiccraft_project::TrackEq::RANGES[band];
+            musiccraft_project::check_range("EQ frequency", args.f32(3, "frequency")?, lo, hi)?
+        }
+        None => old.1,
+    };
+    let message = format!("{raw} band {gain:+.1} dB at {freq:.0} Hz");
+    if old == (gain, freq) {
+        return Ok(Outcome::done(message));
+    }
+    project.mixer[index].eq.bands[band] = (gain, freq);
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(
+            args.name(),
+            [index.to_string(), raw.to_owned(), num(old.0), num(old.1)],
+        ),
+    ))
+}
+
+fn set_effect_mix(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = track_arg(project, args, 0)?;
+    let slot = slot_arg(project, args, index, 1)?;
+    let mix = musiccraft_project::check_range("mix", args.f32(2, "mix")?, 0.0, 1.0)?;
+    let effect = &mut project.mixer[index].effects[slot];
+    let old = std::mem::replace(&mut effect.mix, mix);
+    let message = format!("{} mix {:.0}%", effect.kind, mix * 100.0);
+    if old == mix {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(
+            args.name(),
+            [index.to_string(), (slot + 1).to_string(), num(old)],
+        ),
     ))
 }
 

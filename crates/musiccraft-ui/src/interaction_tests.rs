@@ -1216,3 +1216,76 @@ fn the_rack_and_roll_follow_the_pattern_signature() {
         TICKS_PER_STEP
     );
 }
+
+#[test]
+fn channel_settings_pages_switch_and_keep_the_header() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    for tab in [
+        crate::channel_settings::ChannelTab::Functions,
+        crate::channel_settings::ChannelTab::Envelope,
+        crate::channel_settings::ChannelTab::Sound,
+    ] {
+        h.state.channel_tab = tab;
+        h.settle();
+        assert_eq!(h.state.channel_tab, tab);
+    }
+    // A drum synth has no shared envelope: its page falls back to Sound.
+    h.session.run_line("channel.add_drum kick").unwrap();
+    h.state.selected_channel = 1;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Envelope;
+    h.settle();
+    assert_eq!(
+        h.state.channel_tab,
+        crate::channel_settings::ChannelTab::Sound
+    );
+}
+
+#[test]
+fn alt_dragging_a_segment_bends_it_in_one_step() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "automation.create channel:1:cutoff",
+        "automation.set_points 1 [[0,0.0],[1536,1.0]]",
+    ]);
+    let id = h.session.project().automations[0].id;
+    h.state.automation_editor = Some(id);
+    h.settle();
+    let (area, length) = h.state.automation_view.expect("editor drawn");
+    let at = |tick: u32, value: f32| {
+        pos2(
+            area.left() + tick as f32 / length as f32 * area.width(),
+            area.bottom() - value * area.height(),
+        )
+    };
+    let depth = h.session.undo_depth();
+    h.modifiers = Modifiers::ALT;
+    let bent = h.drag(at(768, 0.5), at(768, 0.5) + vec2(0.0, 60.0));
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(bent.len(), 1, "{bent:?}");
+    assert!(
+        bent[0].starts_with("automation.set_curve 1 0t single 0."),
+        "{bent:?}"
+    );
+    let point = h.session.project().automations[0].points[0];
+    assert!(point.tension > 0.3, "bent down: {}", point.tension);
+    assert_eq!(h.session.undo_depth(), depth + 1);
+}
+
+#[test]
+fn the_picker_paints_audio_clips_at_their_length() {
+    let mut h = Harness::new(&[
+        "channel.add_sampler builtin:kick",
+        "playlist.add_audio_clip 1 1 0 1",
+    ]);
+    h.state.windows.playlist = true;
+    h.state.playlist.picker = crate::playlist::Picker::Audio;
+    h.state.playlist.paint_audio = Some(h.session.project().channels[0].id);
+    h.settle();
+    let placed = h.click(
+        h.playlist_point(TICKS_PER_BAR + 10, 1),
+        PointerButton::Primary,
+    );
+    assert_eq!(placed, ["playlist.add_audio_clip 1 2 384t 384t"]);
+}
