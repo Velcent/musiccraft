@@ -1,7 +1,10 @@
-use musiccraft_project::params::{TICKS_PER_BAR, TICKS_PER_STEP, inst};
-use musiccraft_project::{PlayMode, Project};
+use musiccraft_project::params::{TICKS_PER_STEP, inst};
+use musiccraft_project::{PlayMode, Project, TimeSig};
 
 use crate::{CommandError, Registry, Session};
+
+/// A 4/4 bar.
+const TICKS_PER_BAR: u32 = 384;
 
 fn session() -> Session {
     Session::new(Project::default(), Registry::with_builtin())
@@ -1547,4 +1550,82 @@ fn rack_branches_hold_effects_and_survive_files() {
     fails(&mut s, "mixer.rack_add 0 1 2 eq");
     run(&mut s, "mixer.add_effect 0 eq");
     fails(&mut s, "mixer.rack_add 0 2 1 delay");
+}
+
+fn sig(s: &str) -> TimeSig {
+    s.parse().unwrap()
+}
+
+#[test]
+fn the_project_signature_carries_patterns_that_follow_it() {
+    let mut s = session();
+    run(&mut s, "pattern.add");
+    run(&mut s, "pattern.set_time_signature 2 3/4");
+    let before = s.project().clone();
+    run(&mut s, "project.set_time_signature 7/8");
+    let p = s.project();
+    assert_eq!(p.time_signature, sig("7/8"));
+    assert_eq!(p.patterns[0].time_signature, sig("7/8"));
+    assert_eq!(p.patterns[0].length_steps, 14, "one bar stays one bar");
+    assert_eq!(p.patterns[1].time_signature, sig("3/4"), "its own signature stays");
+    run(&mut s, "pattern.add");
+    assert_eq!(s.project().patterns[2].time_signature, sig("7/8"));
+    assert_eq!(s.project().patterns[2].length_ticks(), 336);
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert_eq!(*s.project(), before);
+    fails(&mut s, "project.set_time_signature 7/9");
+    fails(&mut s, "pattern.set_time_signature 9 3/4");
+}
+
+#[test]
+fn bar_arguments_follow_the_song_meter() {
+    let mut s = session();
+    run(&mut s, "project.set_time_signature 3/4");
+    run(&mut s, "playlist.set_time_signature 2 7/8");
+    let p = s.project();
+    assert_eq!(p.playlist.markers[0].tick, 576);
+    assert_eq!(p.playlist.markers[0].name, "7/8");
+    // Bar 3 (index 2) is the first 7/8 bar: 576 + 336 ends it.
+    run(&mut s, "playlist.add_clip 1 1 2.5 1");
+    let clip = s.project().playlist.clips[0];
+    assert_eq!((clip.start, clip.length), (576 + 168, 336));
+    run(&mut s, "transport.set_loop 1 3");
+    assert_eq!(s.project().playlist.loop_range, Some((288, 912)));
+    assert_eq!(s.project().song_length_ticks(), 576 + 336 * 2);
+    // Inserting space moves the change; undo puts it back.
+    run(&mut s, "playlist.insert_space 0 1");
+    assert_eq!(s.project().playlist.markers[0].tick, 576 + 288);
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.markers[0].tick, 576);
+    run(&mut s, "playlist.set_time_signature 2 none");
+    assert!(s.project().playlist.markers.is_empty());
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.markers.len(), 1);
+    fails(&mut s, "playlist.set_time_signature 0 5/4");
+    fails(&mut s, "playlist.set_time_signature 1 none");
+}
+
+#[test]
+fn a_signature_change_keeps_a_label_name() {
+    let mut s = session();
+    run(&mut s, "playlist.add_marker 4 Chorus");
+    run(&mut s, "playlist.set_time_signature 4 6/8");
+    let marker = &s.project().playlist.markers[0];
+    assert_eq!(marker.name, "Chorus");
+    assert_eq!(
+        marker.action,
+        musiccraft_project::MarkerAction::TimeSignature(sig("6/8"))
+    );
+}
+
+#[test]
+fn chords_last_a_bar_of_the_pattern() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "pattern.set_time_signature 1 3/4");
+    run(&mut s, "note.chords 1 C major 1-4");
+    let notes = &s.project().patterns[0].notes;
+    assert_eq!(notes[0].length, 288);
+    assert!(notes.iter().any(|n| n.start == 288));
 }

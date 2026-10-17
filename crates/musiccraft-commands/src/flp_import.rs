@@ -12,7 +12,7 @@ use musiccraft_project::params::{MAX_EFFECT_SLOTS, MAX_MIXER_TRACKS, PPQ, TICKS_
 use musiccraft_project::{
     Channel, ChannelId, Clip, ClipSource, DEFAULT_INSERTS, EffectSlot, Instrument,
     MAX_PATTERN_STEPS, MAX_SENDS, Marker, MarkerAction, MixerSend, MixerTrack, Note, NoteProps,
-    PLAYLIST_TRACKS, PanLaw, Pattern, PatternId, PluginRef, Project,
+    PLAYLIST_TRACKS, PanLaw, Pattern, PatternId, PluginRef, Project, TimeSig,
 };
 
 /// What could not be brought over, for the command's message.
@@ -50,6 +50,11 @@ pub(crate) fn convert(bytes: &[u8], fallback_name: &str) -> Result<(Project, Rep
     if fl.pan_law() == Some(FlPanLaw::Triangular) {
         project.pan_law = PanLaw::Triangular;
     }
+    if let (Some(num), Some(den)) = fl.arrangements().time_signature()
+        && let Some(sig) = time_sig(num, den)
+    {
+        project.time_signature = sig;
+    }
     let inserts = fl.mixer().inserts();
     let channels = convert_channels(&fl, &mut project, &mut report);
     let patterns = convert_patterns(&fl, &mut project, &channels, scale, &mut report);
@@ -61,6 +66,19 @@ pub(crate) fn convert(bytes: &[u8], fallback_name: &str) -> Result<(Project, Rep
     let json = project.to_json().map_err(|e| e.to_string())?;
     let project = Project::from_json(&json).map_err(|e| e.to_string())?;
     Ok((project, report))
+}
+
+/// A signature from FL's numerator and beat value, if MusicCraft has it.
+fn time_sig(num: i64, den: i64) -> Option<TimeSig> {
+    TimeSig::new(u32::try_from(num).ok()?, u32::try_from(den).ok()?)
+}
+
+/// The signature of a time marker that changes it.
+fn marker_sig(marker: &musiccraft_flp::pattern::TimeMarker<'_>) -> Option<TimeSig> {
+    if marker.is_signature() != Some(true) {
+        return None;
+    }
+    time_sig(marker.numerator()?, marker.denominator()?)
 }
 
 /// Rescales ticks from the file's PPQ to MusicCraft's.
@@ -212,10 +230,18 @@ fn convert_patterns(
             .name()
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| format!("Pattern {}", index + 1));
-        let mut pattern = Pattern::new(id, name);
+        // A pattern takes its first signature marker, else the project's.
+        let sig = p
+            .timemarkers()
+            .iter()
+            .find_map(marker_sig)
+            .unwrap_or(project.time_signature);
+        let mut pattern = Pattern::with_signature(id, name, sig);
         if let Some(length) = p.length().filter(|l| *l > 0) {
             let ticks = scale.ticks(length as f64);
-            pattern.length_steps = ticks.div_ceil(TICKS_PER_STEP).clamp(16, MAX_PATTERN_STEPS);
+            pattern.length_steps = ticks
+                .div_ceil(TICKS_PER_STEP)
+                .clamp(sig.bar_steps(), MAX_PATTERN_STEPS);
         }
         for n in p.notes() {
             let Some(channel) = channels.get(&i64::from(n.rack_channel)) else {
@@ -347,20 +373,40 @@ fn convert_playlist(
         }
     }
     playlist.sort_clips();
+    let mut start_sig = None;
     for marker in arrangement.timemarkers() {
-        if marker.is_signature() != Some(false) {
-            continue;
-        }
         let Some(position) = marker.position() else {
             continue;
         };
+        let tick = scale.ticks(position as f64);
+        let action = match (marker.is_signature(), marker_sig(&marker)) {
+            (Some(false), _) => MarkerAction::None,
+            // The song's signature at its start is the project's.
+            (Some(true), Some(sig)) if tick == 0 => {
+                start_sig = Some(sig);
+                continue;
+            }
+            (Some(true), Some(sig)) => MarkerAction::TimeSignature(sig),
+            _ => continue,
+        };
+        // One marker per position.
+        if playlist.markers.iter().any(|m| m.tick == tick) {
+            continue;
+        }
+        let name = marker.name().filter(|n| !n.is_empty());
         playlist.markers.push(Marker {
-            tick: scale.ticks(position as f64),
-            name: marker.name().unwrap_or_default(),
-            action: MarkerAction::None,
+            tick,
+            name: match action {
+                MarkerAction::TimeSignature(sig) => name.unwrap_or_else(|| sig.to_string()),
+                _ => name.unwrap_or_default(),
+            },
+            action,
         });
     }
     playlist.markers.sort_by_key(|m| m.tick);
+    if let Some(sig) = start_sig {
+        project.time_signature = sig;
+    }
     if let Some((Some(start), Some(end))) = fl.arrangements().loop_pos() {
         let (start, end) = (scale.ticks(f64::from(start)), scale.ticks(f64::from(end)));
         if end > start {

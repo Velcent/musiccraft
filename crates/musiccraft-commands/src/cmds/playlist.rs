@@ -1,6 +1,5 @@
-use musiccraft_project::params::TICKS_PER_BAR;
 use musiccraft_project::{
-    Clip, ClipSource, Instrument, Marker, MarkerAction, PLAYLIST_TRACKS, Project,
+    Clip, ClipSource, Instrument, Marker, MarkerAction, Meter, PLAYLIST_TRACKS, Project,
 };
 
 use crate::args::{Args, on_off, ticks};
@@ -112,6 +111,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_marker_action,
         ),
         cmd(
+            "playlist.set_time_signature",
+            "playlist.set_time_signature <bar> <n/d|none>",
+            "Change the song's time signature at a position (a new bar starts there), or remove the change.",
+            set_time_signature,
+        ),
+        cmd(
             "playlist.set_markers",
             "playlist.set_markers <json>",
             "Replace every marker (used by undo).",
@@ -152,7 +157,7 @@ pub(super) fn clip_arg(
     i: usize,
 ) -> Result<usize, CommandError> {
     let track = track_arg(args, i)?;
-    let at = args.time(i + 1, TICKS_PER_BAR)?;
+    let at = args.bars(i + 1, &project.song_meter())?;
     project
         .playlist
         .clip_at(track, at)
@@ -224,10 +229,11 @@ fn remove_inverse(clip: &Clip) -> Invocation {
     )
 }
 
-/// The optional offset argument `i` (bars or `<n>t`), 0 when absent.
-fn offset_arg(args: &Args<'_>, i: usize) -> Result<u32, CommandError> {
+/// The optional offset argument `i` (bars of the clip's source, `meter`, or
+/// `<n>t`), 0 when absent.
+fn offset_arg(args: &Args<'_>, i: usize, meter: &Meter) -> Result<u32, CommandError> {
     match args.opt(i) {
-        Some(_) => args.time(i, TICKS_PER_BAR),
+        Some(_) => args.bars(i, meter),
         None => Ok(0),
     }
 }
@@ -236,16 +242,18 @@ fn add_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
     args.expect(3, 5)?;
     let pattern_index = project.pattern_index(args.number(0, "pattern")?)?;
     let pattern = &project.patterns[pattern_index];
+    let meter = project.song_meter();
+    let start = args.bars(2, &meter)?;
     let length = match args.opt(3) {
-        Some(_) => args.duration(3, TICKS_PER_BAR)?,
+        Some(_) => args.bar_length(3, start, &meter)?,
         None => pattern.length_ticks(),
     };
     let clip = Clip {
         source: ClipSource::Pattern(pattern.id),
         track: track_arg(args, 1)?,
-        start: args.time(2, TICKS_PER_BAR)?,
+        start,
         length,
-        offset: offset_arg(args, 4)?,
+        offset: offset_arg(args, 4, &pattern.meter())?,
         muted: false,
     };
     place(
@@ -278,16 +286,19 @@ fn add_automation_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome
     args.expect(3, 5)?;
     let index = project.automation_index(args.number(0, "automation")?)?;
     let automation = &project.automations[index];
+    let meter = project.song_meter();
+    let start = args.bars(2, &meter)?;
     let length = match args.opt(3) {
-        Some(_) => args.duration(3, TICKS_PER_BAR)?,
-        None => automation.length_ticks(),
+        Some(_) => args.bar_length(3, start, &meter)?,
+        // Whole bars of the song from where the clip starts.
+        None => meter.round_up_to_bar(start.saturating_add(automation.length_ticks())) - start,
     };
     let clip = Clip {
         source: ClipSource::Automation(automation.id),
         track: track_arg(args, 1)?,
-        start: args.time(2, TICKS_PER_BAR)?,
+        start,
         length,
-        offset: offset_arg(args, 4)?,
+        offset: offset_arg(args, 4, &meter)?,
         muted: false,
     };
     place(
@@ -305,12 +316,14 @@ fn add_audio_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Com
     if !matches!(channel.instrument, Instrument::Sampler { .. }) {
         return Err(args.invalid(format!("channel {} is not a sampler", index + 1)));
     }
+    let meter = project.song_meter();
+    let start = args.bars(2, &meter)?;
     let clip = Clip {
         source: ClipSource::Audio(channel.id),
         track: track_arg(args, 1)?,
-        start: args.time(2, TICKS_PER_BAR)?,
-        length: args.duration(3, TICKS_PER_BAR)?,
-        offset: offset_arg(args, 4)?,
+        start,
+        length: args.bar_length(3, start, &meter)?,
+        offset: offset_arg(args, 4, &meter)?,
         muted: false,
     };
     place(
@@ -343,7 +356,7 @@ fn move_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
     let old = project.playlist.clips[index];
     let moved = Clip {
         track: track_arg(args, 2)?,
-        start: args.time(3, TICKS_PER_BAR)?,
+        start: args.bars(3, &project.song_meter())?,
         ..old
     };
     if overlaps(project, &moved, Some(index)) {
@@ -374,7 +387,7 @@ fn resize_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
     let index = clip_arg(project, args, 0)?;
     let old = project.playlist.clips[index];
     let resized = Clip {
-        length: args.duration(2, TICKS_PER_BAR)?,
+        length: args.bar_length(2, old.start, &project.song_meter())?,
         ..old
     };
     if overlaps(project, &resized, Some(index)) {
@@ -581,7 +594,7 @@ pub(super) fn restore_markers(
 
 fn add_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, usize::MAX)?;
-    let tick = args.time(0, TICKS_PER_BAR)?;
+    let tick = args.bars(0, &project.song_meter())?;
     let name = args.rest(1)?;
     let before = project.playlist.markers.clone();
     let markers = &mut project.playlist.markers;
@@ -609,7 +622,7 @@ fn add_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
 
 fn remove_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, 1)?;
-    let tick = args.time(0, TICKS_PER_BAR)?;
+    let tick = args.bars(0, &project.song_meter())?;
     let before = project.playlist.markers.clone();
     let markers = &mut project.playlist.markers;
     let index = markers
@@ -625,7 +638,7 @@ fn remove_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comm
 
 fn set_marker_action(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
-    let tick = args.time(0, TICKS_PER_BAR)?;
+    let tick = args.bars(0, &project.song_meter())?;
     let raw = args.str(1)?;
     let action = MarkerAction::parse(raw).ok_or_else(|| {
         let names: Vec<_> = MarkerAction::ALL.iter().map(|a| a.name()).collect();
@@ -659,6 +672,58 @@ fn set_marker_action(project: &mut Project, args: &Args<'_>) -> Result<Outcome, 
     markers[index].action = action;
     Ok(Outcome::undoable(
         format!("marker {name}: {}", action.name()),
+        restore_markers(args, &before)?,
+    ))
+}
+
+fn set_time_signature(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let tick = args.bars(0, &project.song_meter())?;
+    let before = project.playlist.markers.clone();
+    let markers = &mut project.playlist.markers;
+    let existing = markers.iter().position(|m| m.tick == tick);
+    if args.str(1)? == "none" {
+        let index = existing
+            .filter(|&i| matches!(markers[i].action, MarkerAction::TimeSignature(_)))
+            .ok_or_else(|| args.invalid(format!("there is no time signature change at {tick}t")))?;
+        markers.remove(index);
+        return Ok(Outcome::undoable(
+            format!("removed the time signature change at {tick}t"),
+            restore_markers(args, &before)?,
+        ));
+    }
+    let sig = args.time_sig(1)?;
+    if tick == 0 {
+        return Err(args.invalid(
+            "the signature at the start is the project's: use project.set_time_signature",
+        ));
+    }
+    let action = MarkerAction::TimeSignature(sig);
+    match existing {
+        Some(i) if markers[i].action == action => {
+            return Ok(Outcome::done(format!("the song is already {sig} at {tick}t")));
+        }
+        Some(i) => {
+            // A label keeps its name; one named after its old signature follows.
+            let marker = &mut markers[i];
+            if let MarkerAction::TimeSignature(old) = marker.action
+                && marker.name == old.to_string()
+            {
+                marker.name = sig.to_string();
+            }
+            marker.action = action;
+        }
+        None => {
+            markers.push(Marker {
+                tick,
+                name: sig.to_string(),
+                action,
+            });
+            markers.sort_by_key(|m| m.tick);
+        }
+    }
+    Ok(Outcome::undoable(
+        format!("time signature {sig} at {tick}t"),
         restore_markers(args, &before)?,
     ))
 }

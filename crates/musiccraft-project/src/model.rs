@@ -6,6 +6,7 @@ use musiccraft_params::{
     EffectKind, INSTRUMENT_PARAMS, MAX_EFFECT_PARAMS, MAX_INSTRUMENT_PARAMS, ParamSpec,
     RACK_BRANCHES, defaults, inst,
 };
+use musiccraft_meter::TimeSig;
 use serde::{Deserialize, Serialize};
 
 /// Stable identity of a channel; survives reordering and removal of others.
@@ -441,6 +442,9 @@ pub struct Pattern {
     /// Automation inside the pattern: lanes that play wherever it plays.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automation: Vec<PatternLane>,
+    /// The pattern's time signature.
+    #[serde(default, skip_serializing_if = "TimeSig::is_common")]
+    pub time_signature: TimeSig,
 }
 
 /// One parameter's automation inside a pattern; ticks from the pattern start.
@@ -453,17 +457,40 @@ pub struct PatternLane {
 }
 
 impl Pattern {
-    /// An empty one-bar pattern.
+    /// An empty one-bar 4/4 pattern.
     #[must_use]
     pub fn new(id: PatternId, name: impl Into<String>) -> Self {
+        Self::with_signature(id, name, TimeSig::COMMON)
+    }
+
+    /// An empty pattern one bar of `sig` long.
+    #[must_use]
+    pub fn with_signature(id: PatternId, name: impl Into<String>, sig: TimeSig) -> Self {
         Self {
             id,
             name: name.into(),
-            length_steps: 16,
+            length_steps: sig.bar_steps(),
             notes: Vec::new(),
             legacy_swing: 0.0,
             automation: Vec::new(),
+            time_signature: sig,
         }
+    }
+
+    /// The pattern's bar and beat grid.
+    #[must_use]
+    pub fn meter(&self) -> musiccraft_meter::Meter {
+        musiccraft_meter::Meter::new(self.time_signature)
+    }
+
+    /// Changes the signature. A length of whole bars keeps its number of bars.
+    pub fn set_time_signature(&mut self, sig: TimeSig) {
+        let old = self.time_signature.bar_steps().max(1);
+        if self.length_steps % old == 0 {
+            let bars = (self.length_steps / old).max(1);
+            self.length_steps = (bars * sig.bar_steps()).min(MAX_PATTERN_STEPS);
+        }
+        self.time_signature = sig;
     }
 
     /// Notes of one channel.
@@ -506,7 +533,8 @@ impl Pattern {
             .max()
             .unwrap_or(0);
         if last > steps {
-            crate::music::round_up_to_bar(last)
+            let bar = self.time_signature.bar_ticks().max(1);
+            last.div_ceil(bar).max(1) * bar
         } else {
             steps
         }
@@ -828,11 +856,11 @@ pub struct Automation {
 }
 
 impl Automation {
-    /// Length covered by the points, rounded up to whole bars (at least one).
+    /// Length covered by the points (at least one tick); callers round it to
+    /// bars of the meter where it is placed.
     #[must_use]
     pub fn length_ticks(&self) -> u32 {
-        let last = self.points.iter().map(|p| p.tick).max().unwrap_or(0);
-        crate::music::round_up_to_bar(last.max(1))
+        self.points.iter().map(|p| p.tick).max().unwrap_or(0).max(1)
     }
 
     /// Value at `tick`, interpolating between points and holding the ends.
@@ -879,10 +907,13 @@ pub enum MarkerAction {
     Pause,
     /// At the end of the song, playback returns here instead of to the start.
     SongLoop,
+    /// The song's time signature changes here; a new bar starts.
+    TimeSignature(TimeSig),
 }
 
 impl MarkerAction {
-    /// Every action, in menu order.
+    /// The actions `playlist.set_marker_action` sets, in menu order
+    /// (signature changes have their own command).
     pub const ALL: [Self; 3] = [Self::None, Self::Pause, Self::SongLoop];
 
     /// The name used by commands and the project file.
@@ -892,6 +923,7 @@ impl MarkerAction {
             Self::None => "none",
             Self::Pause => "pause",
             Self::SongLoop => "song_loop",
+            Self::TimeSignature(_) => "time_signature",
         }
     }
 
@@ -974,6 +1006,14 @@ impl Playlist {
             .iter()
             .find(|m| m.action == MarkerAction::SongLoop)
             .map(|m| m.tick)
+    }
+
+    /// Signature changes from markers, as `(tick, sig)` in order.
+    pub fn signature_changes(&self) -> impl Iterator<Item = (u32, TimeSig)> + '_ {
+        self.markers.iter().filter_map(|m| match m.action {
+            MarkerAction::TimeSignature(sig) => Some((m.tick, sig)),
+            _ => None,
+        })
     }
 
     /// Positions of pause markers, in order.

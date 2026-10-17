@@ -2,7 +2,7 @@
 //! progressions, articulate and claw machine. Each rewrites a channel's notes
 //! in one undo step.
 
-use musiccraft_project::params::{TICKS_PER_BAR, TICKS_PER_STEP};
+use musiccraft_project::params::TICKS_PER_STEP;
 use musiccraft_project::{ChannelId, Note, NoteProps, Project};
 
 use super::note_tools::{Rng, apply, by_start, nearest_in_scale, pitch_class, scale};
@@ -322,9 +322,11 @@ fn chords(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         .map(|d| d.parse::<usize>().ok().filter(|d| (1..=7).contains(d)))
         .collect::<Option<_>>()
         .ok_or_else(|| args.invalid("degrees are 1 to 7, joined by '-'"))?;
+    // Bars of the pattern's signature.
+    let meter = project.patterns[args.pattern_index(project)?].meter();
     let bars = match args.opt(4) {
-        Some(_) => args.duration(4, TICKS_PER_BAR)?.max(1),
-        None => TICKS_PER_BAR,
+        Some(_) => args.bar_length(4, 0, &meter)?,
+        None => meter.bar(0).len,
     };
     let steps = scale(if minor { "minor" } else { "major" }).unwrap_or(&[0, 2, 4, 5, 7, 9, 11]);
     apply(project, args, "chords", |_| {

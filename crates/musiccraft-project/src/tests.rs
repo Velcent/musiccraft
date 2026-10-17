@@ -1,4 +1,6 @@
-use musiccraft_params::{EffectKind, TICKS_PER_BAR, TICKS_PER_STEP, inst};
+use musiccraft_params::{EffectKind, TICKS_PER_STEP, inst};
+
+const TICKS_PER_BAR: u32 = 384;
 
 use super::*;
 
@@ -338,7 +340,7 @@ fn automation_interpolates_and_holds_ends() {
     assert_eq!(automation.value_at(0.0), Some(0.0));
     assert_eq!(automation.value_at(144.0), Some(0.5));
     assert_eq!(automation.value_at(500.0), Some(1.0));
-    assert_eq!(automation.length_ticks(), TICKS_PER_BAR);
+    assert_eq!(automation.length_ticks(), 192);
 }
 
 #[test]
@@ -354,4 +356,41 @@ fn loading_drops_clips_of_missing_sources() {
     });
     let loaded = Project::from_json(&project.to_json().unwrap()).unwrap();
     assert_eq!(loaded.playlist.clips.len(), 1);
+}
+
+#[test]
+fn signatures_shape_patterns_and_the_song() {
+    let mut project = Project::new("t");
+    let sig = |s: &str| s.parse::<TimeSig>().unwrap();
+    project.time_signature = sig("3/4");
+    assert_eq!(project.song_length_ticks(), 288);
+    project.playlist.clips.push(Clip {
+        track: 0,
+        start: 0,
+        length: 300,
+        source: ClipSource::Pattern(project.patterns[0].id),
+        offset: 0,
+        muted: false,
+    });
+    project.playlist.markers.push(Marker {
+        tick: 288,
+        name: "7/8".into(),
+        action: MarkerAction::TimeSignature(sig("7/8")),
+    });
+    assert_eq!(project.song_length_ticks(), 288 + 336);
+    assert_eq!(project.song_meter().sig_at(300), sig("7/8"));
+
+    let mut pattern = Pattern::with_signature(PatternId(9), "p", sig("7/8"));
+    assert_eq!(pattern.length_ticks(), 336);
+    pattern.length_steps = 28;
+    pattern.set_time_signature(sig("4/4"));
+    assert_eq!(pattern.length_steps, 32, "two bars stay two bars");
+    pattern.length_steps = 20;
+    pattern.set_time_signature(sig("3/4"));
+    assert_eq!(pattern.length_steps, 20, "odd lengths are kept");
+
+    let json = project.to_json().unwrap();
+    assert!(json.contains("\"time_signature\": \"3/4\""), "{json}");
+    assert!(json.contains("\"action\": {\n            \"time_signature\": \"7/8\""));
+    assert_eq!(Project::from_json(&json).unwrap(), project);
 }

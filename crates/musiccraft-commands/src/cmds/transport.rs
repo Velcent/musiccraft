@@ -181,9 +181,9 @@ fn loop_inverse(previous: Option<(u32, u32)>) -> crate::Invocation {
 
 fn set_loop(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
-    let bar = musiccraft_project::params::TICKS_PER_BAR;
-    let start = args.time(0, bar)?;
-    let end = args.time(1, bar)?;
+    let meter = project.song_meter();
+    let start = args.bars(0, &meter)?;
+    let end = args.bars(1, &meter)?;
     if end <= start {
         return Err(args.invalid("the loop must end after it starts"));
     }

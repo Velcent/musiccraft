@@ -1,7 +1,7 @@
 //! Playlist clip editing: slice, make unique, merge, reverse, fades, and
 //! inserting or deleting time.
 
-use musiccraft_project::params::{TICKS_PER_BAR, TICKS_PER_STEP, inst};
+use musiccraft_project::params::{TICKS_PER_STEP, inst};
 use musiccraft_project::{
     AutomationId, ChannelId, Clip, ClipSource, MAX_PATTERN_STEPS, Note, Pattern, PatternId, Project,
 };
@@ -85,7 +85,7 @@ fn tail(clip: &Clip, at: u32) -> Clip {
 fn slice(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
     let index = clip_arg(project, args, 0)?;
-    let at = args.time(1, TICKS_PER_BAR)?;
+    let at = args.bars(1, &project.song_meter())?;
     let clip = project.playlist.clips[index];
     if at <= clip.start || at >= clip.end() {
         return Err(args.invalid("slice inside the clip, not at its edge"));
@@ -231,7 +231,9 @@ fn merge(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
     }
     let old = project.playlist.clips.clone();
     let id = PatternId(project.alloc_id());
-    let mut pattern = Pattern::new(id, format!("Merged {}", project.patterns.len() + 1));
+    let name = format!("Merged {}", project.patterns.len() + 1);
+    let sig = project.song_meter().sig_at(start);
+    let mut pattern = Pattern::with_signature(id, name, sig);
     pattern.length_steps = steps.max(1);
     for note in notes {
         pattern.put_note(note);
@@ -369,8 +371,9 @@ fn restore_all(
 
 fn insert_space(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
-    let start = args.time(0, TICKS_PER_BAR)?;
-    let length = args.duration(1, TICKS_PER_BAR)?;
+    let meter = project.song_meter();
+    let start = args.bars(0, &meter)?;
+    let length = args.bar_length(1, start, &meter)?;
     let playlist = &mut project.playlist;
     let inverse = restore_all(&playlist.clips, &playlist.markers, args)?;
     let mut clips = Vec::new();
@@ -408,8 +411,9 @@ fn insert_space(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
 
 fn delete_space(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
-    let start = args.time(0, TICKS_PER_BAR)?;
-    let length = args.duration(1, TICKS_PER_BAR)?;
+    let meter = project.song_meter();
+    let start = args.bars(0, &meter)?;
+    let length = args.bar_length(1, start, &meter)?;
     let end = start + length;
     let playlist = &mut project.playlist;
     let inverse = restore_all(&playlist.clips, &playlist.markers, args)?;

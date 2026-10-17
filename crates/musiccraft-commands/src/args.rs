@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use musiccraft_project::Project;
+use musiccraft_project::{Meter, Project, TimeSig};
 use musiccraft_project::music::parse_key;
 
 use crate::CommandError;
@@ -166,6 +166,47 @@ impl<'a> Args<'a> {
                 .map(|t| t as u32)
         };
         ticks.ok_or_else(|| self.invalid(format!("`{raw}` is not a time (e.g. 4, 0.5 or 96t)")))
+    }
+
+    /// Parses a position in bars of `meter` (0-based, fractions allowed:
+    /// `2.5` is halfway through the third bar) or `<n>t` ticks.
+    pub fn bars(&self, i: usize, meter: &Meter) -> Result<u32, CommandError> {
+        let raw = self.str(i)?;
+        if raw.ends_with('t') {
+            return self.time(i, 1);
+        }
+        raw.parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .map(|v| meter.bars_to_ticks(v))
+            .filter(|t| *t <= u32::MAX / 2)
+            .ok_or_else(|| self.invalid(format!("`{raw}` is not a time (e.g. 4, 0.5 or 96t)")))
+    }
+
+    /// Parses a length in bars of `meter` counted from `start`, or `<n>t`
+    /// ticks; at least one tick.
+    pub fn bar_length(&self, i: usize, start: u32, meter: &Meter) -> Result<u32, CommandError> {
+        let raw = self.str(i)?;
+        let ticks = if raw.ends_with('t') {
+            self.time(i, 1)?
+        } else {
+            let bars = raw
+                .parse::<f64>()
+                .ok()
+                .filter(|v| v.is_finite() && *v >= 0.0 && *v <= f64::from(u32::MAX / 2))
+                .ok_or_else(|| self.invalid(format!("`{raw}` is not a length (e.g. 4, 0.5 or 96t)")))?;
+            meter.span(start, bars)
+        };
+        if ticks == 0 {
+            Err(self.invalid("length must be greater than zero"))
+        } else {
+            Ok(ticks)
+        }
+    }
+
+    /// Parses a time signature `n/d`.
+    pub fn time_sig(&self, i: usize) -> Result<TimeSig, CommandError> {
+        self.str(i)?.parse().map_err(|e: String| self.invalid(e))
     }
 
     /// Parses a duration like [`Args::time`] that must be at least one tick.
