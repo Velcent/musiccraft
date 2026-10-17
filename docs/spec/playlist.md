@@ -140,6 +140,21 @@
   spanning four bars), `automation.remove`, `automation.rename`,
   `automation.add_point`, `automation.remove_point`, `automation.move_point`,
   `automation.set_points`. All undoable.
+- **Curve types.** Each point also sets the shape of the segment from it to the
+  next point, and a **tension** (-1..1, default 0) that bends it:
+  - `single` (default): one curve; tension 0 is a straight line, positive
+    tension starts slowly and finishes fast, negative the opposite (the
+    position is `t^(4^tension)`).
+  - `double`: an S-curve, the single curve mirrored about the middle.
+  - `hold`: keeps the point's value until the next point, then jumps.
+  - `stairs`: equal steps; tension sets their number (2 at -1, 16 at 1).
+  `automation.set_curve <automation> <point time> <single|double|hold|stairs>
+  [tension]` (undoable). Saved as `"curve"` and `"tension"` on a point only
+  when not the defaults. The last point's shape is unused. Pattern lanes keep
+  straight segments.
+- Playback samples curved segments every 6 ticks (a quarter step) into the
+  engine's straight-line lanes; `hold` segments change exactly at the next
+  point.
 - During song playback each automation clip writes its interpolated value once
   per audio block (at most 256 frames) while the playhead is inside the clip;
   afterwards the parameter keeps its last value until playback stops, when the
@@ -151,7 +166,9 @@
 - UI: right-click any knob or fader → "Create automation clip" places a new clip
   on the first empty track. The playlist sidebar lists automations; clicking one
   paints it instead of the pattern; double-clicking a clip or list entry opens
-  the automation editor (click adds a point, drag moves it, right-click deletes).
+  the automation editor (click adds a point, drag moves it, right-click
+  deletes it; right-click a segment to pick its shape; Alt+drag a segment to
+  bend it, one undo step per drag). The editor draws the shaped curve.
 
 ## Editor (UI)
 
@@ -175,6 +192,11 @@
 - Ctrl+scroll zooms horizontally.
 
 ## Sources
+
+- Automation curve types (single curve, double curve, hold, stairs) and
+  tension follow the automation clip point modes described in the FL Studio
+  online manual, "Automation clips"; the formulas, ranges and step counts are
+  our own.
 
 - Pattern clips arranged on a playlist and a song/pattern mode switch follow the
   workflow described in the FL Studio online manual, "Playlist" section. Row

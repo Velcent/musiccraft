@@ -213,6 +213,10 @@ pub struct UiState {
     /// Automation shown in the automation editor.
     pub automation_editor: Option<musiccraft_project::AutomationId>,
     automation_drag: Option<automation::PointDrag>,
+    /// A segment tension being dragged in the automation editor.
+    tension_drag: Option<automation::TensionDrag>,
+    /// The segment (by its first point's tick) whose shape menu is open.
+    automation_menu: Option<u32>,
     /// The automation editor's drawing area and length in ticks, last frame.
     pub(crate) automation_view: Option<(egui::Rect, u32)>,
     /// The area between the side and bottom panels, where windows float.
@@ -309,6 +313,8 @@ impl UiState {
             autosave_path: None,
             automation_editor: None,
             automation_drag: None,
+            tension_drag: None,
+            automation_menu: None,
             automation_view: None,
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,

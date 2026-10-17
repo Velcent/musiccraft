@@ -903,6 +903,111 @@ pub struct AutomationPoint {
     pub tick: u32,
     /// Control position 0..=1, mapped through the target's curve.
     pub value: f32,
+    /// Shape of the segment from this point to the next.
+    #[serde(default, skip_serializing_if = "Curve::is_single")]
+    pub curve: Curve,
+    /// Bend of that segment, -1..=1.
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub tension: f32,
+}
+
+impl AutomationPoint {
+    /// A point starting a straight segment.
+    #[must_use]
+    pub fn new(tick: u32, value: f32) -> Self {
+        Self {
+            tick,
+            value,
+            curve: Curve::Single,
+            tension: 0.0,
+        }
+    }
+
+    /// Whether the segment from here is a plain straight line.
+    #[must_use]
+    pub fn is_straight(&self) -> bool {
+        self.curve == Curve::Single && self.tension == 0.0
+    }
+}
+
+/// Shape of an automation segment (see `docs/spec/playlist.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Curve {
+    /// One curve bent by the tension (straight at 0).
+    #[default]
+    Single,
+    /// An S-curve.
+    Double,
+    /// The value holds until the next point.
+    Hold,
+    /// Equal steps; the tension sets how many.
+    Stairs,
+}
+
+impl Curve {
+    /// Every shape, in menu order.
+    pub const ALL: [Self; 4] = [Self::Single, Self::Double, Self::Hold, Self::Stairs];
+
+    /// The name used by commands and files.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Single => "single",
+            Self::Double => "double",
+            Self::Hold => "hold",
+            Self::Stairs => "stairs",
+        }
+    }
+
+    /// Parses [`Curve::name`].
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.name() == name)
+    }
+
+    /// Whether this is the default shape.
+    #[must_use]
+    pub fn is_single(&self) -> bool {
+        *self == Self::Single
+    }
+
+    /// How far (0..=1) the segment has moved at `t` (0..=1) of its length.
+    #[must_use]
+    pub fn shape(self, t: f32, tension: f32) -> f32 {
+        let t = t.clamp(0.0, 1.0);
+        let tension = if tension.is_finite() {
+            tension.clamp(-1.0, 1.0)
+        } else {
+            0.0
+        };
+        let bend = |t: f32| t.powf(4.0_f32.powf(tension));
+        match self {
+            Self::Single => bend(t),
+            Self::Double => {
+                if t < 0.5 {
+                    bend(2.0 * t) / 2.0
+                } else {
+                    1.0 - bend(2.0 - 2.0 * t) / 2.0
+                }
+            }
+            Self::Hold => {
+                if t >= 1.0 {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Self::Stairs => {
+                let steps = 2.0 + ((tension + 1.0) / 2.0 * 14.0).round();
+                if t >= 1.0 {
+                    1.0
+                } else {
+                    (t * steps).floor() / steps
+                }
+            }
+        }
+    }
 }
 
 /// A curve that moves one parameter over time when its clips play.
@@ -938,7 +1043,7 @@ impl Automation {
             if tick <= f64::from(b.tick) {
                 let span = f64::from(b.tick.saturating_sub(a.tick)).max(1e-9);
                 let t = ((tick - f64::from(a.tick)) / span) as f32;
-                return Some(a.value + (b.value - a.value) * t);
+                return Some(a.value + (b.value - a.value) * a.curve.shape(t, a.tension));
             }
         }
         self.points.last().map(|p| p.value)

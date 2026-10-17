@@ -2109,3 +2109,33 @@ fn track_eq_and_slot_mix_change_the_sound() {
         "{plain} {quarter} {full}"
     );
 }
+
+#[test]
+fn shaped_automation_segments_reach_the_engine_lane() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         automation.create channel:1:pan
+         automation.set_points 1 [[0,0.0],[384,1.0]]
+         playlist.add_automation_clip 1 1 0 1
+         transport.set_mode song",
+    );
+    let straight = build_sequence(s.project()).automation()[0].points.len();
+    assert_eq!(straight, 2, "a straight segment needs only its ends");
+    run(&mut s, "automation.set_curve 1 0 hold");
+    let seq = build_sequence(s.project());
+    let lane = &seq.automation()[0];
+    let before_end = lane.value_at(382.0).unwrap();
+    let at_end = lane.value_at(384.0).unwrap();
+    assert!(
+        (before_end - -1.0).abs() < 1e-3,
+        "held at the start value: {before_end}"
+    );
+    assert!((at_end - 1.0).abs() < 1e-3, "jumps on the point: {at_end}");
+    run(&mut s, "automation.set_curve 1 0 single 1");
+    let seq = build_sequence(s.project());
+    let lane = &seq.automation()[0];
+    assert!(lane.points.len() > 10, "a bent segment is sampled");
+    assert!(lane.value_at(192.0).unwrap() < -0.8, "slow start");
+}

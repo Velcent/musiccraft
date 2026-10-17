@@ -1660,3 +1660,30 @@ fn track_eq_and_slot_mix_are_undoable_and_saved() {
     }
     assert_eq!(*s.project(), before);
 }
+
+#[test]
+fn automation_curves_are_set_moved_and_undone() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "automation.create channel:1:volume");
+    run(&mut s, "automation.add_point 1 4 0.2");
+    let before = s.project().clone();
+    run(&mut s, "automation.set_curve 1 4 stairs 0.5");
+    let p = s.project().automations[0].points[1];
+    assert_eq!(
+        (p.curve, p.tension),
+        (musiccraft_project::Curve::Stairs, 0.5)
+    );
+    run(&mut s, "automation.move_point 1 4 8 0.3");
+    assert_eq!(
+        s.project().automations[0].points[1].curve,
+        musiccraft_project::Curve::Stairs,
+        "a moved point keeps its curve"
+    );
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert_eq!(*s.project(), before);
+    fails(&mut s, "automation.set_curve 1 4 wobble");
+    fails(&mut s, "automation.set_curve 1 4 single 2");
+    fails(&mut s, "automation.set_curve 1 5 hold");
+}

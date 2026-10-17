@@ -344,6 +344,39 @@ fn song_pattern_lanes(project: &Project) -> Vec<AutomationLane> {
     lanes
 }
 
+/// Spacing of the points that stand for a curved automation segment, in
+/// ticks (a quarter step).
+const CURVE_STEP: u32 = musiccraft_params::TICKS_PER_STEP / 4;
+
+/// The automation ticks in `lo..=hi` the engine's straight-line lane needs:
+/// the window's ends, every point, samples along curved segments, and the
+/// tick before a hold or stairs segment's end (so it jumps on the point).
+fn sample_ticks(automation: &musiccraft_project::Automation, lo: u32, hi: u32) -> Vec<u32> {
+    let mut ticks = vec![lo, hi];
+    ticks.extend(automation.points.iter().map(|p| p.tick));
+    for pair in automation.points.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        if a.is_straight() || b.tick <= lo || a.tick >= hi {
+            continue;
+        }
+        let mut t = a.tick.max(lo).saturating_add(CURVE_STEP);
+        while t < b.tick.min(hi) {
+            ticks.push(t);
+            t = t.saturating_add(CURVE_STEP);
+        }
+        if matches!(
+            a.curve,
+            musiccraft_project::Curve::Hold | musiccraft_project::Curve::Stairs
+        ) {
+            ticks.push(b.tick.saturating_sub(1));
+        }
+    }
+    ticks.retain(|t| (lo..=hi).contains(t));
+    ticks.sort_unstable();
+    ticks.dedup();
+    ticks
+}
+
 /// One lane per automation clip, covering exactly the clip's span.
 fn song_automation(project: &Project) -> Vec<AutomationLane> {
     let mut lanes = Vec::new();
@@ -367,23 +400,18 @@ fn song_automation(project: &Project) -> Vec<AutomationLane> {
         let end = u64::from(clip.end());
         // A sliced clip shows the automation from `offset` on.
         let (skip, span) = (clip.offset, clip.length);
-        let mut points: Vec<(u64, f32)> = Vec::new();
-        if let Some(v) = automation.value_at(f64::from(skip)) {
-            points.push((start, convert.apply(v)));
-        }
-        for point in automation
-            .points
-            .iter()
-            .filter(|p| p.tick > skip && p.tick < skip + span)
-        {
-            points.push((
-                start + u64::from(point.tick - skip),
-                convert.apply(point.value),
-            ));
-        }
-        if let Some(v) = automation.value_at(f64::from(skip + span)) {
-            points.push((end, convert.apply(v)));
-        }
+        let points = sample_ticks(automation, skip, skip + span)
+            .into_iter()
+            .filter_map(|t| {
+                let value = automation.value_at(f64::from(t))?;
+                let at = if t >= skip + span {
+                    end
+                } else {
+                    start + u64::from(t - skip)
+                };
+                Some((at, convert.apply(value)))
+            })
+            .collect();
         lanes.push(AutomationLane { target, points });
     }
     lanes

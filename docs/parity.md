@@ -163,6 +163,8 @@ of contents; see `docs/clean-room.md`.
 | Input | Step edit / step recording | `cmd:record.toggle_step_edit` `key:Ctrl+E=record.toggle_step_edit` |
 | Input | Record knob movements as automation | `cmd:automation.record` `spec:recording.md` |
 | Input | Computer keyboard as piano | `key:Ctrl+T=ui.typing_keyboard` `done` |
+| Automation | Curve shapes per segment (single, double, hold, stairs) and tension | `cmd:automation.set_curve` `spec:playlist.md` |
+| Mixer | Built-in three-band track EQ and per-slot mix | `cmd:mixer.set_eq` `cmd:mixer.set_effect_mix` `spec:mixer.md` |
 | Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
 | Scripting | Headless CLI and scripts | `done` |
 | Scripting | MCP server for AI agents | `spec:mcp.md` |

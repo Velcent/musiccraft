@@ -56,8 +56,14 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         cmd(
             "automation.set_points",
             "automation.set_points <automation> <json>",
-            "Replace every point with [[tick, value], ...] (used by undo).",
+            "Replace every point with [[tick, value], ...] or point objects (used by undo).",
             set_points,
+        ),
+        cmd(
+            "automation.set_curve",
+            "automation.set_curve <automation> <point time> <single|double|hold|stairs> [tension -1..1]",
+            "Shape the segment from a point to the next.",
+            set_curve,
         ),
         cmd(
             "pattern.record_event",
@@ -114,7 +120,7 @@ fn record_event(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
         }
     };
     lane.points.retain(|p| p.tick != tick);
-    lane.points.push(AutomationPoint { tick, value });
+    lane.points.push(AutomationPoint::new(tick, value));
     lane.points.sort_by_key(|p| p.tick);
     Ok(Outcome::undoable(
         format!("recorded {label} in pattern {} at {tick}t", index + 1),
@@ -176,7 +182,7 @@ fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         let automation = &mut project.automations[index];
         let old = automation.points.clone();
         automation.points.retain(|p| p.tick != at);
-        automation.points.push(AutomationPoint { tick: at, value });
+        automation.points.push(AutomationPoint::new(at, value));
         automation.sort_points();
         return Ok(Outcome::undoable(
             format!("recorded {label} at {tick}t"),
@@ -200,7 +206,7 @@ fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         id,
         name: label.clone(),
         target,
-        points: vec![AutomationPoint { tick, value }],
+        points: vec![AutomationPoint::new(tick, value)],
     });
     project.playlist.clips.push(Clip {
         source: ClipSource::Automation(id),
@@ -333,11 +339,8 @@ fn create(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         name: name.clone(),
         target,
         points: vec![
-            AutomationPoint { tick: 0, value },
-            AutomationPoint {
-                tick: project.song_meter().bar_start(4),
-                value,
-            },
+            AutomationPoint::new(0, value),
+            AutomationPoint::new(project.song_meter().bar_start(4), value),
         ],
     });
     let number = project.automations.len();
@@ -420,12 +423,18 @@ fn value_arg(args: &Args<'_>, i: usize) -> Result<f32, CommandError> {
 }
 
 fn set_points_inverse(index: usize, points: &[AutomationPoint]) -> Invocation {
-    let rows: Vec<(u32, f32)> = points.iter().map(|p| (p.tick, p.value)).collect();
+    // Plain rows unless a segment is shaped, which needs the full points.
+    let json = if points.iter().all(AutomationPoint::is_straight) {
+        let rows: Vec<(u32, f32)> = points.iter().map(|p| (p.tick, p.value)).collect();
+        serde_json::to_string(&rows)
+    } else {
+        serde_json::to_string(points)
+    };
     Invocation::new(
         "automation.set_points",
         [
             (index + 1).to_string(),
-            serde_json::to_string(&rows).unwrap_or_else(|_| "[]".into()),
+            json.unwrap_or_else(|_| "[]".into()),
         ],
     )
 }
@@ -455,7 +464,7 @@ fn add_point(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
         format!("point at {tick}t = {value}"),
         |points| {
             points.retain(|p| p.tick != tick);
-            points.push(AutomationPoint { tick, value });
+            points.push(AutomationPoint::new(tick, value));
             Ok(())
         },
     )
@@ -493,11 +502,13 @@ fn move_point(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
                 .iter()
                 .position(|p| p.tick == tick)
                 .ok_or_else(|| args.invalid(format!("there is no point at {tick}t")))?;
-            points.remove(index);
+            // The point keeps the shape of the segment it starts.
+            let old = points.remove(index);
             points.retain(|p| p.tick != new_tick);
             points.push(AutomationPoint {
                 tick: new_tick,
                 value,
+                ..old
             });
             Ok(())
         },
@@ -506,13 +517,25 @@ fn move_point(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
 
 fn set_points(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
-    let rows: Vec<(u32, f32)> =
-        serde_json::from_str(args.str(1)?).map_err(|e| args.invalid(e.to_string()))?;
+    let raw = args.str(1)?;
+    let rows: Vec<AutomationPoint> = match serde_json::from_str::<Vec<(u32, f32)>>(raw) {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|(tick, value)| AutomationPoint::new(tick, value))
+            .collect(),
+        Err(_) => serde_json::from_str(raw).map_err(|e| args.invalid(e.to_string()))?,
+    };
     if rows
         .iter()
-        .any(|(_, v)| !v.is_finite() || !(0.0..=1.0).contains(v))
+        .any(|p| !p.value.is_finite() || !(0.0..=1.0).contains(&p.value))
     {
         return Err(args.invalid("values must be 0 to 1"));
+    }
+    if rows
+        .iter()
+        .any(|p| !p.tension.is_finite() || !(-1.0..=1.0).contains(&p.tension))
+    {
+        return Err(args.invalid("tensions must be -1 to 1"));
     }
     let count = rows.len();
     edit_points(
@@ -520,10 +543,33 @@ fn set_points(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
         args,
         format!("automation has {count} points"),
         |points| {
-            *points = rows
-                .into_iter()
-                .map(|(tick, value)| AutomationPoint { tick, value })
-                .collect();
+            *points = rows;
+            Ok(())
+        },
+    )
+}
+
+fn set_curve(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 4)?;
+    let tick = args.time(1, TICKS_PER_STEP)?;
+    let raw = args.str(2)?;
+    let curve = musiccraft_project::Curve::parse(raw)
+        .ok_or_else(|| args.invalid(format!("`{raw}` is not single, double, hold or stairs")))?;
+    let tension = match args.opt(3) {
+        Some(_) => musiccraft_project::check_range("tension", args.f32(3, "tension")?, -1.0, 1.0)?,
+        None => 0.0,
+    };
+    edit_points(
+        project,
+        args,
+        format!("{raw} curve from {tick}t, tension {tension:+.2}"),
+        |points| {
+            let point = points
+                .iter_mut()
+                .find(|p| p.tick == tick)
+                .ok_or_else(|| args.invalid(format!("there is no point at {tick}t")))?;
+            point.curve = curve;
+            point.tension = tension;
             Ok(())
         },
     )
