@@ -2184,3 +2184,38 @@ fn an_empty_sampler_is_silent_without_a_warning() {
     assert!(warnings.is_empty(), "{warnings:?}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_windows_sample_path_plays_through_its_translation() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-winpath-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("Packs/Drums")).unwrap();
+    let tone: Vec<f32> = (0..12_000).map(|i| (i as f32 * 0.05).sin() * 0.5).collect();
+    musiccraft_samples::write_wav(
+        &dir.join("Packs/Drums/tone.wav"),
+        &tone,
+        &tone,
+        48_000,
+        musiccraft_samples::WavFormat::Float32,
+    )
+    .unwrap();
+    musiccraft_paths::configure(musiccraft_paths::PathConfig {
+        fl_factory: vec![dir.clone()],
+        ..musiccraft_paths::PathConfig::default()
+    });
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick\nstep.toggle 1 0");
+    let mut project = s.project().clone();
+    project.channels[0].instrument = musiccraft_project::Instrument::Sampler {
+        sample: r"%FLStudioFactoryData%\packs\DRUMS\tone.wav".to_owned(),
+    };
+    let (left, _, warnings) = render(&project, RenderOptions::default());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(rms(&left[..12_000]) > 0.1, "the translated sample plays");
+    // The project keeps the path as written.
+    assert!(matches!(
+        &project.channels[0].instrument,
+        musiccraft_project::Instrument::Sampler { sample } if sample.starts_with('%')
+    ));
+    musiccraft_paths::configure(musiccraft_paths::PathConfig::default());
+    std::fs::remove_dir_all(dir).unwrap();
+}

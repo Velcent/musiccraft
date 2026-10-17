@@ -10,6 +10,7 @@ use musiccraft_engine::{
     MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, Start, TrackParams,
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
+use musiccraft_paths::Resolver;
 use musiccraft_project::{Channel, MixerTrack, Project, Requests, base64};
 use musiccraft_samples::SampleCache;
 
@@ -111,10 +112,16 @@ pub struct SyncReport {
     pub dropped: usize,
 }
 
-fn sample_key(sample: &str, base: Option<&Path>) -> String {
+/// The file a sample path loads from: built-in names as they are, paths
+/// from another system translated (see `docs/spec/sample-paths.md`), relative
+/// paths from the project's folder.
+fn sample_key(sample: &str, base: Option<&Path>, paths: &mut Resolver) -> String {
     // An empty sampler stays empty instead of naming the project folder.
     if sample.is_empty() || sample.starts_with(BUILTIN_PREFIX) {
         return sample.to_owned();
+    }
+    if let Some(found) = paths.resolve(sample, base) {
+        return found.to_string_lossy().into_owned();
     }
     match base {
         Some(dir) if Path::new(sample).is_relative() => {
@@ -223,7 +230,7 @@ fn solo_audible(mixer: &[MixerTrack]) -> Option<Vec<bool>> {
     Some(audible.iter().zip(&feeds).map(|(a, f)| *a || *f).collect())
 }
 
-fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
+fn describe(project: &Project, slots: &BTreeMap<u32, u16>, paths: &mut Resolver) -> Desc {
     let base = project.path().and_then(Path::parent);
     let audible = solo_audible(&project.mixer);
     let sequence = build_sequence(project);
@@ -238,7 +245,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                 .iter()
                 .map(|c| match &c.instrument {
                     musiccraft_project::Instrument::Sampler { sample } => {
-                        Source::Sample(sample_key(sample, base))
+                        Source::Sample(sample_key(sample, base, paths))
                     }
                     musiccraft_project::Instrument::Synth => Source::Synth,
                     musiccraft_project::Instrument::DrumSynth => Source::DrumSynth,
@@ -247,10 +254,10 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     musiccraft_project::Instrument::Keys => Source::Keys,
                     musiccraft_project::Instrument::Additive => Source::Additive,
                     musiccraft_project::Instrument::Granular { sample } => {
-                        Source::Granular(sample_key(sample, base))
+                        Source::Granular(sample_key(sample, base, paths))
                     }
                     musiccraft_project::Instrument::Resynth { sample } => {
-                        Source::Resynth(sample_key(sample, base))
+                        Source::Resynth(sample_key(sample, base, paths))
                     }
                     musiccraft_project::Instrument::Kit { pads } => Source::Kit(
                         pads.iter()
@@ -258,7 +265,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                                 if p.is_empty() {
                                     String::new()
                                 } else {
-                                    sample_key(p, base)
+                                    sample_key(p, base, paths)
                                 }
                             })
                             .collect(),
@@ -267,7 +274,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                         zones
                             .iter()
                             .map(|z| musiccraft_project::SampleZone {
-                                sample: sample_key(&z.sample, base),
+                                sample: sample_key(&z.sample, base, paths),
                                 ..z.clone()
                             })
                             .collect(),
@@ -375,6 +382,8 @@ fn rack_params(project: &Project) -> Vec<RackParams> {
 pub struct Bridge {
     sample_rate: u32,
     samples: SampleCache,
+    /// Translates sample paths written on another system.
+    paths: Resolver,
     last: Option<Desc>,
     host: Option<PluginHost>,
     /// Running plugins by instance number.
@@ -396,6 +405,7 @@ impl Bridge {
         Self {
             sample_rate,
             samples: SampleCache::new(),
+            paths: Resolver::new(),
             last: None,
             host: None,
             live: BTreeMap::new(),
@@ -604,6 +614,7 @@ impl Bridge {
     /// Forgets decoded samples and forces a full resync (after files changed).
     pub fn reload_samples(&mut self) {
         self.samples.clear();
+        self.paths.clear();
         self.last = None;
     }
 
@@ -616,7 +627,13 @@ impl Bridge {
         match self.samples.get(key, None, self.sample_rate) {
             Ok(buffer) => buffer,
             Err(err) => {
-                warnings.push(format!("sample `{key}`: {err}"));
+                let hint = if musiccraft_paths::is_foreign(key) {
+                    " (a path from another system with no matching file here: \
+                     see Settings → Folders)"
+                } else {
+                    ""
+                };
+                warnings.push(format!("sample `{key}`: {err}{hint}"));
                 Arc::new(SampleBuffer::silent(f64::from(self.sample_rate)))
             }
         }
@@ -751,7 +768,11 @@ impl Bridge {
         let mut report = SyncReport::default();
         self.sync_plugins(project, handle, &mut report);
         let slots: BTreeMap<u32, u16> = self.live.iter().map(|(k, l)| (*k, l.slot)).collect();
-        let desc = describe(project, &slots);
+        if self.paths.refresh() {
+            // New mappings may find samples that were missing.
+            self.last = None;
+        }
+        let desc = describe(project, &slots, &mut self.paths);
         let mut messages = Vec::new();
         let previous = self.last.take();
 
@@ -879,7 +900,11 @@ impl Bridge {
     ///
     /// Returns a message if the sample cannot be loaded.
     pub fn sample(&mut self, sample: &str, project: &Project) -> Result<Arc<SampleBuffer>, String> {
-        let key = sample_key(sample, project.path().and_then(Path::parent));
+        let key = sample_key(
+            sample,
+            project.path().and_then(Path::parent),
+            &mut self.paths,
+        );
         self.samples
             .get(&key, None, self.sample_rate)
             .map_err(|e| e.to_string())
