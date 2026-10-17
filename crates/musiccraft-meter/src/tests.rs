@@ -94,3 +94,11 @@ fn positions_read_bar_beat_step() {
     let p = eighths.position(336 + 48 * 3 + 24);
     assert_eq!((p.bar, p.beat, p.step), (2, 4, 2));
 }
+
+#[test]
+fn the_const_meter_is_common_time() {
+    let meter = Meter::COMMON;
+    assert_eq!(meter.bar(400), Meter::default().bar(400));
+    assert_eq!(meter.next_beat(97.0), Meter::default().next_beat(97.0));
+    assert_eq!(meter.sig_at(5), TimeSig::COMMON);
+}

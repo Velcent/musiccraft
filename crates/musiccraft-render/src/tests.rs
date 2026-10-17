@@ -1,9 +1,12 @@
 use musiccraft_commands::{Registry, Session};
 use musiccraft_engine::{EngineMessage, engine_pair};
-use musiccraft_params::{TICKS_PER_BAR, TICKS_PER_STEP};
+use musiccraft_params::TICKS_PER_STEP;
 use musiccraft_project::Project;
 
 use crate::{Bridge, RenderOptions, build_sequence, render};
+
+/// A 4/4 bar.
+const TICKS_PER_BAR: u32 = 384;
 
 fn session() -> Session {
     let mut registry = Registry::with_builtin();
@@ -2016,4 +2019,54 @@ fn rack_branches_process_in_parallel_and_sync_without_rebuilds() {
     assert_eq!(param.messages, 1);
     run(&mut s, "mixer.rack_add 0 1 1 chorus");
     assert!(bridge.sync(s.project(), &mut handle).rebuilt_graph);
+}
+
+#[test]
+fn signatures_reach_the_sequence_and_midi_files() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-sig-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("sig.mid");
+    let mut s = session();
+    run(
+        &mut s,
+        &format!(
+            "channel.add_synth
+             pattern.set_time_signature 1 7/8
+             note.add 1 0 2 C5 100
+             project.export_midi \"{}\"",
+            path.display()
+        ),
+    );
+    let seven_eight: musiccraft_project::TimeSig = "7/8".parse().unwrap();
+    assert_eq!(build_sequence(s.project()).meter().first(), seven_eight);
+    let bytes = std::fs::read(&path).unwrap();
+    let event = [0xff, 0x58, 4, 7, 3, 12, 8];
+    assert!(bytes.windows(7).any(|w| w == event), "7/8 is written");
+    // Importing it into a 4/4 pattern brings the signature along; undo
+    // takes it back.
+    run(
+        &mut s,
+        &format!("pattern.add\nnote.import_midi 1 \"{}\" @2", path.display()),
+    );
+    assert_eq!(s.project().patterns[1].time_signature, seven_eight);
+    run(&mut s, "edit.undo");
+    assert!(s.project().patterns[1].time_signature.is_common());
+    assert!(s.project().patterns[1].notes.is_empty());
+
+    // Song mode: the song meter, with its change written after the start.
+    run(
+        &mut s,
+        "transport.set_mode song
+         playlist.add_clip 1 1 0
+         playlist.set_time_signature 1 3/4",
+    );
+    let sequence = build_sequence(s.project());
+    assert_eq!(sequence.meter().sig_at(384), "3/4".parse().unwrap());
+    let path = dir.join("song.mid");
+    run(&mut s, &format!("project.export_midi \"{}\"", path.display()));
+    let bytes = std::fs::read(&path).unwrap();
+    // Delta 384 (0x83 0x00), then 3/4.
+    let change = [0x83, 0x00, 0xff, 0x58, 4, 3, 2, 24, 8];
+    assert!(bytes.windows(9).any(|w| w == change), "the change is written");
+    std::fs::remove_dir_all(dir).unwrap();
 }

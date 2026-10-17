@@ -939,6 +939,10 @@ fn import_flp_converts_pyflps_test_project() {
     assert_eq!(s.undo_depth(), 0);
     let p = s.project();
     assert_eq!(p.name(), "PyFLP Test FLP");
+    // The pattern with signature markers takes its first one.
+    let markers = p.patterns.iter().find(|p| p.name == "Timemarkers").unwrap();
+    assert_eq!(markers.time_signature.to_string(), "3/2");
+    assert!(p.time_signature.is_common());
     assert!((p.tempo_bpm() - 69.42).abs() < 1e-9);
     assert!(p.path().is_none());
     // 19 channels, less the automation clip.

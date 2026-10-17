@@ -1483,6 +1483,7 @@ version = "0.2.1"
 dependencies = [
  "musiccraft-dsp",
  "musiccraft-formula",
+ "musiccraft-meter",
  "musiccraft-params",
  "rtrb",
 ]

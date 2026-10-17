@@ -421,6 +421,55 @@ fn metronome_clicks_on_every_beat_and_accents_bars() {
     assert!(quiet.iter().all(|s| s.abs() < 1e-3));
 }
 
+/// Sign changes in `samples`: a rough pitch measure.
+fn crossings(samples: &[f32]) -> usize {
+    samples
+        .windows(2)
+        .filter(|w| (w[0] >= 0.0) != (w[1] >= 0.0))
+        .count()
+}
+
+#[test]
+fn metronome_follows_the_meter() {
+    let (mut engine, _handle) = engine_pair(SR);
+    engine.apply(EngineMessage::SetGraph(Box::default()));
+    engine.apply(EngineMessage::SetTempo(120.0));
+    let six_eight: TimeSig = "6/8".parse().unwrap();
+    let seq = Sequence::new(vec![], 16 * 96).with_meter(Meter::new(six_eight));
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::SetMetronome(true));
+    engine.apply(EngineMessage::Play);
+    let out = render_mono(&mut engine, 4 * BEAT);
+    let eighth = BEAT / 2;
+    let onsets: Vec<usize> = (0..8)
+        .map(|k| k * eighth)
+        .filter(|start| out[start + 1..start + 200].iter().any(|s| s.abs() > 0.05))
+        .collect();
+    assert_eq!(onsets, (0..8).map(|k| k * eighth).collect::<Vec<_>>());
+    // Bars of six eighths: clicks 0 and 6 are accented (higher).
+    let pitch = |k: usize| crossings(&out[k * eighth..k * eighth + 2000]);
+    assert!(pitch(0) > pitch(1) && pitch(6) > pitch(5), "{} {}", pitch(0), pitch(1));
+    assert_eq!(pitch(1), pitch(2));
+}
+
+#[test]
+fn a_count_in_is_a_bar_of_the_signature_where_playback_starts() {
+    let (mut engine, _handle) = beat_engine();
+    let notes = (0..4).map(|beat| note(beat, 0)).collect();
+    let seven_eight: TimeSig = "7/8".parse().unwrap();
+    let seq = Sequence::new(notes, 4 * u64::from(PPQ)).with_meter(Meter::new(seven_eight));
+    engine.apply(EngineMessage::SetSequence(Box::new(seq)));
+    engine.apply(EngineMessage::SetStart(Start::CountIn(1)));
+    engine.apply(EngineMessage::Play);
+    let eighth = BEAT / 2;
+    let out = render_mono(&mut engine, 7 * eighth + 10);
+    for k in 0..7 {
+        assert!(out[k * eighth + 5].abs() > 1e-3, "click {k}");
+    }
+    assert!((out[7 * eighth] - 1.0).abs() < 1e-6, "the first note after seven eighths");
+    assert!(engine.is_playing());
+}
+
 #[test]
 fn sends_feed_higher_inserts_and_master_routing_can_be_cut() {
     let (mut engine, _handle) = engine_pair(SR);
@@ -1056,7 +1105,7 @@ fn beat_engine() -> (Engine, EngineHandle) {
 #[test]
 fn a_count_in_clicks_a_bar_then_starts_on_the_exact_frame() {
     let (mut engine, handle) = beat_engine();
-    engine.apply(EngineMessage::SetStart(Start::CountIn(4)));
+    engine.apply(EngineMessage::SetStart(Start::CountIn(1)));
     engine.apply(EngineMessage::Play);
     let out = render_mono(&mut engine, 4 * BEAT + 10);
     // Four clicks, one per beat, louder at the start of each.
@@ -1078,7 +1127,7 @@ fn a_count_in_clicks_a_bar_then_starts_on_the_exact_frame() {
 #[test]
 fn stop_cancels_a_count_in() {
     let (mut engine, handle) = beat_engine();
-    engine.apply(EngineMessage::SetStart(Start::CountIn(4)));
+    engine.apply(EngineMessage::SetStart(Start::CountIn(1)));
     engine.apply(EngineMessage::Play);
     render_mono(&mut engine, BEAT);
     assert!(handle.meters().is_counting_in() && !engine.is_playing());

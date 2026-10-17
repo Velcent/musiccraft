@@ -455,10 +455,11 @@ impl Vst3Processor {
         context.projectTimeSamples = (beats * 60.0 / tempo * self.sample_rate) as i64;
         context.continousTimeSamples = self.steady;
         context.projectTimeMusic = beats;
-        context.barPositionMusic = (beats / 4.0).floor() * 4.0;
+        context.barPositionMusic = transport.bar_start_beats.max(0.0);
         context.tempo = tempo;
-        context.timeSigNumerator = 4;
-        context.timeSigDenominator = 4;
+        let sig = transport.time_signature;
+        context.timeSigNumerator = i32::try_from(sig.num()).unwrap_or(4);
+        context.timeSigDenominator = i32::try_from(sig.den()).unwrap_or(4);
         context
     }
 

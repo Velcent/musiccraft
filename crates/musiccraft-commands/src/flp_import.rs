@@ -75,7 +75,8 @@ fn time_sig(num: i64, den: i64) -> Option<TimeSig> {
 
 /// The signature of a time marker that changes it.
 fn marker_sig(marker: &musiccraft_flp::pattern::TimeMarker<'_>) -> Option<TimeSig> {
-    if marker.is_signature() != Some(true) {
+    // Positions with higher bits set carry flags PyFLP does not decode.
+    if marker.is_signature() != Some(true) || marker.position()? >= 1 << 24 {
         return None;
     }
     time_sig(marker.numerator()?, marker.denominator()?)

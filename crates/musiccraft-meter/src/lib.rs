@@ -169,7 +169,8 @@ struct Segment {
 /// A timeline's signature and its changes. Each change starts a new bar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Meter {
-    /// Never empty; the first starts at tick 0, bar 0; ticks strictly rise.
+    /// The first starts at tick 0, bar 0; ticks strictly rise. Empty means
+    /// 4/4 throughout ([`Meter::COMMON`]).
     segments: Vec<Segment>,
 }
 
@@ -186,6 +187,11 @@ impl From<TimeSig> for Meter {
 }
 
 impl Meter {
+    /// 4/4 throughout, built without allocating (usable in a `static`).
+    pub const COMMON: Self = Self {
+        segments: Vec::new(),
+    };
+
     /// One signature throughout.
     #[must_use]
     pub fn new(sig: TimeSig) -> Self {

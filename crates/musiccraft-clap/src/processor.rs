@@ -312,7 +312,7 @@ impl ClapProcessor {
         if transport.playing {
             flags |= CLAP_TRANSPORT_IS_PLAYING;
         }
-        let bar = (beats / 4.0).floor();
+        let sig = transport.time_signature;
         clap_event_transport {
             header: header(
                 size_of::<clap_event_transport>(),
@@ -328,10 +328,10 @@ impl ClapProcessor {
             loop_end_beats: 0,
             loop_start_seconds: 0,
             loop_end_seconds: 0,
-            bar_start: (bar * 4.0 * CLAP_BEATTIME_FACTOR as f64) as i64,
-            bar_number: bar as i32,
-            tsig_num: 4,
-            tsig_denom: 4,
+            bar_start: (transport.bar_start_beats.max(0.0) * CLAP_BEATTIME_FACTOR as f64) as i64,
+            bar_number: i32::try_from(transport.bar_number).unwrap_or(i32::MAX),
+            tsig_num: u16::try_from(sig.num()).unwrap_or(4),
+            tsig_denom: u16::try_from(sig.den()).unwrap_or(4),
         }
     }
 }
