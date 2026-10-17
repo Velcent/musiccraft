@@ -564,7 +564,27 @@ fn draw_clip(
         ),
         egui::StrokeKind::Inside,
     );
-    let body = rect.shrink2(vec2(2.0, 4.0));
+    // A title strip with the name; the preview fills the rest.
+    let title_h = TITLE_HEIGHT.min(rect.height() / 2.0);
+    let title = Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + title_h));
+    painter.rect_filled(
+        title,
+        egui::CornerRadius {
+            nw: 4,
+            ne: 4,
+            sw: 0,
+            se: 0,
+        },
+        Color32::from_black_alpha(if matches!(clip.source, ClipSource::Automation(_)) {
+            0
+        } else {
+            70
+        }),
+    );
+    let body = Rect::from_min_max(
+        pos2(rect.left() + 2.0, title.bottom() + 1.0),
+        pos2(rect.right() - 2.0, rect.bottom() - 2.0),
+    );
     match clip.source {
         ClipSource::Pattern(id) => {
             if let Some(pattern) = project
@@ -624,18 +644,19 @@ fn draw_clip(
             }
         }
     }
-    painter.text(
-        rect.left_top() + vec2(4.0, 2.0),
-        Align2::LEFT_TOP,
-        name,
-        FontId::proportional(10.5),
-        if matches!(clip.source, ClipSource::Automation(_)) {
-            theme::TEXT
-        } else {
-            theme::BACKGROUND
-        },
-    );
+    painter
+        .with_clip_rect(title.intersect(painter.clip_rect()))
+        .text(
+            pos2(title.left() + 4.0, title.center().y),
+            Align2::LEFT_CENTER,
+            name,
+            FontId::proportional(10.0),
+            theme::TEXT,
+        );
 }
+
+/// Height of a clip's title strip.
+const TITLE_HEIGHT: f32 = 11.0;
 
 /// Miniature of a pattern's notes, repeated across the clip.
 fn pattern_preview(

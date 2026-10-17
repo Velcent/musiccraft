@@ -396,8 +396,10 @@ pub fn show(
 fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
     let channel = state.selected_channel;
     let number = (channel + 1).to_string();
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
+        options_menu(ui, state, project, &number, actions);
+        ui.add_space(4.0);
         for (tool, icon, hint) in [
             (
                 Tool::Draw,
@@ -526,27 +528,46 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             .hint("Highlight the keys of a scale");
         ui.label("Velocity");
         ui.add(egui::DragValue::new(&mut state.roll.velocity).range(1..=127));
-        ui.separator();
-        if ui.button("−").hint("Zoom out").clicked() {
-            state.roll.px_per_step = (state.roll.px_per_step / 1.25).max(6.0);
-        }
-        if ui.button("+").hint("Zoom in").clicked() {
-            state.roll.px_per_step = (state.roll.px_per_step * 1.25).min(120.0);
-        }
+    });
+}
+
+/// The menu at the left of the toolbar: zoom, quantize, note tools,
+/// transposing by octaves and clearing the channel's notes.
+fn options_menu(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    number: &str,
+    actions: &mut Vec<Action>,
+) {
+    let run = |actions: &mut Vec<Action>, name: &str, args: &[&str]| {
+        let mut all = vec![number.to_owned()];
+        all.extend(args.iter().map(|a| (*a).to_owned()));
+        actions.push(Action::Run(Invocation::new(name, all)));
+    };
+    ui.menu_button("☰", |ui| {
+        ui.horizontal(|ui| {
+            ui.label("Zoom");
+            if ui.button("−").clicked() {
+                state.roll.px_per_step = (state.roll.px_per_step / 1.25).max(6.0);
+            }
+            if ui.button("+").clicked() {
+                state.roll.px_per_step = (state.roll.px_per_step * 1.25).min(120.0);
+            }
+        });
         ui.separator();
         if ui
             .button("Quantize")
             .hint("Snap note starts to the grid")
             .clicked()
         {
-            actions.push(Action::Run(Invocation::new(
-                "note.quantize",
-                [number.clone(), format!("{}t", state.roll.snap.ticks_at(0, &state.roll.meter))],
-            )));
+            let grid = format!("{}t", state.roll.snap.ticks_at(0, &state.roll.meter));
+            run(actions, "note.quantize", &[&grid]);
+            ui.close();
         }
         let selected: Vec<Note> = project
             .channels
-            .get(channel)
+            .get(state.selected_channel)
             .map(|c| {
                 project
                     .current_pattern()
@@ -556,26 +577,26 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                     .collect()
             })
             .unwrap_or_default();
-        tools_menu(ui, state, &number, &selected, actions);
-        if ui.button("Oct −").clicked() {
-            actions.push(Action::Run(Invocation::new(
-                "note.transpose",
-                [number.clone(), "-12".into()],
-            )));
+        tools_menu(ui, state, number, &selected, actions);
+        if ui.button("Transpose an octave up").clicked() {
+            run(actions, "note.transpose", &["12"]);
+            ui.close();
         }
-        if ui.button("Oct +").clicked() {
-            actions.push(Action::Run(Invocation::new(
-                "note.transpose",
-                [number.clone(), "12".into()],
-            )));
+        if ui.button("Transpose an octave down").clicked() {
+            run(actions, "note.transpose", &["-12"]);
+            ui.close();
         }
+        ui.separator();
         if ui
-            .button(RichText::new("Clear").color(theme::DANGER))
+            .button(RichText::new("Clear the channel's notes").color(theme::DANGER))
             .clicked()
         {
-            actions.push(Action::Run(Invocation::new("note.clear", [number])));
+            run(actions, "note.clear", &[]);
+            ui.close();
         }
-    });
+    })
+    .response
+    .hint("Piano roll options: zoom, quantize, tools, transpose, clear");
 }
 
 fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {

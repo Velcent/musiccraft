@@ -369,7 +369,13 @@ fn audio(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     });
     ui.add_space(6.0);
     ui.label(RichText::new(&frame.engine.audio).color(theme::ACCENT));
-    if let Some(text) = &info.audio_note {
+    // The note repeats nothing the status line already says (a failed start
+    // puts the same error in both).
+    if let Some(text) = info
+        .audio_note
+        .as_ref()
+        .filter(|t| !frame.engine.audio.contains(t.as_str()))
+    {
         ui.label(RichText::new(text).color(theme::HIGHLIGHT));
     }
     note(
