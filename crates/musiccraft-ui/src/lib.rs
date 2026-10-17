@@ -227,6 +227,9 @@ pub struct UiState {
     pub taps: Vec<f64>,
     /// The custom time signature being entered in a signature menu.
     pub sig_draft: (u32, u32),
+    /// The toolbar's position display shows minutes and seconds instead of
+    /// bars and beats.
+    pub show_seconds: bool,
     /// The channel settings window's page.
     pub channel_tab: channel_settings::ChannelTab,
     /// The channel rack shows only this display filter group (`None`: all).
@@ -321,6 +324,7 @@ impl UiState {
             taps: Vec::new(),
             sig_draft: (4, 4),
             channel_tab: channel_settings::ChannelTab::default(),
+            show_seconds: false,
             rack_group: None,
             graph: None,
             graph_drag: None,

@@ -169,7 +169,7 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   `step.shift <channel> <steps>` rotates the channel's notes by whole steps,
   wrapping at the pattern length.
 - Notes that end up on the same start and key keep only the first.
-- In the piano roll these live in the toolbar's Tools menu; in the channel
+- In the piano roll these live in the toolbar's options menu (☰) → Tools; in the channel
   rack, in a channel's right-click menu.
 
 ## Pattern length
@@ -253,8 +253,15 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - Notes have a pan, -100 to 100 (`note.set_pan`; `note.add` takes it as an
   optional sixth argument; `note.set_all` rows may carry it as a fifth value).
   It is applied as a balance on top of the channel pan.
-- The bottom lane edits velocity or pan; click its label to switch. In pan mode
+- The bottom lane edits velocity, pan, release, fine pitch, Mod X or Mod Y,
+  picked from the menu at its left. In centred modes (pan, fine pitch…)
   stems grow up or down from the centre and snap to centre within ±3.
+- The ruler marks the playhead with a triangle whenever it is inside the
+  shown pattern (the loop position in pattern mode; in song mode, inside a
+  clip of this pattern), and a line runs down the roll while playing.
+- The toolbar starts with an options menu (☰): zoom, quantize, the note
+  tools, transpose an octave up or down, and clear the channel's notes. The
+  toolbar wraps onto a second line in a narrow window.
 - A velocity lane is pinned to the bottom of the view: one stem per note of the
   selected channel. Dragging vertically sets the velocity of the note under the
   pointer (the latest-starting one when notes overlap); one drag is one undo step.

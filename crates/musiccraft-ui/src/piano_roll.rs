@@ -826,8 +826,9 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             );
         }
 
-        if frame.engine.playing && project.play_mode == PlayMode::Pattern {
-            let x = grid.x(frame.engine.position_ticks as f32);
+        let playhead = pattern_position(project, frame.engine.position_ticks);
+        if let Some(tick) = playhead.filter(|_| frame.engine.playing) {
+            let x = grid.x(tick as f32);
             painter.line_segment(
                 [pos2(x, clip.top()), pos2(x, clip.bottom())],
                 Stroke::new(1.5, theme::PLAYHEAD),
@@ -851,6 +852,20 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             actions,
         );
         draw_ruler(&painter, &grid, clip, length, &state.roll.meter);
+        // The ruler marks the playhead whether or not it is moving.
+        if let Some(tick) = playhead {
+            let x = grid.x(tick as f32);
+            let top = clip.top() + RULER_HEIGHT;
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    pos2(x - 5.0, top - 8.0),
+                    pos2(x + 5.0, top - 8.0),
+                    pos2(x, top),
+                ],
+                theme::PLAYHEAD,
+                Stroke::NONE,
+            ));
+        }
         velocity_lane(ui, state, &grid, clip, &notes, channel_index, actions);
         if response.hovered() {
             let zoom = ui.input(|i| i.zoom_delta());
@@ -1943,6 +1958,24 @@ impl LaneMode {
     }
 }
 
+/// Where the playhead is inside the shown pattern, in pattern ticks: the
+/// loop position in pattern mode; in song mode, inside a clip of this
+/// pattern under the playhead (none elsewhere).
+fn pattern_position(project: &Project, position: f64) -> Option<u32> {
+    let pattern = project.current_pattern();
+    let period = pattern.length_ticks().max(1);
+    let tick = position.max(0.0) as u32;
+    match project.play_mode {
+        PlayMode::Pattern => Some(tick % period),
+        PlayMode::Song => project
+            .playlist
+            .clips
+            .iter()
+            .find(|c| c.pattern() == Some(pattern.id) && c.start <= tick && tick < c.end())
+            .map(|c| (tick - c.start + c.offset) % period),
+    }
+}
+
 fn velocity_lane(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -1965,29 +1998,23 @@ fn velocity_lane(
         [strip.left_top(), strip.right_top()],
         Stroke::new(1.0, theme::GRID_BAR),
     );
-    // The lane's label switches between velocity and pan.
-    let label_rect = Rect::from_min_max(strip.left_top(), pos2(lane.left(), strip.bottom()));
-    let label = ui
-        .interact(label_rect, ui.id().with("lane-mode"), Sense::click())
-        .hint("Click to choose what the lane edits: velocity, pan, release, fine pitch, Mod X or Mod Y");
-    if label.clicked() {
-        let i = LaneMode::ALL.iter().position(|m| *m == mode).unwrap_or(0);
-        state.roll.lane_mode = LaneMode::ALL[(i + 1) % LaneMode::ALL.len()];
-    }
-    painter.text(
-        pos2(clip.left() + 6.0, lane.center().y - 7.0),
-        Align2::LEFT_CENTER,
-        mode.label(),
-        FontId::proportional(10.0),
-        theme::ACCENT,
+    // The lane's target: a menu of what it edits.
+    let label_rect = Rect::from_min_size(
+        pos2(strip.left() + 2.0, lane.top() + 4.0),
+        vec2(KEYS_WIDTH - 4.0, 18.0),
     );
-    painter.text(
-        pos2(clip.left() + 6.0, lane.center().y + 8.0),
-        Align2::LEFT_CENTER,
-        "click: next",
-        FontId::proportional(9.0),
-        theme::TEXT_DIM,
-    );
+    ui.put(label_rect, |ui: &mut egui::Ui| {
+        egui::ComboBox::from_id_salt("lane-mode")
+            .width(KEYS_WIDTH - 4.0)
+            .selected_text(RichText::new(mode.label()).small().color(theme::ACCENT))
+            .show_ui(ui, |ui| {
+                for m in LaneMode::ALL {
+                    ui.selectable_value(&mut state.roll.lane_mode, m, m.label());
+                }
+            })
+            .response
+            .hint("What the lane edits: velocity, pan, release, fine pitch, Mod X or Mod Y")
+    });
     if mode.centred() {
         painter.line_segment(
             [

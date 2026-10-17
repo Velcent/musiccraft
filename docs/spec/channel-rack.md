@@ -33,7 +33,7 @@
   through the usual note commands; one drag is one undo step.
 - **Display filter groups**: `channel.set_group <n> [group]` (undoable,
   saved as `"group"`; no name removes it) puts a channel in a named group. The
-  rack's group menu (shown once any channel has a group) shows All, one
+  rack's group menu (always at the top left of the rack) shows All, one
   group, or Unsorted (channels without one). Right-click a channel → Group…
   sets it. Filtering only hides rows; numbering and keys stay the same.
 - `channel.solo <n>` mutes every other channel; running it again on an already
@@ -47,9 +47,13 @@
   the first click gave (on or off). Right-click turns a step off, and
   dragging with the right button erases every step it passes. A whole drag
   is one undo step. Turning a step on previews the channel's sound.
-- **Mixer routing box** (UI): each row shows where the channel plays to:
-  "→ Mst" for the master track, "→ 3" for insert 3. Drag it up or down (or
-  scroll over it) to change the track; the tooltip names the track.
+- **Row layout** (UI), left to right: mute dot, pan knob, volume knob, the
+  mixer track box, the name button, the steps (or a miniature roll), and a
+  **selection switch** that selects the channel without opening its
+  settings (lit for the selected channel).
+- **Mixer track box** (UI): each row shows the mixer track the channel plays
+  to as a small number box: "M" for the master track, "3" for insert 3. Drag
+  it up or down (or type) to change the track; the tooltip names the track.
 - **Browser** (UI): in the plugin database, a single click only selects an
   entry (it is highlighted). Double-clicking a generator adds it as a new
   channel; dragging it onto the channel rack does the same. Double-clicking

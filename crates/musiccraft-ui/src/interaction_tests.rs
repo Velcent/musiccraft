@@ -1272,3 +1272,20 @@ fn alt_dragging_a_segment_bends_it_in_one_step() {
     assert!(point.tension > 0.3, "bent down: {}", point.tension);
     assert_eq!(h.session.undo_depth(), depth + 1);
 }
+
+#[test]
+fn the_picker_paints_audio_clips_at_their_length() {
+    let mut h = Harness::new(&[
+        "channel.add_sampler builtin:kick",
+        "playlist.add_audio_clip 1 1 0 1",
+    ]);
+    h.state.windows.playlist = true;
+    h.state.playlist.picker = crate::playlist::Picker::Audio;
+    h.state.playlist.paint_audio = Some(h.session.project().channels[0].id);
+    h.settle();
+    let placed = h.click(
+        h.playlist_point(TICKS_PER_BAR + 10, 1),
+        PointerButton::Primary,
+    );
+    assert_eq!(placed, ["playlist.add_audio_clip 1 2 384t 384t"]);
+}

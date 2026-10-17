@@ -13,7 +13,8 @@
   <track> <on|off>` and `playlist.toggle_track_solo <track>`. While any row is
   soloed, only soloed rows play; a muted row stays silent even when soloed.
   Silenced rows skip pattern, audio and automation clips alike. The row header
-  shows the colour, name, a mute dot and an S (solo) button; right-click it to
+  shows the colour stripe and name on the left, and the arm dot, S (solo)
+  button and mute dot on the right; right-click it to
   rename it or pick a colour. A coloured row shows a stripe of its colour at the
   left of its header; silenced rows show their name dimmed.
 - Playlist time arguments are in bars from 0 of the song's time signatures
@@ -25,6 +26,12 @@
   `playlist.set_clips` (used by undo). All are undoable.
 - In song mode the song length is the end of the last clip rounded up to whole
   bars. Removing a pattern removes its clips (undo restores them).
+
+- **Picker** (UI): the list beside the playlist has tabs All, Pat(terns),
+  Aud(io) and Aut(omation). Clicking an entry chooses what a click on the
+  playlist places: the selected pattern, an audio clip of that channel (as
+  long as its other audio clips), or that automation. Clips show their name in
+  a title strip with the preview (notes, waveform or curve) below it.
 
 ## Loop region and markers
 

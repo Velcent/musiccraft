@@ -412,19 +412,15 @@ fn sound(
         Instrument::Synth => synth(ui, state, number, channel, actions),
         Instrument::DrumSynth => {
             drum(ui, state, number, channel, actions);
-            return;
         }
         Instrument::Pluck => {
             pluck(ui, state, number, channel, actions);
-            return;
         }
         Instrument::Fm => {
             fm(ui, state, number, channel, actions);
-            return;
         }
         Instrument::Keys => {
             keys(ui, state, number, channel, actions);
-            return;
         }
         Instrument::Additive => additive(ui, state, number, channel, actions),
         Instrument::Granular { sample } => {
@@ -432,7 +428,6 @@ fn sound(
         }
         Instrument::Kit { pads } => {
             kit(ui, state, index, channel, pads, actions);
-            return;
         }
         Instrument::Zones { zones } => {
             crate::zone_editor::show(ui, state, frame, index, zones, actions);
@@ -442,10 +437,9 @@ fn sound(
         }
         Instrument::Layer { channels } => {
             layer(ui, frame, index, channels, actions);
-            return;
         }
         // Handled before the sound sections.
-        Instrument::MidiOut { .. } => return,
+        Instrument::MidiOut { .. } => {}
         Instrument::Plugin { plugin } => {
             // Plugins shape their own sound; the built-in sections do not apply.
             let target = crate::plugins::Target::Channel(number);
