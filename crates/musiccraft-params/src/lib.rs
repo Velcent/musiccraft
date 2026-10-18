@@ -5,6 +5,7 @@
 
 use std::fmt;
 
+pub mod describe;
 pub mod presets;
 
 use serde::{Deserialize, Serialize};

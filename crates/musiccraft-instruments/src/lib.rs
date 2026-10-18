@@ -15,10 +15,12 @@ use std::sync::Arc;
 use musiccraft_dsp::SampleBuffer;
 use musiccraft_params::MAX_INSTRUMENT_PARAMS;
 
+mod kind;
 mod modmatrix;
 mod strings;
 mod voice;
 
+pub use kind::{KINDS, Kind, NOTE_FUNCTIONS};
 pub use voice::{CUT_SECONDS, Voice, VoiceStart, glides};
 
 /// A channel's instrument parameters, indexed by `musiccraft_params::inst`.

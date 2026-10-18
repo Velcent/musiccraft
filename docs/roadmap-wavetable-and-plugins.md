@@ -56,8 +56,8 @@ and a PR. Sizes are rough: S = days, M = about a week, L = several weeks.
 ### Phase 1: groundwork (M)
 
 - **1.1 Engine-free instruments.** Move every instrument's voice DSP into a new crate, `musiccraft-instruments`, with an API like the effects: `new(rate)`, then `note_on/off`, `set_param` and `process`. The engine keeps voice allocation and routing and calls into it. Output must be bit-identical: golden renders of every instrument before and after.
-- **1.2 Parameter tables per instrument.** Give each instrument its own `ParamSpec` table with **stable IDs**, instead of the shared 160-slot table. The new synth needs about 400 parameters. Project files keep loading through a name-based migration.
-- **1.3 Plugin parameter model.** Add stable IDs, normalized values, automation flags, value text and parsing, choice lists, and grouping into modules. All of it is derived from the parameter tables.
+- **1.2 Parameters per instrument (done).** Parameter names are the stable IDs. Project files, commands and plugin parameter IDs already use them, so nothing has to migrate. The `frozen_names` test (`musiccraft-params/frozen-names.txt`) fails if a name is renamed or removed. `musiccraft_instruments::Kind` lists the parameters each instrument uses, in this order: the envelope, its sound parameters, then the host's `NOTE_FUNCTIONS` (arpeggiator, swing, timing, echo, cut groups and polyphony; a plugin wrapper implements these around the voices). The existing instruments keep the shared 160-slot table. Antiserum gets its own table (about 400 parameters) in Phase 2.
+- **1.3 Plugin parameter model (done).** `musiccraft_params::describe` provides labels, choice lists, display text and parsing of typed text (units and choice names). Normalized values come from `ParamSpec::to_unit` and `from_unit`. Grouping into modules follows each kind's list order.
 
 ### Phase 2: Antiserum core (L)
 
@@ -173,7 +173,7 @@ oscillators (Phase 4) can follow in a point release.
 - **CPU.** Unison × 3 oscillators × mipmapped tables needs care: SIMD-friendly loops and control-rate modulation. Benchmarks are added early.
 - **Embedded GUIs** differ per host and platform (D5). baseview already handles X11, Win32 and Cocoa for many nih-plug plugins; our risk is the egui 0.36 adapter, which is proved early on the effects.
 - **Git dependencies.** nih-plug, baseview and their forks come from GitHub, pinned by revision in `Cargo.lock`. Builds need GitHub access, and updates are deliberate.
-- **Parameter migration** (1.2) touches every project file. It needs good round-trip tests on old files.
+- **Parameter renames** would break project files and plugin automation. The names are frozen by a test (1.2), so a rename can't happen by accident.
 
 ## Sources
 
