@@ -25,7 +25,9 @@ musiccraft-project, musiccraft-engine ──► musiccraft-meter ──► music
 musiccraft-engine ──► musiccraft-instruments ──► musiccraft-dsp
 musiccraft-antiserum ──► musiccraft-dsp, musiccraft-params
 musiccraft-commands, musiccraft-render, musiccraft-ui ──► musiccraft-paths
-musiccraft-ui ──► musiccraft-editors ──► musiccraft-dsp, musiccraft-params
+musiccraft-wavetables ──► musiccraft-dsp, musiccraft-formula
+musiccraft-ui ──► musiccraft-editors ──► musiccraft-dsp, musiccraft-params, musiccraft-wavetables
+musiccraft-cli ──► musiccraft-wavetables
 musiccraft-plugin-export ──► musiccraft-plugin-editor ──► musiccraft-editors
          └──► musiccraft-dsp, musiccraft-params, nih-plug
 standalone/ (own workspace) ──► musiccraft-plugin-export
@@ -33,7 +35,8 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 
 | Crate | Responsibility |
 | --- | --- |
-| `musiccraft-formula` | The formula controllers' expression language: parsing on the main thread, allocation-free evaluation on the audio thread. No dependencies. |
+| `musiccraft-formula` | The formula controllers' expression language: parsing on the main thread, allocation-free evaluation on the audio thread. A table mode (`x`, `y`) fills wavetables. No dependencies. |
+| `musiccraft-wavetables` | Antiserum's editable wavetables (`docs/spec/antiserum-wavetables.md`): generated factory tables, WAV import (`clm ` frame size, pitch or fixed slicing, single cycles) and export, and editing `Op`s (draw, partials, formula, morph, normalize, DC, reverse, frames). Main thread only. |
 | `musiccraft-params` | Shared tables: timing (PPQ), instrument and effect parameter specs, built-in sound names. No logic. |
 | `musiccraft-paths` | Translates sample paths written on another system (Windows drives, FL Studio placeholders, Wine prefixes) into local files. No dependencies. |
 | `musiccraft-meter` | Time signatures and the bar and beat grid of a timeline (`TimeSig`, `Meter`). Queries are allocation-free, so the engine uses it too. |
@@ -53,7 +56,7 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
 | `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response`, `fft` and `pitch` modules only to draw effect curves, the spectrum analyzer and the tuner display. |
-| `musiccraft-editors` | The egui pieces the app and the plugins share: theme, knobs and widgets, hints, and the effect editor (preset bar, draggable graph, knobs, tuner). Knows nothing of projects or commands: editors report `Edit`s (begin, drag, set, bypass) that the app turns into commands and a plugin into host gestures. |
+| `musiccraft-editors` | The egui pieces the app and the plugins share: theme, knobs and widgets, hints, the effect editor (preset bar, draggable graph, knobs, tuner) and the wavetable editor (3D frame stack, drawing, harmonics, formulas). Knows nothing of projects or commands: editors report `Edit`s (begin, drag, set, bypass) that the app turns into commands and a plugin into host gestures. |
 | `musiccraft-plugin-editor` | Opens those egui editors in a plugin host's window: a nih-plug `Editor` on a baseview child window with OpenGL, egui 0.36 and `egui_glow`. **Allowed to use `unsafe`** (OpenGL calls). |
 | `musiccraft-plugin-export` | The built-in effects as CLAP and VST3 plugins (`docs/spec/plugin-export.md`): `EffectPlugin<K>` wraps `musiccraft_dsp::Effect`, with host parameters from its `ParamSpec` table and the shared editor. One library exports all 44; `cargo xtask bundle` packages it. **Allowed to use `unsafe`** (nih-plug's export macros, `Params`). |
 | `standalone/` | `musiccraft-fx-standalone <effect>`: one effect as a standalone app (nih-plug's wrapper). Its own workspace and lockfile, because that wrapper's ALSA binding clashes with the app's. |

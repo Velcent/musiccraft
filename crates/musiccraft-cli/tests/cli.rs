@@ -117,3 +117,55 @@ fn export_from_a_script_writes_audio() {
     assert!(std::fs::metadata(&path).unwrap().len() > 44);
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn wavetables_list_export_import_and_formula() {
+    let dir = std::env::temp_dir().join(format!("mc-wavetable-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
+
+    let list = cli().args(["wavetable", "list"]).output().unwrap();
+    let stdout = String::from_utf8(list.stdout).unwrap();
+    assert!(stdout.contains("formant\t64 frames"), "{stdout}");
+
+    let out = cli()
+        .args(["wavetable", "export", "pwm", &path("pwm.wav")])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let imported = cli()
+        .args(["wavetable", "import", &path("pwm.wav"), &path("again.wav")])
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8(imported.stdout)
+            .unwrap()
+            .contains("wrote 64 frames")
+    );
+    assert_eq!(
+        std::fs::read(path("pwm.wav")).unwrap(),
+        std::fs::read(path("again.wav")).unwrap()
+    );
+
+    let formula = cli()
+        .args([
+            "wavetable",
+            "formula",
+            "sin(x*pi*2)*(1-y)",
+            "8",
+            &path("f.wav"),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8(formula.stdout)
+            .unwrap()
+            .contains("wrote 8 frames")
+    );
+    let bad = cli()
+        .args(["wavetable", "formula", "sin(t)", "8", &path("bad.wav")])
+        .output()
+        .unwrap();
+    assert_eq!(bad.status.code(), Some(1));
+    let _ = std::fs::remove_dir_all(&dir);
+}

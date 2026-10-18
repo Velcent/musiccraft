@@ -90,6 +90,12 @@ Done in `musiccraft-antiserum` (spec: `docs/spec/antiserum.md`), with these choi
 
 ### Phase 3: wavetable sources and editor (L)
 
+**Done** (spec: `docs/spec/antiserum-wavetables.md`), with these choices:
+- **A new crate**, `musiccraft-wavetables`, holds the editable table, the 11 generated factory tables, import/export and the editing `Op`s. It knows nothing of the synth: `Wavetable::new(table.samples())` plays it.
+- **Import** reads WAV only (compressed formats come with sample decoding). The `clm ` chunk is honoured on import and written on export, so a table round-trips exactly.
+- **Formulas** use a table mode of `musiccraft-formula` with `x` and `y`. Controller formulas still refuse these variables.
+- **The editor** lives in `musiccraft-editors` and reports edits; undo is the caller's (a snapshot at each `Begin`). Phase 6 shows it in the app and in the plugin, and turns its edits into commands. Until then, `cargo run -p musiccraft-editors --example wavetable` opens it, and `musiccraft-cli wavetable` covers it headlessly.
+
 - **Generated factory tables**, made by code with no files copied:
   - analogue shapes and PWM sweeps
   - additive series and formant/vowel sweeps

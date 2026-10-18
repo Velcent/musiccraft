@@ -7,4 +7,5 @@ pub mod effect;
 pub mod hint;
 pub mod theme;
 mod tuner;
+pub mod wavetable;
 pub mod widgets;

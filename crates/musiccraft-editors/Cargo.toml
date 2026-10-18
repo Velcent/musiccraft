@@ -10,7 +10,12 @@ license.workspace = true
 [dependencies]
 musiccraft-dsp.workspace = true
 musiccraft-params.workspace = true
+musiccraft-formula.workspace = true
+musiccraft-wavetables.workspace = true
 egui.workspace = true
+
+[dev-dependencies]
+eframe.workspace = true
 
 [lints]
 workspace = true

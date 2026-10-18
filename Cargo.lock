@@ -1781,6 +1781,7 @@ dependencies = [
  "musiccraft-project",
  "musiccraft-render",
  "musiccraft-vst3",
+ "musiccraft-wavetables",
 ]
 
 [[package]]
@@ -1806,9 +1807,12 @@ dependencies = [
 name = "musiccraft-editors"
 version = "0.2.2"
 dependencies = [
+ "eframe",
  "egui",
  "musiccraft-dsp",
+ "musiccraft-formula",
  "musiccraft-params",
+ "musiccraft-wavetables",
 ]
 
 [[package]]
@@ -1980,6 +1984,16 @@ name = "musiccraft-vst3-testplugin"
 version = "0.2.2"
 dependencies = [
  "vst3",
+]
+
+[[package]]
+name = "musiccraft-wavetables"
+version = "0.2.2"
+dependencies = [
+ "hound",
+ "musiccraft-antiserum",
+ "musiccraft-dsp",
+ "musiccraft-formula",
 ]
 
 [[package]]
