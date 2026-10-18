@@ -323,6 +323,12 @@ impl Voice {
         self.held = false;
     }
 
+    /// This voice's modulation of parameter `index`, as a knob-position
+    /// offset (the effects follow the newest voice's).
+    pub fn offset(&self, index: usize) -> f32 {
+        self.offsets.get(index).copied().unwrap_or(0.0)
+    }
+
     /// A parameter's value with this voice's modulation.
     fn value(&self, ctx: &Ctx<'_>, index: usize) -> f32 {
         let base = ctx.base(index);

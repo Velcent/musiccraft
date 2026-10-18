@@ -18,6 +18,8 @@ effects and sequencer (Phase 5), the UI and presets (Phase 6) and plugin export
   - `set_pitch_bend(-1..1)`, `set_mod_wheel(0..1)`, `set_aftertouch(0..1)`
     (channel) and `set_poly_aftertouch(key, 0..1)`
   - `set_tempo(bpm)`, `set_lfo_shape(lfo, shape)`, `all_notes_off()`, `reset()`
+  - `set_sequence(&Sequence)` and `set_beat_position(beats)` (the effects
+    rack, arpeggiator and sequencer: `docs/spec/antiserum-fx-arp.md`)
   - `process(left, right)`, which overwrites the two buffers
 - Events apply at the start of the next `process` call. A host that needs
   sample-accurate events splits its block at each event.

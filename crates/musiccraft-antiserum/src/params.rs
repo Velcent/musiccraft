@@ -6,7 +6,9 @@
 
 use std::sync::OnceLock;
 
-use musiccraft_params::ParamSpec;
+use musiccraft_params::{ARP_MODES, ARP_RATES, ParamSpec};
+
+use crate::fx::{self, FX_PARAMS, FX_SLOTS, MODULES};
 
 /// Global parameters.
 pub const VOLUME: usize = 0;
@@ -144,8 +146,38 @@ pub mod slot {
     pub const AUX: usize = 5;
 }
 
+/// Arpeggiator parameters (`docs/spec/antiserum-fx-arp.md`).
+pub const ARP_BASE: usize = MOD_BASE + SLOTS * MOD_STRIDE;
+pub mod arp {
+    //! Offsets inside the arpeggiator's parameters.
+    pub const MODE: usize = 0;
+    pub const RATE: usize = 1;
+    pub const RANGE: usize = 2;
+    pub const GATE: usize = 3;
+}
+
+/// Sequencer parameters.
+pub const SEQ_BASE: usize = ARP_BASE + 4;
+pub mod seq {
+    //! Offsets inside the sequencer's parameters.
+    pub const ON: usize = 0;
+    pub const LENGTH: usize = 1;
+    pub const RATE: usize = 2;
+}
+
+/// The effect slots, `fx_slot1` … `fx_slot10`.
+pub const FX_SLOT_BASE: usize = SEQ_BASE + 3;
+/// The effect modules' parameters, module after module.
+pub const FX_BASE: usize = FX_SLOT_BASE + FX_SLOTS;
+
 /// Number of parameters.
-pub const PARAM_COUNT: usize = MOD_BASE + SLOTS * MOD_STRIDE;
+pub const PARAM_COUNT: usize = FX_BASE + FX_PARAMS;
+
+/// Index of parameter `field` of effect module `m` (0-based).
+#[must_use]
+pub const fn fx_param(m: usize, field: usize) -> usize {
+    FX_BASE + fx::module_offset(m) + field
+}
 
 /// Index of field `field` of oscillator `n` (0-based).
 #[must_use]
@@ -433,6 +465,19 @@ const SLOT: [Field; MOD_STRIDE] = [
     int("aux", (SOURCES.len() - 1) as f32, 0.0),
 ];
 
+const ARP: [Field; 4] = [
+    int("mode", (ARP_MODES.len() - 1) as f32, 0.0),
+    int("rate", (ARP_RATES.len() - 1) as f32, 1.0),
+    int_range("range", 1.0, 4.0, 1.0),
+    f("gate", 0.05, 1.0, 0.5, ""),
+];
+
+const SEQ: [Field; 3] = [
+    int("on", 1.0, 0.0),
+    int_range("length", 1.0, 64.0, 16.0),
+    int("rate", (ARP_RATES.len() - 1) as f32, 1.0),
+];
+
 fn leak(name: String) -> &'static str {
     Box::leak(name.into_boxed_str())
 }
@@ -486,6 +531,26 @@ fn build() -> Vec<ParamSpec> {
     for n in 1..=SLOTS {
         push_group(&mut table, &format!("mod{n}"), &SLOT);
     }
+    push_group(&mut table, "arp", &ARP);
+    push_group(&mut table, "seq", &SEQ);
+    for n in 1..=FX_SLOTS {
+        push_group(
+            &mut table,
+            "fx",
+            &[Field {
+                suffix: leak(format!("slot{n}")),
+                ..int("", MODULES.len() as f32, 0.0)
+            }],
+        );
+    }
+    for module in &MODULES {
+        for spec in fx::module_specs(module) {
+            table.push(ParamSpec {
+                name: leak(format!("fx_{}_{}", module.name, spec.name)),
+                ..spec
+            });
+        }
+    }
     // Defaults that differ between instances of a group.
     if let Some(on) = table.get_mut(osc_param(0, osc::ON)) {
         on.default = 1.0;
@@ -527,7 +592,12 @@ pub fn index_of(name: &str) -> Option<usize> {
 pub fn choices(name: &str) -> Option<&'static [&'static str]> {
     let suffix = name.rsplit_once('_').map_or(name, |(_, s)| s);
     let group = name.split('_').next().unwrap_or(name);
+    if let Some(rest) = name.strip_prefix("fx_") {
+        return fx_choices(rest);
+    }
     let list: &'static [&'static str] = match name {
+        "arp_mode" => &ARP_MODES,
+        "arp_rate" | "seq_rate" => arp_rate_labels(),
         "voice_mode" => &VOICE_MODES,
         "glide_mode" => &GLIDE_MODES,
         "filter_routing" => &ROUTINGS,
@@ -549,6 +619,44 @@ pub fn choices(name: &str) -> Option<&'static [&'static str]> {
         _ => return None,
     };
     Some(list)
+}
+
+/// The arpeggiator and sequencer rate names.
+fn arp_rate_labels() -> &'static [&'static str] {
+    static LIST: OnceLock<Vec<&'static str>> = OnceLock::new();
+    LIST.get_or_init(|| ARP_RATES.iter().map(|(label, _)| *label).collect())
+}
+
+/// Choices of `fx_<rest>`: the slot menus, or a module parameter's choices
+/// as its mixer effect has them.
+fn fx_choices(rest: &str) -> Option<&'static [&'static str]> {
+    static SLOT: OnceLock<Vec<&'static str>> = OnceLock::new();
+    static MODULE: OnceLock<Vec<(&'static str, Vec<&'static str>)>> = OnceLock::new();
+    if rest.starts_with("slot") {
+        return Some(SLOT.get_or_init(|| {
+            std::iter::once("none")
+                .chain(MODULES.iter().map(|m| m.name))
+                .collect()
+        }));
+    }
+    let lists = MODULE.get_or_init(|| {
+        let mut lists = Vec::new();
+        for module in &MODULES {
+            let Some(kind) = module.kind else {
+                continue;
+            };
+            for spec in fx::module_specs(module) {
+                if let Some(list) = musiccraft_dsp::describe::choices(kind, spec.name) {
+                    lists.push((leak(format!("{}_{}", module.name, spec.name)), list));
+                }
+            }
+        }
+        lists
+    });
+    lists
+        .iter()
+        .find(|(name, _)| *name == rest)
+        .map(|(_, list)| list.as_slice())
 }
 
 /// Mod matrix destinations by `dest` value: "none", then every parameter's

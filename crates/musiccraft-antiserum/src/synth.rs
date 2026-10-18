@@ -2,12 +2,16 @@
 
 use std::sync::Arc;
 
-use musiccraft_params::ParamSpec;
+use musiccraft_dsp::ProcessContext;
+use musiccraft_params::{ARP_RATES, PPQ, ParamSpec};
 
+use crate::fx::{FX_PARAMS, FX_SLOTS, Rack};
 use crate::modulation::LfoShape;
 use crate::noise::NoiseBank;
+use crate::notes::{Clock, Event, Events, Generator, Pattern, Sequence};
 use crate::params::{
-    self, GLIDE_MODE, LFOS, OSCS, PARAM_COUNT, POLYPHONY, SYNC_RATES, VOICE_MODE, lfo, lfo_param,
+    self, ARP_BASE, FX_BASE, FX_SLOT_BASE, GLIDE_MODE, LFOS, OSCS, PARAM_COUNT, POLYPHONY,
+    SEQ_BASE, SYNC_RATES, VOICE_MODE, arp, lfo, lfo_param, seq,
 };
 use crate::voice::{CONTROL, Ctx, State, Voice};
 use crate::wavetable::Wavetable;
@@ -31,6 +35,8 @@ struct Shared {
     shapes: [LfoShape; LFOS],
     free_phase: [f32; LFOS],
     tempo: f32,
+    /// Beat position for the effects: free-running, or the host's.
+    beats: f64,
     bend: f32,
     wheel: f32,
     aftertouch: f32,
@@ -64,6 +70,17 @@ pub struct Antiserum {
     last_pitch: Option<f32>,
     age: u64,
     seed: u32,
+    rack: Rack,
+    /// The effects' modulation (from the newest playing voice), as offsets.
+    fx_offsets: Box<[f32; FX_PARAMS]>,
+    /// The effect modules' parameter values with that modulation.
+    fx_values: Box<[f32; FX_PARAMS]>,
+    generator: Generator,
+    /// Generated note events and the sample they happened on (tests).
+    #[cfg(test)]
+    pub(crate) log: Vec<(u64, Event)>,
+    #[cfg(test)]
+    clock: u64,
 }
 
 impl Antiserum {
@@ -94,6 +111,7 @@ impl Antiserum {
                 shapes: [LfoShape::default(); LFOS],
                 free_phase: [0.0; LFOS],
                 tempo: 120.0,
+                beats: 0.0,
                 bend: 0.0,
                 wheel: 0.0,
                 aftertouch: 0.0,
@@ -106,6 +124,33 @@ impl Antiserum {
             last_pitch: None,
             age: 0,
             seed: 0x2545_f491,
+            rack: Rack::new(sample_rate),
+            fx_offsets: Box::new([0.0; FX_PARAMS]),
+            fx_values: Box::new([0.0; FX_PARAMS]),
+            generator: Generator::default(),
+            #[cfg(test)]
+            log: Vec::new(),
+            #[cfg(test)]
+            clock: 0,
+        }
+    }
+
+    /// The sequencer's pattern.
+    #[must_use]
+    pub fn sequence(&self) -> &Sequence {
+        self.generator.sequence()
+    }
+
+    /// Replaces the sequencer's pattern (values are clamped into range).
+    pub fn set_sequence(&mut self, sequence: &Sequence) {
+        self.generator.set_sequence(sequence);
+    }
+
+    /// The host's beat position, for tempo-synced effects; call it each
+    /// block while the host plays. Otherwise the effects' clock runs freely.
+    pub fn set_beat_position(&mut self, beats: f64) {
+        if beats.is_finite() {
+            self.shared.beats = beats;
         }
     }
 
@@ -226,7 +271,50 @@ impl Antiserum {
         self.seed
     }
 
-    /// Key down. Velocity 0..1; velocity 0 is a key up.
+    /// What the arpeggiator or sequencer plays, if either is on.
+    fn pattern(&self) -> Option<Pattern> {
+        if self.param(SEQ_BASE + seq::ON) >= 0.5 {
+            return Some(Pattern::Seq {
+                length: self.param(SEQ_BASE + seq::LENGTH) as usize,
+            });
+        }
+        let mode = self.param(ARP_BASE + arp::MODE) as u8;
+        (mode > 0).then(|| Pattern::Arp {
+            mode,
+            octaves: self.param(ARP_BASE + arp::RANGE) as u8,
+            gate: self.param(ARP_BASE + arp::GATE),
+        })
+    }
+
+    /// The length of the pattern's steps.
+    fn clock(&self) -> Clock {
+        let rate = if self.param(SEQ_BASE + seq::ON) >= 0.5 {
+            self.param(SEQ_BASE + seq::RATE)
+        } else {
+            self.param(ARP_BASE + arp::RATE)
+        };
+        let ticks = ARP_RATES.get(rate as usize).map_or(PPQ / 4, |r| r.1);
+        let beats = f64::from(ticks) / f64::from(PPQ);
+        let seconds = beats * 60.0 / f64::from(self.shared.tempo);
+        Clock {
+            step_samples: seconds * f64::from(self.shared.sample_rate),
+        }
+    }
+
+    /// Plays generated events on the voices.
+    fn apply(&mut self, events: &Events) {
+        for &event in events.as_slice() {
+            #[cfg(test)]
+            self.log.push((self.clock, event));
+            match event {
+                Event::On(key, velocity) => self.key_on(key, velocity),
+                Event::Off(key) => self.key_off(key),
+            }
+        }
+    }
+
+    /// Key down. Velocity 0..1; velocity 0 is a key up. With the arpeggiator
+    /// or sequencer on, the key feeds the pattern instead of playing.
     pub fn note_on(&mut self, key: u8, velocity: f32) {
         let velocity = finite(velocity);
         if velocity <= 0.0 {
@@ -234,6 +322,25 @@ impl Antiserum {
             return;
         }
         let key = key.min(127);
+        if self.pattern().is_some() {
+            self.generator.press(key, velocity.min(1.0));
+        } else {
+            self.key_on(key, velocity);
+        }
+    }
+
+    /// Key up.
+    pub fn note_off(&mut self, key: u8) {
+        let generated = self.generator.is_sounding(key);
+        let events = self.generator.release(key);
+        self.apply(&events);
+        // A key played directly before the pattern was switched on.
+        if !generated {
+            self.key_off(key);
+        }
+    }
+
+    fn key_on(&mut self, key: u8, velocity: f32) {
         let mode = self.param(VOICE_MODE) as u8;
         let others_held = self.stack_len > 0;
         self.push_key(key);
@@ -306,8 +413,7 @@ impl Antiserum {
         }
     }
 
-    /// Key up.
-    pub fn note_off(&mut self, key: u8) {
+    fn key_off(&mut self, key: u8) {
         let was_top = self.stack_len > 0 && self.stack.get(self.stack_len - 1) == Some(&key);
         self.remove_key(key);
         let mode = self.param(VOICE_MODE) as u8;
@@ -367,8 +473,9 @@ impl Antiserum {
         }
     }
 
-    /// Releases every note.
+    /// Releases every note and stops the arpeggiator or sequencer.
     pub fn all_notes_off(&mut self) {
+        let _ = self.generator.stop();
         self.stack_len = 0;
         for voice in &mut self.voices {
             if voice.state == State::Playing {
@@ -377,13 +484,16 @@ impl Antiserum {
         }
     }
 
-    /// Silences everything at once and forgets held keys and glide.
+    /// Silences everything at once (effect tails too) and forgets held keys
+    /// and glide.
     pub fn reset(&mut self) {
+        let _ = self.generator.stop();
         self.stack_len = 0;
         self.last_pitch = None;
         for voice in &mut self.voices {
             voice.kill();
         }
+        self.rack.reset();
     }
 
     /// Renders into `left` and `right` (overwriting them).
@@ -394,20 +504,91 @@ impl Antiserum {
         right.fill(0.0);
         let mut start = 0;
         while start < frames {
-            let end = (start + CONTROL).min(frames);
-            self.shared.advance_free_lfos(end - start);
+            let mut end = (start + CONTROL).min(frames);
+            // Pattern events, then a block that stops at the next one.
+            match self.pattern() {
+                Some(pattern) => {
+                    let events = self.generator.due(pattern, self.clock());
+                    self.apply(&events);
+                }
+                None if self.generator.busy() => {
+                    let events = self.generator.stop();
+                    self.apply(&events);
+                }
+                None => {}
+            }
+            if let Some(next) = self.generator.until_next() {
+                let next = next.ceil().max(1.0) as usize;
+                end = end.min(start + next);
+            }
+            let len = end - start;
+            self.shared.advance_free_lfos(len);
             let ctx = self.shared.ctx();
             let (Some(l), Some(r)) = (left.get_mut(start..end), right.get_mut(start..end)) else {
                 break;
             };
             for voice in &mut self.voices {
                 if voice.state != State::Idle {
-                    voice.control(&ctx, end - start);
+                    voice.control(&ctx, len);
                     voice.render(&ctx, l, r);
                 }
             }
+            self.run_effects(l, r);
+            self.generator.advance(len as f64);
+            let beats = len as f64 * f64::from(self.shared.tempo)
+                / 60.0
+                / f64::from(self.shared.sample_rate);
+            self.shared.beats += beats;
+            #[cfg(test)]
+            {
+                self.clock += len as u64;
+            }
             start = end;
         }
+    }
+
+    /// The effects rack over one control block.
+    fn run_effects(&mut self, left: &mut [f32], right: &mut [f32]) {
+        let mut slots = [0_usize; FX_SLOTS];
+        let mut any = false;
+        for (i, slot) in slots.iter_mut().enumerate() {
+            *slot = self.param(FX_SLOT_BASE + i) as usize;
+            any |= *slot != 0;
+        }
+        if !any {
+            return;
+        }
+        // Modulation follows the newest playing voice; with none, it holds.
+        let newest = self
+            .voices
+            .iter()
+            .filter(|v| v.state == State::Playing)
+            .max_by_key(|v| v.age);
+        if let Some(voice) = newest {
+            for (i, offset) in self.fx_offsets.iter_mut().enumerate() {
+                *offset = voice.offset(FX_BASE + i);
+            }
+        }
+        let shared = &self.shared;
+        for (i, (value, offset)) in self
+            .fx_values
+            .iter_mut()
+            .zip(self.fx_offsets.iter())
+            .enumerate()
+        {
+            let index = FX_BASE + i;
+            let base = shared.base.get(index).copied().unwrap_or(0.0);
+            *value = match (shared.specs.get(index), shared.unit.get(index)) {
+                (Some(spec), Some(unit)) if *offset != 0.0 => spec.from_unit(unit + offset),
+                _ => base,
+            };
+        }
+        let ctx = ProcessContext {
+            sample_rate: shared.sample_rate,
+            tempo_bpm: f64::from(shared.tempo),
+            beats: shared.beats,
+        };
+        self.rack.process(left, right, &slots, &self.fx_values, ctx);
     }
 }
 

@@ -1,5 +1,6 @@
 //! Antiserum's performance target: 8 notes × 3 oscillators × 16 unison
-//! voices, both filters on, faster than real time at 48 kHz.
+//! voices, both filters on and ten effects in the rack, faster than real
+//! time at 48 kHz.
 //!
 //! `cargo run --release -p musiccraft-antiserum --example bench` prints the
 //! real-time factor and fails if it is below 1.
@@ -8,7 +9,7 @@ use std::time::Instant;
 
 use musiccraft_antiserum::Antiserum;
 use musiccraft_antiserum::params::{
-    filter, filter_param, lfo, lfo_param, osc, osc_param, slot, slot_param, source,
+    FX_SLOT_BASE, filter, filter_param, lfo, lfo_param, osc, osc_param, slot, slot_param, source,
 };
 
 fn main() {
@@ -30,6 +31,10 @@ fn main() {
     let cutoff = filter_param(0, filter::CUTOFF);
     synth.set_param(slot_param(0, slot::DEST), (cutoff + 1) as f32);
     synth.set_param(slot_param(0, slot::AMOUNT), -0.5);
+    // A full effects rack: ten modules in the ten slots.
+    for (slot, module) in [0, 1, 2, 3, 4, 5, 6, 8, 9, 10].into_iter().enumerate() {
+        synth.set_param(FX_SLOT_BASE + slot, (module + 1) as f32);
+    }
     for key in [48, 52, 55, 59, 60, 64, 67, 71] {
         synth.note_on(key, 0.8);
     }

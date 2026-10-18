@@ -124,6 +124,15 @@ Each oscillator can switch to one of these:
 
 ### Phase 5: built-in effects, arpeggiator and sequencer (M)
 
+**Done** (spec: `docs/spec/antiserum-fx-arp.md`), with these choices:
+- **Rack layout:** 13 fixed modules, each with its own named parameters (`fx_reverb_decay`, …). Ten slots set their order, and a module plays at most once. Host automation names therefore never change meaning, which generic "slot N, parameter M" knobs would.
+- **The dimension widener** lives in the synth (not as a new mixer effect), so the plugin and mixer effect lists stay unchanged.
+- **Effect modulation** follows the newest playing voice and holds when none plays.
+- **Arpeggiator:** the channel arpeggiator's modes, rates, range and gate, but run in real time on held keys and sample-accurate.
+- **Sequencer pattern:** stored as state (`set_sequence`) like the LFO shapes, not as 192 host parameters. Only its on/off, length and rate are parameters.
+- **Parameters:** 114 appended (512 in total); none renamed.
+- **Benchmark** with all ten slots filled: about 3× real time, against 3.6× without effects.
+
 - **An effects rack inside the synth:** 10 slots of existing `musiccraft-dsp` effects, among them:
   - distortion, chorus, flanger, phaser and delay
   - compressor and multiband
