@@ -1,3 +1,4 @@
 /target
+/standalone/target
 **/*.rs.bk
 .DS_Store

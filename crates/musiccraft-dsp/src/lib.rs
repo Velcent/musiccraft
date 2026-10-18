@@ -7,6 +7,7 @@ pub mod blocks;
 pub mod character;
 pub mod convolution;
 pub mod creative;
+pub mod describe;
 mod dynamics;
 pub mod edit;
 mod effect;

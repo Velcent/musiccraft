@@ -139,6 +139,16 @@ Each oscillator can switch to one of these:
 
 ### Phase 7: plugin export (L)
 
+**Effects: done** (spec: `docs/spec/plugin-export.md`), with these choices:
+- **One library** exports all 44 effects (everything but `send`, `band_split` and `rack`): `MusicCraft Effects.clap` and `.vst3`.
+- **Routing parameters** (sidechain source, followed channel) become plugin switches: a sidechain input for the compressor and vocoder, MIDI notes for the pitch corrector.
+- **Editors:** the effect editor moved into a new crate, `musiccraft-editors` (not a module of `musiccraft-ui`), so plugins don't pull in projects and commands.
+- **Standalone** apps live in `standalone/`, a separate workspace, because nih-plug's standalone wrapper needs an older ALSA binding than the app.
+- **Convolution** offers the generated rooms only; loading an impulse file comes later.
+- **Tests:** our own CLAP and VST3 hosts load the bundle from disk, and every effect matches the mixer's output. Phase 8's round trip is therefore done for effects.
+
+Still to do: instruments, then Antiserum.
+
 - **`musiccraft-plugin-export`, built on nih-plug:**
   - One `nih_plug::Plugin` per MusicCraft instrument (synth, FM, additive, granular, Antiserum and the others) and per effect, except `Send`/`BandSplit`.
   - Exported with `nih_export_clap!` and `nih_export_vst3!`, plus standalone binaries.

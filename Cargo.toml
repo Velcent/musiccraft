@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "xtask"]
+# Its own workspace: see standalone/Cargo.toml.
+exclude = ["standalone"]
 
 [workspace.package]
 version = "0.2.2"
@@ -14,6 +16,9 @@ musiccraft-project = { path = "crates/musiccraft-project" }
 musiccraft-commands = { path = "crates/musiccraft-commands" }
 musiccraft-engine = { path = "crates/musiccraft-engine" }
 musiccraft-dsp = { path = "crates/musiccraft-dsp" }
+musiccraft-editors = { path = "crates/musiccraft-editors" }
+musiccraft-plugin-editor = { path = "crates/musiccraft-plugin-editor" }
+musiccraft-plugin-export = { path = "crates/musiccraft-plugin-export" }
 musiccraft-ui = { path = "crates/musiccraft-ui" }
 musiccraft-params = { path = "crates/musiccraft-params" }
 musiccraft-meter = { path = "crates/musiccraft-meter" }
@@ -37,6 +42,8 @@ hound = "3.5"
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 midir = "0.11"
 egui = "0.36"
+# nih-plug from GitHub, pinned (roadmap D2).
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

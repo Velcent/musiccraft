@@ -1,0 +1,16 @@
+[package]
+name = "musiccraft-editors"
+description = "MusicCraft's shared egui theme, widgets and effect editors (used by the app and the plugins)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+musiccraft-dsp.workspace = true
+musiccraft-params.workspace = true
+egui.workspace = true
+
+[lints]
+workspace = true

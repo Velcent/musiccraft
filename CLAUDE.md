@@ -32,7 +32,8 @@ shortcuts. Cross-platform: Linux, macOS, Windows. Developed primarily on CachyOS
 ## Audio-thread rules (the real-time callback is sacred)
 
 Inside anything that runs on the audio thread (`musiccraft-engine`, `musiccraft-dsp`,
-`musiccraft-instruments`, `musiccraft-antiserum`):
+`musiccraft-instruments`, `musiccraft-antiserum`, and the `process` path of
+`musiccraft-plugin-export`):
 
 - No heap allocation, no `Vec` growth, no `String`, no `Box::new`.
 - No locks (`Mutex`, `RwLock`), no blocking channels, no I/O, no logging.

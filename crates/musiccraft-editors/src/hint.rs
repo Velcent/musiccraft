@@ -39,7 +39,7 @@ impl Hint for Response {
 
 /// Starts a frame: returns the hint hovered during the previous frame and
 /// clears it, and records whether hints go to the bar.
-pub(crate) fn begin_frame(ctx: &egui::Context, in_bar: bool) -> Option<String> {
+pub fn begin_frame(ctx: &egui::Context, in_bar: bool) -> Option<String> {
     ctx.data_mut(|d| {
         d.insert_temp(bar_id(), in_bar);
         d.remove_temp::<String>(text_id())

@@ -23,11 +23,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             pkg-config libasound2-dev libxkbcommon-dev libwayland-dev \
-            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+            libx11-dev libx11-xcb-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libgl1-mesa-dri libjack-jackd2-dev xvfb
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      # Under Xvfb so the plugin editor test opens a real window.
+      - run: xvfb-run -a cargo test --workspace --locked
+      - name: Plugin bundles
+        run: cargo xtask bundle
+      - name: Standalone apps (own workspace)
+        run: |
+          cargo fmt --manifest-path standalone/Cargo.toml -- --check
+          cargo clippy --manifest-path standalone/Cargo.toml --locked -- -D warnings
       - name: Antiserum real-time benchmark
         run: cargo run --release --locked -p musiccraft-antiserum --example bench
 

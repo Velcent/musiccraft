@@ -1377,6 +1377,61 @@ impl EffectKind {
         }
     }
 
+    /// The name people see (menus, window titles, plugin names).
+    #[must_use]
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::Filter => "Filter",
+            Self::Eq => "Equalizer",
+            Self::Delay => "Delay",
+            Self::Reverb => "Reverb",
+            Self::Compressor => "Compressor",
+            Self::Distortion => "Distortion",
+            Self::Chorus => "Chorus",
+            Self::Limiter => "Limiter",
+            Self::Phaser => "Phaser",
+            Self::Flanger => "Flanger",
+            Self::Bitcrusher => "Bitcrusher",
+            Self::Stereo => "Stereo tool",
+            Self::Gate => "Trance gate",
+            Self::Autopan => "Auto-pan",
+            Self::BassBoost => "Bass boost",
+            Self::Overdrive => "Overdrive",
+            Self::SoftClipper => "Soft clipper",
+            Self::Waveshaper => "Waveshaper",
+            Self::DcBlock => "DC remover",
+            Self::RingMod => "Ring modulator",
+            Self::FreqShift => "Frequency shifter",
+            Self::Formant => "Vowel filter",
+            Self::AutoFilter => "Auto filter",
+            Self::NoiseGate => "Noise gate",
+            Self::Transient => "Transient shaper",
+            Self::MultiTap => "Multi-tap delay",
+            Self::GraphicEq => "Graphic EQ",
+            Self::ParametricEq => "Parametric EQ",
+            Self::Multiband => "Multiband compressor",
+            Self::Vocoder => "Vocoder",
+            Self::PitchShift => "Pitch shifter",
+            Self::Stutter => "Stutter",
+            Self::Convolution => "Convolution reverb",
+            Self::PitchCorrect => "Pitch corrector",
+            Self::Tuner => "Tuner",
+            Self::Dynamics => "Dynamics",
+            Self::StereoShaper => "Stereo shaper",
+            Self::MultibandLimiter => "Multiband limiter",
+            Self::Send => "Send",
+            Self::HallReverb => "Hall reverb",
+            Self::GuitarChain => "Guitar chain",
+            Self::MultiFx => "X/Y multi-effect",
+            Self::FxChain => "Effect chain",
+            Self::BeatShaper => "Beat shaper",
+            Self::BandSplit => "Band splitter",
+            Self::Scratch => "Scratch",
+            Self::Rack => "Effect rack",
+            Self::Plugin => "Plugin",
+        }
+    }
+
     /// Parses an identifier produced by [`EffectKind::name`].
     #[must_use]
     pub fn parse(name: &str) -> Option<Self> {

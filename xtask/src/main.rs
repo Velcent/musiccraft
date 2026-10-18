@@ -1,5 +1,8 @@
 //! Developer tasks. `cargo xtask parity` checks `docs/parity.md` against the
 //! command registry, the default keymap and the spec folder.
+//! `cargo xtask bundle [--release]` builds the plugin bundles
+//! (`target/bundled/MusicCraft Effects.clap` and `.vst3`) with nih-plug's
+//! bundler; names come from `bundler.toml`.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -7,7 +10,26 @@ use std::process::ExitCode;
 use musiccraft_commands::{Invocation, SESSION_COMMANDS};
 use musiccraft_ui::{Chord, Keymap};
 
-const USAGE: &str = "usage: cargo xtask parity [--min <percent>]";
+const USAGE: &str =
+    "usage: cargo xtask parity [--min <percent>]\n       cargo xtask bundle [cargo build options]";
+
+/// The package whose library holds the exported plugins.
+const PLUGIN_PACKAGE: &str = "musiccraft-plugin-export";
+
+/// Builds and bundles the plugins; `options` go to `cargo build`.
+fn bundle(options: &[&str]) -> ExitCode {
+    let args = ["bundle", PLUGIN_PACKAGE]
+        .into_iter()
+        .chain(options.iter().copied())
+        .map(str::to_owned);
+    match nih_plug_xtask::main_with_args("cargo xtask", args) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("bundle failed: {error:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
 
 /// Outcome of checking one feature.
 #[derive(Debug, PartialEq, Eq)]
@@ -192,6 +214,7 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["parity"] => parity(None),
+        ["bundle", options @ ..] => bundle(options),
         ["parity", "--min", value] => match value.parse() {
             Ok(min) => parity(Some(min)),
             Err(_) => {

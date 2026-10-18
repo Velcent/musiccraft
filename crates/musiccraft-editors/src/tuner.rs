@@ -4,9 +4,9 @@
 
 use egui::{Color32, Rect, Sense, Stroke, pos2};
 use musiccraft_dsp::pitch::{hz_to_note, nearest_in_scale, note_and_cents};
-use musiccraft_project::EffectSlot;
-use musiccraft_project::params::{CORRECTION_SCALES, EffectKind, NOTE_NAMES, index_of};
+use musiccraft_params::{CORRECTION_SCALES, EffectKind, NOTE_NAMES, index_of};
 
+use crate::effect::EffectView;
 use crate::hint::Hint;
 use crate::theme;
 
@@ -15,7 +15,7 @@ const SPAN_CENTS: f32 = 50.0;
 /// Within this many cents a note counts as in tune.
 const IN_TUNE_CENTS: f32 = 5.0;
 
-fn value(effect: &EffectSlot, name: &str) -> f32 {
+fn value(effect: &EffectView, name: &str) -> f32 {
     index_of(effect.kind.params(), name)
         .and_then(|i| effect.values.get(i))
         .copied()
@@ -24,7 +24,7 @@ fn value(effect: &EffectSlot, name: &str) -> f32 {
 
 /// The pitch classes (bit `n` = `n` semitones above C) a corrector pulls to.
 #[must_use]
-pub(crate) fn scale_classes(effect: &EffectSlot) -> u16 {
+pub(crate) fn scale_classes(effect: &EffectView) -> u16 {
     let key = value(effect, "key").round().clamp(0.0, 11.0) as u32;
     let mask = CORRECTION_SCALES
         .get(value(effect, "scale").round().max(0.0) as usize)
@@ -36,7 +36,7 @@ pub(crate) fn scale_classes(effect: &EffectSlot) -> u16 {
 /// Draws the tuner display for `effect`, given the pitch the engine heard.
 pub(crate) fn show(
     ui: &mut egui::Ui,
-    effect: &EffectSlot,
+    effect: &EffectView,
     detected: Option<f32>,
     size: egui::Vec2,
 ) {
@@ -185,8 +185,8 @@ fn scale_strip(
 mod tests {
     use super::*;
 
-    fn corrector(key: f32, scale: f32) -> EffectSlot {
-        let mut slot = EffectSlot::new(EffectKind::PitchCorrect);
+    fn corrector(key: f32, scale: f32) -> EffectView {
+        let mut slot = EffectView::new(EffectKind::PitchCorrect);
         if let Some(i) = index_of(EffectKind::PitchCorrect.params(), "key") {
             slot.values[i] = key;
         }

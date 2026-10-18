@@ -168,9 +168,7 @@ pub fn labeled_knob(
     }
 }
 
-pub use musiccraft_project::params::{
-    volume_from_unit as fader_to_gain, volume_to_unit as gain_to_fader,
-};
+pub use musiccraft_params::{volume_from_unit as fader_to_gain, volume_to_unit as gain_to_fader};
 
 /// A vertical mixer fader. Drag the cap; middle-click or double-click returns
 /// to unity.

@@ -25,6 +25,10 @@ musiccraft-project, musiccraft-engine ──► musiccraft-meter ──► music
 musiccraft-engine ──► musiccraft-instruments ──► musiccraft-dsp
 musiccraft-antiserum ──► musiccraft-dsp, musiccraft-params
 musiccraft-commands, musiccraft-render, musiccraft-ui ──► musiccraft-paths
+musiccraft-ui ──► musiccraft-editors ──► musiccraft-dsp, musiccraft-params
+musiccraft-plugin-export ──► musiccraft-plugin-editor ──► musiccraft-editors
+         └──► musiccraft-dsp, musiccraft-params, nih-plug
+standalone/ (own workspace) ──► musiccraft-plugin-export
 ```
 
 | Crate | Responsibility |
@@ -49,8 +53,12 @@ musiccraft-commands, musiccraft-render, musiccraft-ui ──► musiccraft-paths
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
 | `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response`, `fft` and `pitch` modules only to draw effect curves, the spectrum analyzer and the tuner display. |
+| `musiccraft-editors` | The egui pieces the app and the plugins share: theme, knobs and widgets, hints, and the effect editor (preset bar, draggable graph, knobs, tuner). Knows nothing of projects or commands: editors report `Edit`s (begin, drag, set, bypass) that the app turns into commands and a plugin into host gestures. |
+| `musiccraft-plugin-editor` | Opens those egui editors in a plugin host's window: a nih-plug `Editor` on a baseview child window with OpenGL, egui 0.36 and `egui_glow`. **Allowed to use `unsafe`** (OpenGL calls). |
+| `musiccraft-plugin-export` | The built-in effects as CLAP and VST3 plugins (`docs/spec/plugin-export.md`): `EffectPlugin<K>` wraps `musiccraft_dsp::Effect`, with host parameters from its `ParamSpec` table and the shared editor. One library exports all 44; `cargo xtask bundle` packages it. **Allowed to use `unsafe`** (nih-plug's export macros, `Params`). |
+| `standalone/` | `musiccraft-fx-standalone <effect>`: one effect as a standalone app (nih-plug's wrapper). Its own workspace and lockfile, because that wrapper's ALSA binding clashes with the app's. |
 | `musiccraft-app` | Wires session, bridge, audio device, MIDI input and UI together. |
-| `xtask` | `cargo xtask parity`: checks the feature checklist against the registry and keymap. |
+| `xtask` | `cargo xtask parity`: checks the feature checklist against the registry and keymap. `cargo xtask bundle`: builds the plugin bundles. |
 
 ## Command registry
 
@@ -149,6 +157,10 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 - Render tests check sequence building, diff-based sync and exported audio.
 - CLI integration tests spawn the real binary.
 - `cargo xtask parity` reports how many checklist features are implemented.
+- Exported plugins are loaded from disk by our own CLAP and VST3 hosts, and
+  every effect's output is compared with `Effect::process` run directly. The
+  library is built with nih-plug's `assert_process_allocs` in tests. With an
+  X display (Xvfb in CI) the host also opens a plugin's editor.
 
 ## Dependencies
 
@@ -165,6 +177,11 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `vst3` | Rust declarations of the VST3 interfaces, generated from Steinberg's (MIT-licensed) SDK headers, plus `ComPtr`/`ComWrapper` reference counting; MIT or Apache-2.0. |
 | `libc` | `poll(2)` for file descriptors plugin windows register (Unix only). |
 | `x11rb` | A pure-Rust X11 window for plugins that embed their editor (Linux only; already in the tree through the windowing stack). |
+| `nih_plug` (git, pinned) | Exports our effects as CLAP and VST3 plugins and standalone apps (roadmap D2; ISC, VST3 export GPLv3). |
+| `nih_plug_xtask` (git, pinned) | nih-plug's bundler behind `cargo xtask bundle` (lays out `.clap`/`.vst3` per platform). |
+| `baseview` (git, pinned) | The plugin editor's child window in the host's window, with an OpenGL context (X11, Win32, Cocoa). |
+| `egui_glow`, `glow` | Paint egui with OpenGL inside that window (the app already uses them through eframe). |
+| `keyboard-types` | baseview's key events, translated to egui's. |
 
 ## Deferred decisions
 

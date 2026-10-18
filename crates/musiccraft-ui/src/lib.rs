@@ -12,7 +12,6 @@ mod controllers;
 mod dialogs;
 mod effect_window;
 mod geometry;
-pub mod hint;
 mod icons;
 mod mixer;
 mod piano_roll;
@@ -23,11 +22,11 @@ mod sample_editor;
 pub mod settings;
 mod signature;
 mod spectrum;
-mod theme;
 mod toolbar;
-mod tuner;
-mod widgets;
 mod zone_editor;
+
+pub use musiccraft_editors::hint;
+use musiccraft_editors::{theme, widgets};
 
 use musiccraft_commands::Invocation;
 use musiccraft_project::Project;
@@ -260,7 +259,6 @@ pub struct UiState {
     pub effect_windows: Vec<(usize, usize)>,
     /// The sample editor's state.
     pub sample_edit: sample_editor::EditorState,
-    pub(crate) effect_drag: Option<effect_window::Drag>,
     /// Where the last effect graph was drawn (tests).
     pub(crate) effect_graph: Option<egui::Rect>,
     /// Open settings tab; `None` when the settings window is closed.
@@ -341,7 +339,6 @@ impl UiState {
             effect_windows: Vec::new(),
             sample_edit: sample_editor::EditorState::default(),
             spectrum: (Vec::new(), Vec::new()),
-            effect_drag: None,
             effect_graph: None,
             settings_tab: None,
             project_name: String::new(),
