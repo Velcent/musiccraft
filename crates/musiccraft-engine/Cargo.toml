@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 musiccraft-formula.workspace = true
 musiccraft-dsp.workspace = true
+musiccraft-instruments.workspace = true
 musiccraft-params.workspace = true
 musiccraft-meter.workspace = true
 rtrb.workspace = true

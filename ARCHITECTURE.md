@@ -22,6 +22,7 @@ musiccraft-cli ──► commands, render, audio                                
 musiccraft-mcp ──► commands, render                                                    │
 xtask ──► commands, render, ui (keymap) ───────────────────────────────────────────────┘
 musiccraft-project, musiccraft-engine ──► musiccraft-meter ──► musiccraft-params
+musiccraft-engine ──► musiccraft-instruments ──► musiccraft-dsp
 musiccraft-commands, musiccraft-render, musiccraft-ui ──► musiccraft-paths
 ```
 
@@ -35,7 +36,8 @@ musiccraft-commands, musiccraft-render, musiccraft-ui ──► musiccraft-paths
 | `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`; converts FL Studio projects for `project.import_flp`. |
 | `musiccraft-flp` | Reads FL Studio projects and presets: a Rust port of PyFLP (GPL-3.0), tested against PyFLP on PyFLP's own test files. No dependencies; safe code. |
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects (incl. a small radix-2 FFT for convolution and the analyzer), sample buffers. Allocation-free processing. |
-| `musiccraft-engine` | Real-time engine: voices, sequencing, mixing, meters. Driven only by messages. |
+| `musiccraft-instruments` | Every built-in instrument's voice DSP (synth, FM, keys, additive, drums, pluck, samplers, granular, resynth), independent of the engine so plugin wrappers can use it. Allocation-free rendering. |
+| `musiccraft-engine` | Real-time engine: voice allocation, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
 | `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-clap-testplugin`). |
 | `musiccraft-vst3` | VST3 plugin host: scanning modules, component and controller setup, parameters, state, the audio-thread processor, embedded plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-vst3-testplugin`). |

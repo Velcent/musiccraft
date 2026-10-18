@@ -3,7 +3,7 @@ use musiccraft_params::inst;
 
 use crate::modmatrix::{ModSources, ModState, SynthMods};
 use crate::strings::{KsString, MAX_STRINGS};
-use crate::{ChannelParams, Instrument};
+use crate::{Instrument, Params};
 
 /// Output level of one synth voice at full velocity, leaving headroom for chords.
 const SYNTH_GAIN: f32 = 0.25;
@@ -41,7 +41,7 @@ fn additive_spectrum(bright: f32, even: f32, count: usize) -> [f32; PARTIALS] {
 }
 
 /// How many strings the pluck sounds.
-fn pluck_strings(params: &ChannelParams) -> usize {
+fn pluck_strings(params: &Params) -> usize {
     (param(params, inst::PLUCK_STRINGS).round().max(1.0) as usize).min(MAX_STRINGS)
 }
 /// FM algorithms, by `fm_algo`: for each operator (1 first) a bit mask of the
@@ -91,7 +91,7 @@ struct Grain {
 /// Whether an instrument's pitch can move while a note sounds (portamento and
 /// slide notes). Kit pads, the drum synth and the pluck fix their pitch when a
 /// note starts.
-pub(crate) fn glides(instrument: &Instrument) -> bool {
+pub fn glides(instrument: &Instrument) -> bool {
     matches!(
         instrument,
         Instrument::Synth
@@ -106,13 +106,13 @@ pub(crate) fn glides(instrument: &Instrument) -> bool {
 }
 
 /// How long a cut voice takes to fade out.
-pub(crate) const CUT_SECONDS: f32 = 0.003;
+pub const CUT_SECONDS: f32 = 0.003;
 
-fn param(params: &ChannelParams, index: usize) -> f32 {
-    params.instrument.get(index).copied().unwrap_or(0.0)
+fn param(params: &Params, index: usize) -> f32 {
+    params.get(index).copied().unwrap_or(0.0)
 }
 
-fn envelope_params(params: &ChannelParams) -> AdsrParams {
+fn envelope_params(params: &Params) -> AdsrParams {
     AdsrParams {
         attack: param(params, inst::ATTACK),
         decay: param(params, inst::DECAY),
@@ -123,7 +123,7 @@ fn envelope_params(params: &ChannelParams) -> AdsrParams {
 
 /// How a voice should start.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct VoiceStart {
+pub struct VoiceStart {
     pub channel: u16,
     pub key: u8,
     pub velocity: f32,
@@ -144,7 +144,7 @@ pub(crate) struct VoiceStart {
 
 /// One sounding note.
 #[derive(Debug, Clone)]
-pub(crate) struct Voice {
+pub struct Voice {
     pub active: bool,
     pub live: bool,
     pub channel: u16,
@@ -293,13 +293,7 @@ impl Voice {
         self.slice_end.is_none()
     }
 
-    pub fn start(
-        &mut self,
-        start: VoiceStart,
-        instrument: &Instrument,
-        params: &ChannelParams,
-        age: u64,
-    ) {
+    pub fn start(&mut self, start: VoiceStart, instrument: &Instrument, params: &Params, age: u64) {
         self.active = true;
         self.cut_wait = None;
         self.live = start.live;
@@ -432,7 +426,7 @@ impl Voice {
     }
 
     /// The channel's envelope with this note's release velocity applied.
-    fn envelope(&self, params: &ChannelParams) -> AdsrParams {
+    fn envelope(&self, params: &Params) -> AdsrParams {
         let mut env = envelope_params(params);
         env.release *= self.shape.release;
         env
@@ -506,7 +500,7 @@ impl Voice {
     pub fn render(
         &mut self,
         instrument: &Instrument,
-        params: &ChannelParams,
+        params: &Params,
         left: &mut [f32],
         right: &mut [f32],
         sample_rate: f32,
@@ -570,7 +564,7 @@ impl Voice {
     fn render_sample(
         &mut self,
         buffer: &musiccraft_dsp::SampleBuffer,
-        params: &ChannelParams,
+        params: &Params,
         pitch: f32,
         root: f32,
         left: &mut [f32],
@@ -645,13 +639,7 @@ impl Voice {
     }
 
     /// Four-operator FM.
-    fn render_fm(
-        &mut self,
-        params: &ChannelParams,
-        pitch: f32,
-        left: &mut [f32],
-        right: &mut [f32],
-    ) {
+    fn render_fm(&mut self, params: &Params, pitch: f32, left: &mut [f32], right: &mut [f32]) {
         let algo = (param(params, inst::FM_ALGO).round().max(0.0) as usize).min(FM_ALGOS.len() - 1);
         let Some(&(modulators, carriers, top)) = FM_ALGOS.get(algo) else {
             return;
@@ -736,13 +724,7 @@ impl Voice {
     }
 
     /// Piano, electric piano or organ.
-    fn render_keys(
-        &mut self,
-        params: &ChannelParams,
-        pitch: f32,
-        left: &mut [f32],
-        right: &mut [f32],
-    ) {
+    fn render_keys(&mut self, params: &Params, pitch: f32, left: &mut [f32], right: &mut [f32]) {
         let kind = param(params, inst::KEYS_TYPE).round() as i32;
         let tone = param(params, inst::KEYS_TONE).clamp(0.0, 1.0);
         let ring = param(params, inst::KEYS_DECAY).max(0.05);
@@ -838,7 +820,7 @@ impl Voice {
     /// stretch and per-harmonic decay.
     fn render_additive(
         &mut self,
-        params: &ChannelParams,
+        params: &Params,
         pitch: f32,
         left: &mut [f32],
         right: &mut [f32],
@@ -914,7 +896,7 @@ impl Voice {
     fn render_resynth(
         &mut self,
         table: &musiccraft_dsp::resynth::HarmonicTable,
-        params: &ChannelParams,
+        params: &Params,
         pitch: f32,
         left: &mut [f32],
         right: &mut [f32],
@@ -979,7 +961,7 @@ impl Voice {
     fn render_granular(
         &mut self,
         buffer: &musiccraft_dsp::SampleBuffer,
-        params: &ChannelParams,
+        params: &Params,
         pitch: f32,
         left: &mut [f32],
         right: &mut [f32],
@@ -1058,7 +1040,7 @@ impl Voice {
     }
 
     /// Sets up the noise filter for the drum type.
-    fn start_drum(&mut self, params: &ChannelParams) {
+    fn start_drum(&mut self, params: &Params) {
         let tone = param(params, inst::DRUM_TONE).clamp(0.0, 1.0);
         let sr = self.sample_rate;
         match param(params, inst::DRUM_TYPE).round() as i32 {
@@ -1072,7 +1054,7 @@ impl Voice {
 
     /// Drum synth: swept sine bodies, filtered noise and a click; every hit
     /// decays on its own and ignores the note's end.
-    fn render_drum(&mut self, params: &ChannelParams, left: &mut [f32], right: &mut [f32]) {
+    fn render_drum(&mut self, params: &Params, left: &mut [f32], right: &mut [f32]) {
         let kind = param(params, inst::DRUM_TYPE).round() as i32;
         let tune = param(params, inst::DRUM_TUNE);
         let decay = param(params, inst::DRUM_DECAY).max(0.01);
@@ -1143,7 +1125,7 @@ impl Voice {
     }
 
     /// Fills the string with a burst of (lowpassed) noise one period long.
-    fn start_pluck(&mut self, params: &ChannelParams, key: u8) {
+    fn start_pluck(&mut self, params: &Params, key: u8) {
         let tone = param(params, inst::PLUCK_TONE).clamp(0.0, 1.0);
         let hz = key_to_hz(f32::from(key) + param(params, inst::PITCH)).max(1.0);
         let count = pluck_strings(params);
@@ -1181,7 +1163,7 @@ impl Voice {
     /// Plucked (or bowed) strings (Karplus-Strong): the burst circulates
     /// through damped delays tuned to the note; bowing keeps feeding them
     /// noise while the note is held.
-    fn render_pluck(&mut self, params: &ChannelParams, left: &mut [f32], right: &mut [f32]) {
+    fn render_pluck(&mut self, params: &Params, left: &mut [f32], right: &mut [f32]) {
         let damping = param(params, inst::PLUCK_DAMPING).clamp(0.0, 1.0) * 0.5;
         let sr = self.sample_rate;
         let count = pluck_strings(params);
@@ -1233,7 +1215,7 @@ impl Voice {
     /// drive stage, a filter per side and an LFO on pitch, cutoff or volume.
     fn render_synth(
         &mut self,
-        params: &ChannelParams,
+        params: &Params,
         pitch: f32,
         left: &mut [f32],
         right: &mut [f32],
@@ -1475,8 +1457,8 @@ mod tests {
 
     #[test]
     fn glide_moves_linearly_to_the_new_key() {
-        let mut params = ChannelParams::default();
-        params.instrument[inst::GLIDE] = 0.5;
+        let mut params = crate::default_params();
+        params[inst::GLIDE] = 0.5;
         let start = VoiceStart {
             shape: crate::NoteShape::default(),
             slide: false,
@@ -1510,7 +1492,7 @@ mod tests {
         );
     }
 
-    fn render_synth_note(params: &ChannelParams) -> (Vec<f32>, Vec<f32>) {
+    fn render_synth_note(params: &Params) -> (Vec<f32>, Vec<f32>) {
         let start = VoiceStart {
             shape: crate::NoteShape::default(),
             slide: false,
@@ -1537,14 +1519,14 @@ mod tests {
 
     #[test]
     fn unison_spreads_stereo_without_getting_louder() {
-        let mut params = ChannelParams::default();
+        let mut params = crate::default_params();
         let (l1, r1) = render_synth_note(&params);
         assert!(
             l1.iter().zip(&r1).all(|(a, b)| (a - b).abs() < 1e-6),
             "one voice is centered"
         );
-        params.instrument[inst::UNISON] = 5.0;
-        params.instrument[inst::SPREAD] = 30.0;
+        params[inst::UNISON] = 5.0;
+        params[inst::SPREAD] = 30.0;
         let (l5, r5) = render_synth_note(&params);
         assert!(
             l5.iter().zip(&r5).any(|(a, b)| (a - b).abs() > 1e-3),
@@ -1557,7 +1539,7 @@ mod tests {
 
     #[test]
     fn sub_lfo_drive_and_filter_types_change_the_sound() {
-        let base = ChannelParams::default();
+        let base = crate::default_params();
         let (reference, _) = render_synth_note(&base);
         for (index, value) in [
             (inst::SUB, 1.0),
@@ -1566,10 +1548,10 @@ mod tests {
             (inst::LFO_DEPTH, 1.0),
         ] {
             let mut params = base;
-            params.instrument[index] = value;
+            params[index] = value;
             if index == inst::LFO_DEPTH {
-                params.instrument[inst::LFO_TARGET] = 2.0;
-                params.instrument[inst::LFO_RATE] = 10.0;
+                params[inst::LFO_TARGET] = 2.0;
+                params[inst::LFO_RATE] = 10.0;
             }
             let (out, _) = render_synth_note(&params);
             let diff: f32 = out.iter().zip(&reference).map(|(a, b)| (a - b).abs()).sum();
@@ -1580,11 +1562,11 @@ mod tests {
 
     #[test]
     fn second_filter_routings_and_matrix_change_the_sound() {
-        let base = ChannelParams::default();
+        let base = crate::default_params();
         let (reference, _) = render_synth_note(&base);
         let mut with_filter2 = base;
-        with_filter2.instrument[inst::FILTER2_TYPE] = 1.0;
-        with_filter2.instrument[inst::CUTOFF2] = 300.0;
+        with_filter2[inst::FILTER2_TYPE] = 1.0;
+        with_filter2[inst::CUTOFF2] = 300.0;
         let cases: [(&[(usize, f32)], &str); 4] = [
             (&[], "series"),
             (&[(inst::FILTER_ROUTING, 1.0)], "parallel"),
@@ -1605,7 +1587,7 @@ mod tests {
         for (changes, name) in cases {
             let mut params = with_filter2;
             for (i, v) in changes {
-                params.instrument[*i] = *v;
+                params[*i] = *v;
             }
             let (out, _) = render_synth_note(&params);
             let diff: f32 = out.iter().zip(&reference).map(|(a, b)| (a - b).abs()).sum();
@@ -1623,15 +1605,15 @@ mod tests {
 
     #[test]
     fn matrix_pitch_from_velocity_raises_an_octave() {
-        let mut params = ChannelParams::default();
-        params.instrument[inst::WAVE1] = 0.0;
-        params.instrument[inst::OSC_MIX] = 0.0;
-        params.instrument[inst::CUTOFF] = 20_000.0;
-        params.instrument[inst::SUSTAIN] = 1.0;
+        let mut params = crate::default_params();
+        params[inst::WAVE1] = 0.0;
+        params[inst::OSC_MIX] = 0.0;
+        params[inst::CUTOFF] = 20_000.0;
+        params[inst::SUSTAIN] = 1.0;
         let (plain, _) = render_synth_note(&params);
-        params.instrument[inst::MOD1_SOURCE] = 4.0;
-        params.instrument[inst::MOD1_DEST] = 0.0;
-        params.instrument[inst::MOD1_AMOUNT] = 1.0;
+        params[inst::MOD1_SOURCE] = 4.0;
+        params[inst::MOD1_DEST] = 0.0;
+        params[inst::MOD1_AMOUNT] = 1.0;
         let (raised, _) = render_synth_note(&params);
         let crossings = |x: &[f32]| x.windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count();
         let (a, b) = (crossings(&plain[1_000..]), crossings(&raised[1_000..]));
@@ -1653,7 +1635,7 @@ mod tests {
         }
     }
 
-    fn render_frames(voice: &mut Voice, instrument: &Instrument, params: &ChannelParams, n: usize) {
+    fn render_frames(voice: &mut Voice, instrument: &Instrument, params: &Params, n: usize) {
         let mut l = vec![0.0; n];
         let mut r = vec![0.0; n];
         voice.render(instrument, params, &mut l, &mut r, 1_000.0);
@@ -1673,7 +1655,7 @@ mod tests {
             ("sampler", Instrument::Sampler(buffer.clone())),
             ("granular", Instrument::Granular(buffer)),
         ];
-        let params = ChannelParams::default();
+        let params = crate::default_params();
         for (name, instrument) in &instruments {
             let mut voice = Voice::new(1_000.0);
             voice.start(held_start(57), instrument, &params, 1);
@@ -1702,7 +1684,7 @@ mod tests {
 
     #[test]
     fn portamento_notes_glide_on_fm_keys_and_additive() {
-        let params = ChannelParams::default();
+        let params = crate::default_params();
         for (name, instrument) in [
             ("fm", Instrument::Fm),
             ("keys", Instrument::Keys),
@@ -1730,12 +1712,12 @@ mod tests {
             vec![0.25; 4_000],
             1_000.0,
         ));
-        let mut params = ChannelParams::default();
+        let mut params = crate::default_params();
         let instrument = Instrument::Sampler(buffer);
         let mut voice = Voice::new(1_000.0);
         voice.start(held_start(60), &instrument, &params, 1);
         assert!(voice.pitched());
-        params.instrument[inst::SLICES] = 4.0;
+        params[inst::SLICES] = 4.0;
         voice.start(held_start(60), &instrument, &params, 1);
         assert!(!voice.pitched());
         assert!(glides(&instrument));
@@ -1746,7 +1728,7 @@ mod tests {
 
     #[test]
     fn no_glide_without_a_glide_time() {
-        let params = ChannelParams::default();
+        let params = crate::default_params();
         let start = VoiceStart {
             shape: crate::NoteShape::default(),
             slide: false,
@@ -1771,7 +1753,7 @@ mod instrument_tests {
 
     fn render(
         instrument: &Instrument,
-        params: &ChannelParams,
+        params: &Params,
         key: u8,
         frames: usize,
         gate: Option<u64>,
@@ -1823,9 +1805,9 @@ mod instrument_tests {
     #[test]
     fn every_drum_type_hits_and_decays() {
         for kind in 0..5 {
-            let mut params = ChannelParams::default();
-            params.instrument[inst::DRUM_TYPE] = kind as f32;
-            params.instrument[inst::DRUM_DECAY] = 0.1;
+            let mut params = crate::default_params();
+            params[inst::DRUM_TYPE] = kind as f32;
+            params[inst::DRUM_DECAY] = 0.1;
             let out = render(&Instrument::DrumSynth, &params, 60, 48_000, Some(10));
             let start = peak(&out[..4_800]);
             assert!(start > 0.05 && start < 2.0, "type {kind} peak {start}");
@@ -1836,7 +1818,7 @@ mod instrument_tests {
 
     #[test]
     fn kick_sweeps_down_to_its_tuned_pitch() {
-        let params = ChannelParams::default();
+        let params = crate::default_params();
         let out = render(&Instrument::DrumSynth, &params, 60, 24_000, None);
         // C5 two octaves down is C3, about 65 Hz, once the sweep settles.
         let settled = crossings_hz(&out[9_600..19_200]);
@@ -1847,8 +1829,8 @@ mod instrument_tests {
 
     #[test]
     fn pluck_is_in_tune_decays_and_damps_on_release() {
-        let mut params = ChannelParams::default();
-        params.instrument[inst::PLUCK_DECAY] = 1.0;
+        let mut params = crate::default_params();
+        params[inst::PLUCK_DECAY] = 1.0;
         let out = render(&Instrument::Pluck, &params, 69, 96_000, None);
         let hz = autocorrelation_hz(&out[4_800..14_400]);
         assert!((hz - 440.0).abs() < 8.0, "pluck at {hz} Hz");
@@ -1865,11 +1847,11 @@ mod instrument_tests {
 
     #[test]
     fn bowed_strings_sustain_while_held_and_extra_strings_detune() {
-        let mut params = ChannelParams::default();
-        params.instrument[inst::PLUCK_DECAY] = 0.3;
-        params.instrument[inst::SUSTAIN] = 1.0;
+        let mut params = crate::default_params();
+        params[inst::PLUCK_DECAY] = 0.3;
+        params[inst::SUSTAIN] = 1.0;
         let plucked = render(&Instrument::Pluck, &params, 69, 96_000, None);
-        params.instrument[inst::PLUCK_BOW] = 1.0;
+        params[inst::PLUCK_BOW] = 1.0;
         let bowed = render(&Instrument::Pluck, &params, 69, 96_000, None);
         let late = 72_000..96_000;
         assert!(
@@ -1886,8 +1868,8 @@ mod instrument_tests {
         // Released, the bowed string stops too.
         let released = render(&Instrument::Pluck, &params, 69, 48_000, Some(24_000));
         assert!(peak(&released[40_000..]) < 1e-3);
-        params.instrument[inst::PLUCK_BOW] = 0.0;
-        params.instrument[inst::PLUCK_STRINGS] = 3.0;
+        params[inst::PLUCK_BOW] = 0.0;
+        params[inst::PLUCK_STRINGS] = 3.0;
         let three = render(&Instrument::Pluck, &params, 69, 24_000, None);
         assert_ne!(three, plucked[..24_000].to_vec());
         let hz = autocorrelation_hz(&three[2_400..12_000]);
@@ -1908,7 +1890,7 @@ mod more_instrument_tests {
 
     fn render(
         instrument: &Instrument,
-        params: &ChannelParams,
+        params: &Params,
         key: u8,
         frames: usize,
         gate: Option<u64>,
@@ -1949,9 +1931,9 @@ mod more_instrument_tests {
 
     #[test]
     fn fm_keys_and_additive_sound_in_tune_and_release() {
-        let mut params = ChannelParams::default();
-        params.instrument[inst::SUSTAIN] = 1.0;
-        params.instrument[inst::RELEASE] = 0.05;
+        let mut params = crate::default_params();
+        params[inst::SUSTAIN] = 1.0;
+        params[inst::RELEASE] = 0.05;
         for (name, instrument, setup) in [
             ("fm", Instrument::Fm, vec![]),
             ("piano", Instrument::Keys, vec![(inst::KEYS_TYPE, 0.0)]),
@@ -1961,7 +1943,7 @@ mod more_instrument_tests {
         ] {
             let mut p = params;
             for (i, v) in setup {
-                p.instrument[i] = v;
+                p[i] = v;
             }
             // Key 57 is A4 (220 Hz) in MusicCraft's naming.
             let out = render(&instrument, &p, 57, 24_000, Some(12_000));
@@ -1988,9 +1970,9 @@ mod more_instrument_tests {
         let buffer = SampleBuffer::mono(data, 48_000.0);
         let table = Arc::new(musiccraft_dsp::resynth::HarmonicTable::analyze(&buffer));
         let instrument = Instrument::Resynth(Arc::clone(&table));
-        let mut params = ChannelParams::default();
-        params.instrument[inst::SUSTAIN] = 1.0;
-        params.instrument[inst::ADD_PARTIALS] = 32.0;
+        let mut params = crate::default_params();
+        params[inst::SUSTAIN] = 1.0;
+        params[inst::ADD_PARTIALS] = 32.0;
         // Key 69 is A5 (440 Hz): the measured spectrum moves up an octave.
         let out = render(&instrument, &params, 69, 24_000, None);
         let level = peak(&out[4_800..]);
@@ -2005,21 +1987,21 @@ mod more_instrument_tests {
 
     #[test]
     fn additive_morphs_between_two_spectra() {
-        let mut params = ChannelParams::default();
-        params.instrument[inst::SUSTAIN] = 1.0;
-        params.instrument[inst::ADD_BRIGHT] = 0.0;
-        params.instrument[inst::ADD_BRIGHT_B] = 1.0;
+        let mut params = crate::default_params();
+        params[inst::SUSTAIN] = 1.0;
+        params[inst::ADD_BRIGHT] = 0.0;
+        params[inst::ADD_BRIGHT_B] = 1.0;
         let edges = |x: &[f32]| {
             let level = peak(x).max(1e-6);
             x.windows(2).map(|w| (w[1] - w[0]).abs()).sum::<f32>() / level
         };
         let dark = render(&Instrument::Additive, &params, 57, 9_600, None);
-        params.instrument[inst::ADD_MORPH] = 1.0;
+        params[inst::ADD_MORPH] = 1.0;
         let bright = render(&Instrument::Additive, &params, 57, 9_600, None);
         assert!(edges(&bright[4_800..]) > edges(&dark[4_800..]) * 1.3);
         // A one-second sweep goes from the first spectrum to the second.
-        params.instrument[inst::ADD_MORPH] = 0.0;
-        params.instrument[inst::ADD_MORPH_TIME] = 1.0;
+        params[inst::ADD_MORPH] = 0.0;
+        params[inst::ADD_MORPH_TIME] = 1.0;
         let sweep = render(&Instrument::Additive, &params, 57, 52_800, None);
         assert!(edges(&sweep[48_000..52_800]) > edges(&sweep[0..4_800]) * 1.3);
         let hz = pitch_hz(&sweep[2_400..9_600]);
@@ -2028,25 +2010,25 @@ mod more_instrument_tests {
 
     #[test]
     fn six_operator_algorithms_waves_and_filter() {
-        let mut params = ChannelParams::default();
-        params.instrument[inst::SUSTAIN] = 1.0;
+        let mut params = crate::default_params();
+        params[inst::SUSTAIN] = 1.0;
         let four = render(&Instrument::Fm, &params, 57, 9_600, None);
         // The old algorithms ignore operators 5 and 6.
         let mut extra = params;
-        extra.instrument[inst::OP5_LEVEL] = 1.0;
-        extra.instrument[inst::OP6_LEVEL] = 1.0;
+        extra[inst::OP5_LEVEL] = 1.0;
+        extra[inst::OP6_LEVEL] = 1.0;
         assert_eq!(render(&Instrument::Fm, &extra, 57, 9_600, None), four);
         let mut outputs = vec![four];
         for algo in 6..=11 {
             let mut p = extra;
-            p.instrument[inst::FM_ALGO] = algo as f32;
+            p[inst::FM_ALGO] = algo as f32;
             for level in [
                 inst::OP1_LEVEL,
                 inst::OP2_LEVEL,
                 inst::OP3_LEVEL,
                 inst::OP4_LEVEL,
             ] {
-                p.instrument[level] = 0.7;
+                p[level] = 0.7;
             }
             let out = render(&Instrument::Fm, &p, 57, 9_600, None);
             let level = peak(&out);
@@ -2060,15 +2042,15 @@ mod more_instrument_tests {
             }
         }
         let mut square = params;
-        square.instrument[inst::OP1_WAVE] = 2.0;
+        square[inst::OP1_WAVE] = 2.0;
         assert_ne!(
             render(&Instrument::Fm, &square, 57, 2_400, None),
             outputs[0]
         );
         let mut dark = params;
-        dark.instrument[inst::OP1_WAVE] = 3.0;
+        dark[inst::OP1_WAVE] = 3.0;
         let bright = render(&Instrument::Fm, &dark, 57, 9_600, None);
-        dark.instrument[inst::FM_CUTOFF] = 300.0;
+        dark[inst::FM_CUTOFF] = 300.0;
         let filtered = render(&Instrument::Fm, &dark, 57, 9_600, None);
         let edges = |x: &[f32]| x.windows(2).map(|w| (w[1] - w[0]).abs()).sum::<f32>();
         assert!(
@@ -2084,9 +2066,9 @@ mod more_instrument_tests {
             .collect();
         let buffer = Arc::new(SampleBuffer::mono(ramp, 48_000.0));
         let kit = Instrument::Kit(vec![None, Some(Arc::clone(&buffer))]);
-        let mut params = ChannelParams::default();
-        params.instrument[inst::SUSTAIN] = 1.0;
-        let root = params.instrument[inst::ROOT_KEY] as u8;
+        let mut params = crate::default_params();
+        params[inst::SUSTAIN] = 1.0;
+        let root = params[inst::ROOT_KEY] as u8;
         assert!(
             peak(&render(&kit, &params, root + 1, 2_000, Some(10))) > 0.4,
             "pad 2 plays"
@@ -2103,9 +2085,9 @@ mod more_instrument_tests {
 
     #[test]
     fn third_oscillator_adds_to_the_synth() {
-        let mut params = ChannelParams::default();
+        let mut params = crate::default_params();
         let base = render(&Instrument::Synth, &params, 57, 4_800, None);
-        params.instrument[inst::OSC3_LEVEL] = 1.0;
+        params[inst::OSC3_LEVEL] = 1.0;
         let with = render(&Instrument::Synth, &params, 57, 4_800, None);
         let diff: f32 = base.iter().zip(&with).map(|(a, b)| (a - b).abs()).sum();
         assert!(diff > 1.0);

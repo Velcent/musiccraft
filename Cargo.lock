@@ -1485,6 +1485,7 @@ version = "0.2.2"
 dependencies = [
  "musiccraft-dsp",
  "musiccraft-formula",
+ "musiccraft-instruments",
  "musiccraft-meter",
  "musiccraft-params",
  "rtrb",
@@ -1500,6 +1501,14 @@ dependencies = [
 [[package]]
 name = "musiccraft-formula"
 version = "0.2.2"
+
+[[package]]
+name = "musiccraft-instruments"
+version = "0.2.2"
+dependencies = [
+ "musiccraft-dsp",
+ "musiccraft-params",
+]
 
 [[package]]
 name = "musiccraft-mcp"

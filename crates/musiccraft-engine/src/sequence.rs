@@ -19,39 +19,7 @@ pub struct NoteEvent {
     pub shape: NoteShape,
 }
 
-/// Per-note properties beyond pitch, velocity and pan.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct NoteShape {
-    /// Fine tuning in semitones (−1..1).
-    pub fine: f32,
-    /// Multiplier on the release time.
-    pub release: f32,
-    /// Filter cutoff offset in octaves.
-    pub cutoff: f32,
-    /// Filter resonance offset (−0.5..0.5).
-    pub resonance: f32,
-    /// Glide from the channel's previous note, retriggering.
-    pub porta: bool,
-    /// Colour group, 0..=15: slide notes bend only notes of their own group.
-    pub color: u8,
-    /// Samplers: seconds into the sample where the note starts (a sliced
-    /// audio clip).
-    pub start: f32,
-}
-
-impl Default for NoteShape {
-    fn default() -> Self {
-        Self {
-            fine: 0.0,
-            release: 1.0,
-            cutoff: 0.0,
-            resonance: 0.0,
-            porta: false,
-            color: 0,
-            start: 0.0,
-        }
-    }
-}
+pub use musiccraft_instruments::NoteShape;
 
 /// A parameter an automation lane writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

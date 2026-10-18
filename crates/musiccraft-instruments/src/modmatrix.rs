@@ -3,10 +3,10 @@
 
 use musiccraft_params::{MOD_SLOTS, inst};
 
-use crate::ChannelParams;
+use crate::Params;
 
-fn param(params: &ChannelParams, index: usize) -> f32 {
-    params.instrument.get(index).copied().unwrap_or(0.0)
+fn param(params: &Params, index: usize) -> f32 {
+    params.get(index).copied().unwrap_or(0.0)
 }
 
 /// What the matrix changes, summed over its slots.
@@ -87,7 +87,7 @@ impl ModState {
     /// `random` supplies a new random step (−1..1) when the LFO wraps.
     pub fn update(
         &mut self,
-        params: &ChannelParams,
+        params: &Params,
         sources: ModSources,
         frames: u32,
         sample_rate: f32,
@@ -141,10 +141,10 @@ impl ModState {
 mod tests {
     use super::*;
 
-    fn params(values: &[(usize, f32)]) -> ChannelParams {
-        let mut p = ChannelParams::default();
+    fn params(values: &[(usize, f32)]) -> Params {
+        let mut p = crate::default_params();
         for (i, v) in values {
-            p.instrument[*i] = *v;
+            p[*i] = *v;
         }
         p
     }
@@ -153,7 +153,7 @@ mod tests {
     fn empty_matrix_changes_nothing() {
         let mut state = ModState::default();
         let mods = state.update(
-            &ChannelParams::default(),
+            &crate::default_params(),
             ModSources::default(),
             32,
             48_000.0,

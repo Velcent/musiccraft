@@ -16,10 +16,7 @@ mod graph;
 mod message;
 mod meters;
 mod midi_out;
-mod modmatrix;
 mod sequence;
-mod strings;
-mod voice;
 
 pub use controllers::{ControllerLane, ControllerSource, Convert, MAX_CONTROLLERS};
 pub use engine::{Engine, EngineHandle, LiveSender, engine_pair};

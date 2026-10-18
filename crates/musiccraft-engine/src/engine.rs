@@ -9,11 +9,11 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use crate::Start;
 use crate::graph::{ChannelNode, ChannelParams, Instrument, TrackNode};
 use crate::midi_out::{MidiOut, MidiOutReceiver, midi_out_pair};
-use crate::voice::{Voice, VoiceStart};
 use crate::{
     EngineMessage, External, ExternalTransport, GARBAGE_CAPACITY, Garbage, Graph, LIVE_CAPACITY,
     LiveEvent, MAX_BLOCK, MAX_EXTERNALS, MAX_VOICES, MESSAGE_CAPACITY, Meters, NoteEvent, Sequence,
 };
+use musiccraft_instruments::{Voice, VoiceStart};
 
 /// The engine's external processor slots.
 type Externals = [Option<Box<dyn External>>];
@@ -887,7 +887,7 @@ impl Engine {
                     ..
                 }) => {
                     let (l, r) = (prefix(left, frames), prefix(right, frames));
-                    voice.render(instrument, params, l, r, sample_rate);
+                    voice.render(instrument, &params.instrument, l, r, sample_rate);
                 }
                 None => voice.active = false,
             }
@@ -1191,7 +1191,7 @@ fn trigger(
     };
     // A slide note on an instrument that can bend starts no sound, so it cuts
     // nothing; every other note cuts the channels its cut group chokes.
-    let bends = start.slide && crate::voice::glides(&node.instrument);
+    let bends = start.slide && musiccraft_instruments::glides(&node.instrument);
     if !bends {
         cut_group(voices, channels, &node.params, start.delay);
     }
@@ -1238,7 +1238,7 @@ fn trigger(
     let slides = start.slide
         && channels
             .get(usize::from(start.channel))
-            .is_some_and(|node| crate::voice::glides(&node.instrument));
+            .is_some_and(|node| musiccraft_instruments::glides(&node.instrument));
     if slides {
         slide(voices, last_keys, &start);
         return;
@@ -1253,7 +1253,7 @@ fn trigger(
         make_room(voices, &node.params, start.channel, start.delay);
         if let Some(voice) = free_voice(voices) {
             *counter += 1;
-            voice.start(start, &node.instrument, &node.params, *counter);
+            voice.start(start, &node.instrument, &node.params.instrument, *counter);
         }
         return;
     }
@@ -1266,7 +1266,7 @@ fn trigger(
     make_room(voices, &node.params, start.channel, start.delay);
     if let Some(voice) = free_voice(voices) {
         *counter += 1;
-        voice.start(start, &node.instrument, &node.params, *counter);
+        voice.start(start, &node.instrument, &node.params.instrument, *counter);
     }
 }
 

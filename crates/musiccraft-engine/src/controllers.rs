@@ -7,8 +7,8 @@ use musiccraft_formula::Formula;
 use musiccraft_params::{ParamSpec, volume_from_unit};
 
 use crate::graph::Graph;
-use crate::voice::Voice;
 use crate::{AutomationTarget, Sequence};
+use musiccraft_instruments::Voice;
 
 /// Most controllers the engine runs; later ones are ignored.
 pub const MAX_CONTROLLERS: usize = 64;
