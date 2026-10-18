@@ -19,7 +19,7 @@ pub const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-0
 const INSTRUCTIONS: &str = "\
 MusicCraft is a pattern-based DAW. Every change is a command. Channels, patterns, \
 playlist tracks and effect slots are numbered from 1; mixer track 0 is the master. \
-Note times are in steps (1/16 notes) and playlist times in bars of the song's \
+Note times are in steps (1/16 notes) and playlist times in bars from 0 of the song's \
 time signatures (`project_set_time_signature`, `playlist_set_time_signature`); \
 fractions are allowed and `<n>t` is exact ticks (96 per quarter note). Keys are MIDI numbers or names \
 with C5 = 60. Start with `run_script` for multi-step work, check results with \
@@ -445,7 +445,11 @@ impl Server {
         }
         let changes: Vec<String> = meter
             .changes()
-            .map(|(tick, sig)| format!("{sig} at bar {}", meter.bar(tick).index + 1))
+            // Bars from 0, as clip positions and command arguments use them.
+            .map(|(tick, sig)| {
+                let bar = meter.ticks_to_bars(f64::from(tick));
+                format!("{sig} at bar {bar:.2} ({tick}t)")
+            })
             .collect();
         if !changes.is_empty() {
             out.push(format!("Time signature changes: {}", changes.join(", ")));
@@ -616,5 +620,19 @@ mod tests {
         assert_eq!(response["error"]["code"], -32601);
         let (_, error) = call(&mut server, "transport_set_mode", json!({ "args": [1] }));
         assert!(error, "numbers are converted to strings and validated");
+    }
+
+    #[test]
+    fn the_summary_gives_signature_changes_in_command_bars() {
+        let mut server = Server::new();
+        let (_, error) = call(
+            &mut server,
+            "run_script",
+            json!({ "script": "project.set_time_signature 3/4\nplaylist.set_time_signature 2 7/8" }),
+        );
+        assert!(!error);
+        let (state, _) = call(&mut server, "get_state", json!({}));
+        // The same number `playlist.set_time_signature` took.
+        assert!(state.contains("7/8 at bar 2.00 (576t)"), "{state}");
     }
 }
