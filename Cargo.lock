@@ -1396,6 +1396,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "musiccraft-antiserum"
+version = "0.2.2"
+dependencies = [
+ "musiccraft-dsp",
+ "musiccraft-params",
+]
+
+[[package]]
 name = "musiccraft-app"
 version = "0.2.2"
 dependencies = [

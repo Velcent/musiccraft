@@ -59,7 +59,14 @@ and a PR. Sizes are rough: S = days, M = about a week, L = several weeks.
 - **1.2 Parameters per instrument (done).** Parameter names are the stable IDs. Project files, commands and plugin parameter IDs already use them, so nothing has to migrate. The `frozen_names` test (`musiccraft-params/frozen-names.txt`) fails if a name is renamed or removed. `musiccraft_instruments::Kind` lists the parameters each instrument uses, in this order: the envelope, its sound parameters, then the host's `NOTE_FUNCTIONS` (arpeggiator, swing, timing, echo, cut groups and polyphony; a plugin wrapper implements these around the voices). The existing instruments keep the shared 160-slot table. Antiserum gets its own table (about 400 parameters) in Phase 2.
 - **1.3 Plugin parameter model (done).** `musiccraft_params::describe` provides labels, choice lists, display text and parsing of typed text (units and choice names). Normalized values come from `ParamSpec::to_unit` and `from_unit`. Grouping into modules follows each kind's list order.
 
-### Phase 2: Antiserum core (L)
+### Phase 2: Antiserum core (L, done)
+
+Done in `musiccraft-antiserum` (spec: `docs/spec/antiserum.md`), with these choices:
+- **Parameters:** 398 of them; names and order are frozen.
+- **Warps:** the FM, AM and RM source is chosen per oscillator.
+- **Wavetables:** the default is a basic sine–triangle–saw–square morph; the factory tables come in Phase 3.
+- **Benchmark:** about 4× real time on one core of the CI-class machine (8 notes × 3 × 16 unison, both filters, bend warp). `--example bench` runs in CI.
+
 
 - **Oscillators:**
   - 3 wavetable oscillators. Each table holds up to 256 frames of 2048 samples, band-limited per octave (mipmaps from an FFT) so it does not alias.

@@ -23,6 +23,7 @@ musiccraft-mcp ──► commands, render                                       
 xtask ──► commands, render, ui (keymap) ───────────────────────────────────────────────┘
 musiccraft-project, musiccraft-engine ──► musiccraft-meter ──► musiccraft-params
 musiccraft-engine ──► musiccraft-instruments ──► musiccraft-dsp
+musiccraft-antiserum ──► musiccraft-dsp, musiccraft-params
 musiccraft-commands, musiccraft-render, musiccraft-ui ──► musiccraft-paths
 ```
 
@@ -37,6 +38,7 @@ musiccraft-commands, musiccraft-render, musiccraft-ui ──► musiccraft-paths
 | `musiccraft-flp` | Reads FL Studio projects and presets: a Rust port of PyFLP (GPL-3.0), tested against PyFLP on PyFLP's own test files. No dependencies; safe code. |
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects (incl. a small radix-2 FFT for convolution and the analyzer), sample buffers. Allocation-free processing. |
 | `musiccraft-instruments` | Every built-in instrument's voice DSP (synth, FM, keys, additive, drums, pluck, samplers, granular, resynth), independent of the engine so plugin wrappers can use it. Allocation-free rendering. |
+| `musiccraft-antiserum` | Antiserum, the wavetable synth's sound engine (`docs/spec/antiserum.md`): band-limited wavetables, warps, unison, sub and noise, two multimode filters, envelopes, LFOs and a 32-slot mod matrix. Its own parameter table (names and order frozen). Independent of the engine and plugin formats; allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voice allocation, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
 | `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-clap-testplugin`). |
