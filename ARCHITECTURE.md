@@ -110,6 +110,12 @@ audio-thread functions only from the processor; the processor allocates
 nothing (and the VST3 processor locks nothing) after construction. A crashing
 plugin still takes the app down (no sandboxing).
 
+On 2026-10-18 the user extended the exception to **exporting** MusicCraft's
+instruments and effects as plugins: `musiccraft-plugin-export` (built on
+nih-plug, whose export macros emit `#[no_mangle]` entry points) and
+`musiccraft-plugin-editor` (the window adapter for our egui editors). The
+same rules apply (see `docs/roadmap-wavetable-and-plugins.md`).
+
 ### Message rule (refines the CLAUDE.md audio-thread rule)
 
 Control messages are plain `Copy` data. Four messages, `SetGraph`,

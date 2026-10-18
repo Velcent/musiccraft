@@ -17,16 +17,16 @@ Clean-room rules (`docs/clean-room.md`) apply throughout.
 - Plugin formats: the open CLAP specification and the VST3 SDK under its GPLv3
   licence option.
 
-## Decisions needed before work starts
+## Decisions (owner, 2026-10-18)
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 | --- | --- | --- |
-| D1 | **`unsafe` for plugin export.** Exporting a plugin means exporting C entry points, as `musiccraft-clap-testplugin` and `musiccraft-vst3-testplugin` already do. A new crate would need the same exception (CLAUDE.md requires your approval). | Approve one new crate, `musiccraft-plugin-export`, under the same rules as the hosting crates: every `unsafe` carries a `SAFETY:` comment, and nothing else changes. |
-| D2 | **Framework or our own wrapper.** nih-plug (ISC licence) does CLAP and VST3 but is a large dependency with its own GUI and threading conventions. | Our own thin wrapper on the bindings we already use (`clap-sys`, `vst3`). The test plugins prove it works, and the wrapper stays small and fits our audio-thread rules. |
-| D3 | **Name of the synth.** We cannot use "Serum". | Pick a name (ideas: *Prism*, *Facet*, *Tessera*). The plan calls it **the wavetable synth** until then. |
-| D4 | **Wavetable import format.** Third-party wavetable packs are WAV files of 2048-sample frames. Many carry a `clm ` chunk that gives the frame size. That chunk is a de-facto convention, publicly described and read by several open-source synths. | Read plain WAV wavetables and honour the `clm ` frame size when present. Do **not** read the reference synth's preset or wavetable bank formats. |
-| D5 | **Plugin GUIs.** Embedding our egui editors in another host's window is the largest UI risk. It is X11 first, as our plugin hosting already is. | Phase it: ship with the host's generic parameter UI first, then embedded editors on Linux, then Windows and macOS. |
-| D6 | **Formats and platforms.** | CLAP first, on Linux, Windows and macOS. Then VST3. LV2 later only if wanted. |
+| D1 | **`unsafe` for plugin export.** | **Approved**, for `musiccraft-plugin-export` and its editor adapter `musiccraft-plugin-editor`, under the hosting crates' rules (every `unsafe` carries a `SAFETY:` comment). Recorded in CLAUDE.md and ARCHITECTURE.md. |
+| D2 | **Framework or our own wrapper.** | **nih-plug**, which is Rust. Its core is ISC-licensed and its VST3 export is GPLv3; both are compatible with our GPL-3.0-or-later. It comes from GitHub (not crates.io) and is pinned in `Cargo.lock`. Its egui adapter is egui 0.31 while our widgets are 0.36, so we write a small editor adapter of our own on the same window layer (baseview) with egui 0.36. The app and the plugins then share one set of widgets. |
+| D3 | **Name of the synth.** | **Antiserum** (a medical term for a serum of antibodies). The owner chose it as a dictionary word. Our own artwork and presets keep it distinct, and no other product's name, logo or styling is used. |
+| D4 | **Wavetable import.** | Read WAV wavetables and honour the `clm ` frame-size chunk when present. That is interoperability with a public convention, which is lawful. Never read the reference synth's own preset or bank formats. |
+| D5 | **Plugin GUIs.** | **Full editors everywhere**: the plugins must be usable in any host, with our own editor on Linux (X11), Windows and macOS from the first plugin release. The host's generic UI is only a fallback. |
+| D6 | **Formats.** | The most accessible across platforms: **CLAP and VST3** on Linux, Windows and macOS (VST3 is the most widely supported, CLAP the most capable), plus nih-plug's **standalone** app for each plugin. AU (Logic) is not supported by nih-plug; it could come later through the open-source clap-wrapper. |
 
 ## Where we start (survey, 2026-10-18)
 
@@ -59,7 +59,7 @@ and a PR. Sizes are rough: S = days, M = about a week, L = several weeks.
 - **1.2 Parameter tables per instrument.** Give each instrument its own `ParamSpec` table with **stable IDs**, instead of the shared 160-slot table. The new synth needs about 400 parameters. Project files keep loading through a name-based migration.
 - **1.3 Plugin parameter model.** Add stable IDs, normalized values, automation flags, value text and parsing, choice lists, and grouping into modules. All of it is derived from the parameter tables.
 
-### Phase 2: wavetable synth core (L)
+### Phase 2: Antiserum core (L)
 
 - **Oscillators:**
   - 3 wavetable oscillators. Each table holds up to 256 frames of 2048 samples, band-limited per octave (mipmaps from an FFT) so it does not alias.
@@ -130,16 +130,18 @@ Each oscillator can switch to one of these:
 - **Factory bank:** about 150 presets of our own sound design (basses, leads, pads, plucks, keys, FX, drums), with tags and search. Presets save as MusicCraft's own JSON, shared with the plugin version.
 - **Integration:** a browser entry, a channel settings page, and automation targets for macros and parameters.
 
-### Phase 7: plugin export (L, needs D1 and D2)
+### Phase 7: plugin export (L)
 
-- **CLAP wrapper (`musiccraft-plugin-export`):**
-  - Every instrument (synth, FM, additive, granular, the wavetable synth and others) and every effect, except `Send`/`BandSplit`, becomes a plugin.
-  - Plugin IDs look like `org.musiccraft.<name>`.
-- **CLAP extensions:** audio and note ports, params (with modulation where hosts support it), state (JSON, versioned), latency, tail, voice info, and transport/tempo for synced effects. It can also be one `.clap` file with a factory listing every plugin.
-- **Real-time rules:** the processor uses the same no-allocation rules as the engine. Parameter changes go through lock-free queues, and sample-rate changes rebuild on the main thread through `activate`.
-- **Packaging:** `cargo xtask bundle` builds `.clap` (and later `.vst3`) bundles for each platform.
-- **VST3 wrapper** after CLAP, sharing the same core: a combined processor and controller with IDs derived from the plugin IDs.
-- **Editors:** first the host's generic UI (D5); then our egui editors embedded through `musiccraft-plugin-window` (X11), then Windows (HWND) and macOS (NSView).
+- **`musiccraft-plugin-export`, built on nih-plug:**
+  - One `nih_plug::Plugin` per MusicCraft instrument (synth, FM, additive, granular, Antiserum and the others) and per effect, except `Send`/`BandSplit`.
+  - Exported with `nih_export_clap!` and `nih_export_vst3!`, plus standalone binaries.
+  - IDs look like `org.musiccraft.<name>`.
+- **Parameters:** derived from our `ParamSpec` tables with stable IDs (Phase 1), with smoothing and automation through nih-plug.
+- **State:** our own versioned JSON, so presets are shared with the app.
+- **Notes and transport:** note events and transport/tempo, for synced effects.
+- **Real-time rules:** nih-plug keeps processing allocation-free, and our DSP already is.
+- **Packaging:** `cargo xtask bundle` builds the `.clap`, `.vst3` and standalone files for each platform through nih-plug's bundler.
+- **Editors (`musiccraft-plugin-editor`, D5):** an adapter between nih-plug's `Editor`, baseview (X11, Win32, Cocoa) and egui 0.36 with the glow renderer. Every plugin opens our own editor in every host. The instrument and effect editors move into a part of `musiccraft-ui` that the app and the plugins share.
 
 ### Phase 8: validation (M)
 
@@ -156,21 +158,21 @@ Each oscillator can switch to one of these:
 
 ## Suggested order and parallel tracks
 
-1. **D1–D6 answered.**
-2. **Phase 1**, which unblocks both goals.
-3. **Track A (synth):** Phase 2, then 3, then 5, then 6, then 4.
-4. **Track B (plugins):** Phase 7 with **effects first** (they are already engine-free, which proves the pipeline early), then instruments, then the wavetable synth, then Phase 8.
-5. **Phase 9.**
+1. **Phase 1**, which unblocks both goals.
+2. **Track A (Antiserum):** Phase 2, then 3, then 5, then 6, then 4.
+3. **Track B (plugins):** Phase 7 with **effects first** (they are already engine-free, which proves the pipeline and the editor adapter early), then instruments, then Antiserum, then Phase 8.
+4. **Phase 9.**
 
-A first public release can ship with Phases 1, 2, 3, 6 and the CLAP part of 7
-and 8. Spectral, granular and multisample oscillators (Phase 4), VST3 and
-embedded editors on Windows and macOS can follow in a point release.
+The release ships CLAP, VST3 and standalone builds with our own editors on all
+three platforms (D5, D6). Antiserum's spectral, granular and multisample
+oscillators (Phase 4) can follow in a point release.
 
 ## Risks
 
 - **Scope.** The reference synth is many years of work. We match its *workflow and capabilities*, not every detail. Everything in Phase 4 can slip.
 - **CPU.** Unison × 3 oscillators × mipmapped tables needs care: SIMD-friendly loops and control-rate modulation. Benchmarks are added early.
-- **Embedded GUIs** differ per host and platform (D5). Generic UIs keep plugins usable meanwhile.
+- **Embedded GUIs** differ per host and platform (D5). baseview already handles X11, Win32 and Cocoa for many nih-plug plugins; our risk is the egui 0.36 adapter, which is proved early on the effects.
+- **Git dependencies.** nih-plug, baseview and their forks come from GitHub, pinned by revision in `Cargo.lock`. Builds need GitHub access, and updates are deliberate.
 - **Parameter migration** (1.2) touches every project file. It needs good round-trip tests on old files.
 
 ## Sources

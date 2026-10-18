@@ -42,8 +42,11 @@ Inside anything that runs on the audio thread (`musiccraft-engine`, `musiccraft-
   raise it with the user first. The approved exceptions (plugin hosting: CLAP
   approved by the user on 2026-10-10, VST3 on 2026-10-16) are `musiccraft-clap`
   and `musiccraft-vst3` plus their test fixtures `musiccraft-clap-testplugin` and
-  `musiccraft-vst3-testplugin`: every `unsafe` block there carries a `SAFETY:`
-  comment (enforced by clippy), and nothing else may use `unsafe`.
+  `musiccraft-vst3-testplugin`; and, for exporting MusicCraft's instruments and
+  effects as CLAP/VST3 plugins (approved by the user on 2026-10-18),
+  `musiccraft-plugin-export` and its editor adapter `musiccraft-plugin-editor`.
+  Every `unsafe` block there carries a `SAFETY:` comment (enforced by clippy),
+  and nothing else may use `unsafe`.
 
 ## Architecture rules
 
