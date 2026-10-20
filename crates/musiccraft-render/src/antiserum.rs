@@ -185,6 +185,10 @@ impl External for AntiserumExternal {
 
     fn stop(&mut self) {}
 
+    fn set_transpose(&mut self, semitones: f32) {
+        self.synth.set_transpose(semitones);
+    }
+
     fn receive(&mut self, mut data: Box<dyn Any + Send>) -> Box<dyn Any + Send> {
         if let Some(swap) = data.downcast_mut::<Swap>() {
             // The box takes the old data back; nothing is freed here.

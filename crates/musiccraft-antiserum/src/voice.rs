@@ -50,6 +50,8 @@ pub(crate) struct Ctx<'a> {
     pub bend: f32,
     pub wheel: f32,
     pub aftertouch: f32,
+    /// Semitones every note moves by.
+    pub transpose: f32,
 }
 
 impl Ctx<'_> {
@@ -367,7 +369,7 @@ impl Voice {
         self.update_sources(ctx, dt);
         self.update_matrix(ctx);
         self.update_glide(ctx, dt);
-        let pitch = self.pitch + ctx.bend * ctx.base(BEND_RANGE);
+        let pitch = self.pitch + ctx.bend * ctx.base(BEND_RANGE) + ctx.transpose;
         for o in 0..OSCS {
             self.update_osc(ctx, o, pitch, frames);
         }

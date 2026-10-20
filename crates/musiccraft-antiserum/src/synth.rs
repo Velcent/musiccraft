@@ -59,6 +59,8 @@ struct Shared {
     bend: f32,
     wheel: f32,
     aftertouch: f32,
+    /// Semitones every note moves by (the app's channel pitch knob).
+    transpose: f32,
 }
 
 impl Shared {
@@ -78,6 +80,7 @@ impl Shared {
             bend: self.bend,
             wheel: self.wheel,
             aftertouch: self.aftertouch,
+            transpose: self.transpose,
         }
     }
 }
@@ -138,6 +141,7 @@ impl Antiserum {
                 bend: 0.0,
                 wheel: 0.0,
                 aftertouch: 0.0,
+                transpose: 0.0,
             },
             voices: (0..MAX_VOICES + SPARE_VOICES)
                 .map(|_| Voice::new(sample_rate))
@@ -277,6 +281,12 @@ impl Antiserum {
         if bpm.is_finite() && bpm > 0.0 {
             self.shared.tempo = bpm;
         }
+    }
+
+    /// Moves every note, sounding ones included, by `semitones` (the app's
+    /// channel pitch knob, −48..48).
+    pub fn set_transpose(&mut self, semitones: f32) {
+        self.shared.transpose = finite(semitones).clamp(-48.0, 48.0);
     }
 
     /// Pitch bend, −1..1.

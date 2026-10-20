@@ -355,6 +355,27 @@ fn file_name(raw: &str) -> Option<&str> {
     raw.rsplit(['/', '\\']).next().filter(|n| !n.is_empty())
 }
 
+/// The platform's per-user data folder for MusicCraft (autosaves, user
+/// presets): `%APPDATA%\MusicCraft`, `~/Library/Application Support/MusicCraft`,
+/// or `$XDG_DATA_HOME/musiccraft` (`~/.local/share/musiccraft`).
+#[must_use]
+pub fn data_dir() -> Option<PathBuf> {
+    let env = |key: &str| {
+        std::env::var_os(key)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    if cfg!(target_os = "windows") {
+        env("APPDATA").map(|p| p.join("MusicCraft"))
+    } else if cfg!(target_os = "macos") {
+        env("HOME").map(|p| p.join("Library/Application Support/MusicCraft"))
+    } else {
+        env("XDG_DATA_HOME")
+            .or_else(|| env("HOME").map(|h| h.join(".local/share")))
+            .map(|p| p.join("musiccraft"))
+    }
+}
+
 /// Prefix of the built-in sounds' names (`musiccraft_params::BUILTIN_PREFIX`).
 const BUILTIN: &str = "builtin:";
 

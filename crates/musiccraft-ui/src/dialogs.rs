@@ -54,6 +54,13 @@ fn project_dir(project: &Project) -> String {
         .unwrap_or_default()
 }
 
+/// Where Antiserum patch files start: the user presets folder (a patch saved
+/// there is a preset), or the project's folder without one.
+fn preset_dir(project: &Project) -> String {
+    musiccraft_antiserum_presets::user::folder()
+        .map_or_else(|| project_dir(project), |dir| format!("{}/", dir.display()))
+}
+
 impl Dialog {
     fn new(purpose: Purpose, text: String) -> Self {
         Self {
@@ -166,12 +173,12 @@ impl Dialog {
     /// project.
     pub fn save_patch(channel: usize, name: &str, project: &Project) -> Self {
         let file = name.replace(['/', '\\'], "-");
-        let path = format!("{}{file}.json", project_dir(project));
+        let path = format!("{}{file}.json", preset_dir(project));
         Self::new(Purpose::SavePatch(channel), path)
     }
 
     pub fn open_patch(channel: usize, project: &Project) -> Self {
-        Self::new(Purpose::OpenPatch(channel), project_dir(project))
+        Self::new(Purpose::OpenPatch(channel), preset_dir(project))
     }
 
     /// An Antiserum oscillator's sample, starting from the current one.

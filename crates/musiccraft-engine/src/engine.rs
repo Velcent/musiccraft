@@ -903,6 +903,8 @@ impl Engine {
         for node in channels.iter_mut() {
             if let Instrument::External(slot) = node.instrument {
                 if let Some(Some(external)) = self.externals.get_mut(usize::from(slot)) {
+                    let pitch = node.params.instrument.get(inst::PITCH).copied();
+                    external.set_transpose(pitch.unwrap_or(0.0));
                     let (l, r) = (
                         prefix(&mut node.left, frames),
                         prefix(&mut node.right, frames),

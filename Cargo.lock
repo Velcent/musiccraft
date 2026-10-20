@@ -1726,6 +1726,7 @@ dependencies = [
  "musiccraft-dsp",
  "musiccraft-params",
  "musiccraft-patch",
+ "musiccraft-paths",
  "musiccraft-samples",
  "musiccraft-wavetables",
 ]
@@ -1804,6 +1805,7 @@ dependencies = [
  "musiccraft-antiserum-presets",
  "musiccraft-flp",
  "musiccraft-formula",
+ "musiccraft-instruments",
  "musiccraft-patch",
  "musiccraft-paths",
  "musiccraft-project",

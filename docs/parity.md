@@ -200,7 +200,7 @@ of contents; see `docs/clean-room.md`.
 | Release | Antiserum editor sample previews resolve project-relative paths | `spec:antiserum-oscillators.md` `done` |
 | Release | Factory presets using sample, multisample, granular and spectral oscillators | `spec:antiserum-app.md` `done` |
 | Release | Antiserum benchmark covers every oscillator type | `spec:antiserum-oscillators.md` `done` |
-| Release | Channel header pitch knob transposes Antiserum | `todo` |
-| Release | User preset folder listed in the browser, with save into it | `todo` |
+| Release | Channel header pitch knob transposes Antiserum | `spec:antiserum-app.md` `done` |
+| Release | User preset folder listed in the browser, with save into it | `cmd:antiserum.save_preset` `cmd:antiserum.delete_preset` `spec:antiserum-app.md` |
 | Release | Convolution reverb plugin loads impulse files | `todo` |
 | Release | Sidechain input and MIDI follow tested through our CLAP and VST3 hosts | `todo` |

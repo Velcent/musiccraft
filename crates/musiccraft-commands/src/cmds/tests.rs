@@ -227,6 +227,9 @@ const ANTISERUM_SCRIPT: &[&str] = &[
     "channel.set_param 1 osc1_unison 7",
     "channel.set_param 1 fx_reverb_decay 4.5",
     "channel.set_param 1 osc1_unison 1",
+    // The channel's own pitch (the header knob) on an Antiserum channel.
+    "channel.set_param 1 pitch 5",
+    "channel.set_param 1 swing_mix 0.5",
     "antiserum.set_table 1 2 factory:formant",
     "antiserum.set_table 1 3 factory:pwm",
     "antiserum.set_lfo_shape 1 3 0:0:0,0.5:1:-0.4",
@@ -301,10 +304,44 @@ fn antiserum_commands_check_their_arguments() {
 }
 
 #[test]
+fn antiserum_user_presets_save_list_load_and_delete() {
+    let dir = std::env::temp_dir().join(format!("mc-cmd-presets-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    musiccraft_antiserum_presets::user::set_folder(Some(dir.clone()));
+    let mut s = session();
+    run(&mut s, "channel.add_antiserum");
+    run(&mut s, "channel.set_param 1 osc1_unison 5");
+    // A factory name is refused; a new one is saved and names the sound.
+    assert!(s.run_line("antiserum.save_preset 1 Glass Reese").is_err());
+    run(&mut s, "antiserum.save_preset 1 My Wide Init");
+    assert!(dir.join("My Wide Init.json").is_file());
+    let patch = s.project().channels[0].instrument.patch().unwrap();
+    assert_eq!(patch.name, "My Wide Init");
+    run(&mut s, "edit.undo");
+    let patch = s.project().channels[0].instrument.patch().unwrap();
+    assert_ne!(patch.name, "My Wide Init", "undo restores the old name");
+    // It is listed, loads and adds like a factory preset.
+    let listed = s.run_line("antiserum.presets").unwrap().message;
+    assert!(
+        listed
+            .lines()
+            .any(|l| l.starts_with("My Wide Init\t") && l.ends_with(" user"))
+    );
+    run(&mut s, "channel.add_antiserum My Wide Init");
+    let added = s.project().channels[1].instrument.patch().unwrap();
+    assert_eq!(added.params.get("osc1_unison"), Some(&5.0));
+    run(&mut s, "antiserum.load_preset 1 my wide init");
+    run(&mut s, "antiserum.delete_preset My Wide Init");
+    assert!(s.run_line("antiserum.load_preset 1 My Wide Init").is_err());
+    musiccraft_antiserum_presets::user::set_folder(None);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn antiserum_presets_list_and_patch_files_round_trip() {
     let mut s = session();
     let listed = s.run_line("antiserum.presets pad").unwrap();
-    assert_eq!(listed.message.lines().count(), 25);
+    assert_eq!(listed.message.lines().count(), 29);
     assert!(s.run_line("antiserum.presets nope").is_err());
     run(&mut s, "channel.add_antiserum Choir Pad");
     run(&mut s, "antiserum.set_step 1 2 off 3 0.5 0.5");

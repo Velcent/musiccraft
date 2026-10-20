@@ -140,16 +140,45 @@ later.
   menu like other channel knobs.
 
 - The channel header (volume, pan, mute, mixer track) and the Functions tab
-  (arpeggiator, swing, timing, echo, cut groups) work as for other
-  channels; they shape the notes before they reach the synth. The header's
-  pitch knob does not transpose Antiserum yet (its own octave, semitone and
-  fine controls do).
+  (swing, timing, echo, cut groups) work as for other channels; they shape
+  the notes before they reach the synth. The Functions tab has no channel
+  arpeggiator, because Antiserum has its own (its `arp_*` parameters, on the
+  Arp/Seq page).
+- The header's **pitch** knob transposes Antiserum: every note, sounding
+  ones included, moves by it, like pitch bend. The engine hands it to the
+  synth before every block (`External::set_transpose`), so automation of
+  `channel:<n>:pitch` moves it too. On an Antiserum channel,
+  `channel.set_param` and automation send Antiserum's own names to its patch
+  and `pitch` and the note functions to the channel.
+
+## User presets
+
+Patches the user saves as presets live in a folder of their own, shared by
+the app and the Antiserum plugin:
+
+- `presets/antiserum` in MusicCraft's per-user data folder
+  (`$XDG_DATA_HOME/musiccraft`, or `~/.local/share/musiccraft` on Linux;
+  `~/Library/Application Support/MusicCraft` on macOS; `%APPDATA%\MusicCraft`
+  on Windows). The `MUSICCRAFT_USER_PRESETS` environment variable names
+  another folder instead.
+- Each preset is a patch file, `<name>.json`. Its name is the patch's name
+  (the file's name if the patch has none); its category is the patch's.
+- `antiserum.save_preset <channel> <name>` names the channel's sound and
+  saves it there, replacing a user preset of that name. A factory preset's
+  name is refused. Undo restores the sound's old name (the file stays).
+- `antiserum.delete_preset <name>` removes a user preset's file.
+- `antiserum.presets [category]` lists the factory presets, then the user
+  presets (tagged `user`). `antiserum.load_preset` and
+  `channel.add_antiserum` accept either kind; a factory name wins.
+- The editor's preset bar lists the user presets after the factory ones,
+  and its **Save…** starts in the user folder, so a saved patch shows up as
+  a preset at once. The folder is read again every few seconds.
 
 ## Browser
 
 The browser's generators list has **Antiserum**. Under it, the factory
-presets are grouped by category; clicking one adds an Antiserum channel with
-that preset.
+presets are grouped by category, followed by a **User** group with the user
+presets; clicking one adds an Antiserum channel with that preset.
 
 ## Sources
 

@@ -156,7 +156,7 @@ Each oscillator can switch to one of these:
 - **Commands and automation:** `channel.set_param` and automation (`channel:N:<param>`) use Antiserum's own parameter names on its channels. New commands handle tables, LFO shapes, steps, presets and patch files.
 - **The editor** lives in `musiccraft-editors::antiserum`, so the plugin can reuse it. It has eight pages, drag-and-drop modulation from source chips, modulation rings, drawn LFO shapes, wavetable views, the Phase 3 wavetable editor, and a preset menu with category and tag search. Each finished gesture becomes one undo step.
 - **Factory bank:** 150 presets of our own sound design, written as recipes in code (bass 25, lead 25, pad 25, pluck 20, keys 20, fx 15, drums 20). Tests check that each one sounds and stays bounded.
-- **Not yet:** the channel header's pitch knob does not transpose Antiserum, and user presets are files the user saves and opens (there is no user preset folder in the browser).
+- **Since then** (release blockers 7 and 8): the channel header's pitch knob transposes Antiserum, and user presets live in a folder of their own that the browser, the preset bar and the plugin list.
 
 - **Pages:** oscillators, mixer, filters, modulation, effects, matrix, global.
 - **Interaction:**

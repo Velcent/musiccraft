@@ -894,13 +894,24 @@ fn set_sample(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     ))
 }
 
+/// Whether `name` is a parameter every channel has whatever its instrument:
+/// the header's pitch and the note functions.
+pub(crate) fn channel_level(name: &str) -> bool {
+    name == "pitch" || musiccraft_instruments::NOTE_FUNCTIONS.contains(&name)
+}
+
 fn set_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(3, 3)?;
     let index = channel_arg(project, args, 0)?;
-    if project.channels[index].instrument.patch().is_some() {
+    let name = args.str(1)?;
+    // An Antiserum channel's own parameters live in its patch (its own
+    // arpeggiator's names included); the channel's (the header's pitch, the
+    // other note functions) stay with the channel.
+    if project.channels[index].instrument.patch().is_some()
+        && (musiccraft_antiserum::index_of(name).is_some() || !channel_level(name))
+    {
         return super::antiserum::set_param(project, args, index);
     }
-    let name = args.str(1)?;
     let param = index_of(INSTRUMENT_PARAMS, name).ok_or_else(|| {
         let names: Vec<_> = INSTRUMENT_PARAMS.iter().map(|p| p.name).collect();
         args.invalid(format!(

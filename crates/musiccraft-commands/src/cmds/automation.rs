@@ -245,8 +245,11 @@ pub(crate) fn parse_target(
                 "volume" => AutomationTarget::ChannelVolume { channel },
                 "pan" => AutomationTarget::ChannelPan { channel },
                 param => {
+                    // Antiserum's own parameters, or the channel's (pitch,
+                    // note functions).
                     let known = if project.channels[index].instrument.patch().is_some() {
                         musiccraft_antiserum::index_of(param).is_some()
+                            || super::channel::channel_level(param)
                     } else {
                         index_of(INSTRUMENT_PARAMS, param).is_some()
                     };

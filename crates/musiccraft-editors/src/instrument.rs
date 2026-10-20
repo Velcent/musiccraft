@@ -107,6 +107,9 @@ pub struct InstrumentEditor<'a> {
     /// Called with every knob's response and its parameter name (the app's
     /// automation menu).
     menu: &'a mut dyn FnMut(&Response, &str),
+    /// Whether the Functions page shows the channel arpeggiator (an
+    /// instrument with its own, like Antiserum, hides it).
+    arpeggiator: bool,
 }
 
 impl<'a> InstrumentEditor<'a> {
@@ -125,7 +128,16 @@ impl<'a> InstrumentEditor<'a> {
             salt,
             edits,
             menu,
+            arpeggiator: true,
         }
+    }
+
+    /// Leaves the channel arpeggiator off the Functions page, for an
+    /// instrument with its own.
+    #[must_use]
+    pub fn without_arpeggiator(mut self) -> Self {
+        self.arpeggiator = false;
+        self
     }
 
     fn get(&self, index: usize) -> f32 {
@@ -371,6 +383,22 @@ impl<'a> InstrumentEditor<'a> {
 
     /// [`Self::functions`] with `extra` drawn in the swing and voices rows.
     pub fn functions_with(&mut self, ui: &mut Ui, extra: &mut dyn FnMut(&mut Ui, &str)) {
+        if self.arpeggiator {
+            self.arpeggiator_section(ui);
+            ui.add_space(6.0);
+        }
+        section(ui, "SWING", |ui| {
+            ui.horizontal(|ui| {
+                extra(ui, "swing");
+                self.knob(ui, inst::SWING_MIX, "Mix");
+                self.choice(ui, inst::SWING_TRUNCATE, &["Shift", "Truncate"]);
+            });
+        });
+        ui.add_space(6.0);
+        self.timing_and_voices(ui, extra);
+    }
+
+    fn arpeggiator_section(&mut self, ui: &mut Ui) {
         section(ui, "ARPEGGIATOR", |ui| {
             ui.horizontal(|ui| {
                 self.choice(
@@ -390,15 +418,9 @@ impl<'a> InstrumentEditor<'a> {
                 });
             }
         });
-        ui.add_space(6.0);
-        section(ui, "SWING", |ui| {
-            ui.horizontal(|ui| {
-                extra(ui, "swing");
-                self.knob(ui, inst::SWING_MIX, "Mix");
-                self.choice(ui, inst::SWING_TRUNCATE, &["Shift", "Truncate"]);
-            });
-        });
-        ui.add_space(6.0);
+    }
+
+    fn timing_and_voices(&mut self, ui: &mut Ui, extra: &mut dyn FnMut(&mut Ui, &str)) {
         section(ui, "TIMING AND ECHO", |ui| {
             ui.horizontal(|ui| {
                 self.knob(ui, inst::TIME_SHIFT, "Shift");

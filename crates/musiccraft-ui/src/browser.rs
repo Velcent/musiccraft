@@ -268,14 +268,15 @@ fn generator(
     );
 }
 
-/// Antiserum, with its factory presets by category; a preset adds an
-/// Antiserum channel playing it.
+/// Antiserum, with its factory presets by category and then the user
+/// presets; a preset adds an Antiserum channel playing it.
 fn antiserum(ui: &mut egui::Ui, search: &str, actions: &mut Vec<Action>) {
     let bank = musiccraft_antiserum_presets::factory();
+    let user = musiccraft_antiserum_presets::user::cached();
     let hit = |p: &musiccraft_patch::Patch| {
         matches(search, &p.name) || p.tags.iter().any(|t| matches(search, t))
     };
-    let any_preset = bank.iter().any(hit);
+    let any_preset = bank.iter().chain(user.iter()).any(hit);
     if !matches(search, "antiserum") && !any_preset {
         return;
     }
@@ -307,6 +308,26 @@ fn antiserum(ui: &mut egui::Ui, search: &str, actions: &mut Vec<Action>) {
                                 ui,
                                 &preset.name,
                                 &format!("Antiserum preset ({})", preset.tags.join(", ")),
+                                Invocation::new("channel.add_antiserum", [preset.name.clone()]),
+                                actions,
+                            );
+                        }
+                    });
+            }
+            let mine: Vec<_> = user
+                .iter()
+                .filter(|p| search.is_empty() || hit(p))
+                .collect();
+            if !mine.is_empty() {
+                egui::CollapsingHeader::new("User")
+                    .id_salt("antiserum-user")
+                    .default_open(!search.is_empty())
+                    .show(ui, |ui| {
+                        for preset in mine {
+                            generator(
+                                ui,
+                                &preset.name,
+                                "Your Antiserum preset",
                                 Invocation::new("channel.add_antiserum", [preset.name.clone()]),
                                 actions,
                             );

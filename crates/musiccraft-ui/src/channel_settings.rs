@@ -73,6 +73,10 @@ fn with_editor(
         &mut edits,
         &mut menu,
     );
+    // Antiserum has its own arpeggiator (its Arp/Seq page).
+    if channel.instrument.patch().is_some() {
+        editor = editor.without_arpeggiator();
+    }
     draw(ui, &mut editor);
     actions.extend(menu_actions);
     apply(state, number, &edits, actions);

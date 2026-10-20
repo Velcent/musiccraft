@@ -55,6 +55,11 @@ pub trait External: Send + fmt::Debug {
     /// the main thread, so it can end processing where it began.
     fn stop(&mut self);
 
+    /// The channel's pitch knob, in semitones, before every block. Built-in
+    /// external instruments (Antiserum) move their notes by it; hosted
+    /// plugins ignore it, as the knob is hidden for them.
+    fn set_transpose(&mut self, _semitones: f32) {}
+
     /// Takes data sent with [`crate::EngineMessage::ExternalData`] and
     /// returns a box for the main thread to drop: the same box, holding
     /// whatever the data replaced. Processors that take no data return it

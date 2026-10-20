@@ -185,7 +185,8 @@ fn engine_target(project: &Project, target: &AutomationTarget) -> Option<(Engine
             if project
                 .channel_position(*id)
                 .and_then(|i| project.channels.get(i))
-                .is_some_and(|c| c.instrument.patch().is_some()) =>
+                .is_some_and(|c| c.instrument.patch().is_some())
+                && musiccraft_antiserum::index_of(param).is_some() =>
         {
             // Antiserum's own parameters, written into its synth.
             let index = musiccraft_antiserum::index_of(param)?;

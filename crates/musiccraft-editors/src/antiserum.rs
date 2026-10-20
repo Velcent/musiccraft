@@ -273,6 +273,17 @@ impl AntiserumEditor {
                             }
                         }
                     }
+                    // The user's own presets (`docs/spec/antiserum-app.md`).
+                    let user = musiccraft_antiserum_presets::user::cached();
+                    let mine: Vec<&Patch> = user.iter().filter(|p| hit(p)).collect();
+                    if !mine.is_empty() {
+                        ui.label(egui::RichText::new("user").small().color(theme::TEXT_DIM));
+                        for p in mine {
+                            if ui.selectable_label(p.name == patch.name, &p.name).clicked() {
+                                edits.push(AntiserumEdit::Preset(p.name.clone()));
+                            }
+                        }
+                    }
                 });
             if ui.small_button("▶").hint("Next preset").clicked()
                 && let Some(p) = bank.get(step(1))
@@ -281,7 +292,7 @@ impl AntiserumEditor {
             }
             if ui
                 .small_button("Save…")
-                .hint("Save this sound as a patch file")
+                .hint("Save this sound as a patch file (in the user presets folder, it becomes a preset)")
                 .clicked()
             {
                 edits.push(AntiserumEdit::Save);

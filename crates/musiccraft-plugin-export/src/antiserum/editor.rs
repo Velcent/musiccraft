@@ -54,14 +54,22 @@ pub fn editor(params: Arc<AntiserumParams>) -> EguiEditor {
 
 /// Where a new patch file goes: the home folder, named after the patch.
 fn default_path(patch: &Patch) -> String {
-    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"));
+    // The user presets folder, shared with the app: a patch saved there is a
+    // preset in both.
+    let folder = presets::user::folder()
+        .map(|f| f.display().to_string())
+        .or_else(|| {
+            std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .ok()
+        });
     let name = if patch.name.is_empty() {
         "Antiserum"
     } else {
         &patch.name
     };
     let file = format!("{}.json", name.replace(['/', '\\'], "-"));
-    home.map_or(file.clone(), |h| {
+    folder.map_or(file.clone(), |h| {
         std::path::Path::new(&h).join(&file).display().to_string()
     })
 }
@@ -131,8 +139,8 @@ fn apply(
             |p, _| Data::Sequence(Box::new(presets::sequence(p))),
         ),
         AntiserumEdit::Preset(name) => {
-            if let Some(preset) = presets::find(&name) {
-                load(setter, params, preset.clone());
+            if let Some(preset) = presets::user::find_any(&name) {
+                load(setter, params, preset);
             }
         }
         AntiserumEdit::Save => view.ask = Some((Ask::Save, default_path(patch))),
@@ -226,7 +234,13 @@ fn ask_row(ui: &mut Ui, setter: &ParamSetter<'_>, params: &AntiserumParams, view
             params
                 .patch()
                 .to_json()
-                .and_then(|json| std::fs::write(&text, json).map_err(|e| e.to_string()))
+                .and_then(|json| {
+                    // The user presets folder may not exist yet.
+                    if let Some(parent) = std::path::Path::new(&text).parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    std::fs::write(&text, json).map_err(|e| e.to_string())
+                })
                 .map_or_else(|e| format!("not saved: {e}"), |()| format!("saved {text}")),
         ),
         Ask::Open => Some(

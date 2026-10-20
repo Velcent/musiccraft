@@ -3,6 +3,7 @@
 //! bank. Main thread only (building wavetables allocates).
 
 mod bank;
+pub mod user;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};

@@ -2347,3 +2347,36 @@ fn antiserum_sample_oscillators_render_and_swap_samples() {
     let report = bridge.sync(&project, &mut handle);
     assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
 }
+
+#[test]
+fn the_channel_pitch_knob_transposes_antiserum() {
+    let pitch_of = |semitones: i32| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "project.set_tempo 120
+                 channel.add_antiserum
+                 channel.set_param 1 osc1_unison 1
+                 channel.set_param 1 pitch {semitones}
+                 note.add 1 0 8 A4"
+            ),
+        );
+        let (left, _, _) = render(
+            s.project(),
+            RenderOptions {
+                sample_rate: 48_000,
+                loops: 1,
+                max_tail_seconds: 0.1,
+            },
+        );
+        frequency(&left[4_800..20_000], 48_000.0)
+    };
+    let plain = pitch_of(0);
+    let up = pitch_of(12);
+    assert!(plain > 100.0, "it sounds ({plain} Hz)");
+    assert!(
+        (up / plain - 2.0).abs() < 0.05,
+        "an octave up: {plain} -> {up}"
+    );
+}

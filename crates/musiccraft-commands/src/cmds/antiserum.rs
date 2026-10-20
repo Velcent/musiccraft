@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use musiccraft_antiserum::params::{LFOS, OSCS};
-use musiccraft_antiserum_presets::{factory, find, step_data};
+use musiccraft_antiserum_presets::{factory, step_data, user};
 use musiccraft_patch::{CATEGORIES, Patch, PointData, STEPS, StepData, ZoneRef};
 use musiccraft_project::{Channel, ChannelId, Instrument, Project};
 
@@ -96,8 +96,20 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         cmd(
             "antiserum.presets",
             "antiserum.presets [category]",
-            "List Antiserum's factory presets (name, category, tags).",
+            "List Antiserum's factory presets, then the user presets (name, category, tags).",
             presets,
+        ),
+        cmd(
+            "antiserum.save_preset",
+            "antiserum.save_preset <channel> <name>",
+            "Name an Antiserum channel's sound and save it as a user preset.",
+            save_preset,
+        ),
+        cmd(
+            "antiserum.delete_preset",
+            "antiserum.delete_preset <name>",
+            "Delete a user preset's file (not undoable).",
+            delete_preset,
         ),
     ]
 }
@@ -135,8 +147,7 @@ fn bounded(args: &Args<'_>, i: usize, what: &str, max: usize) -> Result<usize, C
 fn add(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     let patch = if args.len() > 0 {
         let name = args.rest(0)?;
-        find(&name)
-            .cloned()
+        user::find_any(&name)
             .ok_or_else(|| args.invalid(format!("no Antiserum preset `{name}`")))?
     } else {
         Patch::default()
@@ -334,8 +345,7 @@ fn load_preset(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
     args.expect(2, usize::MAX)?;
     let index = antiserum_arg(project, args, 0)?;
     let name = args.rest(1)?;
-    let preset = find(&name)
-        .cloned()
+    let preset = user::find_any(&name)
         .ok_or_else(|| args.invalid(format!("no Antiserum preset `{name}`")))?;
     let message = format!("channel {} loaded {}", index + 1, preset.name);
     replace(project, args, index, preset, message)
@@ -359,6 +369,14 @@ fn save_patch(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
         .cloned()
         .unwrap_or_default();
     let json = patch.to_json().map_err(|e| args.invalid(e))?;
+    // The user presets folder may not exist yet.
+    if let Some(parent) = Path::new(path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| args.invalid(format!("cannot create {}: {e}", parent.display())))?;
+    }
     std::fs::write(Path::new(path), json)
         .map_err(|e| args.invalid(format!("cannot write {path}: {e}")))?;
     Ok(Outcome::done(format!("saved {} to {path}", patch.name)))
@@ -580,10 +598,47 @@ fn presets(_project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
             CATEGORIES.join(", ")
         )));
     }
+    let user = user::list();
     let lines: Vec<String> = factory()
         .iter()
-        .filter(|p| category.is_none_or(|c| p.category == c))
-        .map(|p| format!("{}\t{}\t{}", p.name, p.category, p.tags.join(" ")))
+        .map(|p| (p, ""))
+        .chain(user.iter().map(|p| (p, " user")))
+        .filter(|(p, _)| category.is_none_or(|c| p.category == c))
+        .map(|(p, mark)| format!("{}\t{}\t{}{mark}", p.name, p.category, p.tags.join(" ")))
         .collect();
     Ok(Outcome::done(lines.join("\n")))
+}
+
+fn save_preset(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, usize::MAX)?;
+    let index = antiserum_arg(project, args, 0)?;
+    let name = args.rest(1)?;
+    let mut patch = project.channels[index]
+        .instrument
+        .patch()
+        .cloned()
+        .unwrap_or_default();
+    let previous = std::mem::replace(&mut patch.name, name.clone());
+    let path = user::save(&patch).map_err(|e| args.invalid(e))?;
+    let message = format!("saved preset {name} to {}", path.display());
+    if let Some(slot) = project.channels[index].instrument.patch_mut() {
+        slot.name.clone_from(&name);
+    }
+    if previous == name {
+        return Ok(Outcome::done(message));
+    }
+    let mut old = patch;
+    old.name = previous;
+    let json = serde_json::to_string(&old).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new("antiserum.set_patch", [(index + 1).to_string(), json]),
+    ))
+}
+
+fn delete_preset(_project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, usize::MAX)?;
+    let name = args.rest(0)?;
+    let path = user::delete(&name).map_err(|e| args.invalid(e))?;
+    Ok(Outcome::done(format!("deleted {}", path.display())))
 }
