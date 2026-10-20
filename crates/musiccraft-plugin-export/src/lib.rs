@@ -32,8 +32,15 @@ pub use plugin::EffectPlugin;
 #[allow(unused_macros)]
 macro_rules! export {
     ($($plugin:ty),+ $(,)?) => {
-        nih_plug::nih_export_clap!($($plugin),+);
-        nih_plug::nih_export_vst3!($($plugin),+);
+        /// The C entry points. nih-plug's VST3 export expands vst3-sys's
+        /// `vtable!` macro, whose trailing semicolons newer compilers warn
+        /// about; that code is not ours, so the lint is allowed here only.
+        #[allow(semicolon_in_expressions_from_non_local_macros)]
+        mod entry_points {
+            use super::*;
+            nih_plug::nih_export_clap!($($plugin),+);
+            nih_plug::nih_export_vst3!($($plugin),+);
+        }
     };
 }
 
