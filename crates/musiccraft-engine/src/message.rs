@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::{ChannelParams, EffectParams, External, Graph, Preview, Sequence, TrackParams};
 
 /// A message from the main thread to the engine.
@@ -105,6 +107,15 @@ pub enum EngineMessage {
         /// Value in the processor's own units.
         value: f64,
     },
+    /// Hand data (a wavetable, a drawn shape…) to the external processor in
+    /// a slot, which swaps it for what it replaces. The box comes back as
+    /// [`Garbage::Data`] so nothing is freed on the audio thread.
+    ExternalData {
+        /// Slot index.
+        slot: u16,
+        /// Data the processor knows how to read.
+        data: Box<dyn Any + Send>,
+    },
 }
 
 /// How playback begins on `Play`.
@@ -130,6 +141,7 @@ impl EngineMessage {
                 | Self::SetSequence(_)
                 | Self::PlayPreview(_)
                 | Self::SetExternal { .. }
+                | Self::ExternalData { .. }
         )
     }
 }
@@ -145,6 +157,9 @@ pub enum Garbage {
     Preview(Box<Preview>),
     /// A replaced external processor, already stopped.
     External(Box<dyn External>),
+    /// Data an external processor swapped out (see
+    /// [`EngineMessage::ExternalData`]).
+    Data(Box<dyn Any + Send>),
 }
 
 /// A note event from a live source such as a MIDI keyboard. Sent through its own

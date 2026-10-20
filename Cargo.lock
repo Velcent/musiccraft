@@ -1719,6 +1719,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "musiccraft-antiserum-presets"
+version = "0.2.2"
+dependencies = [
+ "musiccraft-antiserum",
+ "musiccraft-dsp",
+ "musiccraft-params",
+ "musiccraft-patch",
+ "musiccraft-wavetables",
+]
+
+[[package]]
 name = "musiccraft-app"
 version = "0.2.2"
 dependencies = [
@@ -1788,8 +1799,11 @@ dependencies = [
 name = "musiccraft-commands"
 version = "0.2.2"
 dependencies = [
+ "musiccraft-antiserum",
+ "musiccraft-antiserum-presets",
  "musiccraft-flp",
  "musiccraft-formula",
+ "musiccraft-patch",
  "musiccraft-paths",
  "musiccraft-project",
  "serde",
@@ -1809,9 +1823,12 @@ version = "0.2.2"
 dependencies = [
  "eframe",
  "egui",
+ "musiccraft-antiserum",
+ "musiccraft-antiserum-presets",
  "musiccraft-dsp",
  "musiccraft-formula",
  "musiccraft-params",
+ "musiccraft-patch",
  "musiccraft-wavetables",
 ]
 
@@ -1874,6 +1891,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "musiccraft-patch"
+version = "0.2.2"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "musiccraft-paths"
 version = "0.2.2"
 
@@ -1922,6 +1947,7 @@ version = "0.2.2"
 dependencies = [
  "musiccraft-meter",
  "musiccraft-params",
+ "musiccraft-patch",
  "serde",
  "serde_json",
 ]
@@ -1930,11 +1956,15 @@ dependencies = [
 name = "musiccraft-render"
 version = "0.2.2"
 dependencies = [
+ "musiccraft-antiserum",
+ "musiccraft-antiserum-presets",
  "musiccraft-commands",
  "musiccraft-dsp",
  "musiccraft-engine",
  "musiccraft-formula",
+ "musiccraft-meter",
  "musiccraft-params",
+ "musiccraft-patch",
  "musiccraft-paths",
  "musiccraft-project",
  "musiccraft-samples",
@@ -1955,9 +1985,12 @@ name = "musiccraft-ui"
 version = "0.2.2"
 dependencies = [
  "egui",
+ "musiccraft-antiserum",
+ "musiccraft-antiserum-presets",
  "musiccraft-commands",
  "musiccraft-dsp",
  "musiccraft-editors",
+ "musiccraft-patch",
  "musiccraft-paths",
  "musiccraft-project",
  "serde",

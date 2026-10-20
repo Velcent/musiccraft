@@ -245,8 +245,14 @@ pub(crate) fn parse_target(
                 "volume" => AutomationTarget::ChannelVolume { channel },
                 "pan" => AutomationTarget::ChannelPan { channel },
                 param => {
-                    index_of(INSTRUMENT_PARAMS, param)
-                        .ok_or_else(|| args.invalid(format!("unknown parameter `{param}`")))?;
+                    let known = if project.channels[index].instrument.patch().is_some() {
+                        musiccraft_antiserum::index_of(param).is_some()
+                    } else {
+                        index_of(INSTRUMENT_PARAMS, param).is_some()
+                    };
+                    if !known {
+                        return Err(args.invalid(format!("unknown parameter `{param}`")));
+                    }
                     AutomationTarget::ChannelParam {
                         channel,
                         param: param.to_owned(),
@@ -299,6 +305,12 @@ pub(crate) fn current(project: &Project, target: &AutomationTarget) -> Option<(f
         }
         AutomationTarget::ChannelParam { channel: id, param } => {
             let c = channel(*id)?;
+            if let Some(patch) = c.instrument.patch() {
+                let i = musiccraft_antiserum::index_of(param)?;
+                let spec = musiccraft_antiserum::params().get(i)?;
+                let value = patch.params.get(param).copied().unwrap_or(spec.default);
+                return Some((spec.to_unit(value), format!("{} {param}", c.name)));
+            }
             let i = index_of(INSTRUMENT_PARAMS, param)?;
             Some((
                 INSTRUMENT_PARAMS[i].to_unit(c.params.get(i)),

@@ -28,6 +28,9 @@ musiccraft-commands, musiccraft-render, musiccraft-ui ──► musiccraft-paths
 musiccraft-wavetables ──► musiccraft-dsp, musiccraft-formula
 musiccraft-ui ──► musiccraft-editors ──► musiccraft-dsp, musiccraft-params, musiccraft-wavetables
 musiccraft-cli ──► musiccraft-wavetables
+musiccraft-project ──► musiccraft-patch
+musiccraft-antiserum-presets ──► musiccraft-antiserum, musiccraft-wavetables, musiccraft-patch
+musiccraft-commands, musiccraft-render, musiccraft-editors ──► musiccraft-antiserum-presets
 musiccraft-plugin-export ──► musiccraft-plugin-editor ──► musiccraft-editors
          └──► musiccraft-dsp, musiccraft-params, nih-plug
 standalone/ (own workspace) ──► musiccraft-plugin-export
@@ -37,6 +40,8 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | --- | --- |
 | `musiccraft-formula` | The formula controllers' expression language: parsing on the main thread, allocation-free evaluation on the audio thread. A table mode (`x`, `y`) fills wavetables. No dependencies. |
 | `musiccraft-wavetables` | Antiserum's editable wavetables (`docs/spec/antiserum-wavetables.md`): generated factory tables, WAV import (`clm ` frame size, pitch or fixed slicing, single cycles) and export, and editing `Op`s (draw, partials, formula, morph, normalize, DC, reverse, frames). Main thread only. |
+| `musiccraft-patch` | Antiserum's patch format (`docs/spec/antiserum-app.md`): parameter values by name, table references, drawn LFO shapes and sequencer steps as MusicCraft's own JSON; also the base64 codec projects use. Plain data. |
+| `musiccraft-antiserum-presets` | Applies a patch to an Antiserum, formats any of its parameters for display, and holds the generated factory bank (150 presets). Main thread only. |
 | `musiccraft-params` | Shared tables: timing (PPQ), instrument and effect parameter specs, built-in sound names. No logic. |
 | `musiccraft-paths` | Translates sample paths written on another system (Windows drives, FL Studio placeholders, Wine prefixes) into local files. No dependencies. |
 | `musiccraft-meter` | Time signatures and the bar and beat grid of a timeline (`TimeSig`, `Meter`). Queries are allocation-free, so the engine uses it too. |
@@ -51,7 +56,7 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-clap-testplugin`). |
 | `musiccraft-vst3` | VST3 plugin host: scanning modules, component and controller setup, parameters, state, the audio-thread processor, embedded plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-vst3-testplugin`). |
 | `musiccraft-plugin-window` | The plain X11 window both plugin hosts embed plugin views in. Safe code. |
-| `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`; the safe plugin boundary (`PluginFactory`, `PluginInstance`) and plugin instance management. |
+| `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`; the safe plugin boundary (`PluginFactory`, `PluginInstance`) and plugin instance management. Antiserum channels run as external processors in the same engine slots as plugins; wavetables, LFO shapes and sequences reach them as data swapped on the audio thread (`EngineMessage::ExternalData`) and handed back as garbage. |
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |

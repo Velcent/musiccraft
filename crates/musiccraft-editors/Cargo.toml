@@ -12,6 +12,9 @@ musiccraft-dsp.workspace = true
 musiccraft-params.workspace = true
 musiccraft-formula.workspace = true
 musiccraft-wavetables.workspace = true
+musiccraft-antiserum.workspace = true
+musiccraft-antiserum-presets.workspace = true
+musiccraft-patch.workspace = true
 egui.workspace = true
 
 [dev-dependencies]

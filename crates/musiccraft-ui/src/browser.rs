@@ -268,6 +268,54 @@ fn generator(
     );
 }
 
+/// Antiserum, with its factory presets by category; a preset adds an
+/// Antiserum channel playing it.
+fn antiserum(ui: &mut egui::Ui, search: &str, actions: &mut Vec<Action>) {
+    let bank = musiccraft_antiserum_presets::factory();
+    let hit = |p: &musiccraft_patch::Patch| {
+        matches(search, &p.name) || p.tags.iter().any(|t| matches(search, t))
+    };
+    let any_preset = bank.iter().any(hit);
+    if !matches(search, "antiserum") && !any_preset {
+        return;
+    }
+    generator(
+        ui,
+        "Antiserum",
+        "Wavetable synth",
+        Invocation::bare("channel.add_antiserum"),
+        actions,
+    );
+    egui::CollapsingHeader::new("Antiserum presets")
+        .id_salt("antiserum-presets")
+        .default_open(!search.is_empty() && any_preset)
+        .show(ui, |ui| {
+            for category in musiccraft_patch::CATEGORIES {
+                let list: Vec<_> = bank
+                    .iter()
+                    .filter(|p| p.category == category && (search.is_empty() || hit(p)))
+                    .collect();
+                if list.is_empty() {
+                    continue;
+                }
+                egui::CollapsingHeader::new(category)
+                    .id_salt(("antiserum-category", category))
+                    .default_open(!search.is_empty())
+                    .show(ui, |ui| {
+                        for preset in list {
+                            generator(
+                                ui,
+                                &preset.name,
+                                &format!("Antiserum preset ({})", preset.tags.join(", ")),
+                                Invocation::new("channel.add_antiserum", [preset.name.clone()]),
+                                actions,
+                            );
+                        }
+                    });
+            }
+        });
+}
+
 /// Generators (instruments) and effects, built-in and installed. A click
 /// selects an entry; a double-click adds a generator as a channel or an effect
 /// to the selected mixer track, and generators can be dragged onto the rack.
@@ -295,6 +343,7 @@ fn plugin_database(
                             actions,
                         );
                     }
+                    antiserum(ui, search, actions);
                     for kind in musiccraft_project::params::DRUM_TYPES {
                         let label = format!("Drum synth: {kind}");
                         if matches(search, &label) {

@@ -226,6 +226,11 @@ pub enum Instrument {
         /// MIDI channel, 1–16.
         midi_channel: u8,
     },
+    /// Antiserum, the wavetable synth (`docs/spec/antiserum-app.md`).
+    Antiserum {
+        /// Its sound.
+        patch: Box<musiccraft_patch::Patch>,
+    },
 }
 
 impl Instrument {
@@ -247,6 +252,24 @@ impl Instrument {
             Self::Layer { .. } => "layer",
             Self::Plugin { .. } => "plugin",
             Self::MidiOut { .. } => "midi out",
+            Self::Antiserum { .. } => "antiserum",
+        }
+    }
+
+    /// The patch, for an Antiserum channel.
+    #[must_use]
+    pub fn patch(&self) -> Option<&musiccraft_patch::Patch> {
+        match self {
+            Self::Antiserum { patch } => Some(patch),
+            _ => None,
+        }
+    }
+
+    /// The patch, for an Antiserum channel, to change.
+    pub fn patch_mut(&mut self) -> Option<&mut musiccraft_patch::Patch> {
+        match self {
+            Self::Antiserum { patch } => Some(patch),
+            _ => None,
         }
     }
 

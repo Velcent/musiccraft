@@ -220,6 +220,100 @@ fn plugin_commands_undo_and_redo_exactly() {
     assert_round_trip(PLUGIN_SCRIPT);
 }
 
+/// Every undoable Antiserum command.
+const ANTISERUM_SCRIPT: &[&str] = &[
+    "channel.add_antiserum",
+    "channel.add_antiserum Glass Reese",
+    "channel.set_param 1 osc1_unison 7",
+    "channel.set_param 1 fx_reverb_decay 4.5",
+    "channel.set_param 1 osc1_unison 1",
+    "antiserum.set_table 1 2 factory:formant",
+    "antiserum.set_table 1 3 factory:pwm",
+    "antiserum.set_lfo_shape 1 3 0:0:0,0.5:1:-0.4",
+    "antiserum.set_lfo_shape 1 3 -",
+    "antiserum.set_step 1 5 off 7 0.5 0.25",
+    "antiserum.load_preset 1 Acid Line",
+    "automation.create channel:2:filter1_cutoff",
+    "channel.clone 2",
+    "channel.remove 1",
+];
+
+#[test]
+fn antiserum_commands_undo_and_redo_exactly() {
+    assert_round_trip(ANTISERUM_SCRIPT);
+}
+
+#[test]
+fn antiserum_tables_take_frame_data() {
+    let mut s = session();
+    run(&mut s, "channel.add_antiserum");
+    let data = musiccraft_patch::TableRef::Data(vec![0.25; 2048]).to_text();
+    run(&mut s, &format!("antiserum.set_table 1 2 {data}"));
+    let patch = s.project().channels[0].instrument.patch().unwrap();
+    assert_eq!(patch.table(1), data);
+    run(&mut s, "edit.undo");
+    let patch = s.project().channels[0].instrument.patch().unwrap();
+    assert_eq!(patch.table(1), "factory:basic");
+}
+
+#[test]
+fn antiserum_commands_check_their_arguments() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.add_antiserum");
+    fails(&mut s, "channel.add_antiserum No Such Preset");
+    fails(&mut s, "antiserum.set_table 1 1 factory:basic");
+    fails(&mut s, "antiserum.set_table 2 4 factory:basic");
+    fails(&mut s, "antiserum.set_table 2 1 factory:nope");
+    fails(&mut s, "antiserum.set_table 2 1 data:AA==");
+    fails(&mut s, "antiserum.set_lfo_shape 2 9 -");
+    fails(&mut s, "antiserum.set_lfo_shape 2 1 0:x");
+    fails(&mut s, "antiserum.set_step 2 65 on 0 1 0.5");
+    fails(&mut s, "antiserum.set_step 2 1 on 30 1 0.5");
+    fails(&mut s, "antiserum.load_preset 2 Nope");
+    fails(&mut s, "antiserum.set_patch 2 [1]");
+    fails(&mut s, "channel.set_param 2 cutoff 100");
+    fails(&mut s, "channel.set_param 2 osc1_level 7");
+    fails(&mut s, "automation.create channel:2:cutoff");
+    // The synth's own names still work on the synth channel.
+    run(&mut s, "channel.set_param 1 cutoff 1200");
+    run(&mut s, "channel.set_param 2 filter1_cutoff 1200");
+    let patch = s.project().channels[1].instrument.patch().unwrap();
+    assert_eq!(patch.params.get("filter1_cutoff"), Some(&1200.0));
+    // A default value is not stored.
+    run(&mut s, "channel.set_param 2 filter1_cutoff 20000");
+    let patch = s.project().channels[1].instrument.patch().unwrap();
+    assert!(!patch.params.contains_key("filter1_cutoff"));
+}
+
+#[test]
+fn antiserum_presets_list_and_patch_files_round_trip() {
+    let mut s = session();
+    let listed = s.run_line("antiserum.presets pad").unwrap();
+    assert_eq!(listed.message.lines().count(), 25);
+    assert!(s.run_line("antiserum.presets nope").is_err());
+    run(&mut s, "channel.add_antiserum Choir Pad");
+    run(&mut s, "antiserum.set_step 1 2 off 3 0.5 0.5");
+    let dir = std::env::temp_dir().join(format!("mc-patch-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("choir.json");
+    let path = path.to_string_lossy();
+    run(&mut s, &format!("antiserum.save_patch 1 {path}"));
+    let saved = s.project().channels[0].instrument.patch().cloned().unwrap();
+    run(&mut s, "antiserum.load_preset 1 Deep Sub");
+    run(&mut s, &format!("antiserum.open_patch 1 {path}"));
+    assert_eq!(s.project().channels[0].instrument.patch(), Some(&saved));
+    run(&mut s, "edit.undo");
+    assert_eq!(
+        s.project().channels[0]
+            .instrument
+            .patch()
+            .map(|p| p.name.as_str()),
+        Some("Deep Sub")
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn plugin_commands_record_references_params_and_state() {
     let mut s = session();

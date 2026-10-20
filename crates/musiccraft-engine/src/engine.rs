@@ -16,7 +16,7 @@ use crate::{
 use musiccraft_instruments::{Voice, VoiceStart};
 
 /// The engine's external processor slots.
-type Externals = [Option<Box<dyn External>>];
+pub(crate) type Externals = [Option<Box<dyn External>>];
 
 /// Safety cap on loop wraps handled within one block (for absurdly short loops).
 const MAX_WRAPS_PER_BLOCK: usize = 64;
@@ -544,6 +544,13 @@ impl Engine {
                     external.set_param(id, value);
                 }
             }
+            EngineMessage::ExternalData { slot, data } => {
+                let back = match self.externals.get_mut(usize::from(slot)) {
+                    Some(Some(external)) => external.receive(data),
+                    _ => data,
+                };
+                self.discard(Garbage::Data(back));
+            }
             EngineMessage::SetGraph(graph) => {
                 for voice in &mut self.voices {
                     voice.active = false;
@@ -853,7 +860,7 @@ impl Engine {
         };
         if let Some(sequence) = self.sequence.as_deref() {
             if self.playing {
-                apply_automation(graph, sequence, self.position);
+                apply_automation(graph, &mut self.externals, sequence, self.position);
             }
             let cx = crate::controllers::ControlContext {
                 beats,
@@ -862,6 +869,7 @@ impl Engine {
             };
             crate::controllers::apply_controllers(
                 graph,
+                &mut self.externals,
                 sequence,
                 &mut self.controller_states,
                 &cx,
@@ -1032,10 +1040,15 @@ impl Engine {
 }
 
 /// Writes every automation lane's current value into the graph.
-fn apply_automation(graph: &mut Graph, sequence: &Sequence, position: f64) {
+fn apply_automation(
+    graph: &mut Graph,
+    externals: &mut Externals,
+    sequence: &Sequence,
+    position: f64,
+) {
     for lane in sequence.automation() {
         if let Some(value) = lane.value_at(position) {
-            write_target(graph, lane.target, value);
+            write_target(graph, externals, lane.target, value);
         }
     }
 }
@@ -1087,10 +1100,24 @@ fn send_midi_controls(graph: &mut Graph, midi_out: &mut MidiOut) {
 }
 
 /// Writes `value` (real units) into the parameter `target` names.
-pub(crate) fn write_target(graph: &mut Graph, target: crate::AutomationTarget, value: f32) {
+pub(crate) fn write_target(
+    graph: &mut Graph,
+    externals: &mut Externals,
+    target: crate::AutomationTarget,
+    value: f32,
+) {
     use crate::AutomationTarget as T;
     {
         match target {
+            T::ExternalParam(c, id) => {
+                let slot = match graph.channels.get(usize::from(c)).map(|n| &n.instrument) {
+                    Some(Instrument::External(slot)) => usize::from(*slot),
+                    _ => return,
+                };
+                if let Some(Some(external)) = externals.get_mut(slot) {
+                    external.set_param(id, f64::from(value));
+                }
+            }
             T::ChannelVolume(c) => {
                 if let Some(node) = graph.channels.get_mut(usize::from(c)) {
                     node.params.volume = value;

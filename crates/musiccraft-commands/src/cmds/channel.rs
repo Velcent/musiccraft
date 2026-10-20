@@ -897,6 +897,9 @@ fn set_sample(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
 fn set_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(3, 3)?;
     let index = channel_arg(project, args, 0)?;
+    if project.channels[index].instrument.patch().is_some() {
+        return super::antiserum::set_param(project, args, index);
+    }
     let name = args.str(1)?;
     let param = index_of(INSTRUMENT_PARAMS, name).ok_or_else(|| {
         let names: Vec<_> = INSTRUMENT_PARAMS.iter().map(|p| p.name).collect();

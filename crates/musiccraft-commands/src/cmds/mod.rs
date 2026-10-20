@@ -1,5 +1,6 @@
 //! Built-in commands, grouped by area.
 
+mod antiserum;
 mod automation;
 mod channel;
 mod clip_edit;
@@ -32,6 +33,7 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(meter::commands());
     commands.extend(sample_paths::commands());
     commands.extend(channel::commands());
+    commands.extend(antiserum::commands());
     commands.extend(notes::commands());
     commands.extend(note_tools::commands());
     commands.extend(note_gen::commands());

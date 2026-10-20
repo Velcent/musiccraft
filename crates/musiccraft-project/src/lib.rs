@@ -5,7 +5,7 @@
 //! track 0 is the master and inserts are numbered from 1. Positions in time are
 //! 0-based tick offsets (see `musiccraft_params::PPQ`).
 
-pub mod base64;
+pub use musiccraft_patch::base64;
 mod controller;
 mod error;
 mod model;

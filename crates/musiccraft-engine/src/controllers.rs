@@ -219,6 +219,7 @@ impl ControllerState {
 /// Runs every controller of `sequence` and writes its target in `graph`.
 pub(crate) fn apply_controllers(
     graph: &mut Graph,
+    externals: &mut crate::engine::Externals,
     sequence: &Sequence,
     states: &mut [ControllerState; MAX_CONTROLLERS],
     cx: &ControlContext<'_>,
@@ -231,7 +232,7 @@ pub(crate) fn apply_controllers(
     for (lane, state) in sequence.controllers().iter().zip(states.iter_mut()) {
         let value = state.update(&lane.source, cx, &peaks);
         let position = lane.min + (lane.max - lane.min) * value;
-        crate::engine::write_target(graph, lane.target, lane.convert.apply(position));
+        crate::engine::write_target(graph, externals, lane.target, lane.convert.apply(position));
     }
 }
 

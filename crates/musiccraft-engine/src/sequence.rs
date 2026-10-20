@@ -36,6 +36,9 @@ pub enum AutomationTarget {
     TrackPan(u16),
     /// Effect parameter: track, slot, parameter index.
     EffectParam(u16, u8, u8),
+    /// A parameter of the processor in the channel's external slot (an
+    /// Antiserum channel): channel, parameter id.
+    ExternalParam(u16, u32),
 }
 
 /// Values for one parameter over a span of the song: (tick, value) points in

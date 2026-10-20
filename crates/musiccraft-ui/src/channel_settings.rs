@@ -440,6 +440,9 @@ fn sound(
         }
         // Handled before the sound sections.
         Instrument::MidiOut { .. } => {}
+        Instrument::Antiserum { patch } => {
+            crate::antiserum::show(ui, state, frame, index, patch, actions);
+        }
         Instrument::Plugin { plugin } => {
             // Plugins shape their own sound; the built-in sections do not apply.
             let target = crate::plugins::Target::Channel(number);

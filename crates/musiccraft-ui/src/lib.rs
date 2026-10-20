@@ -4,6 +4,7 @@
 
 pub mod keymap;
 
+mod antiserum;
 mod automation;
 mod browser;
 mod channel_rack;
@@ -275,6 +276,7 @@ pub struct UiState {
     roll: piano_roll::RollState,
     playlist: playlist::PlaylistState,
     dialog: Option<dialogs::Dialog>,
+    antiserum: antiserum::AntiserumUi,
 }
 
 impl Default for UiState {
@@ -349,6 +351,7 @@ impl UiState {
             roll: piano_roll::RollState::default(),
             playlist: playlist::PlaylistState::default(),
             dialog: None,
+            antiserum: antiserum::AntiserumUi::default(),
         }
     }
 

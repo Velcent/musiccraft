@@ -143,6 +143,14 @@ Each oscillator can switch to one of these:
 
 ### Phase 6: synth UI and presets (L)
 
+**Done** (spec: `docs/spec/antiserum-app.md`), with these choices:
+- **Patches** are MusicCraft's own JSON (`musiccraft-patch`), the same in projects, preset files and the plugin later. Values are stored by name, so patches survive new parameters.
+- **In the engine**, an Antiserum channel runs as an external processor, like a plugin instrument. A parameter edit sends one parameter. Wavetables, LFO shapes and the sequence are swapped into the running synth without cutting notes, and come back to the main thread to be freed.
+- **Commands and automation:** `channel.set_param` and automation (`channel:N:<param>`) use Antiserum's own parameter names on its channels. New commands handle tables, LFO shapes, steps, presets and patch files.
+- **The editor** lives in `musiccraft-editors::antiserum`, so the plugin can reuse it. It has eight pages, drag-and-drop modulation from source chips, modulation rings, drawn LFO shapes, wavetable views, the Phase 3 wavetable editor, and a preset menu with category and tag search. Each finished gesture becomes one undo step.
+- **Factory bank:** 150 presets of our own sound design, written as recipes in code (bass 25, lead 25, pad 25, pluck 20, keys 20, fx 15, drums 20). Tests check that each one sounds and stays bounded.
+- **Not yet:** the channel header's pitch knob does not transpose Antiserum, and user presets are files the user saves and opens (there is no user preset folder in the browser).
+
 - **Pages:** oscillators, mixer, filters, modulation, effects, matrix, global.
 - **Interaction:**
   - Drag a modulation source onto any knob.

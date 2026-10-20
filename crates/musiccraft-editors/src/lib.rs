@@ -3,6 +3,7 @@
 //! about projects or commands; editors report what the user changed and the
 //! caller applies it.
 
+pub mod antiserum;
 pub mod effect;
 pub mod hint;
 pub mod theme;

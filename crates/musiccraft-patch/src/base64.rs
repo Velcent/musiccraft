@@ -1,5 +1,5 @@
-//! Standard base64 (RFC 4648, with padding) for opaque plugin state in project
-//! files.
+//! Standard base64 (RFC 4648, with padding) for opaque plugin state and
+//! wavetable data in project and patch files.
 
 const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 

@@ -2219,3 +2219,82 @@ fn a_windows_sample_path_plays_through_its_translation() {
     musiccraft_paths::configure(musiccraft_paths::PathConfig::default());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn an_antiserum_channel_renders_its_notes() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_antiserum Deep Sub
+         note.add 1 0 4 C3",
+    );
+    let (left, right, warnings) = render(
+        s.project(),
+        RenderOptions {
+            sample_rate: 48_000,
+            loops: 1,
+            max_tail_seconds: 1.0,
+        },
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(left.iter().chain(&right).all(|x| x.is_finite()));
+    // The note lasts one beat (0.5 s); it sounds then and is quiet later.
+    assert!(rms(&left[2_400..24_000]) > 0.01);
+    assert!(rms(&left[48_000..60_000]) < 0.1 * rms(&left[2_400..24_000]));
+}
+
+#[test]
+fn antiserum_edits_reach_the_running_synth() {
+    let mut s = session();
+    run(&mut s, "channel.add_antiserum Glass Reese");
+    let (mut engine, mut handle) = engine_pair(48_000);
+    let mut bridge = Bridge::new(48_000);
+    let first = bridge.sync(s.project(), &mut handle);
+    assert!(first.rebuilt_graph && first.warnings.is_empty());
+    let mut out = vec![0.0; 1_024];
+    let mut step = |s: &Session, bridge: &mut Bridge| {
+        engine.process(&mut out, 2);
+        bridge.sync(s.project(), &mut handle)
+    };
+    assert_eq!(step(&s, &mut bridge).messages, 0, "idle");
+    run(&mut s, "channel.set_param 1 filter1_cutoff 900");
+    let param = step(&s, &mut bridge);
+    assert_eq!(param.messages, 1);
+    assert!(!param.rebuilt_graph, "no rebuild, notes keep sounding");
+    run(&mut s, "antiserum.set_table 1 1 factory:pwm");
+    assert_eq!(step(&s, &mut bridge).messages, 1);
+    run(&mut s, "antiserum.set_lfo_shape 1 2 0:0:0,0.25:1:0");
+    assert_eq!(step(&s, &mut bridge).messages, 1);
+    run(&mut s, "antiserum.set_step 1 3 off 0 1 0.5");
+    assert_eq!(step(&s, &mut bridge).messages, 1);
+    // A preset changes many values but still no rebuild.
+    run(&mut s, "antiserum.load_preset 1 Choir Pad");
+    let preset = step(&s, &mut bridge);
+    assert!(preset.messages > 10 && !preset.rebuilt_graph);
+    // Removing the channel frees its slot (and rebuilds the graph).
+    run(&mut s, "channel.remove 1");
+    assert!(step(&s, &mut bridge).rebuilt_graph);
+}
+
+#[test]
+fn antiserum_automation_targets_the_synth() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_antiserum
+         automation.create channel:1:filter1_cutoff
+         automation.set_points 1 [[0,0.25],[1536,1.0]]
+         playlist.add_automation_clip 1 1 0 4
+         transport.set_mode song",
+    );
+    let sequence = build_sequence(s.project());
+    let targets: Vec<_> = sequence.automation().iter().map(|l| l.target).collect();
+    let index = musiccraft_antiserum::index_of("filter1_cutoff").unwrap() as u32;
+    assert!(
+        targets.contains(&musiccraft_engine::AutomationTarget::ExternalParam(
+            0, index
+        )),
+        "{targets:?}"
+    );
+}

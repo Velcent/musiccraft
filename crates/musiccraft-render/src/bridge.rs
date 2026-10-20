@@ -11,7 +11,7 @@ use musiccraft_engine::{
 };
 use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
 use musiccraft_paths::Resolver;
-use musiccraft_project::{Channel, MixerTrack, Project, Requests, base64};
+use musiccraft_project::{Channel, ChannelId, MixerTrack, Project, Requests, base64};
 use musiccraft_samples::SampleCache;
 
 use crate::build_sequence;
@@ -40,6 +40,8 @@ enum Source {
     Layer(Vec<u16>),
     /// A plugin in this engine slot (`None`: not running).
     Plugin(Option<u16>),
+    /// An Antiserum in this engine slot (`None`: no slot was free).
+    Antiserum(Option<u16>),
     /// External MIDI gear on this MIDI channel (0–15).
     MidiOut(u8),
 }
@@ -77,6 +79,19 @@ struct Live {
     /// Values right after the state was restored, used when a stored value is
     /// removed (undo of the first change).
     baseline: BTreeMap<u32, f64>,
+}
+
+/// Records a swap in what was sent, once its message is queued.
+type Sent = Box<dyn FnOnce(&mut musiccraft_patch::Patch)>;
+
+/// An Antiserum channel's synth and what it was last sent.
+#[derive(Debug)]
+struct LiveSynth {
+    slot: u16,
+    /// Parameter values sent (NaN: send again).
+    values: Box<[f32; musiccraft_antiserum::PARAM_COUNT]>,
+    /// Tables, shapes and sequence sent (its parameters are not used).
+    patch: musiccraft_patch::Patch,
 }
 
 /// Everything the engine was last told.
@@ -230,7 +245,12 @@ fn solo_audible(mixer: &[MixerTrack]) -> Option<Vec<bool>> {
     Some(audible.iter().zip(&feeds).map(|(a, f)| *a || *f).collect())
 }
 
-fn describe(project: &Project, slots: &BTreeMap<u32, u16>, paths: &mut Resolver) -> Desc {
+fn describe(
+    project: &Project,
+    slots: &BTreeMap<u32, u16>,
+    synth_slots: &BTreeMap<ChannelId, u16>,
+    paths: &mut Resolver,
+) -> Desc {
     let base = project.path().and_then(Path::parent);
     let audible = solo_audible(&project.mixer);
     let sequence = build_sequence(project);
@@ -291,6 +311,9 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>, paths: &mut Resolver)
                     }
                     musiccraft_project::Instrument::MidiOut { midi_channel } => {
                         Source::MidiOut((*midi_channel).clamp(1, 16) - 1)
+                    }
+                    musiccraft_project::Instrument::Antiserum { .. } => {
+                        Source::Antiserum(synth_slots.get(&c.id).copied())
                     }
                 })
                 .collect(),
@@ -396,6 +419,10 @@ pub struct Bridge {
     requests: Option<Requests>,
     /// Resynthesis analyses by sample key, so rebuilding is cheap.
     harmonics: BTreeMap<String, Arc<musiccraft_dsp::resynth::HarmonicTable>>,
+    /// Running Antiserum synths by channel.
+    synths: BTreeMap<ChannelId, LiveSynth>,
+    /// Whether the transport played at the last sync (see `sync_synths`).
+    synths_playing: bool,
 }
 
 impl Bridge {
@@ -412,6 +439,8 @@ impl Bridge {
             failed: BTreeMap::new(),
             requests: None,
             harmonics: BTreeMap::new(),
+            synths: BTreeMap::new(),
+            synths_playing: false,
         }
     }
 
@@ -556,6 +585,170 @@ impl Bridge {
         }
     }
 
+    /// An engine external slot no plugin or Antiserum uses.
+    fn free_slot(&self) -> Option<u16> {
+        let used: Vec<u16> = self
+            .live
+            .values()
+            .map(|l| l.slot)
+            .chain(self.synths.values().map(|s| s.slot))
+            .collect();
+        (0..MAX_EXTERNALS)
+            .filter_map(|s| u16::try_from(s).ok())
+            .find(|s| !used.contains(s))
+    }
+
+    /// Starts and stops Antiserum synths so they match the project's
+    /// Antiserum channels, then sends what changed: parameters one by one,
+    /// and tables, shapes and the sequence as data swapped in while playing.
+    fn sync_synths(
+        &mut self,
+        project: &Project,
+        handle: &mut EngineHandle,
+        report: &mut SyncReport,
+    ) {
+        use crate::antiserum::{AntiserumExternal, Swap};
+        use musiccraft_antiserum::params::{LFOS, OSCS};
+        let wanted: BTreeMap<ChannelId, &musiccraft_patch::Patch> = project
+            .channels
+            .iter()
+            .filter_map(|c| Some((c.id, c.instrument.patch()?)))
+            .collect();
+        let stale: Vec<ChannelId> = self
+            .synths
+            .keys()
+            .filter(|id| !wanted.contains_key(id))
+            .copied()
+            .collect();
+        for id in stale {
+            let Some(slot) = self.synths.get(&id).map(|s| s.slot) else {
+                continue;
+            };
+            if handle
+                .send(EngineMessage::SetExternal {
+                    slot,
+                    external: None,
+                })
+                .is_ok()
+            {
+                report.messages += 1;
+                self.synths.remove(&id);
+            } else {
+                report.dropped += 1;
+            }
+        }
+        // Automation writes the synths directly; when playback stops, send
+        // the project's values again.
+        let playing = project.transport().is_playing();
+        if self.synths_playing && !playing {
+            for synth in self.synths.values_mut() {
+                synth.values.fill(f32::NAN);
+            }
+        }
+        self.synths_playing = playing;
+        for (id, patch) in &wanted {
+            if !self.synths.contains_key(id) {
+                let Some(slot) = self.free_slot() else {
+                    report.warnings.push(format!(
+                        "at most {MAX_EXTERNALS} plugins and synths can run at once"
+                    ));
+                    continue;
+                };
+                let (external, warnings) = AntiserumExternal::new(patch, self.sample_rate as f32);
+                report.warnings.extend(warnings);
+                let message = EngineMessage::SetExternal {
+                    slot,
+                    external: Some(Box::new(external)),
+                };
+                if handle.send(message).is_ok() {
+                    report.messages += 1;
+                    self.synths.insert(
+                        *id,
+                        LiveSynth {
+                            slot,
+                            values: musiccraft_antiserum_presets::values(patch),
+                            patch: (*patch).clone(),
+                        },
+                    );
+                } else {
+                    report.dropped += 1;
+                }
+                continue;
+            }
+            let Some(live) = self.synths.get_mut(id) else {
+                continue;
+            };
+            let values = musiccraft_antiserum_presets::values(patch);
+            for (i, (now, sent)) in values.iter().zip(live.values.iter_mut()).enumerate() {
+                if now == sent {
+                    continue;
+                }
+                let message = EngineMessage::ExternalParam {
+                    slot: live.slot,
+                    id: u32::try_from(i).unwrap_or(u32::MAX),
+                    value: f64::from(*now),
+                };
+                if handle.send(message).is_ok() {
+                    report.messages += 1;
+                    *sent = *now;
+                } else {
+                    report.dropped += 1;
+                }
+            }
+            let mut swaps: Vec<(Swap, Sent)> = Vec::new();
+            for osc in 0..OSCS {
+                let table = patch.table(osc);
+                if table == live.patch.table(osc) {
+                    continue;
+                }
+                let owned = table.to_owned();
+                let done: Sent = Box::new(move |p| p.set_table(osc, owned));
+                match musiccraft_antiserum_presets::wavetable(table) {
+                    Ok(built) => swaps.push((Swap::Table(osc, built), done)),
+                    Err(err) => {
+                        // Warn once; the oscillator keeps its table.
+                        report
+                            .warnings
+                            .push(format!("oscillator {}: {err}", osc + 1));
+                        done(&mut live.patch);
+                    }
+                }
+            }
+            for lfo in 0..LFOS {
+                if patch.lfo_shape(lfo) == live.patch.lfo_shape(lfo) {
+                    continue;
+                }
+                let points = patch.lfo_shape(lfo).map(<[_]>::to_vec).unwrap_or_default();
+                swaps.push((
+                    Swap::Shape(
+                        lfo,
+                        Box::new(musiccraft_antiserum_presets::lfo_shape(patch, lfo)),
+                    ),
+                    Box::new(move |p| p.set_lfo_shape(lfo, points)),
+                ));
+            }
+            if patch.sequence != live.patch.sequence {
+                let steps = patch.sequence.clone();
+                swaps.push((
+                    Swap::Sequence(Box::new(musiccraft_antiserum_presets::sequence(patch))),
+                    Box::new(move |p| p.sequence = steps),
+                ));
+            }
+            for (swap, done) in swaps {
+                let message = EngineMessage::ExternalData {
+                    slot: live.slot,
+                    data: Box::new(swap),
+                };
+                if handle.send(message).is_ok() {
+                    report.messages += 1;
+                    done(&mut live.patch);
+                } else {
+                    report.dropped += 1;
+                }
+            }
+        }
+    }
+
     /// Creates a plugin and installs its processor in a free engine slot.
     /// `Ok(None)` means the message queue was full; the next sync retries.
     fn start_plugin(
@@ -567,10 +760,8 @@ impl Bridge {
             .host
             .as_ref()
             .ok_or("plugin hosting is not available here")?;
-        let used: Vec<u16> = self.live.values().map(|l| l.slot).collect();
-        let slot = (0..MAX_EXTERNALS)
-            .filter_map(|s| u16::try_from(s).ok())
-            .find(|s| !used.contains(s))
+        let slot = self
+            .free_slot()
             .ok_or_else(|| format!("at most {MAX_EXTERNALS} plugins can run at once"))?;
         let state = if plugin.state.is_empty() {
             None
@@ -727,7 +918,9 @@ impl Bridge {
                 ),
                 Source::Layer(children) => Instrument::Layer(children.clone()),
                 // An out-of-range slot plays nothing.
-                Source::Plugin(slot) => Instrument::External(slot.unwrap_or(u16::MAX)),
+                Source::Plugin(slot) | Source::Antiserum(slot) => {
+                    Instrument::External(slot.unwrap_or(u16::MAX))
+                }
                 Source::MidiOut(midi_channel) => Instrument::MidiOut(*midi_channel),
             };
             graph.add_channel(instrument, *params);
@@ -767,12 +960,15 @@ impl Bridge {
         handle.collect_garbage();
         let mut report = SyncReport::default();
         self.sync_plugins(project, handle, &mut report);
+        self.sync_synths(project, handle, &mut report);
         let slots: BTreeMap<u32, u16> = self.live.iter().map(|(k, l)| (*k, l.slot)).collect();
+        let synth_slots: BTreeMap<ChannelId, u16> =
+            self.synths.iter().map(|(k, s)| (*k, s.slot)).collect();
         if self.paths.refresh() {
             // New mappings may find samples that were missing.
             self.last = None;
         }
-        let desc = describe(project, &slots, &mut self.paths);
+        let desc = describe(project, &slots, &synth_slots, &mut self.paths);
         let mut messages = Vec::new();
         let previous = self.last.take();
 

@@ -32,6 +32,8 @@ musiccraft-cli = { path = "crates/musiccraft-cli" }
 musiccraft-clap = { path = "crates/musiccraft-clap" }
 musiccraft-formula = { path = "crates/musiccraft-formula" }
 musiccraft-wavetables = { path = "crates/musiccraft-wavetables" }
+musiccraft-patch = { path = "crates/musiccraft-patch" }
+musiccraft-antiserum-presets = { path = "crates/musiccraft-antiserum-presets" }
 musiccraft-flp = { path = "crates/musiccraft-flp" }
 musiccraft-plugin-window = { path = "crates/musiccraft-plugin-window" }
 musiccraft-vst3 = { path = "crates/musiccraft-vst3" }

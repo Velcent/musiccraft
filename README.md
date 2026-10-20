@@ -22,6 +22,12 @@ can be driven from the GUI, scripts, the CLI, or an AI agent over MCP.
   <tr>
     <td colspan="2" align="center">Synth editor and an effect window</td>
   </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/antiserum.png" alt="Antiserum wavetable synth: preset bar, draggable modulation sources and the oscillator page with wavetable views"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">Antiserum, the wavetable synth</td>
+  </tr>
 </table>
 
 The screenshots show [`examples/demo-song.mcs`](examples/demo-song.mcs).

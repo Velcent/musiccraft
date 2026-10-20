@@ -30,6 +30,8 @@ pub enum Purpose {
     AddPluginFolder,
     RenameAutomation(usize),
     AddMarker(u32),
+    SavePatch(usize),
+    OpenPatch(usize),
 }
 
 /// An open prompt.
@@ -157,6 +159,18 @@ impl Dialog {
         Self::new(Purpose::RenameTrack(track), current.to_owned())
     }
 
+    /// Save an Antiserum channel's patch: a file named after it, next to the
+    /// project.
+    pub fn save_patch(channel: usize, name: &str, project: &Project) -> Self {
+        let file = name.replace(['/', '\\'], "-");
+        let path = format!("{}{file}.json", project_dir(project));
+        Self::new(Purpose::SavePatch(channel), path)
+    }
+
+    pub fn open_patch(channel: usize, project: &Project) -> Self {
+        Self::new(Purpose::OpenPatch(channel), project_dir(project))
+    }
+
     fn title(&self) -> &'static str {
         match self.purpose {
             Purpose::Open => "Open project",
@@ -178,6 +192,8 @@ impl Dialog {
             Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
             Purpose::AddMarker(_) => "Marker name",
+            Purpose::SavePatch(_) => "Save Antiserum patch (.json)",
+            Purpose::OpenPatch(_) => "Open Antiserum patch (.json)",
         }
     }
 
@@ -235,6 +251,12 @@ impl Dialog {
             }
             Purpose::RenameAutomation(automation) => {
                 Invocation::new("automation.rename", [(automation + 1).to_string(), text])
+            }
+            Purpose::SavePatch(channel) => {
+                Invocation::new("antiserum.save_patch", [(channel + 1).to_string(), text])
+            }
+            Purpose::OpenPatch(channel) => {
+                Invocation::new("antiserum.open_patch", [(channel + 1).to_string(), text])
             }
         }
     }

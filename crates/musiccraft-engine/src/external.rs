@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt;
 
 /// Most external processors (hosted plugins) an engine holds at once.
@@ -53,4 +54,12 @@ pub trait External: Send + fmt::Debug {
     /// Called on the audio thread just before the processor is handed back to
     /// the main thread, so it can end processing where it began.
     fn stop(&mut self);
+
+    /// Takes data sent with [`crate::EngineMessage::ExternalData`] and
+    /// returns a box for the main thread to drop: the same box, holding
+    /// whatever the data replaced. Processors that take no data return it
+    /// unchanged.
+    fn receive(&mut self, data: Box<dyn Any + Send>) -> Box<dyn Any + Send> {
+        data
+    }
 }
