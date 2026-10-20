@@ -33,6 +33,16 @@ pub fn flush_denormal(x: f32) -> f32 {
     if x.abs() < DENORMAL_FLOOR { 0.0 } else { x }
 }
 
+/// Replaces subnormal samples with zero, for signals coming in from outside
+/// (a mixer track's input, a plugin's input or sidechain): the first
+/// operations on subnormal values are slow even where flush-to-zero is on.
+/// The test is a bit check, so it is cheap on subnormals too.
+pub fn flush_subnormals(samples: &mut [f32]) {
+    for s in samples.iter_mut().filter(|s| s.is_subnormal()) {
+        *s = 0.0;
+    }
+}
+
 /// Left and right gains for a balance pan in -1..=1. Centre is unity on both sides.
 #[must_use]
 pub fn pan_gains(pan: f32) -> (f32, f32) {

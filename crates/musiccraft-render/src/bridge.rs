@@ -9,8 +9,9 @@ use musiccraft_engine::{
     ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_BLOCK,
     MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, Start, TrackParams,
 };
-use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
-use musiccraft_project::{Channel, MixerTrack, Project, Requests, base64};
+use musiccraft_params::EffectKind;
+use musiccraft_paths::Resolver;
+use musiccraft_project::{Channel, ChannelId, MixerTrack, Project, Requests, base64};
 use musiccraft_samples::SampleCache;
 
 use crate::build_sequence;
@@ -39,6 +40,8 @@ enum Source {
     Layer(Vec<u16>),
     /// A plugin in this engine slot (`None`: not running).
     Plugin(Option<u16>),
+    /// An Antiserum in this engine slot (`None`: no slot was free).
+    Antiserum(Option<u16>),
     /// External MIDI gear on this MIDI channel (0–15).
     MidiOut(u8),
 }
@@ -78,6 +81,19 @@ struct Live {
     baseline: BTreeMap<u32, f64>,
 }
 
+/// Records a swap in what was sent, once its message is queued.
+type Sent = Box<dyn FnOnce(&mut musiccraft_patch::Patch)>;
+
+/// An Antiserum channel's synth and what it was last sent.
+#[derive(Debug)]
+struct LiveSynth {
+    slot: u16,
+    /// Parameter values sent (NaN: send again).
+    values: Box<[f32; musiccraft_antiserum::PARAM_COUNT]>,
+    /// Tables, shapes and sequence sent (its parameters are not used).
+    patch: musiccraft_patch::Patch,
+}
+
 /// Everything the engine was last told.
 #[derive(Debug, Clone, PartialEq)]
 struct Desc {
@@ -111,16 +127,11 @@ pub struct SyncReport {
     pub dropped: usize,
 }
 
-fn sample_key(sample: &str, base: Option<&Path>) -> String {
-    if sample.starts_with(BUILTIN_PREFIX) {
-        return sample.to_owned();
-    }
-    match base {
-        Some(dir) if Path::new(sample).is_relative() => {
-            dir.join(sample).to_string_lossy().into_owned()
-        }
-        _ => sample.to_owned(),
-    }
+/// The file a sample path loads from: built-in names as they are, paths
+/// from another system translated (see `docs/spec/sample-paths.md`), relative
+/// paths from the project's folder.
+fn sample_key(sample: &str, base: Option<&Path>, paths: &mut Resolver) -> String {
+    musiccraft_paths::sample_path(sample, base, paths)
 }
 
 /// Bars of the recording count-in (of the signature where playback starts).
@@ -222,7 +233,12 @@ fn solo_audible(mixer: &[MixerTrack]) -> Option<Vec<bool>> {
     Some(audible.iter().zip(&feeds).map(|(a, f)| *a || *f).collect())
 }
 
-fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
+fn describe(
+    project: &Project,
+    slots: &BTreeMap<u32, u16>,
+    synth_slots: &BTreeMap<ChannelId, u16>,
+    paths: &mut Resolver,
+) -> Desc {
     let base = project.path().and_then(Path::parent);
     let audible = solo_audible(&project.mixer);
     let sequence = build_sequence(project);
@@ -237,7 +253,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                 .iter()
                 .map(|c| match &c.instrument {
                     musiccraft_project::Instrument::Sampler { sample } => {
-                        Source::Sample(sample_key(sample, base))
+                        Source::Sample(sample_key(sample, base, paths))
                     }
                     musiccraft_project::Instrument::Synth => Source::Synth,
                     musiccraft_project::Instrument::DrumSynth => Source::DrumSynth,
@@ -246,10 +262,10 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     musiccraft_project::Instrument::Keys => Source::Keys,
                     musiccraft_project::Instrument::Additive => Source::Additive,
                     musiccraft_project::Instrument::Granular { sample } => {
-                        Source::Granular(sample_key(sample, base))
+                        Source::Granular(sample_key(sample, base, paths))
                     }
                     musiccraft_project::Instrument::Resynth { sample } => {
-                        Source::Resynth(sample_key(sample, base))
+                        Source::Resynth(sample_key(sample, base, paths))
                     }
                     musiccraft_project::Instrument::Kit { pads } => Source::Kit(
                         pads.iter()
@@ -257,7 +273,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                                 if p.is_empty() {
                                     String::new()
                                 } else {
-                                    sample_key(p, base)
+                                    sample_key(p, base, paths)
                                 }
                             })
                             .collect(),
@@ -266,7 +282,7 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                         zones
                             .iter()
                             .map(|z| musiccraft_project::SampleZone {
-                                sample: sample_key(&z.sample, base),
+                                sample: sample_key(&z.sample, base, paths),
                                 ..z.clone()
                             })
                             .collect(),
@@ -283,6 +299,9 @@ fn describe(project: &Project, slots: &BTreeMap<u32, u16>) -> Desc {
                     }
                     musiccraft_project::Instrument::MidiOut { midi_channel } => {
                         Source::MidiOut((*midi_channel).clamp(1, 16) - 1)
+                    }
+                    musiccraft_project::Instrument::Antiserum { .. } => {
+                        Source::Antiserum(synth_slots.get(&c.id).copied())
                     }
                 })
                 .collect(),
@@ -374,6 +393,8 @@ fn rack_params(project: &Project) -> Vec<RackParams> {
 pub struct Bridge {
     sample_rate: u32,
     samples: SampleCache,
+    /// Translates sample paths written on another system.
+    paths: Resolver,
     last: Option<Desc>,
     host: Option<PluginHost>,
     /// Running plugins by instance number.
@@ -386,6 +407,13 @@ pub struct Bridge {
     requests: Option<Requests>,
     /// Resynthesis analyses by sample key, so rebuilding is cheap.
     harmonics: BTreeMap<String, Arc<musiccraft_dsp::resynth::HarmonicTable>>,
+    /// Per-channel analyses for Antiserum's spectral oscillator, by sample
+    /// key.
+    stereo_harmonics: BTreeMap<String, musiccraft_antiserum::source::Analysis>,
+    /// Running Antiserum synths by channel.
+    synths: BTreeMap<ChannelId, LiveSynth>,
+    /// Whether the transport played at the last sync (see `sync_synths`).
+    synths_playing: bool,
 }
 
 impl Bridge {
@@ -395,12 +423,16 @@ impl Bridge {
         Self {
             sample_rate,
             samples: SampleCache::new(),
+            paths: Resolver::new(),
             last: None,
             host: None,
             live: BTreeMap::new(),
             failed: BTreeMap::new(),
             requests: None,
             harmonics: BTreeMap::new(),
+            stereo_harmonics: BTreeMap::new(),
+            synths: BTreeMap::new(),
+            synths_playing: false,
         }
     }
 
@@ -545,6 +577,241 @@ impl Bridge {
         }
     }
 
+    /// An engine external slot no plugin or Antiserum uses.
+    fn free_slot(&self) -> Option<u16> {
+        let used: Vec<u16> = self
+            .live
+            .values()
+            .map(|l| l.slot)
+            .chain(self.synths.values().map(|s| s.slot))
+            .collect();
+        (0..MAX_EXTERNALS)
+            .filter_map(|s| u16::try_from(s).ok())
+            .find(|s| !used.contains(s))
+    }
+
+    /// Starts and stops Antiserum synths so they match the project's
+    /// Antiserum channels, then sends what changed: parameters one by one,
+    /// and tables, shapes and the sequence as data swapped in while playing.
+    fn sync_synths(
+        &mut self,
+        project: &Project,
+        handle: &mut EngineHandle,
+        report: &mut SyncReport,
+    ) {
+        use crate::antiserum::{AntiserumExternal, Swap};
+        use musiccraft_antiserum::params::{LFOS, OSCS};
+        let wanted: BTreeMap<ChannelId, &musiccraft_patch::Patch> = project
+            .channels
+            .iter()
+            .filter_map(|c| Some((c.id, c.instrument.patch()?)))
+            .collect();
+        let stale: Vec<ChannelId> = self
+            .synths
+            .keys()
+            .filter(|id| !wanted.contains_key(id))
+            .copied()
+            .collect();
+        for id in stale {
+            let Some(slot) = self.synths.get(&id).map(|s| s.slot) else {
+                continue;
+            };
+            if handle
+                .send(EngineMessage::SetExternal {
+                    slot,
+                    external: None,
+                })
+                .is_ok()
+            {
+                report.messages += 1;
+                self.synths.remove(&id);
+            } else {
+                report.dropped += 1;
+            }
+        }
+        // Automation writes the synths directly; when playback stops, send
+        // the project's values again.
+        let playing = project.transport().is_playing();
+        if self.synths_playing && !playing {
+            for synth in self.synths.values_mut() {
+                synth.values.fill(f32::NAN);
+            }
+        }
+        self.synths_playing = playing;
+        for (id, patch) in &wanted {
+            if !self.synths.contains_key(id) {
+                let Some(slot) = self.free_slot() else {
+                    report.warnings.push(format!(
+                        "at most {MAX_EXTERNALS} plugins and synths can run at once"
+                    ));
+                    continue;
+                };
+                let sources: Vec<Arc<musiccraft_antiserum::Source>> = (0..OSCS)
+                    .map(|osc| self.antiserum_source(project, &patch.source(osc), report))
+                    .collect();
+                let (external, warnings) =
+                    AntiserumExternal::new(patch, self.sample_rate as f32, sources);
+                report.warnings.extend(warnings);
+                let message = EngineMessage::SetExternal {
+                    slot,
+                    external: Some(Box::new(external)),
+                };
+                if handle.send(message).is_ok() {
+                    report.messages += 1;
+                    self.synths.insert(
+                        *id,
+                        LiveSynth {
+                            slot,
+                            values: musiccraft_antiserum_presets::values(patch),
+                            patch: (*patch).clone(),
+                        },
+                    );
+                } else {
+                    report.dropped += 1;
+                }
+                continue;
+            }
+            // Samples load (and are analysed) before the live synth is
+            // borrowed: loading uses the bridge's caches.
+            let changed: Vec<usize> = (0..OSCS)
+                .filter(|osc| {
+                    self.synths
+                        .get(id)
+                        .is_some_and(|live| live.patch.source(*osc) != patch.source(*osc))
+                })
+                .collect();
+            let new_sources: Vec<(usize, Arc<musiccraft_antiserum::Source>)> = changed
+                .into_iter()
+                .map(|osc| {
+                    (
+                        osc,
+                        self.antiserum_source(project, &patch.source(osc), report),
+                    )
+                })
+                .collect();
+            let Some(live) = self.synths.get_mut(id) else {
+                continue;
+            };
+            let values = musiccraft_antiserum_presets::values(patch);
+            for (i, (now, sent)) in values.iter().zip(live.values.iter_mut()).enumerate() {
+                if now == sent {
+                    continue;
+                }
+                let message = EngineMessage::ExternalParam {
+                    slot: live.slot,
+                    id: u32::try_from(i).unwrap_or(u32::MAX),
+                    value: f64::from(*now),
+                };
+                if handle.send(message).is_ok() {
+                    report.messages += 1;
+                    *sent = *now;
+                } else {
+                    report.dropped += 1;
+                }
+            }
+            let mut swaps: Vec<(Swap, Sent)> = Vec::new();
+            for osc in 0..OSCS {
+                let table = patch.table(osc);
+                if table == live.patch.table(osc) {
+                    continue;
+                }
+                let owned = table.to_owned();
+                let done: Sent = Box::new(move |p| p.set_table(osc, owned));
+                match musiccraft_antiserum_presets::wavetable(table) {
+                    Ok(built) => swaps.push((Swap::Table(osc, built), done)),
+                    Err(err) => {
+                        // Warn once; the oscillator keeps its table.
+                        report
+                            .warnings
+                            .push(format!("oscillator {}: {err}", osc + 1));
+                        done(&mut live.patch);
+                    }
+                }
+            }
+            for lfo in 0..LFOS {
+                if patch.lfo_shape(lfo) == live.patch.lfo_shape(lfo) {
+                    continue;
+                }
+                let points = patch.lfo_shape(lfo).map(<[_]>::to_vec).unwrap_or_default();
+                swaps.push((
+                    Swap::Shape(
+                        lfo,
+                        Box::new(musiccraft_antiserum_presets::lfo_shape(patch, lfo)),
+                    ),
+                    Box::new(move |p| p.set_lfo_shape(lfo, points)),
+                ));
+            }
+            if patch.sequence != live.patch.sequence {
+                let steps = patch.sequence.clone();
+                swaps.push((
+                    Swap::Sequence(Box::new(musiccraft_antiserum_presets::sequence(patch))),
+                    Box::new(move |p| p.sequence = steps),
+                ));
+            }
+            for (osc, source) in new_sources {
+                let reference = patch.source(osc);
+                swaps.push((
+                    Swap::Source(osc, source),
+                    Box::new(move |p| p.set_source(osc, reference)),
+                ));
+            }
+            for (swap, done) in swaps {
+                let message = EngineMessage::ExternalData {
+                    slot: live.slot,
+                    data: Box::new(swap),
+                };
+                if handle.send(message).is_ok() {
+                    report.messages += 1;
+                    done(&mut live.patch);
+                } else {
+                    report.dropped += 1;
+                }
+            }
+        }
+    }
+
+    /// An Antiserum oscillator's source, with samples resolved and loaded
+    /// like the sampler's and their analyses cached. Missing samples play
+    /// as silence and warn.
+    fn antiserum_source(
+        &mut self,
+        project: &Project,
+        reference: &musiccraft_patch::SourceRef,
+        report: &mut SyncReport,
+    ) -> Arc<musiccraft_antiserum::Source> {
+        let base = project.path().and_then(Path::parent);
+        let key = |name: &str, bridge: &mut Self| sample_key(name, base, &mut bridge.paths);
+        let sample = if reference.sample.is_empty() {
+            None
+        } else {
+            let k = key(&reference.sample, self);
+            Some(k)
+        };
+        let harmonics = match &sample {
+            Some(k) => self.stereo_harmonics(k, &mut report.warnings),
+            None => musiccraft_antiserum::source::silent_analysis(),
+        };
+        let sample = sample.map(|k| self.load(&k, &mut report.warnings));
+        let zones = reference
+            .zones
+            .iter()
+            .map(|z| {
+                let k = key(&z.sample, self);
+                musiccraft_antiserum::Zone {
+                    buffer: self.load(&k, &mut report.warnings),
+                    low: z.low,
+                    high: z.high,
+                    root: z.root,
+                    vel_low: z.vel_low,
+                    vel_high: z.vel_high,
+                }
+            })
+            .collect();
+        Arc::new(musiccraft_antiserum::Source::with_analysis(
+            sample, harmonics, zones,
+        ))
+    }
+
     /// Creates a plugin and installs its processor in a free engine slot.
     /// `Ok(None)` means the message queue was full; the next sync retries.
     fn start_plugin(
@@ -556,10 +823,8 @@ impl Bridge {
             .host
             .as_ref()
             .ok_or("plugin hosting is not available here")?;
-        let used: Vec<u16> = self.live.values().map(|l| l.slot).collect();
-        let slot = (0..MAX_EXTERNALS)
-            .filter_map(|s| u16::try_from(s).ok())
-            .find(|s| !used.contains(s))
+        let slot = self
+            .free_slot()
             .ok_or_else(|| format!("at most {MAX_EXTERNALS} plugins can run at once"))?;
         let state = if plugin.state.is_empty() {
             None
@@ -603,18 +868,46 @@ impl Bridge {
     /// Forgets decoded samples and forces a full resync (after files changed).
     pub fn reload_samples(&mut self) {
         self.samples.clear();
+        self.paths.clear();
         self.last = None;
     }
 
     /// Loads a channel's sample, substituting silence (and a warning) on error.
     fn load(&mut self, key: &str, warnings: &mut Vec<String>) -> Arc<SampleBuffer> {
+        if key.is_empty() {
+            // A sampler without a sample is silent by design, not an error.
+            return Arc::new(SampleBuffer::silent(f64::from(self.sample_rate)));
+        }
         match self.samples.get(key, None, self.sample_rate) {
             Ok(buffer) => buffer,
             Err(err) => {
-                warnings.push(format!("sample `{key}`: {err}"));
+                let hint = if musiccraft_paths::is_foreign(key) {
+                    " (a path from another system with no matching file here: \
+                     see Settings → Folders)"
+                } else {
+                    ""
+                };
+                warnings.push(format!("sample `{key}`: {err}{hint}"));
                 Arc::new(SampleBuffer::silent(f64::from(self.sample_rate)))
             }
         }
+    }
+
+    /// The analysis of each channel of a sample, for Antiserum's spectral
+    /// oscillator (measured once, then cached).
+    fn stereo_harmonics(
+        &mut self,
+        key: &str,
+        warnings: &mut Vec<String>,
+    ) -> musiccraft_antiserum::source::Analysis {
+        if let Some(analysis) = self.stereo_harmonics.get(key) {
+            return analysis.clone();
+        }
+        let buffer = self.load(key, warnings);
+        let analysis = musiccraft_antiserum::source::analyze(&buffer);
+        self.stereo_harmonics
+            .insert(key.to_owned(), analysis.clone());
+        analysis
     }
 
     /// The harmonic analysis of a sample (measured once, then cached).
@@ -666,7 +959,7 @@ impl Bridge {
             Some(name) => Convolver::builtin(name, sr),
             None => {
                 let buffer = self.load(file, warnings);
-                Convolver::new(buffer.left(), buffer.right(), sr)
+                Convolver::from_buffer(&buffer, sr)
             }
         };
         Effect::Convolution(convolver)
@@ -705,7 +998,9 @@ impl Bridge {
                 ),
                 Source::Layer(children) => Instrument::Layer(children.clone()),
                 // An out-of-range slot plays nothing.
-                Source::Plugin(slot) => Instrument::External(slot.unwrap_or(u16::MAX)),
+                Source::Plugin(slot) | Source::Antiserum(slot) => {
+                    Instrument::External(slot.unwrap_or(u16::MAX))
+                }
                 Source::MidiOut(midi_channel) => Instrument::MidiOut(*midi_channel),
             };
             graph.add_channel(instrument, *params);
@@ -745,8 +1040,15 @@ impl Bridge {
         handle.collect_garbage();
         let mut report = SyncReport::default();
         self.sync_plugins(project, handle, &mut report);
+        self.sync_synths(project, handle, &mut report);
         let slots: BTreeMap<u32, u16> = self.live.iter().map(|(k, l)| (*k, l.slot)).collect();
-        let desc = describe(project, &slots);
+        let synth_slots: BTreeMap<ChannelId, u16> =
+            self.synths.iter().map(|(k, s)| (*k, s.slot)).collect();
+        if self.paths.refresh() {
+            // New mappings may find samples that were missing.
+            self.last = None;
+        }
+        let desc = describe(project, &slots, &synth_slots, &mut self.paths);
         let mut messages = Vec::new();
         let previous = self.last.take();
 
@@ -874,7 +1176,11 @@ impl Bridge {
     ///
     /// Returns a message if the sample cannot be loaded.
     pub fn sample(&mut self, sample: &str, project: &Project) -> Result<Arc<SampleBuffer>, String> {
-        let key = sample_key(sample, project.path().and_then(Path::parent));
+        let key = sample_key(
+            sample,
+            project.path().and_then(Path::parent),
+            &mut self.paths,
+        );
         self.samples
             .get(&key, None, self.sample_rate)
             .map_err(|e| e.to_string())

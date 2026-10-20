@@ -30,6 +30,11 @@ pub enum Purpose {
     AddPluginFolder,
     RenameAutomation(usize),
     AddMarker(u32),
+    SavePatch(usize),
+    OpenPatch(usize),
+    /// Antiserum channel and oscillator (0-based).
+    AntiserumSample(usize, usize),
+    AntiserumZone(usize, usize),
 }
 
 /// An open prompt.
@@ -47,6 +52,13 @@ fn project_dir(project: &Project) -> String {
         .and_then(Path::parent)
         .map(|p| format!("{}/", p.display()))
         .unwrap_or_default()
+}
+
+/// Where Antiserum patch files start: the user presets folder (a patch saved
+/// there is a preset), or the project's folder without one.
+fn preset_dir(project: &Project) -> String {
+    musiccraft_antiserum_presets::user::folder()
+        .map_or_else(|| project_dir(project), |dir| format!("{}/", dir.display()))
 }
 
 impl Dialog {
@@ -157,6 +169,27 @@ impl Dialog {
         Self::new(Purpose::RenameTrack(track), current.to_owned())
     }
 
+    /// Save an Antiserum channel's patch: a file named after it, next to the
+    /// project.
+    pub fn save_patch(channel: usize, name: &str, project: &Project) -> Self {
+        let file = name.replace(['/', '\\'], "-");
+        let path = format!("{}{file}.json", preset_dir(project));
+        Self::new(Purpose::SavePatch(channel), path)
+    }
+
+    pub fn open_patch(channel: usize, project: &Project) -> Self {
+        Self::new(Purpose::OpenPatch(channel), preset_dir(project))
+    }
+
+    /// An Antiserum oscillator's sample, starting from the current one.
+    pub fn antiserum_sample(channel: usize, osc: usize, current: &str) -> Self {
+        Self::new(Purpose::AntiserumSample(channel, osc), current.to_owned())
+    }
+
+    pub fn antiserum_zone(channel: usize, osc: usize, project: &Project) -> Self {
+        Self::new(Purpose::AntiserumZone(channel, osc), project_dir(project))
+    }
+
     fn title(&self) -> &'static str {
         match self.purpose {
             Purpose::Open => "Open project",
@@ -178,6 +211,12 @@ impl Dialog {
             Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
             Purpose::AddMarker(_) => "Marker name",
+            Purpose::SavePatch(_) => "Save Antiserum patch (.json)",
+            Purpose::OpenPatch(_) => "Open Antiserum patch (.json)",
+            Purpose::AntiserumSample(_, _) => {
+                "Oscillator sample (file path or builtin:<sound>; - clears)"
+            }
+            Purpose::AntiserumZone(_, _) => "Zone sample (file path or builtin:<sound>)",
         }
     }
 
@@ -190,6 +229,8 @@ impl Dialog {
             Purpose::Export => match self.bits {
                 "flac16" => Invocation::new("project.export_flac", [text, "16".to_owned()]),
                 "flac24" => Invocation::new("project.export_flac", [text, "24".to_owned()]),
+                "mp3" => Invocation::new("project.export_mp3", [text]),
+                "ogg" => Invocation::new("project.export_ogg", [text]),
                 bits => Invocation::new("project.export_wav", [text, bits.to_owned()]),
             },
             Purpose::ExportStems => Invocation::new("project.export_stems", [text]),
@@ -236,6 +277,20 @@ impl Dialog {
             Purpose::RenameAutomation(automation) => {
                 Invocation::new("automation.rename", [(automation + 1).to_string(), text])
             }
+            Purpose::SavePatch(channel) => {
+                Invocation::new("antiserum.save_patch", [(channel + 1).to_string(), text])
+            }
+            Purpose::OpenPatch(channel) => {
+                Invocation::new("antiserum.open_patch", [(channel + 1).to_string(), text])
+            }
+            Purpose::AntiserumSample(channel, osc) => Invocation::new(
+                "antiserum.set_sample",
+                [(channel + 1).to_string(), (osc + 1).to_string(), text],
+            ),
+            Purpose::AntiserumZone(channel, osc) => Invocation::new(
+                "antiserum.add_zone",
+                [(channel + 1).to_string(), (osc + 1).to_string(), text],
+            ),
         }
     }
 }
@@ -273,7 +328,7 @@ pub fn show(
                 confirm = true;
             }
             if dialog.purpose == Purpose::Export {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Format:");
                     for (bits, label) in [
                         ("16", "WAV 16"),
@@ -281,13 +336,15 @@ pub fn show(
                         ("32f", "WAV 32f"),
                         ("flac16", "FLAC 16"),
                         ("flac24", "FLAC 24"),
+                        ("mp3", "MP3 320k"),
+                        ("ogg", "Ogg q8"),
                     ] {
                         if ui.selectable_value(&mut dialog.bits, bits, label).changed() {
                             // Keep the file extension in step with the format.
-                            let ext = if bits.starts_with("flac") {
-                                "flac"
-                            } else {
-                                "wav"
+                            let ext = match bits {
+                                "mp3" | "ogg" => bits,
+                                _ if bits.starts_with("flac") => "flac",
+                                _ => "wav",
                             };
                             let path = std::path::Path::new(dialog.text.trim());
                             if path.extension().is_some() {
@@ -360,6 +417,18 @@ mod tests {
         assert_eq!(
             export.invocation().to_string(),
             "project.export_wav Untitled.wav 24"
+        );
+        export.text = "Untitled.mp3".into();
+        export.bits = "mp3";
+        assert_eq!(
+            export.invocation().to_string(),
+            "project.export_mp3 Untitled.mp3"
+        );
+        export.text = "Untitled.ogg".into();
+        export.bits = "ogg";
+        assert_eq!(
+            export.invocation().to_string(),
+            "project.export_ogg Untitled.ogg"
         );
         assert_eq!(
             Dialog::save_as(&Project::default())

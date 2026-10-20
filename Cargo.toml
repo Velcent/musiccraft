@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "xtask"]
+# Its own workspace: see standalone/Cargo.toml. `vendor` holds patched
+# third-party crates, used through `[patch]` below.
+exclude = ["standalone", "vendor"]
 
 [workspace.package]
 version = "0.2.2"
@@ -14,15 +17,24 @@ musiccraft-project = { path = "crates/musiccraft-project" }
 musiccraft-commands = { path = "crates/musiccraft-commands" }
 musiccraft-engine = { path = "crates/musiccraft-engine" }
 musiccraft-dsp = { path = "crates/musiccraft-dsp" }
+musiccraft-editors = { path = "crates/musiccraft-editors" }
+musiccraft-plugin-editor = { path = "crates/musiccraft-plugin-editor" }
+musiccraft-plugin-export = { path = "crates/musiccraft-plugin-export" }
 musiccraft-ui = { path = "crates/musiccraft-ui" }
 musiccraft-params = { path = "crates/musiccraft-params" }
 musiccraft-meter = { path = "crates/musiccraft-meter" }
+musiccraft-instruments = { path = "crates/musiccraft-instruments" }
+musiccraft-antiserum = { path = "crates/musiccraft-antiserum" }
+musiccraft-paths = { path = "crates/musiccraft-paths" }
 musiccraft-samples = { path = "crates/musiccraft-samples" }
 musiccraft-render = { path = "crates/musiccraft-render" }
 musiccraft-audio = { path = "crates/musiccraft-audio" }
 musiccraft-cli = { path = "crates/musiccraft-cli" }
 musiccraft-clap = { path = "crates/musiccraft-clap" }
 musiccraft-formula = { path = "crates/musiccraft-formula" }
+musiccraft-wavetables = { path = "crates/musiccraft-wavetables" }
+musiccraft-patch = { path = "crates/musiccraft-patch" }
+musiccraft-antiserum-presets = { path = "crates/musiccraft-antiserum-presets" }
 musiccraft-flp = { path = "crates/musiccraft-flp" }
 musiccraft-plugin-window = { path = "crates/musiccraft-plugin-window" }
 musiccraft-vst3 = { path = "crates/musiccraft-vst3" }
@@ -31,15 +43,24 @@ rtrb = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hound = "3.5"
+mp3lame-encoder = "0.2.5"
+vorbis_rs = "0.5.6"
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "ogg", "vorbis"] }
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 midir = "0.11"
 egui = "0.36"
+# nih-plug from GitHub, pinned (roadmap D2).
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# nih-plug with our fixes for clap-validator findings (vendor/nih_plug/PATCHES.md).
+[patch."https://github.com/robbert-vdh/nih-plug.git"]
+nih_plug = { path = "vendor/nih_plug" }
 
 [profile.dev.package."*"]
 opt-level = 2

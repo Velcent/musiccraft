@@ -40,6 +40,11 @@ process.
   MusicCraft's own project format stays its own.
 - Copying icons, skins, bitmaps, fonts, sample packs, factory presets, logos, or names.
 - Using another product's trademarks in our name, branding, or marketing.
+  The built-in wavetable synth is named **Antiserum**: the owner chose this
+  dictionary word (a serum of antibodies) on 2026-10-18. Its artwork,
+  wavetables and presets are our own, and it never uses another product's name,
+  logo or styling. Wavetable import reads the public WAV `clm ` frame-size
+  convention, never another synth's own preset or bank formats.
 
 ## Look and feel
 

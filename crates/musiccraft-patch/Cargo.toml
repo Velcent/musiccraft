@@ -1,0 +1,15 @@
+[package]
+name = "musiccraft-patch"
+description = "Antiserum's patch format: MusicCraft's own JSON for a synth sound, shared by projects, presets and the plugin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

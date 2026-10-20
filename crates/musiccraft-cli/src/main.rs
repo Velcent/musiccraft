@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use musiccraft_audio::OutputDevice;
-use musiccraft_cli::{list_commands, new_session, run_script};
+use musiccraft_cli::{WAVETABLE_USAGE, list_commands, new_session, run_script, wavetable};
 use musiccraft_commands::Session;
 use musiccraft_engine::{ChannelParams, EngineMessage, Graph, Instrument, engine_pair};
 use musiccraft_project::Transport;
@@ -17,6 +17,7 @@ usage:
   musiccraft-cli dump <file|->                run a script, then print the project as JSON
   musiccraft-cli play <file|-> [seconds]      run a script, then play it on the sound card
   musiccraft-cli tone [seconds]               play a test tone (A4) on the sound card
+  musiccraft-cli wavetable …                  Antiserum wavetables (see below)
 
 Each invocation starts from a fresh project; use a script for multi-step work.
 Export audio from a script with `project.export_wav <path>`.";
@@ -181,8 +182,15 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             }
         },
+        Some("wavetable") => match wavetable(&args[1..]) {
+            Ok(text) => writeln!(out, "{text}").map(|()| true),
+            Err(err) => {
+                eprintln!("{err}");
+                Ok(false)
+            }
+        },
         _ => {
-            eprintln!("{USAGE}");
+            eprintln!("{USAGE}\n{WAVETABLE_USAGE}");
             return ExitCode::from(2);
         }
     };

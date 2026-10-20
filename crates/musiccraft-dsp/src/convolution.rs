@@ -131,6 +131,19 @@ pub struct Convolver {
 }
 
 impl Convolver {
+    /// Prepares an impulse response recorded at its own rate (an audio
+    /// file), resampled to `sample_rate` first. Main thread only.
+    #[must_use]
+    pub fn from_buffer(buffer: &crate::SampleBuffer, sample_rate: f32) -> Self {
+        let factor = f64::from(sample_rate) / buffer.sample_rate();
+        if (factor - 1.0).abs() < 1e-9 {
+            return Self::new(buffer.left(), buffer.right(), sample_rate);
+        }
+        let left = crate::edit::resample(buffer.left(), factor);
+        let right = crate::edit::resample(buffer.right(), factor);
+        Self::new(&left, &right, sample_rate)
+    }
+
     /// Prepares the impulse response. Main thread only.
     #[must_use]
     pub fn new(left: &[f32], right: &[f32], sample_rate: f32) -> Self {

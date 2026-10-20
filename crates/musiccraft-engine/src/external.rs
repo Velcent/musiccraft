@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt;
 
 /// Most external processors (hosted plugins) an engine holds at once.
@@ -53,4 +54,22 @@ pub trait External: Send + fmt::Debug {
     /// Called on the audio thread just before the processor is handed back to
     /// the main thread, so it can end processing where it began.
     fn stop(&mut self);
+
+    /// The channel's pitch knob, in semitones, before every block. Built-in
+    /// external instruments (Antiserum) move their notes by it; hosted
+    /// plugins ignore it, as the knob is hidden for them.
+    fn set_transpose(&mut self, _semitones: f32) {}
+
+    /// The key signal for the next [`External::process`] call, fed to the
+    /// plugin's first auxiliary (sidechain) input. Without a call the aux
+    /// input is silent for that block. Processors with no aux input ignore it.
+    fn sidechain(&mut self, _left: &[f32], _right: &[f32]) {}
+
+    /// Takes data sent with [`crate::EngineMessage::ExternalData`] and
+    /// returns a box for the main thread to drop: the same box, holding
+    /// whatever the data replaced. Processors that take no data return it
+    /// unchanged.
+    fn receive(&mut self, data: Box<dyn Any + Send>) -> Box<dyn Any + Send> {
+        data
+    }
 }

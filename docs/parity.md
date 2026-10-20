@@ -129,6 +129,12 @@ of contents; see `docs/clean-room.md`.
 | Instruments | 16-pad drum kit | `cmd:channel.add_kit` `cmd:channel.set_pad` `spec:channel-rack.md` |
 | Instruments | Layer channel playing several channels | `cmd:channel.add_layer` `cmd:channel.set_layer` `spec:channel-rack.md` |
 | Instruments | Third synth oscillator | `spec:channel-rack.md` `done` |
+| Instruments | Wavetable synth (Antiserum): three wavetable oscillators with warps and unison, two multimode filters, envelopes, LFOs and a mod matrix | `cmd:channel.add_antiserum` `spec:antiserum.md` `spec:antiserum-app.md` |
+| Instruments | Wavetable synth: factory and imported wavetables, wavetable editor | `cmd:antiserum.set_table` `spec:antiserum-wavetables.md` `done` |
+| Instruments | Wavetable synth: sample, multisample, granular and spectral oscillators | `cmd:antiserum.set_sample` `cmd:antiserum.add_zone` `spec:antiserum-oscillators.md` |
+| Instruments | Wavetable synth: effects rack, arpeggiator and step sequencer | `cmd:antiserum.set_step` `spec:antiserum-fx-arp.md` |
+| Instruments | Wavetable synth: drag modulation sources onto knobs, modulation rings, drawn LFO shapes | `cmd:antiserum.set_lfo_shape` `spec:antiserum-app.md` `done` |
+| Instruments | Wavetable synth: factory bank of about 150 presets with tags and search; patch files | `cmd:antiserum.load_preset` `cmd:antiserum.save_patch` `cmd:antiserum.open_patch` `cmd:antiserum.presets` |
 | Effects | Effect windows with response graphs and presets | `spec:mixer.md` `done` |
 | Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |
 | Instruments | VST3 plugins (instruments, effects, Linux plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `spec:plugins.md` `done` |
@@ -151,7 +157,7 @@ of contents; see `docs/clean-room.md`.
 | Project | Export WAV | `cmd:project.export_wav` `key:Ctrl+R=ui.export` |
 | Project | Export stems | `cmd:project.export_stems` |
 | Project | Export FLAC (lossless) | `cmd:project.export_flac` |
-| Project | Export lossy audio (MP3, Ogg) | `todo` |
+| Project | Export lossy audio (MP3, Ogg) | `cmd:project.export_mp3` `cmd:project.export_ogg` `spec:project-file.md` |
 | Project | Autosave and crash recovery | `done` |
 | Project | Import FL Studio projects (.flp) | `cmd:project.import_flp` `spec:flp-import.md` |
 | Input | MIDI keyboard plays the selected channel | `done` |
@@ -164,6 +170,7 @@ of contents; see `docs/clean-room.md`.
 | Input | Record knob movements as automation | `cmd:automation.record` `spec:recording.md` |
 | Input | Computer keyboard as piano | `key:Ctrl+T=ui.typing_keyboard` `done` |
 | Automation | Curve shapes per segment (single, double, hold, stairs) and tension | `cmd:automation.set_curve` `spec:playlist.md` |
+| Project | Sample paths from Windows projects and FL Studio found on Linux and macOS | `cmd:project.localize_samples` `spec:sample-paths.md` |
 | Mixer | Built-in three-band track EQ and per-slot mix | `cmd:mixer.set_eq` `cmd:mixer.set_effect_mix` `spec:mixer.md` |
 | Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
 | Scripting | Headless CLI and scripts | `done` |
@@ -186,3 +193,19 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
 | Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |
 | Automation | Controllers: LFO, envelope, keyboard, peak, formula and macro sources driving a parameter | `cmd:controller.add` `cmd:controller.set` `spec:controllers.md` |
+| Plugins | Built-in instruments and Antiserum as CLAP and VST3 plugins, with the app's editors | `spec:plugin-instruments.md` `done` |
+| Release | Antiserum sample oscillators play stereo samples | `spec:antiserum-oscillators.md` `done` |
+| Release | Warps on sample, multisample, granular and spectral oscillators | `spec:antiserum-oscillators.md` `done` |
+| Release | Unison on granular, spectral and stretched-sample oscillators | `spec:antiserum-oscillators.md` `done` |
+| Release | Antiserum editor sample previews resolve project-relative paths | `spec:antiserum-oscillators.md` `done` |
+| Release | Factory presets using sample, multisample, granular and spectral oscillators | `spec:antiserum-app.md` `done` |
+| Release | Antiserum benchmark covers every oscillator type | `spec:antiserum-oscillators.md` `done` |
+| Release | Channel header pitch knob transposes Antiserum | `spec:antiserum-app.md` `done` |
+| Release | User preset folder listed in the browser, with save into it | `cmd:antiserum.save_preset` `cmd:antiserum.delete_preset` `spec:antiserum-app.md` |
+| Release | Convolution reverb plugin loads impulse files | `spec:plugin-export.md` `done` |
+| Release | Sidechain input and MIDI follow tested through our CLAP and VST3 hosts | `spec:plugin-export.md` `done` |
+| Validation | Offline renders with our plugins match the in-app render (CLAP and VST3) | `spec:validation.md` `done` |
+| Validation | clap-validator and the VST3 validator pass on both bundles in CI | `spec:validation.md` `done` |
+| Validation | Denormal and CPU-budget checks for every plugin | `spec:validation.md` `done` |
+| Validation | Manual smoke tests in Ardour, Bitwig and REAPER | `todo` |
+| Release | Plugin bundles for Linux, Windows and macOS in the release downloads, with install notes | `spec:plugin-export.md` `done` |

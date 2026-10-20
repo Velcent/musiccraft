@@ -1032,6 +1032,47 @@ fn flac_export_is_valid_and_smaller_than_wav() {
 }
 
 #[test]
+fn mp3_and_ogg_exports_write_their_formats() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-lossy-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick\nstep.toggle 1 0\nstep.toggle 1 8",
+    );
+    let file = |name: &str| dir.join(name).display().to_string();
+    let wav = file("a.wav");
+    s.run_line(&format!("project.export_wav \"{wav}\""))
+        .unwrap();
+    let wav = std::fs::read(&wav).unwrap();
+    for (line, name) in [
+        ("project.export_mp3 \"{}\"", "a.mp3"),
+        ("project.export_mp3 \"{}\" 128 2 48000", "b.mp3"),
+        ("project.export_ogg \"{}\"", "a.ogg"),
+        ("project.export_ogg \"{}\" 3 1 96000", "b.ogg"),
+    ] {
+        s.run_line(&line.replace("{}", &file(name))).unwrap();
+        let bytes = std::fs::read(file(name)).unwrap();
+        let magic: &[u8] = if name.ends_with("mp3") {
+            b"ID3"
+        } else {
+            b"OggS"
+        };
+        assert!(bytes.starts_with(magic), "{name}");
+        assert!(bytes.len() < wav.len() / 3, "{name}: {} bytes", bytes.len());
+    }
+    for bad in [
+        "project.export_mp3 x.mp3 100",
+        "project.export_mp3 x.mp3 320 1 96000",
+        "project.export_ogg x.ogg 11",
+        "project.export_ogg x.ogg 5 0",
+    ] {
+        assert!(s.run_line(bad).is_err(), "{bad}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn every_synth_preset_plays_without_clipping() {
     use musiccraft_params::INSTRUMENT_PARAMS;
     use musiccraft_params::presets::SYNTH;
@@ -2138,4 +2179,245 @@ fn shaped_automation_segments_reach_the_engine_lane() {
     let lane = &seq.automation()[0];
     assert!(lane.points.len() > 10, "a bent segment is sampled");
     assert!(lane.value_at(192.0).unwrap() < -0.8, "slow start");
+}
+
+#[test]
+fn a_loop_region_does_not_change_an_export() {
+    let render_song = |lines: &str| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "channel.add_synth
+                 note.add 1 0 16 C5 100
+                 playlist.add_clip 1 1 0
+                 transport.set_mode song
+                 {lines}"
+            ),
+        );
+        render(s.project(), RenderOptions::default()).0
+    };
+    let plain = render_song("");
+    // A loop region past the song's end (as FL projects can carry).
+    let looped = render_song("transport.set_loop 10 14");
+    assert_eq!(plain.len(), looped.len());
+    let diff = plain
+        .iter()
+        .zip(&looped)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0_f32, f32::max);
+    assert!(diff < 1e-4, "exports differ by {diff}");
+}
+
+#[test]
+fn an_empty_sampler_is_silent_without_a_warning() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-empty-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick");
+    let mut project = s.project().clone();
+    project.channels[0].instrument = musiccraft_project::Instrument::Sampler {
+        sample: String::new(),
+    };
+    // Saved next to a folder, an empty path must not resolve to that folder.
+    project.set_path(Some(dir.join("p.mcp.json")));
+    let (_, _, warnings) = render(&project, RenderOptions::default());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_windows_sample_path_plays_through_its_translation() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-winpath-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("Packs/Drums")).unwrap();
+    let tone: Vec<f32> = (0..12_000).map(|i| (i as f32 * 0.05).sin() * 0.5).collect();
+    musiccraft_samples::write_wav(
+        &dir.join("Packs/Drums/tone.wav"),
+        &tone,
+        &tone,
+        48_000,
+        musiccraft_samples::WavFormat::Float32,
+    )
+    .unwrap();
+    musiccraft_paths::configure(musiccraft_paths::PathConfig {
+        fl_factory: vec![dir.clone()],
+        ..musiccraft_paths::PathConfig::default()
+    });
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:kick\nstep.toggle 1 0");
+    let mut project = s.project().clone();
+    project.channels[0].instrument = musiccraft_project::Instrument::Sampler {
+        sample: r"%FLStudioFactoryData%\packs\DRUMS\tone.wav".to_owned(),
+    };
+    let (left, _, warnings) = render(&project, RenderOptions::default());
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(rms(&left[..12_000]) > 0.1, "the translated sample plays");
+    // The project keeps the path as written.
+    assert!(matches!(
+        &project.channels[0].instrument,
+        musiccraft_project::Instrument::Sampler { sample } if sample.starts_with('%')
+    ));
+    musiccraft_paths::configure(musiccraft_paths::PathConfig::default());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn an_antiserum_channel_renders_its_notes() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_antiserum Deep Sub
+         note.add 1 0 4 C3",
+    );
+    let (left, right, warnings) = render(
+        s.project(),
+        RenderOptions {
+            sample_rate: 48_000,
+            loops: 1,
+            max_tail_seconds: 1.0,
+        },
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(left.iter().chain(&right).all(|x| x.is_finite()));
+    // The note lasts one beat (0.5 s); it sounds then and is quiet later.
+    assert!(rms(&left[2_400..24_000]) > 0.01);
+    assert!(rms(&left[48_000..60_000]) < 0.1 * rms(&left[2_400..24_000]));
+}
+
+#[test]
+fn antiserum_edits_reach_the_running_synth() {
+    let mut s = session();
+    run(&mut s, "channel.add_antiserum Glass Reese");
+    let (mut engine, mut handle) = engine_pair(48_000);
+    let mut bridge = Bridge::new(48_000);
+    let first = bridge.sync(s.project(), &mut handle);
+    assert!(first.rebuilt_graph && first.warnings.is_empty());
+    let mut out = vec![0.0; 1_024];
+    let mut step = |s: &Session, bridge: &mut Bridge| {
+        engine.process(&mut out, 2);
+        bridge.sync(s.project(), &mut handle)
+    };
+    assert_eq!(step(&s, &mut bridge).messages, 0, "idle");
+    run(&mut s, "channel.set_param 1 filter1_cutoff 900");
+    let param = step(&s, &mut bridge);
+    assert_eq!(param.messages, 1);
+    assert!(!param.rebuilt_graph, "no rebuild, notes keep sounding");
+    run(&mut s, "antiserum.set_table 1 1 factory:pwm");
+    assert_eq!(step(&s, &mut bridge).messages, 1);
+    run(&mut s, "antiserum.set_lfo_shape 1 2 0:0:0,0.25:1:0");
+    assert_eq!(step(&s, &mut bridge).messages, 1);
+    run(&mut s, "antiserum.set_step 1 3 off 0 1 0.5");
+    assert_eq!(step(&s, &mut bridge).messages, 1);
+    // A preset changes many values but still no rebuild.
+    run(&mut s, "antiserum.load_preset 1 Choir Pad");
+    let preset = step(&s, &mut bridge);
+    assert!(preset.messages > 10 && !preset.rebuilt_graph);
+    // Removing the channel frees its slot (and rebuilds the graph).
+    run(&mut s, "channel.remove 1");
+    assert!(step(&s, &mut bridge).rebuilt_graph);
+}
+
+#[test]
+fn antiserum_automation_targets_the_synth() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_antiserum
+         automation.create channel:1:filter1_cutoff
+         automation.set_points 1 [[0,0.25],[1536,1.0]]
+         playlist.add_automation_clip 1 1 0 4
+         transport.set_mode song",
+    );
+    let sequence = build_sequence(s.project());
+    let targets: Vec<_> = sequence.automation().iter().map(|l| l.target).collect();
+    let index = musiccraft_antiserum::index_of("filter1_cutoff").unwrap() as u32;
+    assert!(
+        targets.contains(&musiccraft_engine::AutomationTarget::ExternalParam(
+            0, index
+        )),
+        "{targets:?}"
+    );
+}
+
+#[test]
+fn antiserum_sample_oscillators_render_and_swap_samples() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_antiserum
+         channel.set_param 1 osc1_type 3
+         channel.set_param 1 osc1_grain_spread 0
+         antiserum.set_sample 1 1 builtin:crash
+         note.add 1 0 4 C4",
+    );
+    let (left, _, warnings) = render(
+        s.project(),
+        RenderOptions {
+            sample_rate: 48_000,
+            loops: 1,
+            max_tail_seconds: 0.5,
+        },
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(
+        rms(&left[2_400..24_000]) > 0.01,
+        "the granular crash sounds"
+    );
+    // A new sample is swapped into the running synth: one message.
+    let (mut engine, mut handle) = engine_pair(48_000);
+    let mut bridge = Bridge::new(48_000);
+    let _ = bridge.sync(s.project(), &mut handle);
+    let mut out = vec![0.0; 1_024];
+    engine.process(&mut out, 2);
+    let _ = bridge.sync(s.project(), &mut handle);
+    run(&mut s, "antiserum.set_sample 1 1 builtin:snare");
+    let swap = bridge.sync(s.project(), &mut handle);
+    assert_eq!(swap.messages, 1);
+    assert!(!swap.rebuilt_graph);
+    // A missing file warns once and plays silence.
+    run(&mut s, "antiserum.add_zone 1 2 builtin:kick");
+    let mut project = s.project().clone();
+    if let Some(patch) = project.channels[0].instrument.patch_mut() {
+        let mut source = patch.source(1);
+        source.zones[0].sample = "/no/such/zone.wav".to_owned();
+        patch.set_source(1, source);
+    }
+    engine.process(&mut out, 2);
+    let report = bridge.sync(&project, &mut handle);
+    assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+}
+
+#[test]
+fn the_channel_pitch_knob_transposes_antiserum() {
+    let pitch_of = |semitones: i32| {
+        let mut s = session();
+        run(
+            &mut s,
+            &format!(
+                "project.set_tempo 120
+                 channel.add_antiserum
+                 channel.set_param 1 osc1_unison 1
+                 channel.set_param 1 pitch {semitones}
+                 note.add 1 0 8 A4"
+            ),
+        );
+        let (left, _, _) = render(
+            s.project(),
+            RenderOptions {
+                sample_rate: 48_000,
+                loops: 1,
+                max_tail_seconds: 0.1,
+            },
+        );
+        frequency(&left[4_800..20_000], 48_000.0)
+    };
+    let plain = pitch_of(0);
+    let up = pitch_of(12);
+    assert!(plain > 100.0, "it sounds ({plain} Hz)");
+    assert!(
+        (up / plain - 2.0).abs() < 0.05,
+        "an octave up: {plain} -> {up}"
+    );
 }

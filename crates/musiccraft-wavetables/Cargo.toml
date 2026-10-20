@@ -1,0 +1,19 @@
+[package]
+name = "musiccraft-wavetables"
+description = "Antiserum's editable wavetables: factory tables, WAV import and export, and editing operations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+musiccraft-dsp.workspace = true
+musiccraft-formula.workspace = true
+hound.workspace = true
+
+[dev-dependencies]
+musiccraft-antiserum.workspace = true
+
+[lints]
+workspace = true

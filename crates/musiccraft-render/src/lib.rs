@@ -7,6 +7,7 @@
 //!
 //! [`render`] and [`export_wav`] run the same engine offline.
 
+mod antiserum;
 mod arp;
 mod bridge;
 mod consolidate;
@@ -20,8 +21,8 @@ mod sequence;
 pub use bridge::{Bridge, SyncReport};
 pub use consolidate::ConsolidateCommand;
 pub use export::{
-    ExportCommand, ExportFlacCommand, ExportStemsCommand, RenderOptions, export_stems, export_wav,
-    register, register_with, render, render_with,
+    ExportCommand, ExportFlacCommand, ExportLossyCommand, ExportStemsCommand, Lossy, RenderOptions,
+    export_stems, export_wav, register, register_with, render, render_with,
 };
 pub use midi_export::{ExportMidiCommand, midi_file};
 pub use plugins::{
@@ -50,6 +51,8 @@ pub fn full_registry_with(host: Option<PluginHost>) -> Registry {
     registry
 }
 
+#[cfg(test)]
+mod live_tests;
 #[cfg(test)]
 mod plugin_tests;
 #[cfg(test)]

@@ -291,6 +291,7 @@ fn row(
         let response = ui.add(name).hint(match &channel.instrument {
             Instrument::Sampler { sample } => format!("Sampler: {sample}"),
             Instrument::Synth => "Synth".to_owned(),
+            Instrument::Antiserum { patch } => format!("Antiserum: {}", patch.name),
             Instrument::DrumSynth => "Drum synth".to_owned(),
             Instrument::Pluck => "Pluck".to_owned(),
             Instrument::Fm => "FM synth".to_owned(),

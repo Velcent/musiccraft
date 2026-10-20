@@ -9,14 +9,14 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use crate::Start;
 use crate::graph::{ChannelNode, ChannelParams, Instrument, TrackNode};
 use crate::midi_out::{MidiOut, MidiOutReceiver, midi_out_pair};
-use crate::voice::{Voice, VoiceStart};
 use crate::{
     EngineMessage, External, ExternalTransport, GARBAGE_CAPACITY, Garbage, Graph, LIVE_CAPACITY,
     LiveEvent, MAX_BLOCK, MAX_EXTERNALS, MAX_VOICES, MESSAGE_CAPACITY, Meters, NoteEvent, Sequence,
 };
+use musiccraft_instruments::{Voice, VoiceStart};
 
 /// The engine's external processor slots.
-type Externals = [Option<Box<dyn External>>];
+pub(crate) type Externals = [Option<Box<dyn External>>];
 
 /// Safety cap on loop wraps handled within one block (for absurdly short loops).
 const MAX_WRAPS_PER_BLOCK: usize = 64;
@@ -544,6 +544,13 @@ impl Engine {
                     external.set_param(id, value);
                 }
             }
+            EngineMessage::ExternalData { slot, data } => {
+                let back = match self.externals.get_mut(usize::from(slot)) {
+                    Some(Some(external)) => external.receive(data),
+                    _ => data,
+                };
+                self.discard(Garbage::Data(back));
+            }
             EngineMessage::SetGraph(graph) => {
                 for voice in &mut self.voices {
                     voice.active = false;
@@ -853,7 +860,7 @@ impl Engine {
         };
         if let Some(sequence) = self.sequence.as_deref() {
             if self.playing {
-                apply_automation(graph, sequence, self.position);
+                apply_automation(graph, &mut self.externals, sequence, self.position);
             }
             let cx = crate::controllers::ControlContext {
                 beats,
@@ -862,6 +869,7 @@ impl Engine {
             };
             crate::controllers::apply_controllers(
                 graph,
+                &mut self.externals,
                 sequence,
                 &mut self.controller_states,
                 &cx,
@@ -887,7 +895,7 @@ impl Engine {
                     ..
                 }) => {
                     let (l, r) = (prefix(left, frames), prefix(right, frames));
-                    voice.render(instrument, params, l, r, sample_rate);
+                    voice.render(instrument, &params.instrument, l, r, sample_rate);
                 }
                 None => voice.active = false,
             }
@@ -895,6 +903,8 @@ impl Engine {
         for node in channels.iter_mut() {
             if let Instrument::External(slot) = node.instrument {
                 if let Some(Some(external)) = self.externals.get_mut(usize::from(slot)) {
+                    let pitch = node.params.instrument.get(inst::PITCH).copied();
+                    external.set_transpose(pitch.unwrap_or(0.0));
                     let (l, r) = (
                         prefix(&mut node.left, frames),
                         prefix(&mut node.right, frames),
@@ -1032,10 +1042,15 @@ impl Engine {
 }
 
 /// Writes every automation lane's current value into the graph.
-fn apply_automation(graph: &mut Graph, sequence: &Sequence, position: f64) {
+fn apply_automation(
+    graph: &mut Graph,
+    externals: &mut Externals,
+    sequence: &Sequence,
+    position: f64,
+) {
     for lane in sequence.automation() {
         if let Some(value) = lane.value_at(position) {
-            write_target(graph, lane.target, value);
+            write_target(graph, externals, lane.target, value);
         }
     }
 }
@@ -1087,10 +1102,24 @@ fn send_midi_controls(graph: &mut Graph, midi_out: &mut MidiOut) {
 }
 
 /// Writes `value` (real units) into the parameter `target` names.
-pub(crate) fn write_target(graph: &mut Graph, target: crate::AutomationTarget, value: f32) {
+pub(crate) fn write_target(
+    graph: &mut Graph,
+    externals: &mut Externals,
+    target: crate::AutomationTarget,
+    value: f32,
+) {
     use crate::AutomationTarget as T;
     {
         match target {
+            T::ExternalParam(c, id) => {
+                let slot = match graph.channels.get(usize::from(c)).map(|n| &n.instrument) {
+                    Some(Instrument::External(slot)) => usize::from(*slot),
+                    _ => return,
+                };
+                if let Some(Some(external)) = externals.get_mut(slot) {
+                    external.set_param(id, f64::from(value));
+                }
+            }
             T::ChannelVolume(c) => {
                 if let Some(node) = graph.channels.get_mut(usize::from(c)) {
                     node.params.volume = value;
@@ -1191,7 +1220,7 @@ fn trigger(
     };
     // A slide note on an instrument that can bend starts no sound, so it cuts
     // nothing; every other note cuts the channels its cut group chokes.
-    let bends = start.slide && crate::voice::glides(&node.instrument);
+    let bends = start.slide && musiccraft_instruments::glides(&node.instrument);
     if !bends {
         cut_group(voices, channels, &node.params, start.delay);
     }
@@ -1238,7 +1267,7 @@ fn trigger(
     let slides = start.slide
         && channels
             .get(usize::from(start.channel))
-            .is_some_and(|node| crate::voice::glides(&node.instrument));
+            .is_some_and(|node| musiccraft_instruments::glides(&node.instrument));
     if slides {
         slide(voices, last_keys, &start);
         return;
@@ -1253,7 +1282,7 @@ fn trigger(
         make_room(voices, &node.params, start.channel, start.delay);
         if let Some(voice) = free_voice(voices) {
             *counter += 1;
-            voice.start(start, &node.instrument, &node.params, *counter);
+            voice.start(start, &node.instrument, &node.params.instrument, *counter);
         }
         return;
     }
@@ -1266,7 +1295,7 @@ fn trigger(
     make_room(voices, &node.params, start.channel, start.delay);
     if let Some(voice) = free_voice(voices) {
         *counter += 1;
-        voice.start(start, &node.instrument, &node.params, *counter);
+        voice.start(start, &node.instrument, &node.params.instrument, *counter);
     }
 }
 
@@ -1693,13 +1722,18 @@ fn band_split(
     }
 }
 
-/// Replaces non-finite samples with silence. Returns whether any were found.
+/// Replaces non-finite and subnormal samples with silence. Returns whether
+/// any non-finite ones were found.
 fn scrub(left: &mut [f32], right: &mut [f32]) -> bool {
     let mut found = false;
     for sample in left.iter_mut().chain(right.iter_mut()) {
         if !sample.is_finite() {
             *sample = 0.0;
             found = true;
+        } else if sample.is_subnormal() {
+            // Too quiet to hear and slow to compute with (see
+            // `musiccraft_dsp::flush_subnormals`); not a fault.
+            *sample = 0.0;
         }
     }
     found

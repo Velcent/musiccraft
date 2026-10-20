@@ -1,0 +1,28 @@
+# The standalone effect apps. A workspace of its own (with its own lockfile):
+# nih-plug's standalone wrapper uses an older ALSA binding than the app, and
+# Cargo allows one per workspace. Build with
+# `cargo build --release --manifest-path standalone/Cargo.toml`.
+[package]
+name = "musiccraft-fx-standalone"
+description = "Runs one MusicCraft effect as a standalone app"
+version = "0.2.2"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+license = "GPL-3.0-or-later"
+
+[dependencies]
+musiccraft-plugin-export = { path = "../crates/musiccraft-plugin-export" }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", default-features = false, features = ["standalone"] }
+
+[workspace]
+
+# The same patched nih-plug as the main workspace (vendor/nih_plug/PATCHES.md).
+[patch."https://github.com/robbert-vdh/nih-plug.git"]
+nih_plug = { path = "../vendor/nih_plug" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

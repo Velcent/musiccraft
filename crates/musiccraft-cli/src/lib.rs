@@ -7,6 +7,9 @@ use musiccraft_commands::{Invocation, Registry, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
 use musiccraft_render::PluginHost;
 
+mod wavetable;
+pub use wavetable::{WAVETABLE_USAGE, wavetable};
+
 /// The plugin host (CLAP and VST3), shared by every session in the process.
 /// Plugin folders are scanned on first use. Setting `MUSICCRAFT_NO_PLUGINS`
 /// turns hosting off (plugin channels then stay silent and say so).

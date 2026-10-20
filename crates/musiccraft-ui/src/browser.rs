@@ -268,6 +268,75 @@ fn generator(
     );
 }
 
+/// Antiserum, with its factory presets by category and then the user
+/// presets; a preset adds an Antiserum channel playing it.
+fn antiserum(ui: &mut egui::Ui, search: &str, actions: &mut Vec<Action>) {
+    let bank = musiccraft_antiserum_presets::factory();
+    let user = musiccraft_antiserum_presets::user::cached();
+    let hit = |p: &musiccraft_patch::Patch| {
+        matches(search, &p.name) || p.tags.iter().any(|t| matches(search, t))
+    };
+    let any_preset = bank.iter().chain(user.iter()).any(hit);
+    if !matches(search, "antiserum") && !any_preset {
+        return;
+    }
+    generator(
+        ui,
+        "Antiserum",
+        "Wavetable synth",
+        Invocation::bare("channel.add_antiserum"),
+        actions,
+    );
+    egui::CollapsingHeader::new("Antiserum presets")
+        .id_salt("antiserum-presets")
+        .default_open(!search.is_empty() && any_preset)
+        .show(ui, |ui| {
+            for category in musiccraft_patch::CATEGORIES {
+                let list: Vec<_> = bank
+                    .iter()
+                    .filter(|p| p.category == category && (search.is_empty() || hit(p)))
+                    .collect();
+                if list.is_empty() {
+                    continue;
+                }
+                egui::CollapsingHeader::new(category)
+                    .id_salt(("antiserum-category", category))
+                    .default_open(!search.is_empty())
+                    .show(ui, |ui| {
+                        for preset in list {
+                            generator(
+                                ui,
+                                &preset.name,
+                                &format!("Antiserum preset ({})", preset.tags.join(", ")),
+                                Invocation::new("channel.add_antiserum", [preset.name.clone()]),
+                                actions,
+                            );
+                        }
+                    });
+            }
+            let mine: Vec<_> = user
+                .iter()
+                .filter(|p| search.is_empty() || hit(p))
+                .collect();
+            if !mine.is_empty() {
+                egui::CollapsingHeader::new("User")
+                    .id_salt("antiserum-user")
+                    .default_open(!search.is_empty())
+                    .show(ui, |ui| {
+                        for preset in mine {
+                            generator(
+                                ui,
+                                &preset.name,
+                                "Your Antiserum preset",
+                                Invocation::new("channel.add_antiserum", [preset.name.clone()]),
+                                actions,
+                            );
+                        }
+                    });
+            }
+        });
+}
+
 /// Generators (instruments) and effects, built-in and installed. A click
 /// selects an entry; a double-click adds a generator as a channel or an effect
 /// to the selected mixer track, and generators can be dragged onto the rack.
@@ -295,6 +364,7 @@ fn plugin_database(
                             actions,
                         );
                     }
+                    antiserum(ui, search, actions);
                     for kind in musiccraft_project::params::DRUM_TYPES {
                         let label = format!("Drum synth: {kind}");
                         if matches(search, &label) {
@@ -429,57 +499,7 @@ fn plugin_database(
 /// Display name of a built-in effect.
 #[must_use]
 pub fn effect_title(kind: musiccraft_project::params::EffectKind) -> &'static str {
-    use musiccraft_project::params::EffectKind as K;
-    match kind {
-        K::Filter => "Filter",
-        K::Eq => "Equalizer",
-        K::Delay => "Delay",
-        K::Reverb => "Reverb",
-        K::Compressor => "Compressor",
-        K::Distortion => "Distortion",
-        K::Chorus => "Chorus",
-        K::Limiter => "Limiter",
-        K::Phaser => "Phaser",
-        K::Flanger => "Flanger",
-        K::Bitcrusher => "Bitcrusher",
-        K::Stereo => "Stereo tool",
-        K::Gate => "Trance gate",
-        K::Autopan => "Auto-pan",
-        K::BassBoost => "Bass boost",
-        K::Overdrive => "Overdrive",
-        K::SoftClipper => "Soft clipper",
-        K::Waveshaper => "Waveshaper",
-        K::DcBlock => "DC remover",
-        K::RingMod => "Ring modulator",
-        K::FreqShift => "Frequency shifter",
-        K::Formant => "Vowel filter",
-        K::AutoFilter => "Auto filter",
-        K::NoiseGate => "Noise gate",
-        K::Transient => "Transient shaper",
-        K::MultiTap => "Multi-tap delay",
-        K::GraphicEq => "Graphic EQ",
-        K::ParametricEq => "Parametric EQ",
-        K::Multiband => "Multiband compressor",
-        K::Vocoder => "Vocoder",
-        K::PitchShift => "Pitch shifter",
-        K::Stutter => "Stutter",
-        K::Convolution => "Convolution reverb",
-        K::PitchCorrect => "Pitch corrector",
-        K::Tuner => "Tuner",
-        K::Dynamics => "Dynamics",
-        K::StereoShaper => "Stereo shaper",
-        K::MultibandLimiter => "Multiband limiter",
-        K::Send => "Send",
-        K::HallReverb => "Hall reverb",
-        K::GuitarChain => "Guitar chain",
-        K::MultiFx => "X/Y multi-effect",
-        K::FxChain => "Effect chain",
-        K::BeatShaper => "Beat shaper",
-        K::BandSplit => "Band splitter",
-        K::Scratch => "Scratch",
-        K::Rack => "Effect rack",
-        K::Plugin => "Plugin",
-    }
+    kind.title()
 }
 
 /// Patterns, automation and samples of the open project.

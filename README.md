@@ -22,6 +22,12 @@ can be driven from the GUI, scripts, the CLI, or an AI agent over MCP.
   <tr>
     <td colspan="2" align="center">Synth editor and an effect window</td>
   </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/antiserum.png" alt="Antiserum wavetable synth: preset bar, draggable modulation sources and the oscillator page with wavetable views"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">Antiserum, the wavetable synth</td>
+  </tr>
 </table>
 
 The screenshots show [`examples/demo-song.mcs`](examples/demo-song.mcs).
@@ -139,6 +145,15 @@ Hover any control and the hint bar at the top says what it does.
   Linux for now); parameters and state are saved in the project and exports
   render them. CLAP is tested with Surge XT and LSP plugins; VST3 with the
   bundled test plugins (third-party VST3 plugins are not tested yet).
+- **MusicCraft in other DAWs**: each release has a
+  `MusicCraft-Plugins-<version>-<os>` download with **MusicCraft Effects**
+  (44 effects) and **MusicCraft Instruments** (the built-in instruments and
+  Antiserum) as `.clap` and `.vst3`, with the app's own editors. Its
+  `README.txt` lists the plugin folders for each system
+  (`packaging/portable/README-plugins.txt`). To build them yourself:
+  `cargo xtask bundle --release` (on macOS `bundle-universal`) writes them to
+  `target/bundled`. `cargo run --manifest-path standalone/Cargo.toml -- <name>`
+  runs one effect standalone.
 
 Built-in sounds (`builtin:kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`,
 `rim`, `crash`) are synthesized at start-up; WAV files can be loaded as samples.
@@ -152,7 +167,8 @@ cargo run -p musiccraft-cli -- play examples/basic-beat.mcs 10
 cargo run -p musiccraft-cli -- dump examples/basic-beat.mcs  # project JSON
 ```
 
-Add `project.export_wav beat.wav`, `project.export_flac beat.flac` or
+Add `project.export_wav beat.wav`, `project.export_flac beat.flac`,
+`project.export_mp3 beat.mp3`, `project.export_ogg beat.ogg` or
 `project.export_stems stems/` to a script to render audio. See `docs/spec/commands.md` for argument conventions.
 
 ## AI agents (MCP)

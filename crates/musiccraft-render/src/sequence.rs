@@ -181,6 +181,21 @@ fn engine_target(project: &Project, target: &AutomationTarget) -> Option<(Engine
         AutomationTarget::ChannelPan { channel: id } => {
             (EngineTarget::ChannelPan(channel(*id)?), Convert::Pan)
         }
+        AutomationTarget::ChannelParam { channel: id, param }
+            if project
+                .channel_position(*id)
+                .and_then(|i| project.channels.get(i))
+                .is_some_and(|c| c.instrument.patch().is_some())
+                && musiccraft_antiserum::index_of(param).is_some() =>
+        {
+            // Antiserum's own parameters, written into its synth.
+            let index = musiccraft_antiserum::index_of(param)?;
+            let spec = *musiccraft_antiserum::params().get(index)?;
+            (
+                EngineTarget::ExternalParam(channel(*id)?, u32::try_from(index).ok()?),
+                Convert::Spec(spec),
+            )
+        }
         AutomationTarget::ChannelParam { channel: id, param } => {
             let index = index_of(INSTRUMENT_PARAMS, param)?;
             (

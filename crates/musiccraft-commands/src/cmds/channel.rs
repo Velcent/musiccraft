@@ -224,15 +224,19 @@ pub(super) fn check_sample(
         return Ok(label);
     }
     let path = Path::new(sample);
+    let base = project.path().and_then(Path::parent);
+    // A path from another system counts when it translates to a file here.
     let exists = path.exists()
-        || project
-            .path()
-            .and_then(Path::parent)
-            .is_some_and(|dir| dir.join(path).exists());
+        || base.is_some_and(|dir| dir.join(path).exists())
+        || musiccraft_paths::Resolver::new()
+            .resolve(sample, base)
+            .is_some();
     if !exists {
         return Err(args.invalid(format!("sample file `{sample}` does not exist")));
     }
-    Ok(path
+    // The label is the file name, whichever system's separators it uses.
+    let name = sample.rsplit(['/', '\\']).next().unwrap_or(sample);
+    Ok(Path::new(name)
         .file_stem()
         .map_or_else(|| sample.to_owned(), |s| s.to_string_lossy().into_owned()))
 }
@@ -890,10 +894,24 @@ fn set_sample(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     ))
 }
 
+/// Whether `name` is a parameter every channel has whatever its instrument:
+/// the header's pitch and the note functions.
+pub(crate) fn channel_level(name: &str) -> bool {
+    name == "pitch" || musiccraft_instruments::NOTE_FUNCTIONS.contains(&name)
+}
+
 fn set_param(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(3, 3)?;
     let index = channel_arg(project, args, 0)?;
     let name = args.str(1)?;
+    // An Antiserum channel's own parameters live in its patch (its own
+    // arpeggiator's names included); the channel's (the header's pitch, the
+    // other note functions) stay with the channel.
+    if project.channels[index].instrument.patch().is_some()
+        && (musiccraft_antiserum::index_of(name).is_some() || !channel_level(name))
+    {
+        return super::antiserum::set_param(project, args, index);
+    }
     let param = index_of(INSTRUMENT_PARAMS, name).ok_or_else(|| {
         let names: Vec<_> = INSTRUMENT_PARAMS.iter().map(|p| p.name).collect();
         args.invalid(format!(

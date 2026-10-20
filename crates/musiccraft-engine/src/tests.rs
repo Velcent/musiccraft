@@ -1042,7 +1042,7 @@ fn two_channels(
 }
 
 /// Frames a cut takes, with a little slack.
-const CUT_FRAMES: usize = (crate::voice::CUT_SECONDS * SR as f32) as usize + 8;
+const CUT_FRAMES: usize = (musiccraft_instruments::CUT_SECONDS * SR as f32) as usize + 8;
 
 #[test]
 fn a_cut_group_chokes_the_channels_cut_by_it() {

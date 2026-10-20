@@ -1,0 +1,5 @@
+# Bundle names for `cargo xtask bundle` (nih-plug's bundler). The xtask
+# rewrites this while it builds each bundle (MusicCraft Effects, MusicCraft
+# Instruments) and puts it back afterwards.
+[musiccraft-plugin-export]
+name = "MusicCraft Effects"

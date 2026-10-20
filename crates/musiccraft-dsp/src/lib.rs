@@ -7,6 +7,7 @@ pub mod blocks;
 pub mod character;
 pub mod convolution;
 pub mod creative;
+pub mod describe;
 mod dynamics;
 pub mod edit;
 mod effect;
@@ -37,4 +38,6 @@ pub use osc::{Oscillator, Sine, Waveform};
 pub use reverb::Reverb;
 pub use sample::SampleBuffer;
 pub use time::{Chorus, Delay};
-pub use util::{PanLaw, db_to_gain, flush_denormal, gain_to_db, key_to_hz, pan_gains};
+pub use util::{
+    PanLaw, db_to_gain, flush_denormal, flush_subnormals, gain_to_db, key_to_hz, pan_gains,
+};

@@ -84,9 +84,9 @@ When an item lands, tick it here and add or update its row in `docs/parity.md`.
   - [x] Claw machine.
 - [x] Master pitch / A4 tuning.
 - [x] Tap tempo.
-- [ ] MP3 export (already a `todo` in parity.md). Blocked: there is no mature
-  pure-Rust MP3 encoder; the usual crates wrap LAME (C, LGPL), which needs a
-  dependency decision from the maintainer first.
+- [x] MP3 and Ogg export (`project.export_mp3`, `project.export_ogg`): the
+  maintainer chose LAME (LGPL) and libvorbis (BSD), built from source by
+  their crates (2026-10-20).
 - [x] Pattern select with keys 1–9.
 - [x] Automation of individual notes or events inside a pattern.
 - [x] Channel display filter groups.

@@ -225,7 +225,9 @@ fn arrange(
     }
 }
 
-/// Activates the main audio buses and the first event input bus.
+/// Activates the main audio buses, every audio input (so a sidechain bus
+/// gets [`musiccraft_engine::External::sidechain`]'s signal, or silence) and
+/// the first event input bus.
 fn activate_buses(component: &ComPtr<IComponent>, inputs: usize, outputs: usize) -> bool {
     let audio = MediaTypes_::kAudio as i32;
     let event = MediaTypes_::kEvent as i32;
@@ -235,8 +237,8 @@ fn activate_buses(component: &ComPtr<IComponent>, inputs: usize, outputs: usize)
     );
     // SAFETY: main thread, inactive.
     unsafe {
-        if inputs > 0 {
-            component.activateBus(audio, input, 0, 1);
+        for bus in 0..inputs {
+            component.activateBus(audio, input, bus as i32, 1);
         }
         if outputs > 0 {
             component.activateBus(audio, output, 0, 1);

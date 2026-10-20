@@ -43,8 +43,22 @@
 - `project.export_flac <path> [16|24] [loops] [sample rate]` writes lossless
   FLAC with our own encoder (fixed predictors, partitioned Rice coding, per the
   published FLAC specification); tests check it bit-exact against the reference
-  decoder when it is installed. The export dialog offers WAV and FLAC and keeps
-  the file extension in step.
+  decoder when it is installed. The export dialog offers WAV, FLAC, MP3 and
+  Ogg and keeps the file extension in step.
+- `project.export_mp3 <path> [128|192|256|320] [loops] [sample rate]` writes
+  MP3 (MPEG-1/2 Layer III) at a constant bit rate in kbit/s, default 320,
+  with the LAME encoder at its best quality setting. MP3 carries at most
+  48 kHz, so the sample rate is 8000–48000 (default 44.1 kHz). The file has
+  an ID3 tag with the project's name as its title.
+- `project.export_ogg <path> [quality 0-10] [loops] [sample rate]` writes Ogg
+  Vorbis at a variable bit rate, quality 0 (smallest) to 10 (best), default
+  8 (about 256 kbit/s for stereo), with the aoTuV-tuned libvorbis encoder.
+  Any sample rate 8000–192000 (default 44.1 kHz). The project's name is the
+  `TITLE` comment.
+- Both lossy exports render exactly as WAV export does and are deterministic
+  (the Ogg stream's serial number is fixed). Both encoders are C libraries
+  built from source with the app (LAME, LGPL; libvorbis, BSD), so no system
+  library is needed.
 - Rendering is deterministic: the same project always produces the same file.
 - `project.export_stems <folder> [16|24|32f]` writes one file per mixer track that
   has unmuted channels routed to it (`NN Name.wav`, with track 00 holding
@@ -81,6 +95,11 @@
 - Own design. WAV/RIFF is an open format, written with the `hound` crate. We do
   not write any other DAW's project format; the one we read, FL Studio's, is
   read through a port of PyFLP (see `flp-import.md`).
+- MP3 and Ogg Vorbis export: open formats (ISO/IEC 11172-3 and 13818-3;
+  Xiph.Org's Ogg and Vorbis I specifications), encoded by the open-source
+  LAME (LGPL) and libvorbis with aoTuV tuning (BSD) libraries through the
+  `mp3lame-encoder` and `vorbis_rs` crates. The defaults (320 kbit/s CBR,
+  Vorbis quality 8) are our own choice.
 - MIDI export: the Standard MIDI File format of the public MIDI 1.0
   specification; Ctrl+Shift+M follows the FL Studio online manual ("Keyboard
   shortcuts"). Track layout is our own.

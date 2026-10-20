@@ -70,6 +70,10 @@ struct Ports {
     clap: Vec<clap_audio_buffer>,
     /// Pointers to the main port's first two channels (or one, twice).
     main: Option<(*mut f32, *mut f32)>,
+    /// The same for the first auxiliary (sidechain) port.
+    aux: Option<(*mut f32, *mut f32)>,
+    /// Samples in each buffer.
+    frames: usize,
 }
 
 impl Ports {
@@ -96,16 +100,45 @@ impl Ports {
                 constant_mask: 0,
             })
             .collect();
-        let main = pointers.first().and_then(|port| match port.as_slice() {
+        let pair = |port: &Vec<*mut f32>| match port.as_slice() {
             [mono] => Some((*mono, *mono)),
             [l, r, ..] => Some((*l, *r)),
             [] => None,
-        });
+        };
+        let main = pointers.first().and_then(pair);
+        let aux = pointers.get(1).and_then(pair);
         Self {
             _samples: samples,
             _pointers: pointers,
             clap,
             main,
+            aux,
+            frames: frames.max(1),
+        }
+    }
+
+    /// Copies `left` and `right` into the first auxiliary port, silent past
+    /// their end (both empty: silence). Allocation-free.
+    fn fill_aux(&mut self, left: &[f32], right: &[f32]) {
+        let Some((l, r)) = self.aux else {
+            return;
+        };
+        // SAFETY: the aux buffers hold `frames` samples, are owned by these
+        // ports and only touched on the audio thread, outside `process`.
+        let al = unsafe { std::slice::from_raw_parts_mut(l, self.frames) };
+        for (i, s) in al.iter_mut().enumerate() {
+            let (x, y) = (left.get(i).copied(), right.get(i).copied());
+            *s = match (l == r, x, y) {
+                (true, Some(x), Some(y)) => (x + y) * 0.5,
+                (_, x, _) => x.unwrap_or(0.0),
+            };
+        }
+        if l != r {
+            // SAFETY: as above; a different buffer from `al`.
+            let ar = unsafe { std::slice::from_raw_parts_mut(r, self.frames) };
+            for (i, s) in ar.iter_mut().enumerate() {
+                *s = right.get(i).copied().unwrap_or(0.0);
+            }
         }
     }
 }
@@ -188,6 +221,10 @@ pub(crate) struct ClapProcessor {
     inputs: Ports,
     outputs: Ports,
     max_frames: usize,
+    /// Whether a key signal was given for the next block, and whether the
+    /// aux input still holds one from an earlier block.
+    keyed: bool,
+    aux_dirty: bool,
     changes: Producer<(u32, f64)>,
     steady: i64,
 }
@@ -220,6 +257,8 @@ impl ClapProcessor {
             inputs: Ports::new(inputs, max_frames),
             outputs: Ports::new(outputs, max_frames),
             max_frames,
+            keyed: false,
+            aux_dirty: false,
             changes,
             steady: 0,
         }
@@ -337,6 +376,11 @@ impl ClapProcessor {
 }
 
 impl External for ClapProcessor {
+    fn sidechain(&mut self, left: &[f32], right: &[f32]) {
+        self.inputs.fill_aux(left, right);
+        self.keyed = true;
+    }
+
     fn note_on(&mut self, delay: u32, key: u8, velocity: f32, pan: f32, gate: Option<u64>) {
         if self.held.len() >= MAX_HELD || !self.queue_note(delay, key, velocity, true) {
             return;
@@ -457,6 +501,12 @@ impl External for ClapProcessor {
                 }
             }
         }
+
+        if !self.keyed && self.aux_dirty {
+            self.inputs.fill_aux(&[], &[]);
+        }
+        self.aux_dirty = self.keyed;
+        self.keyed = false;
 
         let list = EventList {
             events: self.events.as_ptr(),

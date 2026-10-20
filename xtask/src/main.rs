@@ -1,5 +1,13 @@
 //! Developer tasks. `cargo xtask parity` checks `docs/parity.md` against the
 //! command registry, the default keymap and the spec folder.
+//! `cargo xtask bundle [--release]` (or `bundle-universal` on macOS, for
+//! Apple Silicon and Intel in one bundle) builds the plugin bundles
+//! (`target/bundled/MusicCraft Effects.clap` and `.vst3`, and
+//! `MusicCraft Instruments.clap` and `.vst3`) with nih-plug's bundler, one
+//! build of the plugin crate per feature. `cargo xtask validate` runs
+//! clap-validator and the VST3 validator on those bundles.
+
+mod validate;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -7,7 +15,77 @@ use std::process::ExitCode;
 use musiccraft_commands::{Invocation, SESSION_COMMANDS};
 use musiccraft_ui::{Chord, Keymap};
 
-const USAGE: &str = "usage: cargo xtask parity [--min <percent>]";
+const USAGE: &str = "usage: cargo xtask parity [--min <percent>]\n       cargo xtask bundle [cargo build options]\n       cargo xtask bundle-universal [cargo build options]  (macOS)\n       cargo xtask validate";
+
+/// The package whose library holds the exported plugins.
+const PLUGIN_PACKAGE: &str = "musiccraft-plugin-export";
+
+/// The bundles: the plugin crate's feature and the bundle's name.
+const BUNDLES: [(&str, &str); 2] = [
+    ("instruments", "MusicCraft Instruments"),
+    ("effects", "MusicCraft Effects"),
+];
+
+/// Puts `bundler.toml` back as it was when dropped.
+struct RestoreBundlerToml {
+    path: std::path::PathBuf,
+    original: String,
+}
+
+impl Drop for RestoreBundlerToml {
+    fn drop(&mut self) {
+        if let Err(error) = std::fs::write(&self.path, &self.original) {
+            eprintln!("could not restore {}: {error}", self.path.display());
+        }
+    }
+}
+
+/// Builds and bundles the plugins, one bundle per feature of the plugin
+/// crate; `options` go to `cargo build`. `command` is nih-plug's `bundle`, or
+/// `bundle-universal` for macOS bundles holding both Apple Silicon and Intel
+/// code.
+fn bundle(command: &str, options: &[&str]) -> ExitCode {
+    // nih-plug's bundler names a package's bundle from `bundler.toml`, so
+    // each build gets the name of its bundle there for the time it runs.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("bundler.toml");
+    let original = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!("cannot read {}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let _restore = RestoreBundlerToml {
+        path: path.clone(),
+        original,
+    };
+    for (feature, name) in BUNDLES {
+        let config = format!(
+            "# Written by `cargo xtask bundle` while it runs; see xtask/src/main.rs.\n[{PLUGIN_PACKAGE}]\nname = \"{name}\"\n"
+        );
+        if let Err(error) = std::fs::write(&path, config) {
+            eprintln!("cannot write {}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+        let args = [
+            command,
+            PLUGIN_PACKAGE,
+            "--no-default-features",
+            "--features",
+            feature,
+        ]
+        .into_iter()
+        .chain(options.iter().copied())
+        .map(str::to_owned);
+        if let Err(error) = nih_plug_xtask::main_with_args("cargo xtask", args) {
+            eprintln!("bundle {name} failed: {error:#}");
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
+}
 
 /// Outcome of checking one feature.
 #[derive(Debug, PartialEq, Eq)]
@@ -192,6 +270,9 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["parity"] => parity(None),
+        ["bundle", options @ ..] => bundle("bundle", options),
+        ["bundle-universal", options @ ..] => bundle("bundle-universal", options),
+        ["validate"] => validate::validate(&BUNDLES),
         ["parity", "--min", value] => match value.parse() {
             Ok(min) => parity(Some(min)),
             Err(_) => {

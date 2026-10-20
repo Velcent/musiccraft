@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "MusicCraft developer tasks (parity report)"
+description = "MusicCraft developer tasks (parity report, plugin bundles)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,8 @@ musiccraft-commands.workspace = true
 musiccraft-params.workspace = true
 musiccraft-render.workspace = true
 musiccraft-ui.workspace = true
+# nih-plug's bundler, at the same revision as nih-plug itself.
+nih_plug_xtask = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683" }
 
 [lints]
 workspace = true

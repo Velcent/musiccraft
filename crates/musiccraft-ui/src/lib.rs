@@ -4,6 +4,7 @@
 
 pub mod keymap;
 
+mod antiserum;
 mod automation;
 mod browser;
 mod channel_rack;
@@ -12,7 +13,6 @@ mod controllers;
 mod dialogs;
 mod effect_window;
 mod geometry;
-pub mod hint;
 mod icons;
 mod mixer;
 mod piano_roll;
@@ -23,11 +23,11 @@ mod sample_editor;
 pub mod settings;
 mod signature;
 mod spectrum;
-mod theme;
 mod toolbar;
-mod tuner;
-mod widgets;
 mod zone_editor;
+
+pub use musiccraft_editors::hint;
+use musiccraft_editors::{theme, widgets};
 
 use musiccraft_commands::Invocation;
 use musiccraft_project::Project;
@@ -230,6 +230,9 @@ pub struct UiState {
     /// The toolbar's position display shows minutes and seconds instead of
     /// bars and beats.
     pub show_seconds: bool,
+    /// Text being typed in Settings → Folders: FL factory and user data
+    /// folders, and a drive mapping's prefix and folder.
+    pub path_drafts: [String; 4],
     /// The channel settings window's page.
     pub channel_tab: channel_settings::ChannelTab,
     /// The channel rack shows only this display filter group (`None`: all).
@@ -257,7 +260,6 @@ pub struct UiState {
     pub effect_windows: Vec<(usize, usize)>,
     /// The sample editor's state.
     pub sample_edit: sample_editor::EditorState,
-    pub(crate) effect_drag: Option<effect_window::Drag>,
     /// Where the last effect graph was drawn (tests).
     pub(crate) effect_graph: Option<egui::Rect>,
     /// Open settings tab; `None` when the settings window is closed.
@@ -274,6 +276,7 @@ pub struct UiState {
     roll: piano_roll::RollState,
     playlist: playlist::PlaylistState,
     dialog: Option<dialogs::Dialog>,
+    antiserum: antiserum::AntiserumUi,
 }
 
 impl Default for UiState {
@@ -325,6 +328,7 @@ impl UiState {
             sig_draft: (4, 4),
             channel_tab: channel_settings::ChannelTab::default(),
             show_seconds: false,
+            path_drafts: Default::default(),
             rack_group: None,
             graph: None,
             graph_drag: None,
@@ -337,7 +341,6 @@ impl UiState {
             effect_windows: Vec::new(),
             sample_edit: sample_editor::EditorState::default(),
             spectrum: (Vec::new(), Vec::new()),
-            effect_drag: None,
             effect_graph: None,
             settings_tab: None,
             project_name: String::new(),
@@ -348,6 +351,7 @@ impl UiState {
             roll: piano_roll::RollState::default(),
             playlist: playlist::PlaylistState::default(),
             dialog: None,
+            antiserum: antiserum::AntiserumUi::default(),
         }
     }
 

@@ -4,6 +4,10 @@
 //! pow saw tri sqr`. [`Formula::parse`] compiles text into a fixed-size
 //! program (main thread); [`Formula::eval`] runs it without allocating,
 //! locking or panicking, so the audio thread can call it.
+//!
+//! Wavetable formulas ([`Formula::parse_table`], [`Formula::eval_table`])
+//! use the variables `x` (phase within a frame) and `y` (position across the
+//! frames) instead of `t` and `bar`.
 
 /// Most tokens (and so program steps) in one formula.
 pub const MAX_TOKENS: usize = 64;
@@ -16,6 +20,8 @@ enum Op {
     Num(f32),
     T,
     Bar,
+    X,
+    Y,
     Add,
     Sub,
     Mul,
@@ -93,13 +99,15 @@ enum Token {
     Name(Func),
     T,
     Bar,
+    X,
+    Y,
     Op(char),
     Open,
     Close,
     Comma,
 }
 
-fn tokenize(text: &str) -> Result<Vec<Token>, String> {
+fn tokenize(text: &str, table: bool) -> Result<Vec<Token>, String> {
     let chars: Vec<char> = text.chars().collect();
     let mut tokens = Vec::new();
     let mut i = 0;
@@ -124,8 +132,10 @@ fn tokenize(text: &str) -> Result<Vec<Token>, String> {
             }
             let word: String = chars[start..i].iter().collect();
             tokens.push(match word.as_str() {
-                "t" => Token::T,
-                "bar" => Token::Bar,
+                "t" if !table => Token::T,
+                "bar" if !table => Token::Bar,
+                "x" if table => Token::X,
+                "y" if table => Token::Y,
                 "pi" => Token::Num(std::f32::consts::PI),
                 name => {
                     Token::Name(Func::parse(name).ok_or_else(|| format!("unknown name `{name}`"))?)
@@ -216,6 +226,8 @@ impl Parser {
             Some(Token::Num(v)) => self.out.push(Op::Num(v)),
             Some(Token::T) => self.out.push(Op::T),
             Some(Token::Bar) => self.out.push(Op::Bar),
+            Some(Token::X) => self.out.push(Op::X),
+            Some(Token::Y) => self.out.push(Op::Y),
             Some(Token::Open) => {
                 self.sum()?;
                 self.expect(Token::Close, "`)`")?;
@@ -231,7 +243,7 @@ impl Parser {
                 self.expect(Token::Close, "`)`")?;
                 self.out.push(Op::Call(func));
             }
-            _ => return Err("expected a number, `t`, `bar`, `(` or a function".to_owned()),
+            _ => return Err("expected a number, a variable, `(` or a function".to_owned()),
         }
         Ok(())
     }
@@ -245,8 +257,22 @@ impl Formula {
     /// Describes the first problem: an unknown name, a bad number, a
     /// missing parenthesis, a formula too long or too deeply nested.
     pub fn parse(text: &str) -> Result<Self, String> {
+        Self::compile(text, false)
+    }
+
+    /// Compiles a wavetable formula of `x` and `y` (no `t` or `bar`). Main
+    /// thread only.
+    ///
+    /// # Errors
+    ///
+    /// As [`Formula::parse`].
+    pub fn parse_table(text: &str) -> Result<Self, String> {
+        Self::compile(text, true)
+    }
+
+    fn compile(text: &str, table: bool) -> Result<Self, String> {
         let mut parser = Parser {
-            tokens: tokenize(text)?,
+            tokens: tokenize(text, table)?,
             at: 0,
             out: Vec::new(),
         };
@@ -264,7 +290,7 @@ impl Formula {
         let mut depth = 0_usize;
         for op in &parser.out {
             depth = match op {
-                Op::Num(_) | Op::T | Op::Bar => depth + 1,
+                Op::Num(_) | Op::T | Op::Bar | Op::X | Op::Y => depth + 1,
                 Op::Neg => depth,
                 Op::Call(f) if f.arity() == 1 => depth,
                 _ => depth.saturating_sub(1),
@@ -286,9 +312,19 @@ impl Formula {
     /// Evaluates at song position `t` beats. Non-finite results are 0.
     #[must_use]
     pub fn eval(&self, t: f64) -> f32 {
+        self.run(t as f32, 0.0, 0.0)
+    }
+
+    /// Evaluates a wavetable formula at phase `x` and frame position `y`.
+    /// Non-finite results are 0.
+    #[must_use]
+    pub fn eval_table(&self, x: f32, y: f32) -> f32 {
+        self.run(0.0, x, y)
+    }
+
+    fn run(&self, t: f32, x: f32, y: f32) -> f32 {
         let mut stack = [0.0_f32; MAX_STACK];
         let mut sp = 0_usize;
-        let t = t as f32;
         for op in self.ops.iter().take(self.len) {
             let push = |stack: &mut [f32; MAX_STACK], sp: &mut usize, v: f32| {
                 if let Some(slot) = stack.get_mut(*sp) {
@@ -304,6 +340,8 @@ impl Formula {
                 Op::Num(v) => push(&mut stack, &mut sp, v),
                 Op::T => push(&mut stack, &mut sp, t),
                 Op::Bar => push(&mut stack, &mut sp, t / 4.0),
+                Op::X => push(&mut stack, &mut sp, x),
+                Op::Y => push(&mut stack, &mut sp, y),
                 Op::Neg => {
                     let a = pop(&stack, &mut sp);
                     push(&mut stack, &mut sp, -a);
@@ -398,5 +436,16 @@ mod tests {
         assert_eq!(eval("1 / 0", 0.0), 0.0);
         assert_eq!(eval("sqrt(-4)", 0.0), 0.0);
         assert_eq!(Formula::default().eval(3.0), 0.0);
+    }
+
+    #[test]
+    fn table_formulas_use_x_and_y_only() {
+        let f = Formula::parse_table("sin(x*pi*2) * (1-y)").unwrap();
+        assert!((f.eval_table(0.25, 0.0) - 1.0).abs() < 1e-6);
+        assert!((f.eval_table(0.25, 0.5) - 0.5).abs() < 1e-6);
+        assert!(Formula::parse_table("t").is_err());
+        assert!(Formula::parse_table("bar").is_err());
+        assert!(Formula::parse("x").is_err());
+        assert!(Formula::parse("y + 1").is_err());
     }
 }

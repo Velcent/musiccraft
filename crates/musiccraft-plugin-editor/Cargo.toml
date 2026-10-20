@@ -1,0 +1,26 @@
+[package]
+name = "musiccraft-plugin-editor"
+description = "Opens MusicCraft's egui editors inside a plugin host's window (nih-plug, baseview, egui and glow)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+baseview = { git = "https://github.com/RustAudio/baseview.git", rev = "9a0b42c09d712777b2edb4c5e0cb6baf21e988f0", features = ["opengl"] }
+egui.workspace = true
+egui_glow = "0.36"
+glow = "0.17"
+keyboard-types = { version = "0.6", default-features = false }
+musiccraft-editors.workspace = true
+nih_plug = { workspace = true, default-features = false }
+
+# Not `workspace = true`: this crate is exempt from the workspace `unsafe` ban
+# (see ARCHITECTURE.md). Every other lint matches the workspace.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "warn"

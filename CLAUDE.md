@@ -31,7 +31,9 @@ shortcuts. Cross-platform: Linux, macOS, Windows. Developed primarily on CachyOS
 
 ## Audio-thread rules (the real-time callback is sacred)
 
-Inside anything that runs on the audio thread (`musiccraft-engine`, `musiccraft-dsp`):
+Inside anything that runs on the audio thread (`musiccraft-engine`, `musiccraft-dsp`,
+`musiccraft-instruments`, `musiccraft-antiserum`, and the `process` path of
+`musiccraft-plugin-export`):
 
 - No heap allocation, no `Vec` growth, no `String`, no `Box::new`.
 - No locks (`Mutex`, `RwLock`), no blocking channels, no I/O, no logging.
@@ -42,8 +44,11 @@ Inside anything that runs on the audio thread (`musiccraft-engine`, `musiccraft-
   raise it with the user first. The approved exceptions (plugin hosting: CLAP
   approved by the user on 2026-10-10, VST3 on 2026-10-16) are `musiccraft-clap`
   and `musiccraft-vst3` plus their test fixtures `musiccraft-clap-testplugin` and
-  `musiccraft-vst3-testplugin`: every `unsafe` block there carries a `SAFETY:`
-  comment (enforced by clippy), and nothing else may use `unsafe`.
+  `musiccraft-vst3-testplugin`; and, for exporting MusicCraft's instruments and
+  effects as CLAP/VST3 plugins (approved by the user on 2026-10-18),
+  `musiccraft-plugin-export` and its editor adapter `musiccraft-plugin-editor`.
+  Every `unsafe` block there carries a `SAFETY:` comment (enforced by clippy),
+  and nothing else may use `unsafe`.
 
 ## Architecture rules
 
@@ -72,6 +77,16 @@ cargo test --workspace
   against golden output for audio.
 - Verify behavior headlessly through `musiccraft-cli` before building UI for it.
 - Keep functions small and crates focused; prefer many small crates over one large one.
+
+## File editing protocol
+
+1. **Primary choice**: always try the native `Edit` tool first for surgical,
+   localized line changes. It saves output tokens and keeps file history.
+2. **Fallback**: only if an edit fails because of complex multi-line formatting,
+   matching errors, or fragile whitespace or quotes, use a precise
+   `python3 - <<'EOF'` script through the Bash tool to make the replacement.
+3. **Condition**: before using the Python fallback, state the error the native
+   tool hit.
 
 ## Milestones
 
