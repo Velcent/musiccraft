@@ -167,7 +167,8 @@ cargo run -p musiccraft-cli -- play examples/basic-beat.mcs 10
 cargo run -p musiccraft-cli -- dump examples/basic-beat.mcs  # project JSON
 ```
 
-Add `project.export_wav beat.wav`, `project.export_flac beat.flac` or
+Add `project.export_wav beat.wav`, `project.export_flac beat.flac`,
+`project.export_mp3 beat.mp3`, `project.export_ogg beat.ogg` or
 `project.export_stems stems/` to a script to render audio. See `docs/spec/commands.md` for argument conventions.
 
 ## AI agents (MCP)

@@ -54,7 +54,7 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-instruments` | Every built-in instrument's voice DSP (synth, FM, keys, additive, drums, pluck, samplers, granular, resynth), independent of the engine so plugin wrappers can use it. Allocation-free rendering. `live` plays notes in real time for the plugins: the channel note functions (swing, arpeggiator, time shift, gate, echo) and a voice pool with the engine's mono, polyphony, cut and glide rules. `arp` is the arpeggiator's key order, shared with the app's sequence-time arpeggiator. |
 | `musiccraft-antiserum` | Antiserum, the wavetable synth's sound engine (`docs/spec/antiserum.md`): band-limited wavetables, warps, unison, sub and noise, two multimode filters, envelopes, LFOs and a 32-slot mod matrix; an effects rack of `musiccraft-dsp` effects in ten order slots, a real-time arpeggiator and a step sequencer (`docs/spec/antiserum-fx-arp.md`); sample, multisample, granular and spectral oscillators that play an immutable `Source` (sample, zones, harmonic analysis) built on the main thread (`docs/spec/antiserum-oscillators.md`). Its own parameter table (names and order frozen). Independent of the engine and plugin formats; allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voice allocation, sequencing, mixing, meters. Driven only by messages. |
-| `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
+| `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, MP3 and Ogg Vorbis encoding (LAME, libvorbis), sample cache, synthesized built-in sounds. Main thread only. |
 | `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-clap-testplugin`). |
 | `musiccraft-vst3` | VST3 plugin host: scanning modules, component and controller setup, parameters, state, the audio-thread processor, embedded plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-vst3-testplugin`). |
 | `musiccraft-plugin-window` | The plain X11 window both plugin hosts embed plugin views in. Safe code. |
@@ -186,6 +186,9 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `rtrb` | Wait-free SPSC ring buffer for main → audio messages, returns and live notes. |
 | `serde`, `serde_json` | Project file format and JSON payloads in undo inverses and MCP. |
 | `hound` | WAV decoding for samples and WAV encoding for export. |
+| `mp3lame-encoder` | MP3 export through LAME (LGPL; compiled from bundled source, so no system library), the maintainer's choice (2026-10-20): no mature pure-Rust MP3 encoder exists. |
+| `vorbis_rs` | Ogg Vorbis export through libvorbis with aoTuV tuning (BSD; compiled from bundled source). |
+| `symphonia` (dev only) | Pure-Rust MP3 and Ogg Vorbis decoding, so tests check exports with a decoder independent of the encoders. |
 | `eframe` (egui) | Cross-platform immediate-mode UI; kept swappable behind commands. |
 | `midir` | MIDI keyboard input and MIDI Out channels' output port in the app. |
 | `clap-sys` | Rust declarations of the CLAP plugin ABI (types and constants only). |
@@ -208,6 +211,6 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 - Out-of-process plugin scanning/hosting, so a crashing plugin cannot take the
   app down.
 - Honoring a plugin's restart request (latency or port changes) while running.
-- Decoding compressed samples (FLAC, Ogg, MP3), likely via `symphonia`; lossy
-  export formats.
+- Decoding compressed samples (FLAC, Ogg, MP3), likely via `symphonia` (already
+  a dev-dependency for testing exports).
 - Tempo automation.

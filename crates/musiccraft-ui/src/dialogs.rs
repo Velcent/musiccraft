@@ -229,6 +229,8 @@ impl Dialog {
             Purpose::Export => match self.bits {
                 "flac16" => Invocation::new("project.export_flac", [text, "16".to_owned()]),
                 "flac24" => Invocation::new("project.export_flac", [text, "24".to_owned()]),
+                "mp3" => Invocation::new("project.export_mp3", [text]),
+                "ogg" => Invocation::new("project.export_ogg", [text]),
                 bits => Invocation::new("project.export_wav", [text, bits.to_owned()]),
             },
             Purpose::ExportStems => Invocation::new("project.export_stems", [text]),
@@ -326,7 +328,7 @@ pub fn show(
                 confirm = true;
             }
             if dialog.purpose == Purpose::Export {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Format:");
                     for (bits, label) in [
                         ("16", "WAV 16"),
@@ -334,13 +336,15 @@ pub fn show(
                         ("32f", "WAV 32f"),
                         ("flac16", "FLAC 16"),
                         ("flac24", "FLAC 24"),
+                        ("mp3", "MP3 320k"),
+                        ("ogg", "Ogg q8"),
                     ] {
                         if ui.selectable_value(&mut dialog.bits, bits, label).changed() {
                             // Keep the file extension in step with the format.
-                            let ext = if bits.starts_with("flac") {
-                                "flac"
-                            } else {
-                                "wav"
+                            let ext = match bits {
+                                "mp3" | "ogg" => bits,
+                                _ if bits.starts_with("flac") => "flac",
+                                _ => "wav",
                             };
                             let path = std::path::Path::new(dialog.text.trim());
                             if path.extension().is_some() {
@@ -413,6 +417,18 @@ mod tests {
         assert_eq!(
             export.invocation().to_string(),
             "project.export_wav Untitled.wav 24"
+        );
+        export.text = "Untitled.mp3".into();
+        export.bits = "mp3";
+        assert_eq!(
+            export.invocation().to_string(),
+            "project.export_mp3 Untitled.mp3"
+        );
+        export.text = "Untitled.ogg".into();
+        export.bits = "ogg";
+        assert_eq!(
+            export.invocation().to_string(),
+            "project.export_ogg Untitled.ogg"
         );
         assert_eq!(
             Dialog::save_as(&Project::default())

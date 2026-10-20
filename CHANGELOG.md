@@ -40,6 +40,12 @@ commit; this file says what they add up to.
 - Parameter text reads back as typed (no `-0.0`; 999.7 Hz shows `1.00 kHz`).
 - Hosting: our CLAP and VST3 hosts feed plugins' sidechain inputs.
 
+### Export
+
+- MP3 (128–320 kbit/s, LAME) and Ogg Vorbis (quality 0–10) export, in the
+  export dialog and as `project.export_mp3` / `project.export_ogg`, with the
+  project's name as the title tag.
+
 ### Fixes
 
 - Exports start at the beginning of the song even with a loop region set;
@@ -50,6 +56,5 @@ commit; this file says what they add up to.
 
 - Builds and plugins are not code-signed or notarized (see
   `docs/releasing.md`).
-- MP3 and Ogg export are not available yet.
 - The plugins have not yet been tried by hand in Ardour, Bitwig or REAPER
   (`docs/smoke-tests.md`).

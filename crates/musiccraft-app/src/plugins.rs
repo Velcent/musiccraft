@@ -17,10 +17,12 @@ const STATE_DELAY: Duration = Duration::from_secs(2);
 const PLUGIN_GESTURE: u64 = 1 << 63;
 
 /// Commands that write the project to disk or render it.
-const PERSISTING: [&str; 4] = [
+const PERSISTING: [&str; 6] = [
     "project.save",
     "project.export_wav",
     "project.export_flac",
+    "project.export_mp3",
+    "project.export_ogg",
     "project.export_stems",
 ];
 

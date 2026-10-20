@@ -157,7 +157,7 @@ of contents; see `docs/clean-room.md`.
 | Project | Export WAV | `cmd:project.export_wav` `key:Ctrl+R=ui.export` |
 | Project | Export stems | `cmd:project.export_stems` |
 | Project | Export FLAC (lossless) | `cmd:project.export_flac` |
-| Project | Export lossy audio (MP3, Ogg) | `todo` |
+| Project | Export lossy audio (MP3, Ogg) | `cmd:project.export_mp3` `cmd:project.export_ogg` `spec:project-file.md` |
 | Project | Autosave and crash recovery | `done` |
 | Project | Import FL Studio projects (.flp) | `cmd:project.import_flp` `spec:flp-import.md` |
 | Input | MIDI keyboard plays the selected channel | `done` |

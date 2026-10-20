@@ -428,6 +428,125 @@ impl Command for ExportFlacCommand {
     }
 }
 
+/// A lossy file format for [`ExportLossyCommand`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lossy {
+    /// MP3 at a constant bit rate.
+    Mp3,
+    /// Ogg Vorbis at a quality level.
+    Ogg,
+}
+
+/// `project.export_mp3 <path> [128|192|256|320] [loops] [sample rate]` and
+/// `project.export_ogg <path> [quality 0-10] [loops] [sample rate]`.
+pub struct ExportLossyCommand {
+    /// Which format the command writes.
+    pub format: Lossy,
+    /// Plugins to render with.
+    pub host: Option<PluginHost>,
+}
+
+impl Command for ExportLossyCommand {
+    fn name(&self) -> &'static str {
+        match self.format {
+            Lossy::Mp3 => "project.export_mp3",
+            Lossy::Ogg => "project.export_ogg",
+        }
+    }
+
+    fn summary(&self) -> &'static str {
+        match self.format {
+            Lossy::Mp3 => "Render the pattern or song (by play mode) to an MP3 file.",
+            Lossy::Ogg => "Render the pattern or song (by play mode) to an Ogg Vorbis file.",
+        }
+    }
+
+    fn usage(&self) -> &'static str {
+        match self.format {
+            Lossy::Mp3 => "project.export_mp3 <path> [128|192|256|320] [loops] [sample rate]",
+            Lossy::Ogg => "project.export_ogg <path> [quality 0-10] [loops] [sample rate]",
+        }
+    }
+
+    fn execute(&self, project: &mut Project, args: &[String]) -> Result<Outcome, CommandError> {
+        let invalid = |reason: String| CommandError::InvalidArgument {
+            command: self.name().to_owned(),
+            reason,
+        };
+        let usage = || CommandError::Usage {
+            command: self.name().to_owned(),
+            usage: self.usage().to_owned(),
+        };
+        let [path, rest @ ..] = args else {
+            return Err(usage());
+        };
+        if rest.len() > 3 {
+            return Err(usage());
+        }
+        let setting = match (self.format, rest.first()) {
+            (Lossy::Mp3, None) => 320,
+            (Lossy::Ogg, None) => 8,
+            (Lossy::Mp3, Some(raw)) => raw
+                .parse::<u32>()
+                .ok()
+                .filter(|k| musiccraft_samples::MP3_BITRATES.contains(k))
+                .ok_or_else(|| invalid(format!("`{raw}` is not 128, 192, 256 or 320")))?,
+            (Lossy::Ogg, Some(raw)) => raw
+                .parse::<u32>()
+                .ok()
+                .filter(|q| *q <= 10)
+                .ok_or_else(|| invalid(format!("`{raw}` is not a quality 0-10")))?,
+        };
+        let loops = match rest.get(1) {
+            Some(raw) => raw
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=64).contains(n))
+                .ok_or_else(|| invalid(format!("`{raw}` is not a loop count 1-64")))?,
+            None => 1,
+        };
+        let max_rate = match self.format {
+            Lossy::Mp3 => musiccraft_samples::MP3_MAX_RATE,
+            Lossy::Ogg => 192_000,
+        };
+        let sample_rate = match rest.get(2) {
+            Some(raw) => raw
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (8_000..=max_rate).contains(n))
+                .ok_or_else(|| invalid(format!("`{raw}` is not a sample rate 8000-{max_rate}")))?,
+            None => 44_100,
+        };
+        let options = RenderOptions {
+            sample_rate,
+            loops,
+            ..RenderOptions::default()
+        };
+        let (left, right, warnings) = render_with(project, options, self.host.as_ref());
+        let write = match self.format {
+            Lossy::Mp3 => musiccraft_samples::write_mp3,
+            Lossy::Ogg => musiccraft_samples::write_ogg,
+        };
+        write(
+            Path::new(path),
+            &left,
+            &right,
+            sample_rate,
+            setting,
+            project.name(),
+        )
+        .map_err(|e| CommandError::Io(e.to_string()))?;
+        let mut message = format!(
+            "exported {:.2} s to {path}",
+            left.len() as f64 / f64::from(sample_rate)
+        );
+        for warning in warnings {
+            message.push_str(&format!(" (warning: {warning})"));
+        }
+        Ok(Outcome::done(message))
+    }
+}
+
 /// Adds the render crate's commands to a registry, without plugins.
 ///
 /// # Errors
@@ -450,6 +569,12 @@ pub fn register_with(
     registry.register(Box::new(ExportCommand { host: host.clone() }))?;
     registry.register(Box::new(ExportStemsCommand { host: host.clone() }))?;
     registry.register(Box::new(ExportFlacCommand { host: host.clone() }))?;
+    for format in [Lossy::Mp3, Lossy::Ogg] {
+        registry.register(Box::new(ExportLossyCommand {
+            format,
+            host: host.clone(),
+        }))?;
+    }
     registry.register(Box::new(crate::ConsolidateCommand { host: host.clone() }))?;
     registry.register(Box::new(crate::ExportMidiCommand))?;
     registry.register(Box::new(crate::SampleEditCommand))?;

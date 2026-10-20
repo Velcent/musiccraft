@@ -554,6 +554,8 @@ mod tests {
             "transport_play",
             "note_add",
             "project_export_wav",
+            "project_export_mp3",
+            "project_export_ogg",
             "edit_undo",
             "edit_batch",
             "run_script",

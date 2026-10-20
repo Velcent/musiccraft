@@ -1,6 +1,6 @@
 [package]
 name = "musiccraft-samples"
-description = "MusicCraft sample loading, WAV writing and synthesized built-in sounds"
+description = "MusicCraft sample loading, WAV, FLAC, MP3 and Ogg writing, and synthesized built-in sounds"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,11 @@ license.workspace = true
 musiccraft-dsp.workspace = true
 musiccraft-params.workspace = true
 hound.workspace = true
+mp3lame-encoder.workspace = true
+vorbis_rs.workspace = true
+
+[dev-dependencies]
+symphonia.workspace = true
 
 [lints]
 workspace = true

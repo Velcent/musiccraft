@@ -1032,6 +1032,47 @@ fn flac_export_is_valid_and_smaller_than_wav() {
 }
 
 #[test]
+fn mp3_and_ogg_exports_write_their_formats() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-lossy-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick\nstep.toggle 1 0\nstep.toggle 1 8",
+    );
+    let file = |name: &str| dir.join(name).display().to_string();
+    let wav = file("a.wav");
+    s.run_line(&format!("project.export_wav \"{wav}\""))
+        .unwrap();
+    let wav = std::fs::read(&wav).unwrap();
+    for (line, name) in [
+        ("project.export_mp3 \"{}\"", "a.mp3"),
+        ("project.export_mp3 \"{}\" 128 2 48000", "b.mp3"),
+        ("project.export_ogg \"{}\"", "a.ogg"),
+        ("project.export_ogg \"{}\" 3 1 96000", "b.ogg"),
+    ] {
+        s.run_line(&line.replace("{}", &file(name))).unwrap();
+        let bytes = std::fs::read(file(name)).unwrap();
+        let magic: &[u8] = if name.ends_with("mp3") {
+            b"ID3"
+        } else {
+            b"OggS"
+        };
+        assert!(bytes.starts_with(magic), "{name}");
+        assert!(bytes.len() < wav.len() / 3, "{name}: {} bytes", bytes.len());
+    }
+    for bad in [
+        "project.export_mp3 x.mp3 100",
+        "project.export_mp3 x.mp3 320 1 96000",
+        "project.export_ogg x.ogg 11",
+        "project.export_ogg x.ogg 5 0",
+    ] {
+        assert!(s.run_line(bad).is_err(), "{bad}");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn every_synth_preset_plays_without_clipping() {
     use musiccraft_params::INSTRUMENT_PARAMS;
     use musiccraft_params::presets::SYNTH;
