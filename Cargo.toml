@@ -1,8 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "xtask"]
-# Its own workspace: see standalone/Cargo.toml.
-exclude = ["standalone"]
+# Its own workspace: see standalone/Cargo.toml. `vendor` holds patched
+# third-party crates, used through `[patch]` below.
+exclude = ["standalone", "vendor"]
 
 [workspace.package]
 version = "0.2.2"
@@ -53,6 +54,10 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# nih-plug with our fixes for clap-validator findings (vendor/nih_plug/PATCHES.md).
+[patch."https://github.com/robbert-vdh/nih-plug.git"]
+nih_plug = { path = "vendor/nih_plug" }
 
 [profile.dev.package."*"]
 opt-level = 2

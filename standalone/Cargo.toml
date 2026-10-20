@@ -17,6 +17,10 @@ nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de42101
 
 [workspace]
 
+# The same patched nih-plug as the main workspace (vendor/nih_plug/PATCHES.md).
+[patch."https://github.com/robbert-vdh/nih-plug.git"]
+nih_plug = { path = "../vendor/nih_plug" }
+
 [lints.rust]
 unsafe_code = "forbid"
 
