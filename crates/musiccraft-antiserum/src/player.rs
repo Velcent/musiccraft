@@ -1,17 +1,21 @@
 //! The sample, multisample, granular and spectral oscillators of one voice
-//! (`docs/spec/antiserum-oscillators.md`). Settings are made once per control
-//! block; samples are produced one at a time without allocating.
+//! (`docs/spec/antiserum-oscillators.md`): in stereo, with unison and the
+//! warps. Settings are made once per control block; samples are produced
+//! one at a time without allocating.
 
 use musiccraft_dsp::SampleBuffer;
 use musiccraft_dsp::resynth::RESYNTH_PARTIALS;
 
 use crate::source::Source;
 use crate::voice::MAX_UNISON;
+use crate::warp::Warp;
 
-/// Grains playing at once.
-const GRAINS: usize = 16;
+/// Grains playing at once (every unison voice's together).
+const GRAINS: usize = 64;
 /// Entries in the sine table (one cycle; one more for interpolation).
 pub const SINE_LEN: usize = 1_024;
+/// The longest hold of the quantize warp on sample types, in frames.
+const MAX_HOLD: f32 = 32.0;
 
 /// A sine cycle for the spectral oscillator.
 pub(crate) fn sine_table() -> Box<[f32; SINE_LEN + 1]> {
@@ -23,7 +27,7 @@ pub(crate) fn sine_table() -> Box<[f32; SINE_LEN + 1]> {
 }
 
 fn sine(table: &[f32; SINE_LEN + 1], phase: f32) -> f32 {
-    let x = phase * SINE_LEN as f32;
+    let x = phase.rem_euclid(1.0) * SINE_LEN as f32;
     let i = (x as usize).min(SINE_LEN - 1);
     let t = x - i as f32;
     let a = table.get(i).copied().unwrap_or(0.0);
@@ -117,7 +121,45 @@ pub(crate) struct Settings {
     pub stretch: f32,
     pub tilt: f32,
     pub speed: f32,
+    /// The two warps and their amounts.
+    pub warps: [(Warp, f32); 2],
     pub sample_rate: f32,
+}
+
+impl Settings {
+    /// Whether no warp is on.
+    fn plain(&self) -> bool {
+        self.warps.iter().all(|(w, _)| *w == Warp::Off)
+    }
+
+    /// Cycles of the note the FM warps move a read by, for mod source
+    /// `source`.
+    fn fm_cycles(&self, source: f32) -> f32 {
+        self.warps
+            .iter()
+            .filter(|(w, _)| *w == Warp::Fm)
+            .map(|(_, a)| a.clamp(0.0, 1.0) * 2.0 * source)
+            .sum()
+    }
+
+    /// The level the level warps (PWM, flip, AM, RM) give a voice at note
+    /// cycle phase `phase`.
+    fn level(&self, phase: f32, source: f32) -> f32 {
+        self.warps
+            .iter()
+            .filter(|(w, _)| matches!(w, Warp::Pwm | Warp::Flip | Warp::Am | Warp::Rm))
+            .map(|(w, a)| w.apply(*a, phase, source).1)
+            .product()
+    }
+
+    /// Frames the quantize warps hold a sample-type output for.
+    fn hold(&self) -> f32 {
+        self.warps
+            .iter()
+            .filter(|(w, _)| *w == Warp::Quantize)
+            .map(|(_, a)| 1.0 + a.clamp(0.0, 1.0).powi(2) * (MAX_HOLD - 1.0))
+            .fold(1.0, f32::max)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -126,6 +168,8 @@ struct Grain {
     step: f64,
     age: u32,
     length: u32,
+    /// The unison voice it belongs to.
+    voice: u8,
 }
 
 /// One oscillator's playback state in one voice.
@@ -137,17 +181,24 @@ pub(crate) struct Player {
     pos: [f64; MAX_UNISON],
     backwards: [bool; MAX_UNISON],
     stopped: [bool; MAX_UNISON],
+    /// Per unison voice, a phase at the note's pitch, for the level warps.
+    cycle: [f32; MAX_UNISON],
     /// The multisample zone this note plays (`usize::MAX`: none).
     zone: usize,
     grains: [Grain; GRAINS],
     grain_timer: f32,
     scan_pos: f64,
     seed: u32,
-    /// Spectral: seconds into the analysis, levels and partial phases.
+    /// Quantize on sample types: the held output and frames left to hold.
+    held: (f32, f32, f32),
+    hold_left: f32,
+    /// Spectral: seconds into the analysis; each partial's left and right
+    /// level and its frequency factor (`n^(1 + stretch/2)`); every unison
+    /// voice's partial phases.
     time: f32,
-    gains: [f32; RESYNTH_PARTIALS],
-    incs: [f32; RESYNTH_PARTIALS],
-    phases: [f32; RESYNTH_PARTIALS],
+    gains: [[f32; RESYNTH_PARTIALS]; 2],
+    harmonic: [f32; RESYNTH_PARTIALS],
+    phases: [[f32; RESYNTH_PARTIALS]; MAX_UNISON],
 }
 
 impl Default for Player {
@@ -157,15 +208,18 @@ impl Default for Player {
             pos: [0.0; MAX_UNISON],
             backwards: [false; MAX_UNISON],
             stopped: [false; MAX_UNISON],
+            cycle: [0.0; MAX_UNISON],
             zone: usize::MAX,
             grains: [Grain::default(); GRAINS],
             grain_timer: 0.0,
             scan_pos: 0.0,
             seed: 1,
+            held: (0.0, 0.0, 0.0),
+            hold_left: 0.0,
             time: 0.0,
-            gains: [0.0; RESYNTH_PARTIALS],
-            incs: [0.0; RESYNTH_PARTIALS],
-            phases: [0.0; RESYNTH_PARTIALS],
+            gains: [[0.0; RESYNTH_PARTIALS]; 2],
+            harmonic: [0.0; RESYNTH_PARTIALS],
+            phases: [[0.0; RESYNTH_PARTIALS]; MAX_UNISON],
         }
     }
 }
@@ -196,11 +250,24 @@ impl Player {
         self.pos = [f64::from(position) * len; MAX_UNISON];
         self.backwards = [false; MAX_UNISON];
         self.stopped = [false; MAX_UNISON];
+        self.cycle = [0.0; MAX_UNISON];
         self.grains = [Grain::default(); GRAINS];
         self.grain_timer = 0.0;
         self.scan_pos = f64::from(position) * len;
-        self.time = position * source.harmonics.duration();
-        self.phases = [0.0; RESYNTH_PARTIALS];
+        self.held = (0.0, 0.0, 0.0);
+        self.hold_left = 0.0;
+        self.time = position * source.harmonics[0].duration();
+        // Unison voices start their partials at different phases, as
+        // detuned oscillators drift apart.
+        for (u, phases) in self.phases.iter_mut().enumerate() {
+            for (n, phase) in phases.iter_mut().enumerate() {
+                *phase = if u == 0 {
+                    0.0
+                } else {
+                    ((u * 7 + n * 13) % 31) as f32 / 31.0
+                };
+            }
+        }
     }
 
     /// The sample this player reads.
@@ -217,42 +284,42 @@ impl Player {
         if settings.kind != Kind::Spectral {
             return;
         }
-        let table = &source.harmonics;
         let looped = settings.looping != Loop::Off;
-        let levels = table.at(self.time, looped);
+        let left = source.harmonics[0].at(self.time, looped);
+        let right = source.harmonics[1].at(self.time, looped);
         self.time += frames as f32 / settings.sample_rate.max(1.0) * settings.speed;
-        let f0 = settings.freq.first().copied().unwrap_or(0.0);
-        let nyquist = settings.sample_rate * 0.5;
         let exponent = 1.0 + settings.stretch * 0.5;
         let mut plain = 0.0;
         let mut weighted = 0.0;
-        for (n, ((gain, inc), level)) in self
-            .gains
-            .iter_mut()
-            .zip(self.incs.iter_mut())
-            .zip(levels)
-            .enumerate()
-        {
+        for n in 0..RESYNTH_PARTIALS {
             let nf = (n + 1) as f32;
-            let freq = f0 * nf.powf(exponent) + settings.shift;
-            let audible = freq > 0.0 && freq < nyquist;
             let weight = nf.powf(2.0 * settings.tilt);
-            *inc = if audible {
-                freq / settings.sample_rate
-            } else {
-                0.0
-            };
-            *gain = if audible { level * weight } else { 0.0 };
-            plain += level;
-            weighted += *gain;
+            let (l, r) = (
+                left.get(n).copied().unwrap_or(0.0),
+                right.get(n).copied().unwrap_or(0.0),
+            );
+            if let Some(h) = self.harmonic.get_mut(n) {
+                *h = nf.powf(exponent);
+            }
+            let [gains_l, gains_r] = &mut self.gains;
+            if let (Some(gl), Some(gr)) = (gains_l.get_mut(n), gains_r.get_mut(n)) {
+                *gl = l * weight;
+                *gr = r * weight;
+            }
+            plain += (l + r) * 0.5;
+            weighted += (l + r) * 0.5 * weight;
         }
         // Tilt reshapes the spectrum without changing the overall level.
+        let peak = source.harmonics[0]
+            .peak_sum
+            .max(source.harmonics[1].peak_sum)
+            .max(1e-3);
         let norm = if weighted > 1e-9 {
-            plain / weighted / table.peak_sum.max(1e-3)
+            plain / weighted / peak
         } else {
             0.0
         };
-        for gain in &mut self.gains {
+        for gain in self.gains.iter_mut().flatten() {
             *gain *= norm;
         }
     }
@@ -264,45 +331,123 @@ impl Player {
         self.seed as f32 / u32::MAX as f32 * 2.0 - 1.0
     }
 
+    /// Moves every unison voice's note-pitch phase on by one frame.
+    fn advance_cycles(&mut self) {
+        let s = self.settings;
+        let sr = s.sample_rate.max(1.0);
+        for (phase, freq) in self.cycle.iter_mut().zip(s.freq).take(s.unison) {
+            *phase = (*phase + freq / sr).fract();
+        }
+    }
+
     /// The next sample: (left, right) with the unison voices' gains, and
-    /// the mono sum for cross-modulation.
+    /// the mono mix for cross-modulation. `src` is the oscillator's mod
+    /// source (for the FM, AM and RM warps).
     pub fn next(
         &mut self,
         source: &Source,
         gains: (&[f32; MAX_UNISON], &[f32; MAX_UNISON]),
         sine_table: &[f32; SINE_LEN + 1],
+        src: f32,
     ) -> (f32, f32, f32) {
         let s = self.settings;
-        match s.kind {
-            Kind::Wavetable => (0.0, 0.0, 0.0),
-            Kind::Sample if s.mode == Mode::Stretch => {
-                let mono = self.grain(source, s.kind, true);
-                let (gl, gr) = (gains.0[0], gains.1[0]);
-                (mono * gl, mono * gr, mono)
-            }
-            Kind::Sample | Kind::Multisample => self.sample(source, gains),
-            Kind::Granular => {
-                let mono = self.grain(source, s.kind, false);
-                (mono * gains.0[0], mono * gains.1[0], mono)
-            }
-            Kind::Spectral => {
-                let mut sum = 0.0;
-                for ((phase, inc), gain) in self.phases.iter_mut().zip(self.incs).zip(self.gains) {
-                    if gain != 0.0 {
-                        sum += gain * sine(sine_table, *phase);
-                    }
-                    *phase = (*phase + inc).fract();
-                }
-                (sum * gains.0[0], sum * gains.1[0], sum)
-            }
+        if s.kind == Kind::Wavetable {
+            return (0.0, 0.0, 0.0);
+        }
+        if s.kind == Kind::Spectral {
+            return self.spectral(gains, sine_table, src);
+        }
+        // Quantize holds the output of the sample types.
+        if self.hold_left >= 1.0 {
+            self.hold_left -= 1.0;
+            self.advance_cycles();
+            self.skip(source);
+            return self.held;
+        }
+        let out = match s.kind {
+            Kind::Sample if s.mode == Mode::Stretch => self.grain(source, gains, src, true),
+            Kind::Granular => self.grain(source, gains, src, false),
+            _ => self.sample(source, gains, src),
+        };
+        self.advance_cycles();
+        let hold = s.hold();
+        if hold > 1.0 {
+            self.held = out;
+            self.hold_left += hold - 1.0;
+        }
+        out
+    }
+
+    /// Moves the read positions on without producing output (while
+    /// quantize holds).
+    fn skip(&mut self, source: &Source) {
+        let s = self.settings;
+        if matches!(s.kind, Kind::Sample | Kind::Multisample) && s.mode != Mode::Stretch {
+            let _ = self.sample(source, (&[0.0; MAX_UNISON], &[0.0; MAX_UNISON]), 0.0);
+        } else {
+            let stretch = s.kind == Kind::Sample && s.mode == Mode::Stretch;
+            let _ = self.grain(
+                source,
+                (&[0.0; MAX_UNISON], &[0.0; MAX_UNISON]),
+                0.0,
+                stretch,
+            );
         }
     }
 
-    /// Sample and multisample playback, every unison voice.
+    /// The spectral oscillator: every unison voice's partials, each warped
+    /// as a one-partial cycle, each with its own left and right level.
+    fn spectral(
+        &mut self,
+        gains: (&[f32; MAX_UNISON], &[f32; MAX_UNISON]),
+        sine_table: &[f32; SINE_LEN + 1],
+        src: f32,
+    ) -> (f32, f32, f32) {
+        let s = self.settings;
+        let sr = s.sample_rate.max(1.0);
+        let plain = s.plain();
+        let [(w1, a1), (w2, a2)] = s.warps;
+        let (mut l, mut r, mut mono) = (0.0, 0.0, 0.0);
+        for u in 0..s.unison.min(MAX_UNISON) {
+            let freq = s.freq.get(u).copied().unwrap_or(0.0);
+            let (Some(phases), Some(gl), Some(gr)) =
+                (self.phases.get_mut(u), gains.0.get(u), gains.1.get(u))
+            else {
+                break;
+            };
+            let (mut vl, mut vr) = (0.0, 0.0);
+            for (n, phase) in phases.iter_mut().enumerate() {
+                let inc = (freq * self.harmonic.get(n).copied().unwrap_or(0.0) + s.shift) / sr;
+                let (left, right) = (
+                    self.gains[0].get(n).copied().unwrap_or(0.0),
+                    self.gains[1].get(n).copied().unwrap_or(0.0),
+                );
+                if inc > 0.0 && inc < 0.5 && (left != 0.0 || right != 0.0) {
+                    let x = if plain {
+                        sine(sine_table, *phase)
+                    } else {
+                        let (p1, g1) = w1.apply(a1, *phase, src);
+                        let (p2, g2) = w2.apply(a2, p1, src);
+                        sine(sine_table, p2) * g1 * g2
+                    };
+                    vl += x * left;
+                    vr += x * right;
+                }
+                *phase = (*phase + inc.max(0.0)).fract();
+            }
+            l += vl * gl;
+            r += vr * gr;
+            mono += (vl + vr) * 0.5;
+        }
+        (l, r, mono / s.unison.max(1) as f32)
+    }
+
+    /// Sample and multisample playback, every unison voice, in stereo.
     fn sample(
         &mut self,
         source: &Source,
         gains: (&[f32; MAX_UNISON], &[f32; MAX_UNISON]),
+        src: f32,
     ) -> (f32, f32, f32) {
         let s = self.settings;
         let (buffer, root_hz) = match s.kind {
@@ -329,8 +474,12 @@ impl Player {
         let loop_end = (f64::from(s.loop_end.max(s.loop_start)) * len)
             .max(loop_start + 1.0)
             .min(len);
+        let fm = f64::from(s.fm_cycles(src));
         let (mut l, mut r, mut mono) = (0.0, 0.0, 0.0);
         for u in 0..s.unison.min(MAX_UNISON) {
+            let level = s.level(self.cycle.get(u).copied().unwrap_or(0.0), src);
+            let freq = s.freq.get(u).copied().unwrap_or(0.0);
+            let step = rate * f64::from(freq / reference.max(1e-3));
             let (Some(pos), Some(back), Some(stopped)) = (
                 self.pos.get_mut(u),
                 self.backwards.get_mut(u),
@@ -341,13 +490,14 @@ impl Player {
             if *stopped {
                 continue;
             }
-            let (sl, sr) = buffer.read(*pos);
-            let x = (sl + sr) * 0.5;
-            mono += x;
-            l += x * gains.0.get(u).copied().unwrap_or(0.0);
-            r += x * gains.1.get(u).copied().unwrap_or(0.0);
-            let freq = s.freq.get(u).copied().unwrap_or(0.0);
-            let step = rate * f64::from(freq / reference.max(1e-3));
+            // FM moves the read by cycles of the note: frames per cycle is
+            // the step over the cycle's increment.
+            let cycle_frames = step * f64::from(s.sample_rate.max(1.0)) / f64::from(freq.max(1e-3));
+            let at = (*pos + fm * cycle_frames).clamp(0.0, (len - 1.0).max(0.0));
+            let (sl, sr) = buffer.read(at);
+            mono += (sl + sr) * 0.5 * level;
+            l += sl * level * gains.0.get(u).copied().unwrap_or(0.0);
+            r += sr * level * gains.1.get(u).copied().unwrap_or(0.0);
             match s.looping {
                 Loop::Off => {
                     *pos += step;
@@ -378,13 +528,21 @@ impl Player {
         (l, r, mono / n)
     }
 
-    /// One sample of grains: the granular oscillator, or the sample
-    /// oscillator's stretch mode (`stretch`: grains follow real time and
-    /// overlap twice, without spread or random pitch).
-    fn grain(&mut self, source: &Source, kind: Kind, stretch: bool) -> f32 {
+    /// One sample of grains, in stereo: the granular oscillator, or the
+    /// sample oscillator's stretch mode (`stretch`: grains follow real time
+    /// and overlap twice, without spread or random pitch). Each new grain
+    /// starts once per unison voice.
+    fn grain(
+        &mut self,
+        source: &Source,
+        gains: (&[f32; MAX_UNISON], &[f32; MAX_UNISON]),
+        src: f32,
+        stretch: bool,
+    ) -> (f32, f32, f32) {
         let s = self.settings;
+        let kind = if stretch { Kind::Sample } else { s.kind };
         let Some(buffer) = self.buffer(source, kind) else {
-            return 0.0;
+            return (0.0, 0.0, 0.0);
         };
         let len = buffer.len() as f64;
         let sr = s.sample_rate.max(1.0);
@@ -395,37 +553,53 @@ impl Player {
         } else {
             (sr / s.density.max(0.1), s.spread, s.grain_pitch, s.scan)
         };
-        let base_step =
-            rate * f64::from(s.freq.first().copied().unwrap_or(0.0) / s.root_hz.max(1e-3));
+        let unison = s.unison.clamp(1, MAX_UNISON);
         self.grain_timer -= 1.0;
         if self.grain_timer <= 0.0 {
             self.grain_timer += interval.max(1.0);
             let offset = f64::from(self.random()) * f64::from(spread) * len * 0.5;
-            let detune = f64::from(self.random() * jitter);
             let position = (self.scan_pos + offset).rem_euclid(len);
-            if let Some(grain) = self.grains.iter_mut().find(|g| g.length == 0) {
-                *grain = Grain {
-                    position,
-                    step: base_step * (detune / 12.0).exp2(),
-                    age: 0,
-                    length: size,
-                };
+            for u in 0..unison {
+                let detune = f64::from(self.random() * jitter);
+                let freq = s.freq.get(u).copied().unwrap_or(0.0);
+                let step = rate * f64::from(freq / s.root_hz.max(1e-3)) * (detune / 12.0).exp2();
+                if let Some(grain) = self.grains.iter_mut().find(|g| g.length == 0) {
+                    *grain = Grain {
+                        position,
+                        step,
+                        age: 0,
+                        length: size,
+                        voice: u as u8,
+                    };
+                }
             }
         }
         self.scan_pos = (self.scan_pos + f64::from(scan) * rate).rem_euclid(len);
         let overlap = (size as f32 / interval.max(1.0)).max(1.0);
-        let mut sum = 0.0;
+        let fm = f64::from(s.fm_cycles(src));
+        let mut levels = [1.0; MAX_UNISON];
+        for (level, phase) in levels.iter_mut().zip(self.cycle).take(unison) {
+            *level = s.level(phase, src);
+        }
+        let (mut l, mut r, mut mono) = (0.0, 0.0, 0.0);
         for grain in self.grains.iter_mut().filter(|g| g.length > 0) {
+            let u = usize::from(grain.voice);
             let x = grain.age as f32 / grain.length as f32;
-            let window = 0.5 - 0.5 * (x * std::f32::consts::TAU).cos();
-            let (gl, gr) = buffer.read(grain.position.rem_euclid(len));
-            sum += (gl + gr) * 0.5 * window;
+            let window = (0.5 - 0.5 * (x * std::f32::consts::TAU).cos())
+                * levels.get(u).copied().unwrap_or(1.0);
+            let freq = s.freq.get(u).copied().unwrap_or(0.0);
+            let cycle_frames = grain.step * f64::from(sr) / f64::from(freq.max(1e-3));
+            let (gl, gr) = buffer.read((grain.position + fm * cycle_frames).rem_euclid(len));
+            mono += (gl + gr) * 0.5 * window;
+            l += gl * window * gains.0.get(u).copied().unwrap_or(0.0);
+            r += gr * window * gains.1.get(u).copied().unwrap_or(0.0);
             grain.position += grain.step;
             grain.age += 1;
             if grain.age >= grain.length {
                 grain.length = 0;
             }
         }
-        sum / overlap.sqrt()
+        let norm = overlap.sqrt();
+        (l / norm, r / norm, mono / norm / unison as f32)
     }
 }

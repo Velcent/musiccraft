@@ -37,6 +37,8 @@ pub use wavetable::Wavetable;
 #[cfg(test)]
 mod fx_arp_tests;
 #[cfg(test)]
+mod osc_stereo_tests;
+#[cfg(test)]
 mod osc_type_tests;
 #[cfg(test)]
 mod tests;

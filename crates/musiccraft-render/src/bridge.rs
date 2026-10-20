@@ -419,6 +419,9 @@ pub struct Bridge {
     requests: Option<Requests>,
     /// Resynthesis analyses by sample key, so rebuilding is cheap.
     harmonics: BTreeMap<String, Arc<musiccraft_dsp::resynth::HarmonicTable>>,
+    /// Per-channel analyses for Antiserum's spectral oscillator, by sample
+    /// key.
+    stereo_harmonics: BTreeMap<String, musiccraft_antiserum::source::Analysis>,
     /// Running Antiserum synths by channel.
     synths: BTreeMap<ChannelId, LiveSynth>,
     /// Whether the transport played at the last sync (see `sync_synths`).
@@ -439,6 +442,7 @@ impl Bridge {
             failed: BTreeMap::new(),
             requests: None,
             harmonics: BTreeMap::new(),
+            stereo_harmonics: BTreeMap::new(),
             synths: BTreeMap::new(),
             synths_playing: false,
         }
@@ -796,8 +800,8 @@ impl Bridge {
             Some(k)
         };
         let harmonics = match &sample {
-            Some(k) => self.harmonics(k, &mut report.warnings),
-            None => Arc::new(musiccraft_dsp::resynth::HarmonicTable::silent()),
+            Some(k) => self.stereo_harmonics(k, &mut report.warnings),
+            None => musiccraft_antiserum::source::silent_analysis(),
         };
         let sample = sample.map(|k| self.load(&k, &mut report.warnings));
         let zones = reference
@@ -899,6 +903,23 @@ impl Bridge {
                 Arc::new(SampleBuffer::silent(f64::from(self.sample_rate)))
             }
         }
+    }
+
+    /// The analysis of each channel of a sample, for Antiserum's spectral
+    /// oscillator (measured once, then cached).
+    fn stereo_harmonics(
+        &mut self,
+        key: &str,
+        warnings: &mut Vec<String>,
+    ) -> musiccraft_antiserum::source::Analysis {
+        if let Some(analysis) = self.stereo_harmonics.get(key) {
+            return analysis.clone();
+        }
+        let buffer = self.load(key, warnings);
+        let analysis = musiccraft_antiserum::source::analyze(&buffer);
+        self.stereo_harmonics
+            .insert(key.to_owned(), analysis.clone());
+        analysis
     }
 
     /// The harmonic analysis of a sample (measured once, then cached).

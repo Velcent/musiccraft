@@ -28,14 +28,40 @@ Appended after the effect modules, for each oscillator in turn (`osc1_…`,
 | `spectral_speed` | 0–4 | 1 | spectral |
 
 The oscillator's existing controls still apply to every type: level, pan,
-octave, semitone and fine (pitch), position, unison (sample and multisample
-only), filter sends, and the mod matrix. **Position** means:
+octave, semitone and fine (pitch), position, unison, the warps (below), filter sends, and the mod matrix. **Position** means:
 
 - sample and multisample: where playback starts;
 - granular: where scanning starts;
 - spectral: the time in the analysis where playback starts.
 
-Warps apply to wavetables only.
+### Unison
+
+Unison works on every type, with the wavetable's detune, blend, width and
+stack:
+
+- sample and multisample: each unison voice is a detuned read of the sample;
+- granular and the sample type's stretch mode: each new grain starts once per
+  unison voice, detuned and panned like that voice;
+- spectral: each unison voice plays its own set of partials, detuned like
+  that voice.
+
+### Warps
+
+The two warps work on every type. On a wavetable they reshape the cycle as
+before (`docs/spec/antiserum.md`). On the other types:
+
+| Warp | Spectral | Sample, multisample, granular |
+| --- | --- | --- |
+| sync, bend ±, PWM, asym ±, mirror, flip, quantize, remap | each partial's phase is warped, as a one-partial wavetable cycle | see below |
+| FM | moves each partial's phase by the mod source | moves the read position by the mod source, up to 2 cycles of the note |
+| AM, RM | the output level, as for wavetables | the output level, as for wavetables |
+| PWM, flip | as above | gates (PWM) or inverts (flip) the part of each note-pitch cycle the wavetable would |
+| quantize | as above | holds each read value for up to 32 frames (a lower sample rate) |
+| sync, bend ±, asym ±, mirror, remap | as above | no effect: they reshape a wave's cycle, and a sample has none. The editor dims them for these types. |
+
+"Each note-pitch cycle" is a phase that runs at the oscillator's pitch (each
+unison voice its own), so level warps follow the note as they do on a
+wavetable.
 
 ## Sources
 
@@ -45,7 +71,8 @@ replaces it and returns the old one (like `set_wavetable`). A `Source` holds:
 
 - the sample (a `SampleBuffer`), or none;
 - its harmonic analysis (`musiccraft_dsp::resynth::HarmonicTable`, the same
-  analysis the resynth instrument uses), measured when the source is built;
+  analysis the resynth instrument uses), measured when the source is built:
+  one for each channel of a stereo sample, one for a mono sample;
 - the zones: a sample each, with low and high key, root key, and low and
   high velocity (the zone sampler's fields).
 
@@ -53,7 +80,10 @@ An oscillator whose type needs a sample but has none is silent.
 
 ## Types
 
-- **Sample.** The sample summed to mono (width comes from unison and pan).
+- **Sample.** The sample in stereo: its left channel goes left and its right
+  channel right, then pan and unison width place it like any oscillator. A
+  mono sample plays in both channels. (The mono mix feeds other oscillators'
+  FM, AM and RM.)
   - *repitch:* plays faster or slower so that `root` sounds at its own
     pitch, as a sampler does.
   - *fixed:* plays at the sample's own speed whatever the key (drums, loops;
@@ -73,13 +103,16 @@ An oscillator whose type needs a sample but has none is silent.
   Each grain is offset at random by up to `grain_spread` of the sample and
   detuned at random by up to `grain_pitch` semitones. The scan point starts at
   *position* and moves at `grain_scan` times real time (0 holds it, negative
-  moves backwards). Grains play at the key's pitch relative to `root`.
+  moves backwards). Grains play at the key's pitch relative to `root`, in
+  stereo like the sample type.
 - **Spectral.** Resynthesis from the analysis: 32 sine partials whose levels
   follow the analysis from *position*, at `spectral_speed` times real time
   (looping when `loop` is on). Partial n sounds at
   `f · n^(1 + stretch/2) + shift`, where `f` is the note's frequency, and is
   weighted by `n^(2·tilt)` (darker below 0, brighter above). Partials above
-  Nyquist are dropped.
+  Nyquist are dropped. With a stereo sample each partial has a left and a
+  right level, from the two channels' analyses, so the sample's stereo image
+  carries over.
 
 ## Patch
 
@@ -132,6 +165,11 @@ its picture follow the type:
 - Spectral sounds at the note's pitch; shift moves the partials; tilt changes
   the brightness.
 - Every type, with no sample, is silent and stays finite.
+- A stereo sample keeps its sides apart in the sample, granular and
+  spectral types.
+- Unison widens and thickens granular, stretch and spectral oscillators.
+- FM, AM and quantize change sample-type output; sync leaves it unchanged;
+  every warp changes a spectral oscillator.
 - Commands undo and redo exactly; a sample swap reaches a running synth.
 
 ## Sources

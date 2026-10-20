@@ -475,7 +475,11 @@ impl AntiserumEditor {
                 );
             }
             3 => {
-                knobs(ui, cx, pitch.into_iter().chain([x(oscx::ROOT)]));
+                knobs(
+                    ui,
+                    cx,
+                    pitch.into_iter().chain(unison).chain([x(oscx::ROOT)]),
+                );
                 knobs(
                     ui,
                     cx,
@@ -490,7 +494,7 @@ impl AntiserumEditor {
                 );
             }
             _ => {
-                knobs(ui, cx, pitch);
+                knobs(ui, cx, pitch.into_iter().chain(unison));
                 knobs(
                     ui,
                     cx,
@@ -504,6 +508,30 @@ impl AntiserumEditor {
                     .map(x),
                 );
             }
+        }
+        let warps = [
+            osc::WARP1,
+            osc::WARP1_AMOUNT,
+            osc::WARP2,
+            osc::WARP2_AMOUNT,
+            osc::MOD_SOURCE,
+        ];
+        knobs(ui, cx, warps.map(p));
+        // On sample types, warps that reshape a cycle have nothing to act on.
+        let shaping = |index: usize| {
+            matches!(
+                cx.view.value(index).round() as i32,
+                1 | 2 | 3 | 5 | 6 | 7 | 10
+            )
+        };
+        if kind != 4 && (shaping(p(osc::WARP1)) || shaping(p(osc::WARP2))) {
+            ui.label(
+                egui::RichText::new(
+                    "Sync, bend, asym, mirror and remap reshape a wave's cycle; a sample has none, so they do nothing here.",
+                )
+                .small()
+                .color(theme::TEXT_DIM),
+            );
         }
     }
 

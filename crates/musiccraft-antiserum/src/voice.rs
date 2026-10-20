@@ -501,14 +501,7 @@ impl Voice {
             + ctx.base(p(osc::SEMI))
             + self.value(ctx, p(osc::FINE)) / 100.0;
         let hz = key_to_hz(semis);
-        // Grains and partials are one voice; samples take unison.
-        let single = matches!(kind, Kind::Granular | Kind::Spectral)
-            || (kind == Kind::Sample && mode == Mode::Stretch);
-        let unison = if single {
-            1
-        } else {
-            (ctx.base(p(osc::UNISON)) as usize).clamp(1, MAX_UNISON)
-        };
+        let unison = (ctx.base(p(osc::UNISON)) as usize).clamp(1, MAX_UNISON);
         let settings = (kind != Kind::Wavetable).then(|| Settings {
             kind,
             mode,
@@ -617,6 +610,7 @@ impl Voice {
             for (freq, inc) in settings.freq.iter_mut().zip(run.inc).take(unison) {
                 *freq = inc * ctx.sample_rate;
             }
+            settings.warps = [(run.warp1, amount1), (run.warp2, amount2)];
             if let (Some(player), Some(source)) = (self.players.get_mut(o), ctx.sources.get(o)) {
                 player.control(source, settings, frames);
             }
@@ -722,7 +716,8 @@ impl Voice {
                     else {
                         continue;
                     };
-                    let (l, r, mono) = player.next(source, (&run.left, &run.right), ctx.sine);
+                    let src = prev.get(run.source).copied().unwrap_or(0.0);
+                    let (l, r, mono) = player.next(source, (&run.left, &run.right), ctx.sine, src);
                     if let Some(p) = self.prev.get_mut(o) {
                         *p = mono;
                     }

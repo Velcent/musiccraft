@@ -31,13 +31,43 @@ impl Zone {
     }
 }
 
+/// A sample's harmonics over time, for its left and right channels (the same
+/// table twice for a mono sample).
+pub type Analysis = [Arc<HarmonicTable>; 2];
+
+/// The analysis of nothing: silence on both sides.
+#[must_use]
+pub fn silent_analysis() -> Analysis {
+    let silent = Arc::new(HarmonicTable::silent());
+    [Arc::clone(&silent), silent]
+}
+
+/// Analyses each channel of `sample` (once when they are the same). Slow;
+/// main thread.
+#[must_use]
+pub fn analyze(sample: &SampleBuffer) -> Analysis {
+    if sample.left() == sample.right() {
+        let table = Arc::new(HarmonicTable::analyze(sample));
+        return [Arc::clone(&table), table];
+    }
+    let rate = sample.sample_rate();
+    let side = |data: &[f32]| {
+        Arc::new(HarmonicTable::analyze(&SampleBuffer::mono(
+            data.to_vec(),
+            rate,
+        )))
+    };
+    [side(sample.left()), side(sample.right())]
+}
+
 /// An oscillator's sample, its analysis and its zones.
 #[derive(Debug, Clone)]
 pub struct Source {
     /// The sample, if any.
     pub sample: Option<Arc<SampleBuffer>>,
-    /// The sample's harmonics over time (silent without a sample).
-    pub harmonics: Arc<HarmonicTable>,
+    /// The sample's harmonics over time, left and right (silent without a
+    /// sample).
+    pub harmonics: Analysis,
     /// Multisample zones, in the order notes look for a match.
     pub zones: Vec<Zone>,
 }
@@ -46,7 +76,7 @@ impl Default for Source {
     fn default() -> Self {
         Self {
             sample: None,
-            harmonics: Arc::new(HarmonicTable::silent()),
+            harmonics: silent_analysis(),
             zones: Vec::new(),
         }
     }
@@ -57,17 +87,15 @@ impl Source {
     /// Main thread.
     #[must_use]
     pub fn new(sample: Option<Arc<SampleBuffer>>, zones: Vec<Zone>) -> Self {
-        let harmonics = sample
-            .as_deref()
-            .map_or_else(HarmonicTable::silent, HarmonicTable::analyze);
-        Self::with_analysis(sample, Arc::new(harmonics), zones)
+        let harmonics = sample.as_deref().map_or_else(silent_analysis, analyze);
+        Self::with_analysis(sample, harmonics, zones)
     }
 
     /// A source with an analysis made (and perhaps cached) elsewhere.
     #[must_use]
     pub fn with_analysis(
         sample: Option<Arc<SampleBuffer>>,
-        harmonics: Arc<HarmonicTable>,
+        harmonics: Analysis,
         zones: Vec<Zone>,
     ) -> Self {
         Self {
