@@ -1963,6 +1963,7 @@ dependencies = [
  "musiccraft-dsp",
  "musiccraft-engine",
  "musiccraft-formula",
+ "musiccraft-instruments",
  "musiccraft-meter",
  "musiccraft-params",
  "musiccraft-patch",

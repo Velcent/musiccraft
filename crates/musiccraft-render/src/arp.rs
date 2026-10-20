@@ -1,6 +1,7 @@
 //! The per-channel arpeggiator, applied when sequences are built.
 
 use musiccraft_engine::NoteEvent;
+use musiccraft_instruments::arp::{self, hash};
 use musiccraft_params::{ARP_RATES, inst};
 use musiccraft_project::Project;
 
@@ -55,33 +56,12 @@ impl Settings {
     }
 }
 
-/// A stable pseudo-random number for a step, so random order repeats.
-fn hash(step: u64) -> u64 {
-    let mut x = step.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    x ^ (x >> 31)
-}
-
-/// The keys to cycle through, in play order.
-fn order(mut keys: Vec<u8>, settings: Settings) -> Vec<u8> {
-    keys.sort_unstable();
-    keys.dedup();
-    let mut spread: Vec<u8> = (0..settings.range)
-        .flat_map(|octave| keys.iter().filter_map(move |k| k.checked_add(12 * octave)))
-        .filter(|k| *k <= 127)
-        .collect();
-    spread.sort_unstable();
-    spread.dedup();
-    match settings.mode {
-        2 => spread.reverse(),
-        3 if spread.len() > 2 => {
-            let back: Vec<u8> = spread[1..spread.len() - 1].iter().rev().copied().collect();
-            spread.extend(back);
-        }
-        _ => {}
-    }
-    spread
+/// The keys to cycle through, in play order (the plugins' real-time
+/// arpeggiator shares this order).
+fn order(keys: Vec<u8>, settings: Settings) -> Vec<u8> {
+    let mut out = [0; arp::MAX_ORDER];
+    let len = arp::order(&keys, settings.mode, settings.range, &mut out);
+    out[..len].to_vec()
 }
 
 fn arpeggio(notes: &[NoteEvent], settings: Settings) -> Vec<NoteEvent> {

@@ -193,3 +193,13 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
 | Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |
 | Automation | Controllers: LFO, envelope, keyboard, peak, formula and macro sources driving a parameter | `cmd:controller.add` `cmd:controller.set` `spec:controllers.md` |
+| Release | Antiserum sample oscillators play stereo samples | `todo` |
+| Release | Warps on sample, multisample, granular and spectral oscillators | `todo` |
+| Release | Unison on granular, spectral and stretched-sample oscillators | `todo` |
+| Release | Antiserum editor sample previews resolve project-relative paths | `todo` |
+| Release | Factory presets using sample, multisample, granular and spectral oscillators | `todo` |
+| Release | Antiserum benchmark covers every oscillator type | `todo` |
+| Release | Channel header pitch knob transposes Antiserum | `todo` |
+| Release | User preset folder listed in the browser, with save into it | `todo` |
+| Release | Convolution reverb plugin loads impulse files | `todo` |
+| Release | Sidechain input and MIDI follow tested through our CLAP and VST3 hosts | `todo` |

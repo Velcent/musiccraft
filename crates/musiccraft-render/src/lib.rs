@@ -52,6 +52,8 @@ pub fn full_registry_with(host: Option<PluginHost>) -> Registry {
 }
 
 #[cfg(test)]
+mod live_tests;
+#[cfg(test)]
 mod plugin_tests;
 #[cfg(test)]
 mod tests;

@@ -15,7 +15,9 @@ use std::sync::Arc;
 use musiccraft_dsp::SampleBuffer;
 use musiccraft_params::MAX_INSTRUMENT_PARAMS;
 
+pub mod arp;
 mod kind;
+pub mod live;
 mod modmatrix;
 mod strings;
 mod voice;

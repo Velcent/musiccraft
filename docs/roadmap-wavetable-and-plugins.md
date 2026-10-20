@@ -203,6 +203,27 @@ Still to do: instruments, then Antiserum.
 - Install docs: CLAP and VST3 folders per OS.
 - `docs/parity.md` rows and a changelog.
 
+**Release blockers (owner, 2026-10-20).** Every limitation reported while
+building Antiserum and the plugins is fixed before the release ships. Each is
+a `todo` row in `docs/parity.md` (area "Release") until it is done.
+
+1. Antiserum's sample oscillators play samples in stereo, not summed to mono.
+2. Warps apply to sample, multisample, granular and spectral oscillators where
+   they have a meaning, and the spec says which ones do not.
+3. Unison works on granular, spectral and stretched-sample oscillators.
+4. The Antiserum editor's sample previews resolve paths the way the project
+   does (relative to the project file, with the path settings).
+5. The factory bank has presets that use the sample, multisample, granular and
+   spectral oscillators.
+6. The Antiserum benchmark covers each oscillator type.
+7. The channel header's pitch knob transposes Antiserum.
+8. User presets: a user preset folder that the browser lists, and saving into
+   it.
+9. The convolution reverb plugin loads impulse files, not only the generated
+   rooms.
+10. The sidechain input and the pitch corrector's MIDI follow are tested
+    through our CLAP and VST3 hosts, not only as parameters.
+
 ## Suggested order and parallel tracks
 
 1. **Phase 1**, which unblocks both goals.
