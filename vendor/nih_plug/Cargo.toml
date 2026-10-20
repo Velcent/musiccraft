@@ -15,6 +15,11 @@ repository = "https://github.com/robbert-vdh/nih-plug"
 # are left out; this crate is used through `[patch]` in MusicCraft's
 # workspaces.
 
+# Upstream code that newer compilers warn about; left as upstream wrote it.
+[lints.rust]
+semicolon_in_expressions_from_non_local_macros = "allow"
+unused_imports = "allow"
+
 [features]
 default = ["vst3"]
 

@@ -126,6 +126,12 @@ pub struct Wrapper<P: ClapPlugin> {
     editor_scaling_factor: AtomicF32,
 
     is_processing: AtomicBool,
+    /// MusicCraft patch: whether the plugin is between `activate()` and `deactivate()`. CLAP only
+    /// allows `clap_host_latency::changed()` inside `activate()`; afterwards a latency change
+    /// needs `request_restart()`.
+    is_active: AtomicBool,
+    /// MusicCraft patch: whether `activate()` is running, the only time `changed()` is allowed.
+    in_activate: AtomicBool,
     /// The current IO configuration, modified through the `clap_plugin_audio_ports_config`
     /// extension. Initialized to the plugin's first audio IO configuration.
     current_audio_io_layout: AtomicCell<AudioIOLayout>,
@@ -397,9 +403,12 @@ impl<P: ClapPlugin> MainThreadExecutor<Task<P>> for Wrapper<P> {
                     //      while the plugin is activated (which is not entirely the same thing as
                     //      is processing, but we'll treat it as the same thing). In practice just
                     //      calling the latency changed function also seems to work just fine.
-                    if self.is_processing.load(Ordering::SeqCst) {
+                    // MusicCraft patch: restart whenever the plugin is active, not only while it
+                    // processes (clap-validator's `param-fuzz-*` and `param-set-*`).
+                    // An inactive plugin's latency is read by the host at the next activation.
+                    if self.is_active.load(Ordering::SeqCst) {
                         unsafe_clap_call! { &*self.host_callback=>request_restart(&*self.host_callback) };
-                    } else {
+                    } else if self.in_activate.load(Ordering::SeqCst) {
                         unsafe_clap_call! { host_latency=>changed(&*self.host_callback) };
                     }
                 }
@@ -544,6 +553,8 @@ impl<P: ClapPlugin> Wrapper<P> {
             editor_scaling_factor: AtomicF32::new(1.0),
 
             is_processing: AtomicBool::new(false),
+            is_active: AtomicBool::new(false),
+            in_activate: AtomicBool::new(false),
             current_audio_io_layout: AtomicCell::new(
                 P::AUDIO_IO_LAYOUTS.first().copied().unwrap_or_default(),
             ),
@@ -1889,31 +1900,42 @@ impl<P: ClapPlugin> Wrapper<P> {
             param.update_smoother(buffer_config.sample_rate, true);
         }
 
-        // NOTE: This needs to be dropped after the `plugin` lock to avoid deadlocks
-        let mut init_context = wrapper.make_init_context();
-        let mut plugin = wrapper.plugin.lock();
-        if plugin.initialize(&audio_io_layout, &buffer_config, &mut init_context) {
-            // NOTE: `Plugin::reset()` is called in `clap_plugin::start_processing()` instead of in
-            //       this function
+        // MusicCraft patch: latency reported while this runs (including when the init context
+        // is dropped at the end of the block) goes to `clap_host_latency::changed()`.
+        wrapper.in_activate.store(true, Ordering::SeqCst);
+        let success = {
+            // NOTE: This needs to be dropped after the `plugin` lock to avoid deadlocks
+            let mut init_context = wrapper.make_init_context();
+            let mut plugin = wrapper.plugin.lock();
+            if plugin.initialize(&audio_io_layout, &buffer_config, &mut init_context) {
+                // NOTE: `Plugin::reset()` is called in `clap_plugin::start_processing()` instead
+                //       of in this function
 
-            // This preallocates enough space so we can transform all of the host's raw channel
-            // pointers into a set of `Buffer` objects for the plugin's main and auxiliary IO
-            *wrapper.buffer_manager.borrow_mut() =
-                BufferManager::for_audio_io_layout(max_frames_count as usize, audio_io_layout);
+                // This preallocates enough space so we can transform all of the host's raw
+                // channel pointers into a set of `Buffer` objects for the plugin's main and
+                // auxiliary IO
+                *wrapper.buffer_manager.borrow_mut() =
+                    BufferManager::for_audio_io_layout(max_frames_count as usize, audio_io_layout);
 
-            // Also store this for later, so we can reinitialize the plugin after restoring state
-            wrapper.current_buffer_config.store(Some(buffer_config));
+                // Also store this for later, so we can reinitialize the plugin after restoring
+                // state
+                wrapper.current_buffer_config.store(Some(buffer_config));
 
-            true
-        } else {
-            false
-        }
+                true
+            } else {
+                false
+            }
+        };
+        wrapper.is_active.store(success, Ordering::SeqCst);
+        wrapper.in_activate.store(false, Ordering::SeqCst);
+        success
     }
 
     unsafe extern "C" fn deactivate(plugin: *const clap_plugin) {
         check_null_ptr!((), plugin, (*plugin).plugin_data);
         let wrapper = &*((*plugin).plugin_data as *const Self);
 
+        wrapper.is_active.store(false, Ordering::SeqCst);
         wrapper.plugin.lock().deactivate();
     }
 
@@ -3153,20 +3175,34 @@ impl<P: ClapPlugin> Wrapper<P> {
         }
         let length = u64::from_le_bytes(length_bytes);
 
-        let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
-        if !read_stream(&*stream, read_buffer.spare_capacity_mut()) {
-            nih_debug_assert_failure!(
-                "Error or end of stream while reading the state buffer from the stream."
-            );
+        // MusicCraft patch: the length comes from the stream, so damaged or random data must not
+        // decide how much memory is reserved up front (clap-validator's `state-invalid-random`
+        // aborted on a petabyte allocation). Read in chunks; a stream that ends early fails.
+        let Ok(length) = usize::try_from(length) else {
             return false;
+        };
+        let mut read_buffer: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 4096];
+        while read_buffer.len() < length {
+            let count = (length - read_buffer.len()).min(chunk.len());
+            if !read_stream(&*stream, &mut chunk[..count]) {
+                nih_debug_assert_failure!(
+                    "Error or end of stream while reading the state buffer from the stream."
+                );
+                return false;
+            }
+            read_buffer.extend_from_slice(&chunk[..count]);
         }
-        read_buffer.set_len(length as usize);
 
         match state::deserialize_json(&read_buffer) {
             Some(mut state) => {
                 let success = wrapper.set_state_inner(&mut state);
                 if success {
                     nih_trace!("Loaded state ({} bytes)", read_buffer.len());
+                    // MusicCraft patch: the host must hear that every value may have changed
+                    // (clap-validator's `state-reproducibility-*`).
+                    let task_posted = wrapper.schedule_gui(Task::RescanParamValues);
+                    nih_debug_assert!(task_posted, "The task queue is full, dropping task...");
                 }
 
                 success
