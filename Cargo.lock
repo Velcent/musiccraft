@@ -1831,6 +1831,7 @@ dependencies = [
  "musiccraft-instruments",
  "musiccraft-params",
  "musiccraft-patch",
+ "musiccraft-paths",
  "musiccraft-wavetables",
 ]
 

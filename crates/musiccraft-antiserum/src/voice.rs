@@ -612,7 +612,7 @@ impl Voice {
             }
             settings.warps = [(run.warp1, amount1), (run.warp2, amount2)];
             if let (Some(player), Some(source)) = (self.players.get_mut(o), ctx.sources.get(o)) {
-                player.control(source, settings, frames);
+                player.control(source, settings, frames, ctx.sine);
             }
         }
     }

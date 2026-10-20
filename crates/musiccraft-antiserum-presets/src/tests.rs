@@ -14,7 +14,15 @@ fn the_bank_has_its_categories_and_unique_names() {
         .iter()
         .map(|c| bank.iter().filter(|p| p.category == *c).count())
         .collect();
-    assert_eq!(counts, [25, 25, 25, 20, 20, 15, 20]);
+    assert_eq!(counts, [25, 25, 29, 23, 22, 18, 22]);
+    // Every oscillator type has presets.
+    for kind in 1..=4 {
+        assert!(
+            bank.iter()
+                .any(|p| p.params.get("osc1_type") == Some(&(kind as f32))),
+            "type {kind}"
+        );
+    }
     let names: BTreeSet<&str> = bank.iter().map(|p| p.name.as_str()).collect();
     assert_eq!(names.len(), bank.len(), "names are unique");
     assert!(bank.iter().all(|p| !p.tags.is_empty()));

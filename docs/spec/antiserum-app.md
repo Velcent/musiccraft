@@ -43,18 +43,22 @@ state. Crate: `musiccraft-patch` (plain data, serde only).
 
 ## Factory bank
 
-About 150 presets of our own sound design, made in code from a few
+About 165 presets of our own sound design, made in code from a few
 parameter recipes per sound family, with these counts:
 
 | Category | Presets |
 | --- | --- |
 | bass | 25 |
 | lead | 25 |
-| pad | 25 |
-| pluck | 20 |
-| keys | 20 |
-| fx | 15 |
-| drums | 20 |
+| pad | 29 |
+| pluck | 23 |
+| keys | 22 |
+| fx | 18 |
+| drums | 22 |
+
+Fourteen of them play the sample, multisample, granular and spectral
+oscillators (`docs/spec/antiserum-oscillators.md`) with the built-in sounds,
+so they work on every machine; every oscillator type has at least one.
 
 Every preset has a unique name and at least one tag. Each one sounds (a
 held note is not silent), stays finite and peaks below 4. Names are our own

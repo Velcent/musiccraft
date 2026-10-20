@@ -122,6 +122,12 @@ pub(crate) fn show(
         };
         state.antiserum.editor.page = page;
     }
+    // Sample previews find files as the engine does: from the project's
+    // folder, with paths from other systems translated.
+    state
+        .antiserum
+        .editor
+        .set_folder(frame.project.path().and_then(std::path::Path::parent));
     let values = musiccraft_antiserum_presets::values(patch);
     let mut edits = Vec::new();
     let mut menu_actions = Vec::new();

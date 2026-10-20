@@ -194,12 +194,12 @@ of contents; see `docs/clean-room.md`.
 | Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |
 | Automation | Controllers: LFO, envelope, keyboard, peak, formula and macro sources driving a parameter | `cmd:controller.add` `cmd:controller.set` `spec:controllers.md` |
 | Plugins | Built-in instruments and Antiserum as CLAP and VST3 plugins, with the app's editors | `spec:plugin-instruments.md` `done` |
-| Release | Antiserum sample oscillators play stereo samples | `todo` |
-| Release | Warps on sample, multisample, granular and spectral oscillators | `todo` |
-| Release | Unison on granular, spectral and stretched-sample oscillators | `todo` |
-| Release | Antiserum editor sample previews resolve project-relative paths | `todo` |
-| Release | Factory presets using sample, multisample, granular and spectral oscillators | `todo` |
-| Release | Antiserum benchmark covers every oscillator type | `todo` |
+| Release | Antiserum sample oscillators play stereo samples | `spec:antiserum-oscillators.md` `done` |
+| Release | Warps on sample, multisample, granular and spectral oscillators | `spec:antiserum-oscillators.md` `done` |
+| Release | Unison on granular, spectral and stretched-sample oscillators | `spec:antiserum-oscillators.md` `done` |
+| Release | Antiserum editor sample previews resolve project-relative paths | `spec:antiserum-oscillators.md` `done` |
+| Release | Factory presets using sample, multisample, granular and spectral oscillators | `spec:antiserum-app.md` `done` |
+| Release | Antiserum benchmark covers every oscillator type | `spec:antiserum-oscillators.md` `done` |
 | Release | Channel header pitch knob transposes Antiserum | `todo` |
 | Release | User preset folder listed in the browser, with save into it | `todo` |
 | Release | Convolution reverb plugin loads impulse files | `todo` |

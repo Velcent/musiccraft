@@ -9,7 +9,7 @@ use musiccraft_engine::{
     ChannelParams, EffectParams, EngineHandle, EngineMessage, Graph, Instrument, MAX_BLOCK,
     MAX_EXTERNALS, MAX_SENDS, PanLaw, SendParams, Sequence, Start, TrackParams,
 };
-use musiccraft_params::{BUILTIN_PREFIX, EffectKind};
+use musiccraft_params::EffectKind;
 use musiccraft_paths::Resolver;
 use musiccraft_project::{Channel, ChannelId, MixerTrack, Project, Requests, base64};
 use musiccraft_samples::SampleCache;
@@ -131,19 +131,7 @@ pub struct SyncReport {
 /// from another system translated (see `docs/spec/sample-paths.md`), relative
 /// paths from the project's folder.
 fn sample_key(sample: &str, base: Option<&Path>, paths: &mut Resolver) -> String {
-    // An empty sampler stays empty instead of naming the project folder.
-    if sample.is_empty() || sample.starts_with(BUILTIN_PREFIX) {
-        return sample.to_owned();
-    }
-    if let Some(found) = paths.resolve(sample, base) {
-        return found.to_string_lossy().into_owned();
-    }
-    match base {
-        Some(dir) if Path::new(sample).is_relative() => {
-            dir.join(sample).to_string_lossy().into_owned()
-        }
-        _ => sample.to_owned(),
-    }
+    musiccraft_paths::sample_path(sample, base, paths)
 }
 
 /// Bars of the recording count-in (of the signature where playback starts).

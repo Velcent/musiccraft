@@ -6,7 +6,10 @@
 
 use std::collections::HashMap;
 use std::f32::consts::PI;
+use std::path::PathBuf;
 use std::sync::Arc;
+
+use musiccraft_paths::Resolver;
 
 use egui::{Color32, Pos2, Response, Sense, Stroke, Ui, pos2, vec2};
 use musiccraft_antiserum::fx::{FX_SLOTS, MODULES};
@@ -113,6 +116,10 @@ pub struct AntiserumEditor {
     /// Samples and analyses for the sample and spectral views, by name.
     samples: HashMap<String, Option<Arc<SampleBuffer>>>,
     analyses: HashMap<String, Arc<HarmonicTable>>,
+    /// The project's folder, which relative sample paths start from, and
+    /// the translation of paths from other systems (as the engine does).
+    folder: Option<PathBuf>,
+    paths: Resolver,
 }
 
 /// What every control reads.
@@ -536,6 +543,16 @@ impl AntiserumEditor {
     }
 
     /// A sample for drawing, loaded once (built-in names and paths as given).
+    /// Sets the folder relative sample paths start from (the project's);
+    /// previews load again when it changes.
+    pub fn set_folder(&mut self, folder: Option<&std::path::Path>) {
+        if self.folder.as_deref() != folder || self.paths.refresh() {
+            self.folder = folder.map(std::path::Path::to_path_buf);
+            self.samples.clear();
+            self.analyses.clear();
+        }
+    }
+
     fn sample_preview(&mut self, name: &str) -> Option<Arc<SampleBuffer>> {
         if name.is_empty() {
             return None;
@@ -547,7 +564,8 @@ impl AntiserumEditor {
             self.samples.clear();
             self.analyses.clear();
         }
-        let loaded = musiccraft_antiserum_presets::load_sample(name, 48_000.0);
+        let path = musiccraft_paths::sample_path(name, self.folder.as_deref(), &mut self.paths);
+        let loaded = musiccraft_antiserum_presets::load_sample(&path, 48_000.0);
         self.samples.insert(name.to_owned(), loaded.clone());
         loaded
     }
@@ -1444,6 +1462,46 @@ mod tests {
         let lfo_route = index_of("filter1_cutoff").unwrap();
         assert!(route_edits(&view, ap::source::LFO1, lfo_route).is_empty());
         assert_eq!(view.routes(lfo_route), [(ap::source::LFO1, 0.08)]);
+    }
+
+    /// A short 16-bit mono WAV file.
+    fn wav_bytes() -> Vec<u8> {
+        let samples: Vec<i16> = (0..4_800).map(|i| ((i % 100) * 300) as i16).collect();
+        let data_len = (samples.len() * 2) as u32;
+        let mut out = Vec::new();
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&(36 + data_len).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        out.extend_from_slice(&16_u32.to_le_bytes());
+        out.extend_from_slice(&1_u16.to_le_bytes());
+        out.extend_from_slice(&1_u16.to_le_bytes());
+        out.extend_from_slice(&48_000_u32.to_le_bytes());
+        out.extend_from_slice(&96_000_u32.to_le_bytes());
+        out.extend_from_slice(&2_u16.to_le_bytes());
+        out.extend_from_slice(&16_u16.to_le_bytes());
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&data_len.to_le_bytes());
+        for s in samples {
+            out.extend_from_slice(&s.to_le_bytes());
+        }
+        out
+    }
+
+    #[test]
+    fn sample_previews_find_files_from_the_project_folder() {
+        let dir = std::env::temp_dir().join(format!("mc-preview-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("samples")).unwrap();
+        std::fs::write(dir.join("samples/hit.wav"), wav_bytes()).unwrap();
+        let mut editor = AntiserumEditor::default();
+        assert!(
+            editor.sample_preview("samples/hit.wav").is_none(),
+            "no folder yet"
+        );
+        editor.set_folder(Some(&dir));
+        let found = editor.sample_preview("samples/hit.wav");
+        assert_eq!(found.map(|b| b.len()), Some(4_800));
+        assert!(editor.sample_preview("builtin:kick").is_some());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -355,6 +355,29 @@ fn file_name(raw: &str) -> Option<&str> {
     raw.rsplit(['/', '\\']).next().filter(|n| !n.is_empty())
 }
 
+/// Prefix of the built-in sounds' names (`musiccraft_params::BUILTIN_PREFIX`).
+const BUILTIN: &str = "builtin:";
+
+/// Where a sample a project names is: built-in and empty names as they are,
+/// foreign paths through `resolver`, relative paths from `base` (the project
+/// file's folder), others as given. The app's engine bridge and the editors'
+/// sample previews both use this, so they find the same file.
+pub fn sample_path(sample: &str, base: Option<&Path>, resolver: &mut Resolver) -> String {
+    // An empty sample stays empty instead of naming the project folder.
+    if sample.is_empty() || sample.starts_with(BUILTIN) {
+        return sample.to_owned();
+    }
+    if let Some(found) = resolver.resolve(sample, base) {
+        return found.to_string_lossy().into_owned();
+    }
+    match base {
+        Some(dir) if Path::new(sample).is_relative() => {
+            dir.join(sample).to_string_lossy().into_owned()
+        }
+        _ => sample.to_owned(),
+    }
+}
+
 /// Turns foreign sample paths into local files, remembering the answers.
 #[derive(Debug)]
 pub struct Resolver {

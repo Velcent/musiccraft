@@ -11,6 +11,7 @@ license.workspace = true
 musiccraft-dsp.workspace = true
 musiccraft-params.workspace = true
 musiccraft-instruments.workspace = true
+musiccraft-paths.workspace = true
 musiccraft-formula.workspace = true
 musiccraft-wavetables.workspace = true
 musiccraft-antiserum.workspace = true

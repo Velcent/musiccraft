@@ -161,6 +161,46 @@ impl B {
         self.fx("delay", &[("mix", mix), ("feedback", feedback)])
     }
 
+    /// Oscillator `n` (1-based) on, of type `kind` (1 sample, 2 multisample,
+    /// 3 granular, 4 spectral), playing the built-in sound `sample`.
+    fn sampled(mut self, n: usize, kind: f32, sample: &str) -> Self {
+        let mut source = self.patch.source(n - 1);
+        source.sample = format!("builtin:{sample}");
+        self.patch.set_source(n - 1, source);
+        self.p(&format!("osc{n}_on"), 1.0)
+            .p(&format!("osc{n}_type"), kind)
+    }
+
+    /// A multisample zone on oscillator `n` (1-based).
+    fn zone(mut self, n: usize, sample: &str, low: u8, high: u8, root: u8) -> Self {
+        let mut source = self.patch.source(n - 1);
+        source.zones.push(musiccraft_patch::ZoneRef::new(
+            format!("builtin:{sample}"),
+            low,
+            high,
+            root,
+        ));
+        self.patch.set_source(n - 1, source);
+        self.p(&format!("osc{n}_on"), 1.0)
+            .p(&format!("osc{n}_type"), 2.0)
+    }
+
+    /// Oscillator `n`'s grains: size (seconds), density, spread and scan.
+    fn grains(self, n: usize, size: f32, density: f32, spread: f32, scan: f32) -> Self {
+        self.p(&format!("osc{n}_grain_size"), size)
+            .p(&format!("osc{n}_grain_density"), density)
+            .p(&format!("osc{n}_grain_spread"), spread)
+            .p(&format!("osc{n}_grain_scan"), scan)
+    }
+
+    /// Oscillator `n`'s spectral shift (Hz), stretch, tilt and speed.
+    fn spectral(self, n: usize, shift: f32, stretch: f32, tilt: f32, speed: f32) -> Self {
+        self.p(&format!("osc{n}_spectral_shift"), shift)
+            .p(&format!("osc{n}_spectral_stretch"), stretch)
+            .p(&format!("osc{n}_spectral_tilt"), tilt)
+            .p(&format!("osc{n}_spectral_speed"), speed)
+    }
+
     fn mono(self, glide: f32) -> Self {
         self.p("voice_mode", 2.0).p("glide", glide)
     }
@@ -183,8 +223,134 @@ pub fn factory() -> &'static [Patch] {
         bank.extend(keys());
         bank.extend(fx());
         bank.extend(drums());
+        bank.extend(sampled());
         bank
     })
+}
+
+/// Presets built on the sample, multisample, granular and spectral
+/// oscillators, playing the built-in sounds (so they work everywhere).
+fn sampled() -> Vec<Patch> {
+    const SAMPLE: f32 = 1.0;
+    const GRAINS: f32 = 3.0;
+    const SPECTRAL: f32 = 4.0;
+    vec![
+        // Pads.
+        B::new("Crash Cloud", "pad", &["pad", "granular", "evolving"])
+            .sampled(1, GRAINS, "crash")
+            .grains(1, 0.15, 40.0, 0.4, 0.3)
+            .unison(1, 3.0, 0.2)
+            .p("osc1_width", 0.8)
+            .p("osc1_level", 1.0)
+            .amp(0.8, 1.0, 0.9, 2.5)
+            .reverb(0.4, 0.8)
+            .done(),
+        B::new("Spectral Choir", "pad", &["pad", "spectral", "warm"])
+            .sampled(1, SPECTRAL, "tom")
+            .spectral(1, 0.0, 0.0, -0.3, 0.0)
+            .unison(1, 5.0, 0.25)
+            .p("osc1_width", 0.9)
+            .amp(0.9, 1.0, 0.85, 2.0)
+            .reverb(0.35, 0.7)
+            .done(),
+        B::new("Frozen Metal", "pad", &["pad", "spectral", "metallic"])
+            .sampled(1, SPECTRAL, "crash")
+            .spectral(1, 0.0, 0.35, 0.1, 0.1)
+            .p("osc1_loop", 1.0)
+            .unison(1, 3.0, 0.15)
+            .lfo_hz(1, 0.0, 0.2)
+            .route(LFO1, "osc1_spectral_stretch", 0.2)
+            .amp(0.7, 1.0, 0.8, 2.5)
+            .reverb(0.4, 0.8)
+            .done(),
+        B::new("Grain Drift", "pad", &["pad", "granular", "texture"])
+            .sampled(1, GRAINS, "tom")
+            .grains(1, 0.2, 24.0, 0.8, 0.05)
+            .p("osc1_grain_pitch", 0.3)
+            .p("osc1_root", 52.0)
+            .p("osc1_level", 1.0)
+            .unison(1, 2.0, 0.3)
+            .amp(0.9, 1.0, 0.9, 3.0)
+            .delay(0.25, 0.4)
+            .done(),
+        // Plucks.
+        B::new("Tom Pluck", "pluck", &["pluck", "sample", "percussive"])
+            .sampled(1, SAMPLE, "tom")
+            .p("osc1_root", 52.0)
+            .filter(1, ft::LP24, 2_200.0, 0.25)
+            .env(2, 0.0, 0.25, 0.0, 0.2)
+            .route(ENV2, "filter1_cutoff", 0.5)
+            .amp(0.0, 0.5, 0.0, 0.3)
+            .done(),
+        B::new("Rim Mallet", "pluck", &["pluck", "sample", "fm"])
+            .sampled(1, SAMPLE, "rim")
+            .p("osc1_root", 72.0)
+            .osc(2, "basic", 0.0)
+            .p("osc2_level", 0.0)
+            .p("osc1_warp1", warp::FM)
+            .p("osc1_warp1_amount", 0.15)
+            .amp(0.0, 0.35, 0.0, 0.25)
+            .reverb(0.2, 0.4)
+            .done(),
+        B::new("Spectral Harp", "pluck", &["pluck", "spectral", "bright"])
+            .sampled(1, SPECTRAL, "tom")
+            .spectral(1, 0.0, 0.0, 0.2, 2.0)
+            .amp(0.0, 0.8, 0.0, 0.6)
+            .reverb(0.3, 0.6)
+            .done(),
+        // Keys.
+        B::new("Tuned Toms", "keys", &["keys", "multisample", "percussive"])
+            .zone(1, "kick", 0, 47, 36)
+            .zone(1, "tom", 48, 71, 60)
+            .zone(1, "rim", 72, 127, 84)
+            .amp(0.0, 0.6, 0.3, 0.4)
+            .done(),
+        B::new("Sampled Bells", "keys", &["keys", "spectral", "bell"])
+            .sampled(1, SPECTRAL, "crash")
+            .spectral(1, 0.0, 0.5, -0.1, 0.5)
+            .amp(0.0, 1.5, 0.0, 1.5)
+            .reverb(0.35, 0.7)
+            .done(),
+        // Effects.
+        B::new("Crash Stretch", "fx", &["fx", "sample", "stretch"])
+            .sampled(1, SAMPLE, "crash")
+            .p("osc1_sample_mode", 2.0)
+            .p("osc1_grain_size", 0.08)
+            .amp(0.0, 2.0, 0.0, 2.0)
+            .done(),
+        B::new("Granular Rain", "fx", &["fx", "granular", "noise"])
+            .sampled(1, GRAINS, "hat")
+            .grains(1, 0.03, 80.0, 1.0, 0.5)
+            .p("osc1_grain_pitch", 12.0)
+            .unison(1, 2.0, 0.4)
+            .p("osc1_width", 1.0)
+            .amp(0.5, 1.0, 1.0, 1.5)
+            .reverb(0.5, 0.9)
+            .done(),
+        B::new("Shift Drone", "fx", &["fx", "spectral", "drone"])
+            .sampled(1, SPECTRAL, "open_hat")
+            .spectral(1, 180.0, 0.0, 0.0, 0.2)
+            .p("osc1_loop", 1.0)
+            .unison(1, 3.0, 0.2)
+            .amp(1.0, 1.0, 1.0, 2.0)
+            .delay(0.3, 0.5)
+            .done(),
+        // Drums.
+        B::new("Kit Zones", "drums", &["drums", "multisample", "kit"])
+            .zone(1, "kick", 0, 40, 36)
+            .zone(1, "snare", 41, 50, 38)
+            .zone(1, "hat", 51, 60, 42)
+            .zone(1, "clap", 61, 127, 39)
+            .amp(0.0, 0.5, 0.0, 0.3)
+            .done(),
+        B::new("Crunch Kick", "drums", &["drums", "sample", "lo-fi"])
+            .sampled(1, SAMPLE, "kick")
+            .p("osc1_sample_mode", 1.0)
+            .p("osc1_warp1", warp::QUANTIZE)
+            .p("osc1_warp1_amount", 0.6)
+            .amp(0.0, 0.4, 0.0, 0.2)
+            .done(),
+    ]
 }
 
 /// The factory preset called `name` (case-insensitive).

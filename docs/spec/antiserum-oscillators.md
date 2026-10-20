@@ -52,8 +52,8 @@ before (`docs/spec/antiserum.md`). On the other types:
 
 | Warp | Spectral | Sample, multisample, granular |
 | --- | --- | --- |
-| sync, bend ±, PWM, asym ±, mirror, flip, quantize, remap | each partial's phase is warped, as a one-partial wavetable cycle | see below |
-| FM | moves each partial's phase by the mod source | moves the read position by the mod source, up to 2 cycles of the note |
+| sync, bend ±, PWM, asym ±, mirror, flip, quantize, remap | the built cycle is warped exactly as a wavetable's (with stretch: each partial's phase, as a one-partial cycle) | see below |
+| FM | moves the cycle's phase by the mod source (with stretch: each partial's) | moves the read position by the mod source, up to 2 cycles of the note |
 | AM, RM | the output level, as for wavetables | the output level, as for wavetables |
 | PWM, flip | as above | gates (PWM) or inverts (flip) the part of each note-pitch cycle the wavetable would |
 | quantize | as above | holds each read value for up to 32 frames (a lower sample rate) |
@@ -113,6 +113,17 @@ An oscillator whose type needs a sample but has none is silent.
   Nyquist are dropped. With a stereo sample each partial has a left and a
   right level, from the two channels' analyses, so the sample's stereo image
   carries over.
+  - *How it plays.* Without stretch the partials are harmonics of one cycle.
+    The oscillator builds that cycle from the current levels about every
+    21 ms (1,024 frames), crossfading from the previous one, and plays it
+    like a wavetable. Unison and warps then cost what they cost on a
+    wavetable. Shift is a single-sideband frequency shift of that cycle,
+    `sin(nφ)·cos θ + cos(nφ)·sin θ`, with θ running at the shift. With
+    stretch the partials are not harmonics, so they play one by one, and the
+    unison voices share a budget of 48 partials (at least 3 each, 32 at
+    most).
+  - In the benchmark (8 notes × 3 oscillators × 16 unison voices, both
+    filters, ten effects), every type runs faster than real time.
 
 ## Patch
 
@@ -154,6 +165,10 @@ its picture follow the type:
   keys, plus *Add zone…* and remove buttons;
 - *spectral:* the partial levels at the start position, *Sample…* and the
   spectral knobs.
+
+Every type also shows unison and the two warps. The pictures load samples
+the way the engine does: relative paths from the project's folder, and paths
+from other systems through the sample-path mappings.
 
 ## Tests
 
