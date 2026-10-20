@@ -12,6 +12,7 @@ musiccraft-antiserum.workspace = true
 musiccraft-dsp.workspace = true
 musiccraft-params.workspace = true
 musiccraft-patch.workspace = true
+musiccraft-samples.workspace = true
 musiccraft-wavetables.workspace = true
 
 [lints]

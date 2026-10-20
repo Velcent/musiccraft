@@ -233,6 +233,14 @@ const ANTISERUM_SCRIPT: &[&str] = &[
     "antiserum.set_lfo_shape 1 3 -",
     "antiserum.set_step 1 5 off 7 0.5 0.25",
     "antiserum.load_preset 1 Acid Line",
+    "channel.set_param 1 osc2_type 3",
+    "antiserum.set_sample 1 2 builtin:crash",
+    "antiserum.set_sample 1 2 builtin:snare",
+    "antiserum.add_zone 1 3 builtin:kick 0 59 36",
+    "antiserum.add_zone 1 3 builtin:hat",
+    "antiserum.set_zone 1 3 2 60 127 72",
+    "antiserum.remove_zone 1 3 1",
+    "antiserum.set_sample 1 2 -",
     "automation.create channel:2:filter1_cutoff",
     "channel.clone 2",
     "channel.remove 1",
@@ -271,6 +279,12 @@ fn antiserum_commands_check_their_arguments() {
     fails(&mut s, "antiserum.set_step 2 65 on 0 1 0.5");
     fails(&mut s, "antiserum.set_step 2 1 on 30 1 0.5");
     fails(&mut s, "antiserum.load_preset 2 Nope");
+    fails(&mut s, "antiserum.set_sample 2 1 builtin:nope");
+    fails(&mut s, "antiserum.set_sample 2 1 /no/such/file.wav");
+    fails(&mut s, "antiserum.set_sample 2 4 builtin:kick");
+    fails(&mut s, "antiserum.add_zone 2 1 builtin:kick 70 60");
+    fails(&mut s, "antiserum.set_zone 2 1 1 0 127 60");
+    fails(&mut s, "antiserum.remove_zone 2 1 1");
     fails(&mut s, "antiserum.set_patch 2 [1]");
     fails(&mut s, "channel.set_param 2 cutoff 100");
     fails(&mut s, "channel.set_param 2 osc1_level 7");

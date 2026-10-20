@@ -16,8 +16,11 @@ use crate::noise::{NOISE_LEN, NOISE_RATE, NoiseBank};
 use crate::params::{
     BEND_RANGE, ENVS, FILTER_ROUTING, FILTERS, GLIDE_CURVE, LFOS, MACRO1, MACROS, NOISE_BASE, OSCS,
     PARAM_COUNT, SLOTS, SOURCES, SUB_BASE, SYNC_RATES, VELOCITY, VOLUME, env, env_param, filter,
-    filter_param, lfo, lfo_param, noise, osc, osc_param, slot, slot_param, source, sub,
+    filter_param, lfo, lfo_param, noise, osc, osc_param, oscx, oscx_param, slot, slot_param,
+    source, sub,
 };
+use crate::player::{Kind, Loop, Mode, Player, SINE_LEN, Settings};
+use crate::source::Source;
 use crate::warp::Warp;
 use crate::wavetable::{FramePair, Wavetable};
 
@@ -35,6 +38,9 @@ pub(crate) struct Ctx<'a> {
     /// `base` as knob positions (0..1), for modulation.
     pub unit: &'a [f32; PARAM_COUNT],
     pub tables: &'a [Arc<Wavetable>; OSCS],
+    /// Samples, analyses and zones for the other oscillator types.
+    pub sources: &'a [Arc<Source>; OSCS],
+    pub sine: &'a [f32; SINE_LEN + 1],
     pub noise: &'a NoiseBank,
     pub shapes: &'a [LfoShape; LFOS],
     pub free_phase: &'a [f32; LFOS],
@@ -74,6 +80,7 @@ const SRC_NOISE: usize = 4;
 #[derive(Debug, Clone, Copy, Default)]
 struct OscRun {
     on: bool,
+    kind: Kind,
     unison: usize,
     phases: [f32; MAX_UNISON],
     inc: [f32; MAX_UNISON],
@@ -119,6 +126,8 @@ pub(crate) struct Voice {
     glide_t: f32,
     glide_time: f32,
     oscs: [OscRun; OSCS],
+    /// The sample, multisample, granular and spectral oscillators.
+    players: [Player; OSCS],
     /// Previous sample of osc 1–3, sub and noise, for cross-modulation.
     prev: [f32; 5],
     sub: Oscillator,
@@ -166,6 +175,7 @@ impl Voice {
             glide_t: 1.0,
             glide_time: 0.0,
             oscs: [OscRun::default(); OSCS],
+            players: [Player::default(); OSCS],
             prev: [0.0; 5],
             sub: Oscillator::new(),
             sub_wave: Waveform::Sine,
@@ -228,6 +238,14 @@ impl Voice {
                 self.seed ^= self.seed << 5;
                 let r = (self.seed >> 8) as f32 / (1 << 24) as f32;
                 *phase = (start + spread * r).fract();
+            }
+        }
+        for (o, player) in self.players.iter_mut().enumerate() {
+            let kind = Kind::from_param(ctx.base(oscx_param(o, oscx::TYPE)));
+            if let Some(source) = ctx.sources.get(o) {
+                let position = ctx.base(osc_param(o, osc::POSITION));
+                let seed = seed.wrapping_mul(747_796_405).wrapping_add(o as u32);
+                player.start(source, kind, position, key, velocity, seed);
             }
         }
         self.sub.reset(0.0);
@@ -351,7 +369,7 @@ impl Voice {
         self.update_glide(ctx, dt);
         let pitch = self.pitch + ctx.bend * ctx.base(BEND_RANGE);
         for o in 0..OSCS {
-            self.update_osc(ctx, o, pitch);
+            self.update_osc(ctx, o, pitch, frames);
         }
         self.update_sub_noise(ctx, pitch);
         self.update_filters(ctx, pitch);
@@ -469,18 +487,49 @@ impl Voice {
         self.pitch = self.glide_from + (self.target - self.glide_from) * t;
     }
 
-    fn update_osc(&mut self, ctx: &Ctx<'_>, o: usize, pitch: f32) {
+    fn update_osc(&mut self, ctx: &Ctx<'_>, o: usize, pitch: f32, frames: usize) {
         let p = |field| osc_param(o, field);
+        let x = |field| oscx_param(o, field);
         let on = ctx.on(p(osc::ON));
         let Some(table) = ctx.tables.get(o) else {
             return;
         };
+        let kind = Kind::from_param(ctx.base(x(oscx::TYPE)));
+        let mode = Mode::from_param(ctx.base(x(oscx::SAMPLE_MODE)));
         let semis = pitch
             + 12.0 * ctx.base(p(osc::OCTAVE))
             + ctx.base(p(osc::SEMI))
             + self.value(ctx, p(osc::FINE)) / 100.0;
         let hz = key_to_hz(semis);
-        let unison = (ctx.base(p(osc::UNISON)) as usize).clamp(1, MAX_UNISON);
+        // Grains and partials are one voice; samples take unison.
+        let single = matches!(kind, Kind::Granular | Kind::Spectral)
+            || (kind == Kind::Sample && mode == Mode::Stretch);
+        let unison = if single {
+            1
+        } else {
+            (ctx.base(p(osc::UNISON)) as usize).clamp(1, MAX_UNISON)
+        };
+        let settings = (kind != Kind::Wavetable).then(|| Settings {
+            kind,
+            mode,
+            looping: Loop::from_param(ctx.base(x(oscx::LOOP))),
+            loop_start: self.value(ctx, x(oscx::LOOP_START)),
+            loop_end: self.value(ctx, x(oscx::LOOP_END)),
+            unison,
+            note_hz: key_to_hz(pitch),
+            root_hz: key_to_hz(ctx.base(x(oscx::ROOT))),
+            grain_seconds: self.value(ctx, x(oscx::GRAIN_SIZE)),
+            density: self.value(ctx, x(oscx::GRAIN_DENSITY)),
+            spread: self.value(ctx, x(oscx::GRAIN_SPREAD)),
+            grain_pitch: self.value(ctx, x(oscx::GRAIN_PITCH)),
+            scan: self.value(ctx, x(oscx::GRAIN_SCAN)),
+            shift: self.value(ctx, x(oscx::SPECTRAL_SHIFT)),
+            stretch: self.value(ctx, x(oscx::SPECTRAL_STRETCH)),
+            tilt: self.value(ctx, x(oscx::SPECTRAL_TILT)),
+            speed: self.value(ctx, x(oscx::SPECTRAL_SPEED)),
+            sample_rate: ctx.sample_rate,
+            ..Settings::default()
+        });
         let detune = self.value(ctx, p(osc::DETUNE));
         let spread = detune * detune * 100.0;
         let blend = self.value(ctx, p(osc::BLEND));
@@ -512,6 +561,7 @@ impl Voice {
         if !on {
             return;
         }
+        run.kind = kind;
         run.unison = unison;
         run.warp1 = Warp::from_param(ctx.base(p(osc::WARP1)));
         run.warp2 = Warp::from_param(ctx.base(p(osc::WARP2)));
@@ -563,6 +613,14 @@ impl Voice {
         run.frame_a = a;
         run.frame_b = b;
         run.frame_mix = mix;
+        if let Some(mut settings) = settings {
+            for (freq, inc) in settings.freq.iter_mut().zip(run.inc).take(unison) {
+                *freq = inc * ctx.sample_rate;
+            }
+            if let (Some(player), Some(source)) = (self.players.get_mut(o), ctx.sources.get(o)) {
+                player.control(source, settings, frames);
+            }
+        }
     }
 
     fn update_sub_noise(&mut self, ctx: &Ctx<'_>, pitch: f32) {
@@ -645,7 +703,10 @@ impl Voice {
         let step = (self.amp_target - self.amp) / frames as f32;
         let fade_step = 1.0 / (FADE_SECONDS * self.sample_rate);
         let pairs: [Option<FramePair<'_>>; OSCS] = std::array::from_fn(|o| {
-            let run = self.oscs.get(o).filter(|run| run.on)?;
+            let run = self
+                .oscs
+                .get(o)
+                .filter(|run| run.on && run.kind == Kind::Wavetable)?;
             ctx.tables
                 .get(o)?
                 .frames_at(run.level, run.frame_a, run.frame_b, run.frame_mix)
@@ -655,6 +716,22 @@ impl Voice {
             // Filter 1, filter 2, dry; left and right.
             let mut bus = [[0.0_f32; 2]; 3];
             for (o, run) in self.oscs.iter_mut().enumerate() {
+                if run.on && run.kind != Kind::Wavetable {
+                    let (Some(player), Some(source)) =
+                        (self.players.get_mut(o), ctx.sources.get(o))
+                    else {
+                        continue;
+                    };
+                    let (l, r, mono) = player.next(source, (&run.left, &run.right), ctx.sine);
+                    if let Some(p) = self.prev.get_mut(o) {
+                        *p = mono;
+                    }
+                    for (b, send) in bus.iter_mut().zip(run.sends) {
+                        b[0] += l * send;
+                        b[1] += r * send;
+                    }
+                    continue;
+                }
                 let Some(pair) = pairs.get(o).copied().flatten() else {
                     continue;
                 };

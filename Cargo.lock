@@ -1726,6 +1726,7 @@ dependencies = [
  "musiccraft-dsp",
  "musiccraft-params",
  "musiccraft-patch",
+ "musiccraft-samples",
  "musiccraft-wavetables",
 ]
 

@@ -24,7 +24,9 @@ effects and sequencer (Phase 5), the UI and presets (Phase 6) and plugin export
 - Events apply at the start of the next `process` call. A host that needs
   sample-accurate events splits its block at each event.
 - `set_wavetable(osc, Arc<Wavetable>)` returns the table it replaces, so the
-  caller drops it where freeing memory is allowed.
+  caller drops it where freeing memory is allowed. `set_source(osc,
+  Arc<Source>)` does the same for an oscillator's sample, multisample zones
+  and spectral analysis (`docs/spec/antiserum-oscillators.md`).
 - `params()` is the parameter table (`ParamSpec`s). Parameter names are stable
   IDs, and their **order** is stable too: a mod-matrix destination stores a
   parameter's index. New parameters are only ever appended (the

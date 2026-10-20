@@ -78,7 +78,26 @@ fn invocations(number: usize, edit: &AntiserumEdit) -> Option<Invocation> {
             ],
         ),
         AntiserumEdit::Preset(name) => Invocation::new("antiserum.load_preset", [n, name.clone()]),
-        AntiserumEdit::Begin | AntiserumEdit::Save | AntiserumEdit::Open => return None,
+        AntiserumEdit::SetZone(osc, zone, low, high, root) => Invocation::new(
+            "antiserum.set_zone",
+            [
+                n,
+                (osc + 1).to_string(),
+                (zone + 1).to_string(),
+                low.to_string(),
+                high.to_string(),
+                root.to_string(),
+            ],
+        ),
+        AntiserumEdit::RemoveZone(osc, zone) => Invocation::new(
+            "antiserum.remove_zone",
+            [n, (osc + 1).to_string(), (zone + 1).to_string()],
+        ),
+        AntiserumEdit::Begin
+        | AntiserumEdit::Save
+        | AntiserumEdit::Open
+        | AntiserumEdit::ChooseSample(_)
+        | AntiserumEdit::AddZone(_) => return None,
     })
 }
 
@@ -127,7 +146,14 @@ pub(crate) fn show(
                 state.open_dialog(Dialog::save_patch(index, &patch.name, frame.project));
             }
             AntiserumEdit::Open => state.open_dialog(Dialog::open_patch(index, frame.project)),
-            AntiserumEdit::Preset(_) => {
+            AntiserumEdit::ChooseSample(osc) => {
+                let current = patch.source(*osc).sample;
+                state.open_dialog(Dialog::antiserum_sample(index, *osc, &current));
+            }
+            AntiserumEdit::AddZone(osc) => {
+                state.open_dialog(Dialog::antiserum_zone(index, *osc, frame.project));
+            }
+            AntiserumEdit::Preset(_) | AntiserumEdit::RemoveZone(_, _) => {
                 if let Some(invocation) = invocations(number, edit) {
                     actions.push(Action::Run(invocation));
                 }
@@ -173,7 +199,16 @@ mod tests {
             text(AntiserumEdit::Step(4, (false, -3, 0.5, 0.25))).as_deref(),
             Some("antiserum.set_step 3 5 off -3 0.5 0.25")
         );
+        assert_eq!(
+            text(AntiserumEdit::SetZone(1, 0, 36, 59, 48)).as_deref(),
+            Some("antiserum.set_zone 3 2 1 36 59 48")
+        );
+        assert_eq!(
+            text(AntiserumEdit::RemoveZone(1, 0)).as_deref(),
+            Some("antiserum.remove_zone 3 2 1")
+        );
         assert_eq!(text(AntiserumEdit::Begin), None);
+        assert_eq!(text(AntiserumEdit::ChooseSample(0)), None, "a dialog");
         // Every edit the editor makes is a command the registry accepts.
         let mut session = musiccraft_commands::Session::new(
             musiccraft_project::Project::default(),
@@ -186,7 +221,12 @@ mod tests {
         ] {
             session.run_line(line).unwrap();
         }
+        session
+            .run_line("antiserum.add_zone 3 2 builtin:kick")
+            .unwrap();
         for edit in [
+            AntiserumEdit::SetZone(1, 0, 36, 59, 48),
+            AntiserumEdit::RemoveZone(1, 0),
             AntiserumEdit::Set(cutoff, 900.0),
             AntiserumEdit::Table(0, "factory:pwm".to_owned()),
             AntiserumEdit::LfoShape(1, vec![[0.0, 1.0, 0.0], [0.5, 0.0, -0.5]]),

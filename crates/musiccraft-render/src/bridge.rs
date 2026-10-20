@@ -654,7 +654,11 @@ impl Bridge {
                     ));
                     continue;
                 };
-                let (external, warnings) = AntiserumExternal::new(patch, self.sample_rate as f32);
+                let sources: Vec<Arc<musiccraft_antiserum::Source>> = (0..OSCS)
+                    .map(|osc| self.antiserum_source(project, &patch.source(osc), report))
+                    .collect();
+                let (external, warnings) =
+                    AntiserumExternal::new(patch, self.sample_rate as f32, sources);
                 report.warnings.extend(warnings);
                 let message = EngineMessage::SetExternal {
                     slot,
@@ -675,6 +679,24 @@ impl Bridge {
                 }
                 continue;
             }
+            // Samples load (and are analysed) before the live synth is
+            // borrowed: loading uses the bridge's caches.
+            let changed: Vec<usize> = (0..OSCS)
+                .filter(|osc| {
+                    self.synths
+                        .get(id)
+                        .is_some_and(|live| live.patch.source(*osc) != patch.source(*osc))
+                })
+                .collect();
+            let new_sources: Vec<(usize, Arc<musiccraft_antiserum::Source>)> = changed
+                .into_iter()
+                .map(|osc| {
+                    (
+                        osc,
+                        self.antiserum_source(project, &patch.source(osc), report),
+                    )
+                })
+                .collect();
             let Some(live) = self.synths.get_mut(id) else {
                 continue;
             };
@@ -734,6 +756,13 @@ impl Bridge {
                     Box::new(move |p| p.sequence = steps),
                 ));
             }
+            for (osc, source) in new_sources {
+                let reference = patch.source(osc);
+                swaps.push((
+                    Swap::Source(osc, source),
+                    Box::new(move |p| p.set_source(osc, reference)),
+                ));
+            }
             for (swap, done) in swaps {
                 let message = EngineMessage::ExternalData {
                     slot: live.slot,
@@ -747,6 +776,48 @@ impl Bridge {
                 }
             }
         }
+    }
+
+    /// An Antiserum oscillator's source, with samples resolved and loaded
+    /// like the sampler's and their analyses cached. Missing samples play
+    /// as silence and warn.
+    fn antiserum_source(
+        &mut self,
+        project: &Project,
+        reference: &musiccraft_patch::SourceRef,
+        report: &mut SyncReport,
+    ) -> Arc<musiccraft_antiserum::Source> {
+        let base = project.path().and_then(Path::parent);
+        let key = |name: &str, bridge: &mut Self| sample_key(name, base, &mut bridge.paths);
+        let sample = if reference.sample.is_empty() {
+            None
+        } else {
+            let k = key(&reference.sample, self);
+            Some(k)
+        };
+        let harmonics = match &sample {
+            Some(k) => self.harmonics(k, &mut report.warnings),
+            None => Arc::new(musiccraft_dsp::resynth::HarmonicTable::silent()),
+        };
+        let sample = sample.map(|k| self.load(&k, &mut report.warnings));
+        let zones = reference
+            .zones
+            .iter()
+            .map(|z| {
+                let k = key(&z.sample, self);
+                musiccraft_antiserum::Zone {
+                    buffer: self.load(&k, &mut report.warnings),
+                    low: z.low,
+                    high: z.high,
+                    root: z.root,
+                    vel_low: z.vel_low,
+                    vel_high: z.vel_high,
+                }
+            })
+            .collect();
+        Arc::new(musiccraft_antiserum::Source::with_analysis(
+            sample, harmonics, zones,
+        ))
     }
 
     /// Creates a plugin and installs its processor in a free engine slot.

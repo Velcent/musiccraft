@@ -13,6 +13,8 @@ use crate::params::{
     self, ARP_BASE, FX_BASE, FX_SLOT_BASE, GLIDE_MODE, LFOS, OSCS, PARAM_COUNT, POLYPHONY,
     SEQ_BASE, SYNC_RATES, VOICE_MODE, arp, lfo, lfo_param, seq,
 };
+use crate::player::{SINE_LEN, sine_table};
+use crate::source::Source;
 use crate::voice::{CONTROL, Ctx, State, Voice};
 use crate::wavetable::Wavetable;
 
@@ -31,6 +33,8 @@ struct Shared {
     base: Box<[f32; PARAM_COUNT]>,
     unit: Box<[f32; PARAM_COUNT]>,
     tables: [Arc<Wavetable>; OSCS],
+    sources: [Arc<Source>; OSCS],
+    sine: Box<[f32; SINE_LEN + 1]>,
     noise: NoiseBank,
     shapes: [LfoShape; LFOS],
     free_phase: [f32; LFOS],
@@ -49,6 +53,8 @@ impl Shared {
             base: &self.base,
             unit: &self.unit,
             tables: &self.tables,
+            sources: &self.sources,
+            sine: &self.sine,
             noise: &self.noise,
             shapes: &self.shapes,
             free_phase: &self.free_phase,
@@ -107,6 +113,8 @@ impl Antiserum {
                 base,
                 unit,
                 tables: [basic.clone(), basic.clone(), basic],
+                sources: std::array::from_fn(|_| Arc::new(Source::default())),
+                sine: sine_table(),
                 noise: NoiseBank::new(),
                 shapes: [LfoShape::default(); LFOS],
                 free_phase: [0.0; LFOS],
@@ -183,6 +191,22 @@ impl Antiserum {
     #[must_use]
     pub fn param(&self, index: usize) -> f32 {
         self.shared.base.get(index).copied().unwrap_or(0.0)
+    }
+
+    /// Replaces oscillator `osc`'s sample source (sample, analysis, zones),
+    /// returning the old one so the caller drops it off the audio thread.
+    /// Notes already playing keep their positions.
+    pub fn set_source(&mut self, osc: usize, source: Arc<Source>) -> Option<Arc<Source>> {
+        self.shared
+            .sources
+            .get_mut(osc)
+            .map(|slot| std::mem::replace(slot, source))
+    }
+
+    /// Oscillator `osc`'s sample source.
+    #[must_use]
+    pub fn source(&self, osc: usize) -> Option<&Arc<Source>> {
+        self.shared.sources.get(osc)
     }
 
     /// Replaces oscillator `osc`'s wavetable, returning the old one so the

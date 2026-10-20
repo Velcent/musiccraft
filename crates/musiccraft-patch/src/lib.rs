@@ -50,6 +50,70 @@ pub struct Patch {
     /// Sequencer steps; missing ones keep their defaults.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sequence: Vec<StepData>,
+    /// Each oscillator's sample and multisample zones (see
+    /// `docs/spec/antiserum-oscillators.md`); missing ones are empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<SourceRef>,
+}
+
+/// An oscillator's sample and zones, by file path or `builtin:` name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceRef {
+    /// The sample for the sample, granular and spectral types (empty: none).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sample: String,
+    /// The multisample zones, in the order notes look for a match.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub zones: Vec<ZoneRef>,
+}
+
+/// One multisample zone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZoneRef {
+    /// File path or `builtin:` name.
+    pub sample: String,
+    /// Lowest key it plays.
+    #[serde(default)]
+    pub low: u8,
+    /// Highest key it plays.
+    #[serde(default = "highest_key")]
+    pub high: u8,
+    /// The key at which it plays at its own speed.
+    #[serde(default = "middle_c")]
+    pub root: u8,
+    /// Lowest velocity it plays (1–127).
+    #[serde(default = "lowest_velocity")]
+    pub vel_low: u8,
+    /// Highest velocity it plays.
+    #[serde(default = "highest_key")]
+    pub vel_high: u8,
+}
+
+fn highest_key() -> u8 {
+    127
+}
+
+fn middle_c() -> u8 {
+    60
+}
+
+fn lowest_velocity() -> u8 {
+    1
+}
+
+impl ZoneRef {
+    /// A zone over keys `low..=high` with root `root`, every velocity.
+    #[must_use]
+    pub fn new(sample: String, low: u8, high: u8, root: u8) -> Self {
+        Self {
+            sample,
+            low,
+            high,
+            root,
+            vel_low: 1,
+            vel_high: 127,
+        }
+    }
 }
 
 fn default_tables() -> Vec<String> {
@@ -67,6 +131,7 @@ impl Default for Patch {
             tables: default_tables(),
             lfo_shapes: BTreeMap::new(),
             sequence: Vec::new(),
+            sources: Vec::new(),
         }
     }
 }
@@ -127,6 +192,29 @@ impl Patch {
         }
         while self.sequence.last() == Some(&default) {
             self.sequence.pop();
+        }
+    }
+
+    /// Oscillator `osc`'s (0-based) source (empty if the patch has none).
+    #[must_use]
+    pub fn source(&self, osc: usize) -> SourceRef {
+        self.sources.get(osc).cloned().unwrap_or_default()
+    }
+
+    /// Replaces oscillator `osc`'s source. Trailing empty sources are
+    /// dropped, so undoing a change restores the patch exactly.
+    pub fn set_source(&mut self, osc: usize, source: SourceRef) {
+        if osc >= TABLES {
+            return;
+        }
+        while self.sources.len() <= osc {
+            self.sources.push(SourceRef::default());
+        }
+        if let Some(slot) = self.sources.get_mut(osc) {
+            *slot = source;
+        }
+        while self.sources.last() == Some(&SourceRef::default()) {
+            self.sources.pop();
         }
     }
 
@@ -224,6 +312,27 @@ mod tests {
             TableRef::parse(patch.table(2)).unwrap(),
             TableRef::Data(vec![0.5, -0.25])
         );
+    }
+
+    #[test]
+    fn sources_round_trip_and_stay_short() {
+        let mut patch = Patch::default();
+        patch.set_source(
+            2,
+            SourceRef {
+                sample: String::new(),
+                zones: vec![ZoneRef::new("a.wav".to_owned(), 0, 59, 48)],
+            },
+        );
+        assert_eq!(patch.sources.len(), 3);
+        let json = patch.to_json().unwrap();
+        assert_eq!(Patch::from_json(&json).unwrap(), patch);
+        // A zone written with only its sample takes the defaults.
+        let read: SourceRef = serde_json::from_str(r#"{"zones":[{"sample":"b.wav"}]}"#).unwrap();
+        assert_eq!(read.zones[0], ZoneRef::new("b.wav".to_owned(), 0, 127, 60));
+        patch.set_source(2, SourceRef::default());
+        assert!(patch.sources.is_empty());
+        assert_eq!(patch.source(1), SourceRef::default());
     }
 
     #[test]

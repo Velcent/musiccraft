@@ -5,7 +5,7 @@
 use musiccraft_antiserum::index_of;
 use musiccraft_editors::antiserum::{AntiserumEdit, AntiserumEditor, Page};
 use musiccraft_editors::theme;
-use musiccraft_patch::Patch;
+use musiccraft_patch::{Patch, ZoneRef};
 
 struct App {
     patch: Patch,
@@ -30,9 +30,50 @@ impl App {
                     self.patch = p.clone();
                 }
             }
+            // The example has no file dialogs: it cycles through built-in sounds.
+            AntiserumEdit::ChooseSample(osc) => {
+                let mut source = self.patch.source(osc);
+                source.sample = next_builtin(&source.sample);
+                self.patch.set_source(osc, source);
+            }
+            AntiserumEdit::AddZone(osc) => {
+                let mut source = self.patch.source(osc);
+                let sample = next_builtin(&source.sample);
+                source.zones.push(ZoneRef::new(sample, 0, 127, 60));
+                self.patch.set_source(osc, source);
+            }
+            AntiserumEdit::SetZone(osc, zone, low, high, root) => {
+                let mut source = self.patch.source(osc);
+                if let Some(z) = source.zones.get_mut(zone) {
+                    (z.low, z.high, z.root) = (low, high, root);
+                }
+                self.patch.set_source(osc, source);
+            }
+            AntiserumEdit::RemoveZone(osc, zone) => {
+                let mut source = self.patch.source(osc);
+                if zone < source.zones.len() {
+                    source.zones.remove(zone);
+                }
+                self.patch.set_source(osc, source);
+            }
             AntiserumEdit::Begin | AntiserumEdit::Save | AntiserumEdit::Open => {}
         }
     }
+}
+
+const BUILTINS: [&str; 4] = [
+    "builtin:crash",
+    "builtin:kick",
+    "builtin:snare",
+    "builtin:clap",
+];
+
+fn next_builtin(current: &str) -> String {
+    let at = BUILTINS
+        .iter()
+        .position(|b| *b == current)
+        .map_or(0, |i| i + 1);
+    BUILTINS[at % BUILTINS.len()].to_owned()
 }
 
 impl eframe::App for App {

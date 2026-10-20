@@ -131,6 +131,7 @@ of contents; see `docs/clean-room.md`.
 | Instruments | Third synth oscillator | `spec:channel-rack.md` `done` |
 | Instruments | Wavetable synth (Antiserum): three wavetable oscillators with warps and unison, two multimode filters, envelopes, LFOs and a mod matrix | `cmd:channel.add_antiserum` `spec:antiserum.md` `spec:antiserum-app.md` |
 | Instruments | Wavetable synth: factory and imported wavetables, wavetable editor | `cmd:antiserum.set_table` `spec:antiserum-wavetables.md` `done` |
+| Instruments | Wavetable synth: sample, multisample, granular and spectral oscillators | `cmd:antiserum.set_sample` `cmd:antiserum.add_zone` `spec:antiserum-oscillators.md` |
 | Instruments | Wavetable synth: effects rack, arpeggiator and step sequencer | `cmd:antiserum.set_step` `spec:antiserum-fx-arp.md` |
 | Instruments | Wavetable synth: drag modulation sources onto knobs, modulation rings, drawn LFO shapes | `cmd:antiserum.set_lfo_shape` `spec:antiserum-app.md` `done` |
 | Instruments | Wavetable synth: factory bank of about 150 presets with tags and search; patch files | `cmd:antiserum.load_preset` `cmd:antiserum.save_patch` `cmd:antiserum.open_patch` `cmd:antiserum.presets` |

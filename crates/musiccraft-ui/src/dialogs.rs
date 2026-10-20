@@ -32,6 +32,9 @@ pub enum Purpose {
     AddMarker(u32),
     SavePatch(usize),
     OpenPatch(usize),
+    /// Antiserum channel and oscillator (0-based).
+    AntiserumSample(usize, usize),
+    AntiserumZone(usize, usize),
 }
 
 /// An open prompt.
@@ -171,6 +174,15 @@ impl Dialog {
         Self::new(Purpose::OpenPatch(channel), project_dir(project))
     }
 
+    /// An Antiserum oscillator's sample, starting from the current one.
+    pub fn antiserum_sample(channel: usize, osc: usize, current: &str) -> Self {
+        Self::new(Purpose::AntiserumSample(channel, osc), current.to_owned())
+    }
+
+    pub fn antiserum_zone(channel: usize, osc: usize, project: &Project) -> Self {
+        Self::new(Purpose::AntiserumZone(channel, osc), project_dir(project))
+    }
+
     fn title(&self) -> &'static str {
         match self.purpose {
             Purpose::Open => "Open project",
@@ -194,6 +206,10 @@ impl Dialog {
             Purpose::AddMarker(_) => "Marker name",
             Purpose::SavePatch(_) => "Save Antiserum patch (.json)",
             Purpose::OpenPatch(_) => "Open Antiserum patch (.json)",
+            Purpose::AntiserumSample(_, _) => {
+                "Oscillator sample (file path or builtin:<sound>; - clears)"
+            }
+            Purpose::AntiserumZone(_, _) => "Zone sample (file path or builtin:<sound>)",
         }
     }
 
@@ -258,6 +274,14 @@ impl Dialog {
             Purpose::OpenPatch(channel) => {
                 Invocation::new("antiserum.open_patch", [(channel + 1).to_string(), text])
             }
+            Purpose::AntiserumSample(channel, osc) => Invocation::new(
+                "antiserum.set_sample",
+                [(channel + 1).to_string(), (osc + 1).to_string(), text],
+            ),
+            Purpose::AntiserumZone(channel, osc) => Invocation::new(
+                "antiserum.add_zone",
+                [(channel + 1).to_string(), (osc + 1).to_string(), text],
+            ),
         }
     }
 }

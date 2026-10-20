@@ -2298,3 +2298,52 @@ fn antiserum_automation_targets_the_synth() {
         "{targets:?}"
     );
 }
+
+#[test]
+fn antiserum_sample_oscillators_render_and_swap_samples() {
+    let mut s = session();
+    run(
+        &mut s,
+        "project.set_tempo 120
+         channel.add_antiserum
+         channel.set_param 1 osc1_type 3
+         channel.set_param 1 osc1_grain_spread 0
+         antiserum.set_sample 1 1 builtin:crash
+         note.add 1 0 4 C4",
+    );
+    let (left, _, warnings) = render(
+        s.project(),
+        RenderOptions {
+            sample_rate: 48_000,
+            loops: 1,
+            max_tail_seconds: 0.5,
+        },
+    );
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(
+        rms(&left[2_400..24_000]) > 0.01,
+        "the granular crash sounds"
+    );
+    // A new sample is swapped into the running synth: one message.
+    let (mut engine, mut handle) = engine_pair(48_000);
+    let mut bridge = Bridge::new(48_000);
+    let _ = bridge.sync(s.project(), &mut handle);
+    let mut out = vec![0.0; 1_024];
+    engine.process(&mut out, 2);
+    let _ = bridge.sync(s.project(), &mut handle);
+    run(&mut s, "antiserum.set_sample 1 1 builtin:snare");
+    let swap = bridge.sync(s.project(), &mut handle);
+    assert_eq!(swap.messages, 1);
+    assert!(!swap.rebuilt_graph);
+    // A missing file warns once and plays silence.
+    run(&mut s, "antiserum.add_zone 1 2 builtin:kick");
+    let mut project = s.project().clone();
+    if let Some(patch) = project.channels[0].instrument.patch_mut() {
+        let mut source = patch.source(1);
+        source.zones[0].sample = "/no/such/zone.wav".to_owned();
+        patch.set_source(1, source);
+    }
+    engine.process(&mut out, 2);
+    let report = bridge.sync(&project, &mut handle);
+    assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+}

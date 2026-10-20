@@ -6,7 +6,7 @@ use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 
-use musiccraft_antiserum::{Antiserum, LfoShape, Sequence, Wavetable};
+use musiccraft_antiserum::{Antiserum, LfoShape, Sequence, Source, Wavetable};
 use musiccraft_engine::{External, ExternalTransport, MAX_BLOCK};
 use musiccraft_patch::Patch;
 
@@ -24,6 +24,8 @@ pub(crate) enum Swap {
     Shape(usize, Box<LfoShape>),
     /// The sequencer's new pattern.
     Sequence(Box<Sequence>),
+    /// Oscillator (0-based) and its new source; holds the old one on return.
+    Source(usize, Arc<Source>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -55,11 +57,19 @@ impl fmt::Debug for AntiserumExternal {
 }
 
 impl AntiserumExternal {
-    /// A synth playing `patch`, with warnings for tables that failed. Main
-    /// thread (allocates).
-    pub(crate) fn new(patch: &Patch, sample_rate: f32) -> (Self, Vec<String>) {
+    /// A synth playing `patch` with the oscillators' `sources` (built by the
+    /// bridge, which resolves sample paths), and warnings for tables that
+    /// failed. Main thread (allocates).
+    pub(crate) fn new(
+        patch: &Patch,
+        sample_rate: f32,
+        sources: Vec<Arc<Source>>,
+    ) -> (Self, Vec<String>) {
         let mut synth = Antiserum::new(sample_rate);
         let warnings = musiccraft_antiserum_presets::apply(patch, &mut synth);
+        for (osc, source) in sources.into_iter().enumerate() {
+            drop(synth.set_source(osc, source));
+        }
         (
             Self {
                 synth,
@@ -195,6 +205,11 @@ impl External for AntiserumExternal {
                     }
                 }
                 Swap::Shape(lfo, shape) => self.synth.set_lfo_shape(*lfo, **shape),
+                Swap::Source(osc, source) => {
+                    if let Some(old) = self.synth.set_source(*osc, Arc::clone(source)) {
+                        *source = old;
+                    }
+                }
                 Swap::Sequence(sequence) => self.synth.set_sequence(sequence),
             }
         }
@@ -221,7 +236,7 @@ mod tests {
     #[test]
     fn notes_start_on_their_frame_and_gates_end_them() {
         let patch = musiccraft_antiserum_presets::find("Deep Sub").unwrap();
-        let (mut synth, warnings) = AntiserumExternal::new(patch, 48_000.0);
+        let (mut synth, warnings) = AntiserumExternal::new(patch, 48_000.0, Vec::new());
         assert!(warnings.is_empty());
         synth.note_on(100, 48, 1.0, 0.0, Some(200));
         let mut l = vec![0.0; 256];
@@ -238,7 +253,7 @@ mod tests {
 
     #[test]
     fn swapped_data_comes_back_holding_what_it_replaced() {
-        let (mut synth, _) = AntiserumExternal::new(&Patch::default(), 48_000.0);
+        let (mut synth, _) = AntiserumExternal::new(&Patch::default(), 48_000.0, Vec::new());
         let new = musiccraft_antiserum_presets::wavetable("factory:pwm").unwrap();
         let old = Arc::clone(synth.synth.wavetable(1).unwrap());
         let back = synth.receive(Box::new(Swap::Table(1, Arc::clone(&new))));

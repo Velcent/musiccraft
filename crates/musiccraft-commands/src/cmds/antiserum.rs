@@ -5,10 +5,10 @@ use std::path::Path;
 
 use musiccraft_antiserum::params::{LFOS, OSCS};
 use musiccraft_antiserum_presets::{factory, find, step_data};
-use musiccraft_patch::{CATEGORIES, Patch, PointData, STEPS, StepData};
+use musiccraft_patch::{CATEGORIES, Patch, PointData, STEPS, StepData, ZoneRef};
 use musiccraft_project::{Channel, ChannelId, Instrument, Project};
 
-use super::channel::{channel_arg, push_channel};
+use super::channel::{channel_arg, check_sample, push_channel};
 use crate::args::{Args, num};
 use crate::command::cmd;
 use crate::{Command, CommandError, Invocation, Outcome};
@@ -62,6 +62,36 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "antiserum.open_patch <channel> <path>",
             "Load a patch file into an Antiserum channel.",
             open_patch,
+        ),
+        cmd(
+            "antiserum.set_sample",
+            "antiserum.set_sample <channel> <osc 1-3> <sample|->",
+            "Set (or with -, clear) the sample an Antiserum oscillator plays as a sample, granular or spectral oscillator.",
+            set_sample,
+        ),
+        cmd(
+            "antiserum.add_zone",
+            "antiserum.add_zone <channel> <osc 1-3> <sample> [low] [high] [root]",
+            "Add a multisample zone to an Antiserum oscillator (keys 0-127, root 60 by default).",
+            add_zone,
+        ),
+        cmd(
+            "antiserum.set_zone",
+            "antiserum.set_zone <channel> <osc 1-3> <zone> <low> <high> <root>",
+            "Change a multisample zone's key range and root key.",
+            set_zone,
+        ),
+        cmd(
+            "antiserum.remove_zone",
+            "antiserum.remove_zone <channel> <osc 1-3> <zone>",
+            "Remove a multisample zone.",
+            remove_zone,
+        ),
+        cmd(
+            "antiserum.insert_zone",
+            "antiserum.insert_zone <channel> <osc 1-3> <zone> <json>",
+            "Insert a multisample zone from its JSON form (used by undo).",
+            insert_zone,
         ),
         cmd(
             "antiserum.presets",
@@ -348,6 +378,195 @@ fn open_patch(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     }
     let message = format!("channel {} plays {}", index + 1, patch.name);
     replace(project, args, index, patch, message)
+}
+
+fn set_sample(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = antiserum_arg(project, args, 0)?;
+    let osc = bounded(args, 1, "oscillator", OSCS)?;
+    let sample = args.str(2)?;
+    let sample = if sample == "-" {
+        String::new()
+    } else {
+        check_sample(project, args, sample)?;
+        sample.to_owned()
+    };
+    let patch = patch_mut(project, args, index)?;
+    let mut source = patch.source(osc);
+    let previous = std::mem::replace(&mut source.sample, sample.clone());
+    patch.set_source(osc, source);
+    let shown = if sample.is_empty() {
+        "no sample"
+    } else {
+        &sample
+    };
+    let undo = if previous.is_empty() {
+        "-".to_owned()
+    } else {
+        previous
+    };
+    Ok(Outcome::undoable(
+        format!("channel {} oscillator {} plays {shown}", index + 1, osc + 1),
+        Invocation::new(
+            args.name(),
+            [(index + 1).to_string(), (osc + 1).to_string(), undo],
+        ),
+    ))
+}
+
+/// A key argument (0–127, or a note name) at `i`, or `default` when absent.
+fn key_or(args: &Args<'_>, i: usize, default: u8) -> Result<u8, CommandError> {
+    match args.opt(i) {
+        Some(_) => args.key(i),
+        None => Ok(default),
+    }
+}
+
+fn zone_arg(args: &Args<'_>, i: usize, zones: usize) -> Result<usize, CommandError> {
+    let zone = args.number(i, "zone")?;
+    if zone > zones {
+        return Err(args.invalid(format!(
+            "there is no zone {zone} (the oscillator has {zones})"
+        )));
+    }
+    Ok(zone - 1)
+}
+
+fn add_zone(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 6)?;
+    let index = antiserum_arg(project, args, 0)?;
+    let osc = bounded(args, 1, "oscillator", OSCS)?;
+    let sample = args.str(2)?;
+    check_sample(project, args, sample)?;
+    let (low, high, root) = (
+        key_or(args, 3, 0)?,
+        key_or(args, 4, 127)?,
+        key_or(args, 5, 60)?,
+    );
+    if low > high {
+        return Err(args.invalid("the low key is above the high key"));
+    }
+    let patch = patch_mut(project, args, index)?;
+    let mut source = patch.source(osc);
+    source
+        .zones
+        .push(ZoneRef::new(sample.to_owned(), low, high, root));
+    let zone = source.zones.len();
+    patch.set_source(osc, source);
+    Ok(Outcome::undoable(
+        format!(
+            "channel {} oscillator {} zone {zone}: {sample}",
+            index + 1,
+            osc + 1
+        ),
+        Invocation::new(
+            "antiserum.remove_zone",
+            [
+                (index + 1).to_string(),
+                (osc + 1).to_string(),
+                zone.to_string(),
+            ],
+        ),
+    ))
+}
+
+fn set_zone(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(6, 6)?;
+    let index = antiserum_arg(project, args, 0)?;
+    let osc = bounded(args, 1, "oscillator", OSCS)?;
+    let (low, high, root) = (args.key(3)?, args.key(4)?, args.key(5)?);
+    if low > high {
+        return Err(args.invalid("the low key is above the high key"));
+    }
+    let patch = patch_mut(project, args, index)?;
+    let mut source = patch.source(osc);
+    let zone = zone_arg(args, 2, source.zones.len())?;
+    let Some(z) = source.zones.get_mut(zone) else {
+        return Err(args.invalid("no such zone"));
+    };
+    let previous = (z.low, z.high, z.root);
+    (z.low, z.high, z.root) = (low, high, root);
+    patch.set_source(osc, source);
+    Ok(Outcome::undoable(
+        format!(
+            "channel {} oscillator {} zone {}: {low}-{high}, root {root}",
+            index + 1,
+            osc + 1,
+            zone + 1
+        ),
+        Invocation::new(
+            args.name(),
+            [
+                (index + 1).to_string(),
+                (osc + 1).to_string(),
+                (zone + 1).to_string(),
+                previous.0.to_string(),
+                previous.1.to_string(),
+                previous.2.to_string(),
+            ],
+        ),
+    ))
+}
+
+fn remove_zone(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = antiserum_arg(project, args, 0)?;
+    let osc = bounded(args, 1, "oscillator", OSCS)?;
+    let patch = patch_mut(project, args, index)?;
+    let mut source = patch.source(osc);
+    let zone = zone_arg(args, 2, source.zones.len())?;
+    let removed = source.zones.remove(zone);
+    patch.set_source(osc, source);
+    let json = serde_json::to_string(&removed).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Outcome::undoable(
+        format!(
+            "channel {} oscillator {} removed zone {}",
+            index + 1,
+            osc + 1,
+            zone + 1
+        ),
+        Invocation::new(
+            "antiserum.insert_zone",
+            [
+                (index + 1).to_string(),
+                (osc + 1).to_string(),
+                (zone + 1).to_string(),
+                json,
+            ],
+        ),
+    ))
+}
+
+fn insert_zone(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(4, 4)?;
+    let index = antiserum_arg(project, args, 0)?;
+    let osc = bounded(args, 1, "oscillator", OSCS)?;
+    let zone: ZoneRef =
+        serde_json::from_str(args.str(3)?).map_err(|e| args.invalid(e.to_string()))?;
+    let patch = patch_mut(project, args, index)?;
+    let mut source = patch.source(osc);
+    let at = args.number(2, "zone")? - 1;
+    if at > source.zones.len() {
+        return Err(args.invalid(format!("zone {} is past the end", at + 1)));
+    }
+    source.zones.insert(at, zone);
+    patch.set_source(osc, source);
+    Ok(Outcome::undoable(
+        format!(
+            "channel {} oscillator {} zone {} restored",
+            index + 1,
+            osc + 1,
+            at + 1
+        ),
+        Invocation::new(
+            "antiserum.remove_zone",
+            [
+                (index + 1).to_string(),
+                (osc + 1).to_string(),
+                (at + 1).to_string(),
+            ],
+        ),
+    ))
 }
 
 fn presets(_project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

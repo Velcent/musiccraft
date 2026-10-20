@@ -122,6 +122,13 @@ Each oscillator can switch to one of these:
 - **Granular:** reuses the granular voice.
 - **Spectral:** resynthesis from `resynth.rs`, with spectral warp such as shift, stretch and filter.
 
+**Done** (spec: `docs/spec/antiserum-oscillators.md`), with these choices:
+- **Parameters:** 15 per oscillator, appended after the effects (`osc1_type`, `osc1_sample_mode`, `osc1_grain_size`, `osc1_spectral_shift`, …), so earlier names and indices keep their meaning.
+- **Sources:** an oscillator's sample, zones and spectral analysis form one `Source`, built on the main thread and swapped into a running synth like a wavetable. The patch stores sample paths (or `builtin:` sounds) in `sources`.
+- **Own players:** the voice plays sources with its own small, allocation-free player instead of reusing the sampler and granular voices, so one oscillator code path serves every type and the mod matrix reaches each control.
+- **Spectral playback:** 32 partials from the harmonic analysis, played from a shared sine table; shift, stretch and tilt act on partial frequencies and gains.
+- **Limits:** samples play summed to mono (the oscillator's pan and unison spread place them), and warps apply to wavetables only.
+
 ### Phase 5: built-in effects, arpeggiator and sequencer (M)
 
 **Done** (spec: `docs/spec/antiserum-fx-arp.md`), with these choices:
@@ -205,7 +212,7 @@ Still to do: instruments, then Antiserum.
 
 The release ships CLAP, VST3 and standalone builds with our own editors on all
 three platforms (D5, D6). Antiserum's spectral, granular and multisample
-oscillators (Phase 4) can follow in a point release.
+oscillators (Phase 4) are done.
 
 ## Risks
 

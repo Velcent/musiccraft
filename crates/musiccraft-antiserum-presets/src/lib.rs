@@ -11,9 +11,11 @@ use musiccraft_antiserum::fx::{MODULES, module_specs};
 use musiccraft_antiserum::notes::SEQ_STEPS;
 use musiccraft_antiserum::params::{FX_BASE, LFOS, OSCS, PARAM_COUNT, fx_param};
 use musiccraft_antiserum::{
-    Antiserum, LfoPoint, LfoShape, Sequence, Step, Wavetable, choices, index_of, params,
+    Antiserum, LfoPoint, LfoShape, Sequence, Source, Step, Wavetable, Zone, choices, index_of,
+    params,
 };
-use musiccraft_patch::{Patch, StepData, TableRef};
+use musiccraft_dsp::SampleBuffer;
+use musiccraft_patch::{Patch, SourceRef, StepData, TableRef};
 
 pub use bank::{factory, find};
 
@@ -150,12 +152,68 @@ pub fn apply(patch: &Patch, synth: &mut Antiserum) -> Vec<String> {
     warnings
 }
 
-/// A synth playing `patch` at `sample_rate`.
+/// A synth playing `patch` at `sample_rate`, with samples from
+/// [`load_sample`].
 #[must_use]
 pub fn synth(patch: &Patch, sample_rate: f32) -> Antiserum {
     let mut synth = Antiserum::new(sample_rate);
     let _ = apply(patch, &mut synth);
+    for osc in 0..OSCS {
+        let (source, _) = source(&patch.source(osc), &mut |name| {
+            load_sample(name, sample_rate)
+        });
+        drop(synth.set_source(osc, Arc::new(source)));
+    }
     synth
+}
+
+/// A built-in sound (`builtin:<name>`) or a WAV file as it is named (no
+/// project-relative lookup; the app's bridge does that). `None` if it cannot
+/// be loaded.
+#[must_use]
+pub fn load_sample(name: &str, sample_rate: f32) -> Option<Arc<SampleBuffer>> {
+    let buffer = match name.strip_prefix(musiccraft_params::BUILTIN_PREFIX) {
+        Some(builtin) => musiccraft_samples::builtin(builtin, sample_rate as u32)?,
+        None => musiccraft_samples::load_wav(std::path::Path::new(name)).ok()?,
+    };
+    Some(Arc::new(buffer))
+}
+
+/// The source an oscillator plays: its sample (analysed for the spectral
+/// type) and zones, loaded with `load`. Also returns the names that could
+/// not be loaded (they play as silence).
+pub fn source(
+    reference: &SourceRef,
+    load: &mut dyn FnMut(&str) -> Option<Arc<SampleBuffer>>,
+) -> (Source, Vec<String>) {
+    let mut missing = Vec::new();
+    let mut get = |name: &str, missing: &mut Vec<String>| {
+        let buffer = load(name);
+        if buffer.is_none() {
+            missing.push(name.to_owned());
+        }
+        buffer
+    };
+    let sample = if reference.sample.is_empty() {
+        None
+    } else {
+        get(&reference.sample, &mut missing)
+    };
+    let zones = reference
+        .zones
+        .iter()
+        .filter_map(|z| {
+            Some(Zone {
+                buffer: get(&z.sample, &mut missing)?,
+                low: z.low,
+                high: z.high,
+                root: z.root,
+                vel_low: z.vel_low,
+                vel_high: z.vel_high,
+            })
+        })
+        .collect();
+    (Source::new(sample, zones), missing)
 }
 
 /// The effect module parameter `index` belongs to, with its unprefixed spec.

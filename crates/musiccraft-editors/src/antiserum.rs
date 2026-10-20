@@ -15,10 +15,13 @@ use musiccraft_antiserum::notes::SEQ_STEPS;
 use musiccraft_antiserum::params::{
     self as ap, ARP_BASE, ENV_BASE, ENV_STRIDE, FILTER_ROUTING, FX_SLOT_BASE, LFO_BASE, LFO_STRIDE,
     LFOS, MACRO1, MACROS, NOISE_BASE, OSCS, PARAM_COUNT, SEQ_BASE, SLOTS, SOURCES, SUB_BASE,
-    SYNC_RATES, filter_param, fx_param, lfo, lfo_param, osc, osc_param, slot, slot_param,
+    SYNC_RATES, filter_param, fx_param, lfo, lfo_param, osc, osc_param, oscx, oscx_param, slot,
+    slot_param,
 };
 use musiccraft_antiserum::{LfoShape, choices, params};
 use musiccraft_antiserum_presets::{factory, label, step_data, table_frames, text};
+use musiccraft_dsp::SampleBuffer;
+use musiccraft_dsp::resynth::HarmonicTable;
 use musiccraft_params::ParamSpec;
 use musiccraft_patch::{CATEGORIES, Patch, PointData, StepData, TableRef};
 use musiccraft_wavetables::{FRAME_LEN, Table};
@@ -46,6 +49,14 @@ pub enum AntiserumEdit {
     Save,
     /// Load a patch file.
     Open,
+    /// Choose the sample oscillator (0-based) plays.
+    ChooseSample(usize),
+    /// Add a multisample zone to an oscillator.
+    AddZone(usize),
+    /// Oscillator, zone (0-based), and its new low, high and root keys.
+    SetZone(usize, usize, u8, u8, u8),
+    /// Remove a zone: oscillator, zone.
+    RemoveZone(usize, usize),
 }
 
 /// The editor's pages.
@@ -99,6 +110,9 @@ pub struct AntiserumEditor {
     table_edit: Option<TableEdit>,
     /// Built tables for the wavetable views, by reference.
     previews: HashMap<String, Arc<Table>>,
+    /// Samples and analyses for the sample and spectral views, by name.
+    samples: HashMap<String, Option<Arc<SampleBuffer>>>,
+    analyses: HashMap<String, Arc<HarmonicTable>>,
 }
 
 /// What every control reads.
@@ -288,9 +302,18 @@ impl AntiserumEditor {
     fn oscillators(&mut self, ui: &mut Ui, cx: &mut Cx<'_, '_>, patch: &Patch) {
         for o in 0..OSCS {
             let p = |field| osc_param(o, field);
+            let x = |field| oscx_param(o, field);
+            let kind = cx.view.value(x(oscx::TYPE)).round() as usize;
             section(ui, &format!("OSCILLATOR {}", o + 1), |ui| {
                 ui.horizontal(|ui| {
                     control(ui, cx, p(osc::ON));
+                    control(ui, cx, x(oscx::TYPE));
+                });
+                if kind != 0 {
+                    self.source_oscillator(ui, cx, patch, o, kind);
+                    return;
+                }
+                ui.horizontal(|ui| {
                     let reference = patch.table(o).to_owned();
                     let position = cx.view.value(p(osc::POSITION));
                     if let Some(table) = self.preview(&reference) {
@@ -368,6 +391,151 @@ impl AntiserumEditor {
         section(ui, "NOISE", |ui| {
             knobs(ui, cx, (NOISE_BASE..NOISE_BASE + 7).collect::<Vec<_>>())
         });
+    }
+
+    /// A sample, multisample, granular or spectral oscillator (`kind` 1–4):
+    /// its source, its picture and its knobs.
+    fn source_oscillator(
+        &mut self,
+        ui: &mut Ui,
+        cx: &mut Cx<'_, '_>,
+        patch: &Patch,
+        o: usize,
+        kind: usize,
+    ) {
+        let p = |field| osc_param(o, field);
+        let x = |field| oscx_param(o, field);
+        let source = patch.source(o);
+        if kind == 2 {
+            zones(ui, cx, o, &source.zones);
+        } else {
+            ui.horizontal(|ui| {
+                let name = if source.sample.is_empty() {
+                    "(no sample)"
+                } else {
+                    source
+                        .sample
+                        .rsplit(['/', '\\'])
+                        .next()
+                        .unwrap_or(&source.sample)
+                };
+                ui.label(name).hint(source.sample.clone());
+                if ui
+                    .small_button("Sample…")
+                    .hint("Choose the sample this oscillator plays")
+                    .clicked()
+                {
+                    cx.edits.push(AntiserumEdit::ChooseSample(o));
+                }
+            });
+            let sample = self.sample_preview(&source.sample);
+            if kind == 4 {
+                let analysis = self.analysis_preview(&source.sample, sample.as_deref());
+                let at = cx.view.value(p(osc::POSITION)) * analysis.duration();
+                partials_view(ui, &analysis.at(at, false));
+            } else if let Some(buffer) = sample {
+                let marks = [
+                    cx.view.value(p(osc::POSITION)),
+                    cx.view.value(x(oscx::LOOP_START)),
+                    cx.view.value(x(oscx::LOOP_END)),
+                ];
+                waveform_view(
+                    ui,
+                    &buffer,
+                    marks,
+                    kind == 1 && cx.view.value(x(oscx::LOOP)) >= 0.5,
+                );
+            }
+        }
+        let pitch = [osc::POSITION, osc::OCTAVE, osc::SEMI, osc::FINE].map(p);
+        let unison = [osc::UNISON, osc::DETUNE, osc::BLEND, osc::WIDTH].map(p);
+        match kind {
+            1 => {
+                knobs(ui, cx, pitch.into_iter().chain(unison));
+                knobs(
+                    ui,
+                    cx,
+                    [
+                        oscx::ROOT,
+                        oscx::SAMPLE_MODE,
+                        oscx::LOOP,
+                        oscx::LOOP_START,
+                        oscx::LOOP_END,
+                        oscx::GRAIN_SIZE,
+                    ]
+                    .map(x),
+                );
+            }
+            2 => {
+                knobs(ui, cx, pitch.into_iter().chain(unison));
+                knobs(
+                    ui,
+                    cx,
+                    [oscx::LOOP, oscx::LOOP_START, oscx::LOOP_END].map(x),
+                );
+            }
+            3 => {
+                knobs(ui, cx, pitch.into_iter().chain([x(oscx::ROOT)]));
+                knobs(
+                    ui,
+                    cx,
+                    [
+                        oscx::GRAIN_SIZE,
+                        oscx::GRAIN_DENSITY,
+                        oscx::GRAIN_SPREAD,
+                        oscx::GRAIN_PITCH,
+                        oscx::GRAIN_SCAN,
+                    ]
+                    .map(x),
+                );
+            }
+            _ => {
+                knobs(ui, cx, pitch);
+                knobs(
+                    ui,
+                    cx,
+                    [
+                        oscx::SPECTRAL_SHIFT,
+                        oscx::SPECTRAL_STRETCH,
+                        oscx::SPECTRAL_TILT,
+                        oscx::SPECTRAL_SPEED,
+                        oscx::LOOP,
+                    ]
+                    .map(x),
+                );
+            }
+        }
+    }
+
+    /// A sample for drawing, loaded once (built-in names and paths as given).
+    fn sample_preview(&mut self, name: &str) -> Option<Arc<SampleBuffer>> {
+        if name.is_empty() {
+            return None;
+        }
+        if let Some(found) = self.samples.get(name) {
+            return found.clone();
+        }
+        if self.samples.len() > 16 {
+            self.samples.clear();
+            self.analyses.clear();
+        }
+        let loaded = musiccraft_antiserum_presets::load_sample(name, 48_000.0);
+        self.samples.insert(name.to_owned(), loaded.clone());
+        loaded
+    }
+
+    /// A sample's harmonic analysis for drawing, measured once.
+    fn analysis_preview(
+        &mut self,
+        name: &str,
+        sample: Option<&SampleBuffer>,
+    ) -> Arc<HarmonicTable> {
+        if let Some(found) = self.analyses.get(name) {
+            return Arc::clone(found);
+        }
+        let table = Arc::new(sample.map_or_else(HarmonicTable::silent, HarmonicTable::analyze));
+        self.analyses.insert(name.to_owned(), Arc::clone(&table));
+        table
     }
 
     /// The wavetable editor on one oscillator's table, in place of the pages.
@@ -807,6 +975,103 @@ fn table_view(ui: &mut Ui, table: &Table, position: f32) {
     draw(current, theme::HIGHLIGHT, 0.0);
 }
 
+/// A sample's waveform with marks at `[start, loop start, loop end]` (0..1);
+/// the loop marks only when `looping`.
+fn waveform_view(ui: &mut Ui, buffer: &SampleBuffer, marks: [f32; 3], looping: bool) {
+    let (rect, _) = ui.allocate_exact_size(vec2(360.0, 56.0), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 3.0, theme::LCD_BG);
+    let len = buffer.len().max(1);
+    let columns = rect.width() as usize;
+    for c in 0..columns {
+        let from = c * len / columns;
+        let to = ((c + 1) * len / columns).max(from + 1);
+        let peak = buffer
+            .left()
+            .get(from..to.min(len))
+            .unwrap_or(&[])
+            .iter()
+            .fold(0.0_f32, |m, s| m.max(s.abs()))
+            .min(1.0);
+        let x = rect.left() + c as f32;
+        let h = peak * rect.height() * 0.48;
+        painter.line_segment(
+            [pos2(x, rect.center().y - h), pos2(x, rect.center().y + h)],
+            Stroke::new(1.0, theme::ACCENT_DIM),
+        );
+    }
+    let mark = |t: f32, color: Color32| {
+        let x = rect.left() + t.clamp(0.0, 1.0) * rect.width();
+        painter.vline(x, rect.y_range(), Stroke::new(1.5, color));
+    };
+    mark(marks[0], theme::HIGHLIGHT);
+    if looping {
+        mark(marks[1], theme::ACCENT);
+        mark(marks[2], theme::ACCENT);
+    }
+}
+
+/// The partial levels the spectral oscillator starts from.
+fn partials_view(ui: &mut Ui, levels: &[f32]) {
+    let (rect, _) = ui.allocate_exact_size(vec2(360.0, 56.0), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 3.0, theme::LCD_BG);
+    let peak = levels.iter().fold(1e-6_f32, |m, l| m.max(*l));
+    let bar = rect.width() / levels.len().max(1) as f32;
+    for (n, level) in levels.iter().enumerate() {
+        let h = level / peak * (rect.height() - 4.0);
+        let left = rect.left() + n as f32 * bar;
+        painter.rect_filled(
+            egui::Rect::from_min_max(
+                pos2(left + 1.0, rect.bottom() - h),
+                pos2(left + bar - 1.0, rect.bottom()),
+            ),
+            0.0,
+            theme::ACCENT,
+        );
+    }
+}
+
+/// The multisample zones: sample, low, high and root keys, and remove.
+fn zones(ui: &mut Ui, cx: &mut Cx<'_, '_>, o: usize, zones: &[musiccraft_patch::ZoneRef]) {
+    egui::Grid::new(("antiserum-zones", o)).show(ui, |ui| {
+        for heading in ["sample", "low", "high", "root", ""] {
+            ui.label(egui::RichText::new(heading).small().color(theme::TEXT_DIM));
+        }
+        ui.end_row();
+        for (z, zone) in zones.iter().enumerate() {
+            let name = zone
+                .sample
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(&zone.sample);
+            ui.label(name).hint(zone.sample.clone());
+            let mut keys = [zone.low, zone.high, zone.root];
+            let mut changed = false;
+            for key in &mut keys {
+                let response = ui.add(egui::DragValue::new(key).range(0..=127).speed(0.2));
+                changed |= response.drag_stopped() || response.lost_focus();
+            }
+            if changed && keys != [zone.low, zone.high, zone.root] && keys[0] <= keys[1] {
+                cx.edits.push(AntiserumEdit::Begin);
+                cx.edits
+                    .push(AntiserumEdit::SetZone(o, z, keys[0], keys[1], keys[2]));
+            }
+            if ui.small_button("✕").hint("Remove this zone").clicked() {
+                cx.edits.push(AntiserumEdit::RemoveZone(o, z));
+            }
+            ui.end_row();
+        }
+    });
+    if ui
+        .small_button("Add zone…")
+        .hint("Add a sample as a zone")
+        .clicked()
+    {
+        cx.edits.push(AntiserumEdit::AddZone(o));
+    }
+}
+
 fn mixer(ui: &mut Ui, cx: &mut Cx<'_, '_>) {
     for o in 0..OSCS {
         let p = |field| osc_param(o, field);
@@ -1097,6 +1362,33 @@ mod tests {
                 editor.page = page;
                 assert!(frame(&mut editor, patch).is_empty(), "{category} {page:?}");
             }
+        }
+    }
+
+    #[test]
+    fn every_oscillator_type_draws_with_and_without_a_source() {
+        let mut editor = AntiserumEditor::default();
+        let mut patch = Patch::default();
+        for kind in 0..ap::OSC_TYPES.len() {
+            for osc in 0..OSCS {
+                let name = params()[oscx_param(osc, oscx::TYPE)].name;
+                patch.params.insert(name.to_owned(), kind as f32);
+            }
+            assert!(frame(&mut editor, &patch).is_empty(), "type {kind} empty");
+        }
+        let mut source = patch.source(0);
+        source.sample = "builtin:crash".to_owned();
+        source.zones.push(musiccraft_patch::ZoneRef::new(
+            "builtin:kick".to_owned(),
+            0,
+            59,
+            36,
+        ));
+        patch.set_source(0, source);
+        for kind in 0..ap::OSC_TYPES.len() {
+            let name = params()[oscx_param(0, oscx::TYPE)].name;
+            patch.params.insert(name.to_owned(), kind as f32);
+            assert!(frame(&mut editor, &patch).is_empty(), "type {kind} sample");
         }
     }
 

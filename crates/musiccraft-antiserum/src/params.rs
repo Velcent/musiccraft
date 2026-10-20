@@ -171,7 +171,36 @@ pub const FX_SLOT_BASE: usize = SEQ_BASE + 3;
 pub const FX_BASE: usize = FX_SLOT_BASE + FX_SLOTS;
 
 /// Number of parameters.
-pub const PARAM_COUNT: usize = FX_BASE + FX_PARAMS;
+pub const PARAM_COUNT: usize = OSC_TYPE_BASE + OSCS * OSC_TYPE_STRIDE;
+
+/// Each oscillator's type and the settings of the sample, multisample,
+/// granular and spectral types (`docs/spec/antiserum-oscillators.md`).
+pub const OSC_TYPE_BASE: usize = FX_BASE + FX_PARAMS;
+pub const OSC_TYPE_STRIDE: usize = 15;
+pub mod oscx {
+    //! Offsets inside one oscillator's type settings.
+    pub const TYPE: usize = 0;
+    pub const ROOT: usize = 1;
+    pub const SAMPLE_MODE: usize = 2;
+    pub const LOOP: usize = 3;
+    pub const LOOP_START: usize = 4;
+    pub const LOOP_END: usize = 5;
+    pub const GRAIN_SIZE: usize = 6;
+    pub const GRAIN_DENSITY: usize = 7;
+    pub const GRAIN_SPREAD: usize = 8;
+    pub const GRAIN_PITCH: usize = 9;
+    pub const GRAIN_SCAN: usize = 10;
+    pub const SPECTRAL_SHIFT: usize = 11;
+    pub const SPECTRAL_STRETCH: usize = 12;
+    pub const SPECTRAL_TILT: usize = 13;
+    pub const SPECTRAL_SPEED: usize = 14;
+}
+
+/// Index of type setting `field` of oscillator `n` (0-based).
+#[must_use]
+pub const fn oscx_param(n: usize, field: usize) -> usize {
+    OSC_TYPE_BASE + n * OSC_TYPE_STRIDE + field
+}
 
 /// Index of parameter `field` of effect module `m` (0-based).
 #[must_use]
@@ -239,6 +268,27 @@ pub const FILTER_TYPES: [&str; 18] = [
     "flanger",
 ];
 pub const ROUTINGS: [&str; 2] = ["serial", "parallel"];
+pub const OSC_TYPES: [&str; 5] = ["wavetable", "sample", "multisample", "granular", "spectral"];
+pub const SAMPLE_MODES: [&str; 3] = ["repitch", "fixed", "stretch"];
+pub const LOOP_MODES: [&str; 3] = ["off", "forward", "ping-pong"];
+
+const OSC_TYPE_FIELDS: [Field; OSC_TYPE_STRIDE] = [
+    int("type", (OSC_TYPES.len() - 1) as f32, 0.0),
+    int("root", 127.0, 60.0),
+    int("sample_mode", (SAMPLE_MODES.len() - 1) as f32, 0.0),
+    int("loop", (LOOP_MODES.len() - 1) as f32, 0.0),
+    f("loop_start", 0.0, 1.0, 0.0, ""),
+    f("loop_end", 0.0, 1.0, 1.0, ""),
+    f("grain_size", 0.005, 0.5, 0.06, "s"),
+    f("grain_density", 1.0, 100.0, 20.0, ""),
+    f("grain_spread", 0.0, 1.0, 0.1, ""),
+    f("grain_pitch", 0.0, 12.0, 0.0, "st"),
+    f("grain_scan", -2.0, 2.0, 0.0, ""),
+    f("spectral_shift", -1_000.0, 1_000.0, 0.0, "Hz"),
+    f("spectral_stretch", -1.0, 1.0, 0.0, ""),
+    f("spectral_tilt", -1.0, 1.0, 0.0, ""),
+    f("spectral_speed", 0.0, 4.0, 1.0, ""),
+];
 pub const LFO_SHAPES: [&str; 8] = [
     "sine",
     "triangle",
@@ -551,6 +601,9 @@ fn build() -> Vec<ParamSpec> {
             });
         }
     }
+    for n in 1..=OSCS {
+        push_group(&mut table, &format!("osc{n}"), &OSC_TYPE_FIELDS);
+    }
     // Defaults that differ between instances of a group.
     if let Some(on) = table.get_mut(osc_param(0, osc::ON)) {
         on.default = 1.0;
@@ -608,6 +661,9 @@ pub fn choices(name: &str) -> Option<&'static [&'static str]> {
         _ if group.starts_with("osc") && (suffix == "warp1" || suffix == "warp2") => &WARPS,
         _ if group.starts_with("osc") && suffix == "stack" => &STACKS,
         _ if group.starts_with("filter") && suffix == "type" => &FILTER_TYPES,
+        _ if group.starts_with("osc") && suffix == "type" => &OSC_TYPES,
+        _ if group.starts_with("osc") && name.ends_with("_sample_mode") => &SAMPLE_MODES,
+        _ if group.starts_with("osc") && suffix == "loop" => &LOOP_MODES,
         _ if group.starts_with("lfo") && suffix == "shape" => &LFO_SHAPES,
         _ if group.starts_with("lfo") && suffix == "mode" => &LFO_MODES,
         _ if group.starts_with("lfo") && suffix == "sync" => &OFF_ON,
