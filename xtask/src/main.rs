@@ -1,6 +1,7 @@
 //! Developer tasks. `cargo xtask parity` checks `docs/parity.md` against the
 //! command registry, the default keymap and the spec folder.
-//! `cargo xtask bundle [--release]` builds the plugin bundles
+//! `cargo xtask bundle [--release]` (or `bundle-universal` on macOS, for
+//! Apple Silicon and Intel in one bundle) builds the plugin bundles
 //! (`target/bundled/MusicCraft Effects.clap` and `.vst3`, and
 //! `MusicCraft Instruments.clap` and `.vst3`) with nih-plug's bundler, one
 //! build of the plugin crate per feature. `cargo xtask validate` runs
@@ -14,7 +15,7 @@ use std::process::ExitCode;
 use musiccraft_commands::{Invocation, SESSION_COMMANDS};
 use musiccraft_ui::{Chord, Keymap};
 
-const USAGE: &str = "usage: cargo xtask parity [--min <percent>]\n       cargo xtask bundle [cargo build options]\n       cargo xtask validate";
+const USAGE: &str = "usage: cargo xtask parity [--min <percent>]\n       cargo xtask bundle [cargo build options]\n       cargo xtask bundle-universal [cargo build options]  (macOS)\n       cargo xtask validate";
 
 /// The package whose library holds the exported plugins.
 const PLUGIN_PACKAGE: &str = "musiccraft-plugin-export";
@@ -40,8 +41,10 @@ impl Drop for RestoreBundlerToml {
 }
 
 /// Builds and bundles the plugins, one bundle per feature of the plugin
-/// crate; `options` go to `cargo build`.
-fn bundle(options: &[&str]) -> ExitCode {
+/// crate; `options` go to `cargo build`. `command` is nih-plug's `bundle`, or
+/// `bundle-universal` for macOS bundles holding both Apple Silicon and Intel
+/// code.
+fn bundle(command: &str, options: &[&str]) -> ExitCode {
     // nih-plug's bundler names a package's bundle from `bundler.toml`, so
     // each build gets the name of its bundle there for the time it runs.
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -67,7 +70,7 @@ fn bundle(options: &[&str]) -> ExitCode {
             return ExitCode::FAILURE;
         }
         let args = [
-            "bundle",
+            command,
             PLUGIN_PACKAGE,
             "--no-default-features",
             "--features",
@@ -267,7 +270,8 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["parity"] => parity(None),
-        ["bundle", options @ ..] => bundle(options),
+        ["bundle", options @ ..] => bundle("bundle", options),
+        ["bundle-universal", options @ ..] => bundle("bundle-universal", options),
         ["validate"] => validate::validate(&BUNDLES),
         ["parity", "--min", value] => match value.parse() {
             Ok(min) => parity(Some(min)),

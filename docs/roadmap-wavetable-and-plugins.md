@@ -221,6 +221,12 @@ Each oscillator can switch to one of these:
 - Install docs: CLAP and VST3 folders per OS.
 - `docs/parity.md` rows and a changelog.
 
+**Done (2026-10-20):**
+
+- The Release workflow's `plugins` job builds `MusicCraft-Plugins-<v>-<os>.zip` for Linux, Windows and macOS. The macOS zip is universal and ad-hoc signed.
+- The job checks each bundle before publishing.
+- Install notes ship in each zip (`packaging/portable/README-plugins.txt`). See also `docs/releasing.md` and `CHANGELOG.md`.
+
 **Release blockers (owner, 2026-10-20).** Every limitation reported while
 building Antiserum and the plugins is fixed before the release ships. Each is
 a row in `docs/parity.md` (area "Release"); all ten are done (2026-10-20).

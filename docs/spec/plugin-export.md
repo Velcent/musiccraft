@@ -98,8 +98,16 @@ and Antiserum follow with the same wrapper and editor adapter.
   `effects` feature and lays out `target/bundled/MusicCraft Effects.clap` and
   `target/bundled/MusicCraft Effects.vst3` for the current platform (nih-plug's
   bundler); the same command builds the instruments bundle
-  (`docs/spec/plugin-instruments.md`). Install by copying them to the
-  platform's CLAP and VST3 folders.
+  (`docs/spec/plugin-instruments.md`). On macOS, `cargo xtask
+  bundle-universal` builds bundles holding Apple Silicon and Intel code.
+  Install by copying them to the platform's CLAP and VST3 folders.
+- **Release downloads.** Each release has `MusicCraft-Plugins-<v>-<os>.zip`
+  for Linux (x86-64), Windows (x64) and macOS (universal, ad-hoc signed),
+  with both bundles in both formats, the license and a `README.txt` naming
+  each system's plugin folders (`packaging/portable/README-plugins.txt`).
+  The Release workflow checks every bundle before it publishes: present,
+  the right binary inside (universal on macOS), the CLAP entry point
+  exported on Linux.
 
 ## Tests
 

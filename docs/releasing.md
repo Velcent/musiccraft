@@ -44,6 +44,7 @@ the bot to bypass the rule, or bump the version yourself in a pull request
 | `MusicCraft-<v>-macos-universal.dmg` | `MusicCraft.app` (Apple Silicon and Intel, macOS 11+) with an Applications shortcut. |
 | `MusicCraft-<v>-linux-x86_64.flatpak` | Flatpak bundle, app ID `io.github.bhimio1.MusicCraft`. |
 | `MusicCraft-<v>-linux-x86_64-portable.tar.gz` | Binary plus readme and icon; built on Ubuntu 22.04 (glibc 2.35+). |
+| `MusicCraft-Plugins-<v>-linux-x86_64.zip`, `-windows-x64.zip`, `-macos-universal.zip` | MusicCraft Effects and MusicCraft Instruments as `.clap` and `.vst3` bundles, a `README.txt` with each system's plugin folders (`packaging/portable/README-plugins.txt`) and the license. macOS bundles are universal and ad-hoc signed. Each zip's bundles are checked before release: present, the right binary inside, and on Linux the CLAP entry point exported. The validators run on every CI build (`docs/spec/validation.md`). |
 | `SHA256SUMS.txt` | Checksums for all of the above. |
 
 Install the Flatpak with `flatpak install --user ./MusicCraft-<v>-linux-x86_64.flatpak`
@@ -58,6 +59,9 @@ to the run as artifacts.
 
 ## Known limitations
 
+- **Plugins are not notarized either.** On macOS, clear the quarantine flag on the
+  copied bundles (`xattr -dr com.apple.quarantine …`, see the zip's README) or the DAW
+  may refuse to load them.
 - **Unsigned builds.** Windows SmartScreen and macOS Gatekeeper warn on first launch.
   - macOS: right-click the app → Open, or `xattr -dr com.apple.quarantine /Applications/MusicCraft.app`.
   - To sign: `packaging/macos/build-dmg.sh` already honors `APPLE_SIGN_IDENTITY`, but the

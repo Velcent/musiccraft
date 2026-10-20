@@ -293,11 +293,106 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # MusicCraft's effects and instruments as CLAP and VST3 plugins for other DAWs
+  # (docs/spec/plugin-export.md), one zip per system with install notes.
+  plugins:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: linux-x86_64
+          - os: windows-latest
+            name: windows-x64
+          - os: macos-14
+            name: macos-universal
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libx11-xcb-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev
+      - name: Add Rust targets (macOS)
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Apply version
+        shell: bash
+        run: bash packaging/set-version.sh "$VERSION"
+      - name: Bundle
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            cargo xtask bundle-universal --release --locked
+          else
+            cargo xtask bundle --release --locked
+          fi
+      # Every bundle is where a DAW expects it, with the right binary inside.
+      - name: Check the bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() { echo "::error title=Plugin bundles::$1"; exit 1; }
+          cd target/bundled
+          for name in "MusicCraft Effects" "MusicCraft Instruments"; do
+            [ -e "$name.clap" ] || fail "$name.clap missing"
+            [ -d "$name.vst3" ] || fail "$name.vst3 missing"
+            case "$RUNNER_OS" in
+              Linux)
+                nm -D --defined-only "$name.clap" | grep -q " clap_entry$" || fail "$name.clap exports no clap_entry"
+                [ -f "$name.vst3/Contents/x86_64-linux/$name.so" ] || fail "$name.vst3 has no Linux binary"
+                ;;
+              Windows)
+                [ -f "$name.vst3/Contents/x86_64-win/$name.vst3" ] || fail "$name.vst3 has no Windows binary"
+                ;;
+              macOS)
+                for bundle in "$name.clap" "$name.vst3"; do
+                  binary="$bundle/Contents/MacOS/$name"
+                  archs=$(lipo -archs "$binary") || fail "$binary missing"
+                  case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) fail "$bundle is not universal ($archs)";; esac
+                  # Ad-hoc signature: Apple Silicon refuses to load unsigned code.
+                  codesign --force --deep --sign - "$bundle"
+                  codesign --verify --deep --strict "$bundle" || fail "$bundle signature does not verify"
+                done
+                ;;
+            esac
+          done
+          echo "::notice title=Plugin bundles::${{ matrix.name }}: both bundles in CLAP and VST3"
+      - name: Zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="MusicCraft-Plugins-$VERSION-${{ matrix.name }}"
+          mkdir -p "$dir" dist
+          cp -R target/bundled/*.clap target/bundled/*.vst3 "$dir/"
+          cp packaging/portable/README-plugins.txt "$dir/README.txt"
+          cp LICENSE "$dir/LICENSE.txt"
+          if [ "$RUNNER_OS" = Windows ]; then
+            pwsh -Command "Compress-Archive -Path '$dir' -DestinationPath 'dist/$dir.zip'"
+          else
+            # -y keeps macOS bundles' symlinks as links.
+            zip -qry "dist/$dir.zip" "$dir"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-plugins-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
   # Runs only when every build and test above passed.
   release:
     name: Commit, tag and publish
     if: github.event_name == 'workflow_dispatch' && inputs.publish
-    needs: [prepare, windows, macos, linux, flatpak]
+    needs: [prepare, windows, macos, linux, flatpak, plugins]
     runs-on: ubuntu-latest
     permissions:
       contents: write

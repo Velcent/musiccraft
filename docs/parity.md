@@ -208,3 +208,4 @@ of contents; see `docs/clean-room.md`.
 | Validation | clap-validator and the VST3 validator pass on both bundles in CI | `spec:validation.md` `done` |
 | Validation | Denormal and CPU-budget checks for every plugin | `spec:validation.md` `done` |
 | Validation | Manual smoke tests in Ardour, Bitwig and REAPER | `todo` |
+| Release | Plugin bundles for Linux, Windows and macOS in the release downloads, with install notes | `spec:plugin-export.md` `done` |
