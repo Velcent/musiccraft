@@ -6,6 +6,7 @@
 pub mod antiserum;
 pub mod effect;
 pub mod hint;
+pub mod instrument;
 pub mod theme;
 mod tuner;
 pub mod wavetable;

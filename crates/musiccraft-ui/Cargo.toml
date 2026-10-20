@@ -14,6 +14,7 @@ musiccraft-commands.workspace = true
 musiccraft-patch.workspace = true
 musiccraft-dsp.workspace = true
 musiccraft-editors.workspace = true
+musiccraft-instruments.workspace = true
 musiccraft-paths.workspace = true
 musiccraft-project.workspace = true
 egui.workspace = true

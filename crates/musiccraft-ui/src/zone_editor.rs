@@ -6,10 +6,10 @@ use musiccraft_commands::Invocation;
 use musiccraft_project::SampleZone;
 use musiccraft_project::music::key_name;
 
-use crate::channel_settings::section;
 use crate::dialogs::Dialog;
 use crate::hint::Hint;
 use crate::{Action, Frame, UiState, theme};
+use musiccraft_editors::instrument::section;
 
 /// A short display name for a sample reference.
 fn sample_name(sample: &str) -> String {
