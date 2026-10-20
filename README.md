@@ -145,6 +145,12 @@ Hover any control and the hint bar at the top says what it does.
   Linux for now); parameters and state are saved in the project and exports
   render them. CLAP is tested with Surge XT and LSP plugins; VST3 with the
   bundled test plugins (third-party VST3 plugins are not tested yet).
+- **MusicCraft in other DAWs**: `cargo xtask bundle --release` builds
+  `target/bundled/MusicCraft Effects` (44 effects) and
+  `MusicCraft Instruments` (the built-in instruments and Antiserum) as `.clap`
+  and `.vst3`, with the app's own editors. Copy them into your CLAP and VST3
+  folders. `cargo run --manifest-path standalone/Cargo.toml -- <name>` runs
+  one of them standalone.
 
 Built-in sounds (`builtin:kick`, `snare`, `clap`, `hat`, `open_hat`, `tom`,
 `rim`, `crash`) are synthesized at start-up; WAV files can be loaded as samples.

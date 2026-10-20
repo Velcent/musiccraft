@@ -13,7 +13,7 @@ use std::any::Any;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use baseview::gl::GlConfig;
 use baseview::{
@@ -149,10 +149,21 @@ struct OpenEditor {
 // used from another thread.
 unsafe impl Send for OpenEditor {}
 
+/// Longest wait for an X11 window's thread to finish after closing.
+const CLOSE_WAIT: Duration = Duration::from_millis(500);
+
 impl Drop for OpenEditor {
     fn drop(&mut self) {
         self.open.store(false, Ordering::Release);
         self.window.close();
+        // On X11 baseview closes the window on its own thread, after this
+        // returns, and the host destroys the parent window right after: a
+        // frame drawn in between fails. Wait (briefly) for that thread to
+        // finish. Elsewhere closing is immediate.
+        let deadline = Instant::now() + CLOSE_WAIT;
+        while self.window.is_open() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
     }
 }
 

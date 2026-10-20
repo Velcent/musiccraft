@@ -1922,11 +1922,15 @@ name = "musiccraft-plugin-export"
 version = "0.2.2"
 dependencies = [
  "egui",
+ "musiccraft-antiserum",
+ "musiccraft-antiserum-presets",
  "musiccraft-clap",
  "musiccraft-dsp",
  "musiccraft-editors",
  "musiccraft-engine",
+ "musiccraft-instruments",
  "musiccraft-params",
+ "musiccraft-patch",
  "musiccraft-plugin-editor",
  "musiccraft-render",
  "musiccraft-vst3",

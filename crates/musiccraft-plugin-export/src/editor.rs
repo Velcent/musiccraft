@@ -175,14 +175,14 @@ fn apply(
     }
 }
 
-fn begin(setter: &ParamSetter<'_>, slot: &Slot) {
+pub(crate) fn begin(setter: &ParamSetter<'_>, slot: &Slot) {
     match &slot.param {
         HostParam::Float(p) => setter.begin_set_parameter(p),
         HostParam::Int(p) => setter.begin_set_parameter(p),
     }
 }
 
-fn set(setter: &ParamSetter<'_>, slot: &Slot, value: f32) {
+pub(crate) fn set(setter: &ParamSetter<'_>, slot: &Slot, value: f32) {
     let value = slot.spec.sanitize(value);
     match &slot.param {
         HostParam::Float(p) => setter.set_parameter(p, value),
@@ -190,7 +190,7 @@ fn set(setter: &ParamSetter<'_>, slot: &Slot, value: f32) {
     }
 }
 
-fn end(setter: &ParamSetter<'_>, slot: &Slot) {
+pub(crate) fn end(setter: &ParamSetter<'_>, slot: &Slot) {
     match &slot.param {
         HostParam::Float(p) => setter.end_set_parameter(p),
         HostParam::Int(p) => setter.end_set_parameter(p),
@@ -198,7 +198,7 @@ fn end(setter: &ParamSetter<'_>, slot: &Slot) {
 }
 
 /// A one-off change: a gesture of its own.
-fn set_once(setter: &ParamSetter<'_>, slot: &Slot, value: f32) {
+pub(crate) fn set_once(setter: &ParamSetter<'_>, slot: &Slot, value: f32) {
     begin(setter, slot);
     set(setter, slot, value);
     end(setter, slot);

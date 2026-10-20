@@ -152,7 +152,8 @@ come back through the parameter map; the field holds the rest.
   - the preset bar, knobs, choices, the filter, envelope and harmonics graphs.
 
   The plugin adds its own `swing` and `bend_range` knobs to the Functions
-  page. Sample instruments show the sample's name, its waveform and a path
+  page, and the `pitch` knob (in the app's channel header) next to its
+  title. Sample instruments show the sample's name, its waveform and a path
   field with the built-in sounds; the kit shows its sixteen pads, and zones
   show a zone list with key ranges.
 - **Antiserum.** The app's Antiserum editor (`musiccraft-editors::antiserum`).
@@ -165,7 +166,9 @@ come back through the parameter map; the field holds the rest.
 
 - The app's channel settings window uses the shared instrument editor. Its
   edits become the same commands as before (`channel.set_param`, a batch for a
-  preset), and nothing changes for the user.
+  preset). The kit and zones pages gain the playback controls that had no
+  knobs before: the kit's pad-1 key and fades, and the zones' fades, glide,
+  one-shot and reverse.
 - The sample-related parts that need the project stay in the app: dialogs,
   the sample editor, slicing to a pattern, and previews.
 
@@ -187,10 +190,15 @@ come back through the parameter map; the field holds the rest.
     `bend_range`.
   - Antiserum's is its whole table.
   - Normalized values round-trip, and the text matches the app's.
-- **Note functions.** Each one in real time against the app's sequence-time
-  version: swing, the arpeggiator (order, octaves, gate, a key pressed after a
-  silence), a positive time shift and negative-shift latency, gate, and echo
-  (spacing, fade, pitch).
+- **Note functions.**
+  - Real time against the app's sequence-time version, for the same notes:
+    the arpeggiator (modes, octaves, rates, gate), time shift, gate, echo,
+    and combinations of them.
+  - Unit tests:
+    - swing, against the app's rule (shift and truncate, only while the host
+      plays);
+    - a key pressed after a silence;
+    - negative-shift latency.
 - **Voices.** Mono, the polyphony limit and self-choke match the engine's
   rules.
 - **Hosts.**
@@ -203,7 +211,8 @@ come back through the parameter map; the field holds the rest.
 - **State.**
   - State saved by one instance and loaded into another restores parameters,
     samples, pads, zones and Antiserum's patch data, through both hosts.
-  - An Antiserum state equals the patch file the app would save.
+  - An Antiserum state holds a patch in the app's format, with its tables,
+    LFO shapes and steps.
 - **Editors.**
   - The shared instrument editor draws every instrument and page headlessly,
     and its edits match the app's previous commands.

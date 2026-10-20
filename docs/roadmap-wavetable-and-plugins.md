@@ -177,7 +177,14 @@ Each oscillator can switch to one of these:
 - **Convolution** offers the generated rooms only; loading an impulse file comes later.
 - **Tests:** our own CLAP and VST3 hosts load the bundle from disk, and every effect matches the mixer's output. Phase 8's round trip is therefore done for effects.
 
-Still to do: instruments, then Antiserum.
+**Instruments and Antiserum: done** (spec: `docs/spec/plugin-instruments.md`), with these choices:
+- **Two bundles from one crate:** the plugin crate's `effects` and `instruments` features select what the library exports. `cargo xtask bundle` builds it once per feature, as **MusicCraft Effects** and **MusicCraft Instruments** (11 built-in instruments and Antiserum). Keeping everything in one crate keeps `unsafe` inside the crates already approved for it.
+- **Note functions in real time:** in the app they apply when a sequence is built. `musiccraft_instruments::live` applies the same rules (swing, arpeggiator, time shift, gate, echo) as notes arrive, and a test checks it against the app's version. A negative time shift becomes reported latency.
+- **Shared instrument editor:** the channel settings pages moved into `musiccraft-editors::instrument`; the app and the plugins both use it.
+- **Antiserum's data** (tables, LFO shapes, steps, samples) reaches the running synth as `musiccraft_antiserum::Data` swaps, the same ones the app's engine uses. Its state is the app's patch format.
+- **Samples** are file paths or built-in sounds in the state, loaded off the audio thread.
+- **Tests:** our CLAP and VST3 hosts load the instruments bundle and play notes; every instrument matches the app's voices and Antiserum matches itself. State round-trips, and the editors open in a host window.
+- **Editor adapter fix:** closing waits for baseview's X11 window thread to finish, so a host that destroys its window right away no longer makes the editor thread fail.
 
 - **`musiccraft-plugin-export`, built on nih-plug:**
   - One `nih_plug::Plugin` per MusicCraft instrument (synth, FM, additive, granular, Antiserum and the others) and per effect, except `Send`/`BandSplit`.

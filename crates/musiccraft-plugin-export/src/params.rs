@@ -40,7 +40,8 @@ impl HostParam {
         }
     }
 
-    fn ptr(&self) -> ParamPtr {
+    /// The pointer nih-plug's parameter map holds.
+    pub fn ptr(&self) -> ParamPtr {
         match self {
             Self::Float(p) => p.as_ptr(),
             Self::Int(p) => p.as_ptr(),
@@ -209,7 +210,7 @@ fn host_param(kind: EffectKind, index: usize, spec: ParamSpec) -> HostParam {
         if is_switch {
             OFF_ON[usize::from(value >= 0.5)].to_owned()
         } else {
-            describe::text(kind, &spec, snap(&spec, value))
+            describe::text(kind, &spec, value)
         }
     };
     let parse = move |typed: &str| {
@@ -222,6 +223,19 @@ fn host_param(kind: EffectKind, index: usize, spec: ParamSpec) -> HostParam {
             describe::parse(kind, &spec, typed)
         }
     };
+    host_param_with(label, &spec, text, parse)
+}
+
+/// A host parameter for `spec`, named `label`, with its own display text and
+/// typed-text parsing (plain values).
+pub fn host_param_with(
+    label: String,
+    spec: &ParamSpec,
+    text: impl Fn(f32) -> String + Send + Sync + 'static,
+    parse: impl Fn(&str) -> Option<f32> + Send + Sync + 'static,
+) -> HostParam {
+    let spec = *spec;
+    let text = move |value: f32| text(snap(&spec, value));
     if spec.integer {
         let range = IntRange::Linear {
             min: spec.min.round() as i32,

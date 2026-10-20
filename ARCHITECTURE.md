@@ -31,8 +31,10 @@ musiccraft-cli ──► musiccraft-wavetables
 musiccraft-project ──► musiccraft-patch
 musiccraft-antiserum-presets ──► musiccraft-antiserum, musiccraft-wavetables, musiccraft-patch, musiccraft-samples
 musiccraft-commands, musiccraft-render, musiccraft-editors ──► musiccraft-antiserum-presets
+musiccraft-editors, musiccraft-render, musiccraft-ui ──► musiccraft-instruments
 musiccraft-plugin-export ──► musiccraft-plugin-editor ──► musiccraft-editors
-         └──► musiccraft-dsp, musiccraft-params, nih-plug
+         └──► musiccraft-dsp, musiccraft-params, musiccraft-instruments, musiccraft-antiserum,
+              musiccraft-antiserum-presets, musiccraft-patch, nih-plug
 standalone/ (own workspace) ──► musiccraft-plugin-export
 ```
 
@@ -49,7 +51,7 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`; converts FL Studio projects for `project.import_flp`. |
 | `musiccraft-flp` | Reads FL Studio projects and presets: a Rust port of PyFLP (GPL-3.0), tested against PyFLP on PyFLP's own test files. No dependencies; safe code. |
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects (incl. a small radix-2 FFT for convolution and the analyzer), sample buffers. Allocation-free processing. |
-| `musiccraft-instruments` | Every built-in instrument's voice DSP (synth, FM, keys, additive, drums, pluck, samplers, granular, resynth), independent of the engine so plugin wrappers can use it. Allocation-free rendering. |
+| `musiccraft-instruments` | Every built-in instrument's voice DSP (synth, FM, keys, additive, drums, pluck, samplers, granular, resynth), independent of the engine so plugin wrappers can use it. Allocation-free rendering. `live` plays notes in real time for the plugins: the channel note functions (swing, arpeggiator, time shift, gate, echo) and a voice pool with the engine's mono, polyphony, cut and glide rules. `arp` is the arpeggiator's key order, shared with the app's sequence-time arpeggiator. |
 | `musiccraft-antiserum` | Antiserum, the wavetable synth's sound engine (`docs/spec/antiserum.md`): band-limited wavetables, warps, unison, sub and noise, two multimode filters, envelopes, LFOs and a 32-slot mod matrix; an effects rack of `musiccraft-dsp` effects in ten order slots, a real-time arpeggiator and a step sequencer (`docs/spec/antiserum-fx-arp.md`); sample, multisample, granular and spectral oscillators that play an immutable `Source` (sample, zones, harmonic analysis) built on the main thread (`docs/spec/antiserum-oscillators.md`). Its own parameter table (names and order frozen). Independent of the engine and plugin formats; allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voice allocation, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, sample cache, synthesized built-in sounds. Main thread only. |
@@ -61,9 +63,9 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
 | `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response`, `fft` and `pitch` modules only to draw effect curves, the spectrum analyzer and the tuner display. |
-| `musiccraft-editors` | The egui pieces the app and the plugins share: theme, knobs and widgets, hints, the effect editor (preset bar, draggable graph, knobs, tuner) and the wavetable editor (3D frame stack, drawing, harmonics, formulas). Knows nothing of projects or commands: editors report `Edit`s (begin, drag, set, bypass) that the app turns into commands and a plugin into host gestures. |
+| `musiccraft-editors` | The egui pieces the app and the plugins share: theme, knobs and widgets, hints, the effect editor (preset bar, draggable graph, knobs, tuner), the built-in instruments' editor (the channel settings' Sound, Envelope and Functions pages), Antiserum's editor and the wavetable editor (3D frame stack, drawing, harmonics, formulas). Knows nothing of projects or commands: editors report `Edit`s (begin, drag, set, bypass) that the app turns into commands and a plugin into host gestures. |
 | `musiccraft-plugin-editor` | Opens those egui editors in a plugin host's window: a nih-plug `Editor` on a baseview child window with OpenGL, egui 0.36 and `egui_glow`. **Allowed to use `unsafe`** (OpenGL calls). |
-| `musiccraft-plugin-export` | The built-in effects as CLAP and VST3 plugins (`docs/spec/plugin-export.md`): `EffectPlugin<K>` wraps `musiccraft_dsp::Effect`, with host parameters from its `ParamSpec` table and the shared editor. One library exports all 44; `cargo xtask bundle` packages it. **Allowed to use `unsafe`** (nih-plug's export macros, `Params`). |
+| `musiccraft-plugin-export` | The built-in effects and instruments as CLAP and VST3 plugins (`docs/spec/plugin-export.md`, `docs/spec/plugin-instruments.md`). `EffectPlugin<K>` wraps `musiccraft_dsp::Effect`; `InstrumentPlugin<K>` plays the app's voices through `musiccraft_instruments::live`; `AntiserumPlugin` wraps `Antiserum` and takes its patch data as `Data` swaps. Host parameters come from their `ParamSpec` tables, and the editors are the shared ones. The `effects` and `instruments` features choose what the library exports; `cargo xtask bundle` builds one bundle per feature. Data built off the audio thread (samples, tables) is handed over through `handoff` (lock-free queues). **Allowed to use `unsafe`** (nih-plug's export macros, `Params`). |
 | `standalone/` | `musiccraft-fx-standalone <effect>`: one effect as a standalone app (nih-plug's wrapper). Its own workspace and lockfile, because that wrapper's ALSA binding clashes with the app's. |
 | `musiccraft-app` | Wires session, bridge, audio device, MIDI input and UI together. |
 | `xtask` | `cargo xtask parity`: checks the feature checklist against the registry and keymap. `cargo xtask bundle`: builds the plugin bundles. |

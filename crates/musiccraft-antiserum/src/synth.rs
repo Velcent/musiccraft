@@ -25,6 +25,21 @@ const SPARE_VOICES: usize = 8;
 /// Keys a mono synth remembers.
 const NOTE_STACK: usize = 16;
 
+/// Data that is not a parameter, built off the audio thread and taken in by
+/// a running synth with [`Antiserum::swap`] (the app's engine and the plugin
+/// both use it).
+#[derive(Debug, Clone)]
+pub enum Data {
+    /// Oscillator (0-based) and its new table; holds the old one after.
+    Table(usize, Arc<Wavetable>),
+    /// LFO (0-based) and its new drawn shape.
+    Shape(usize, Box<LfoShape>),
+    /// The sequencer's new pattern.
+    Sequence(Box<Sequence>),
+    /// Oscillator (0-based) and its new source; holds the old one after.
+    Source(usize, Arc<Source>),
+}
+
 /// What every voice reads; kept apart from the voices so both can be
 /// borrowed at once.
 struct Shared {
@@ -222,6 +237,26 @@ impl Antiserum {
     #[must_use]
     pub fn wavetable(&self, osc: usize) -> Option<&Arc<Wavetable>> {
         self.shared.tables.get(osc)
+    }
+
+    /// Takes in `data` in one step on the audio thread (allocation-free).
+    /// What it replaces goes back into `data`, so the caller frees it off
+    /// the audio thread.
+    pub fn swap(&mut self, data: &mut Data) {
+        match data {
+            Data::Table(osc, table) => {
+                if let Some(old) = self.set_wavetable(*osc, Arc::clone(table)) {
+                    *table = old;
+                }
+            }
+            Data::Source(osc, source) => {
+                if let Some(old) = self.set_source(*osc, Arc::clone(source)) {
+                    *source = old;
+                }
+            }
+            Data::Shape(lfo, shape) => self.set_lfo_shape(*lfo, **shape),
+            Data::Sequence(sequence) => self.set_sequence(sequence),
+        }
     }
 
     /// Sets LFO `lfo`'s drawn shape.

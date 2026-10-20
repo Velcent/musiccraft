@@ -87,10 +87,12 @@ and Antiserum follow with the same wrapper and editor adapter.
   a workspace of its own, because nih-plug's wrapper uses an older ALSA
   binding than the app and Cargo allows one per workspace:
   `cargo build --release --manifest-path standalone/Cargo.toml`.
-- **Packaging.** `cargo xtask bundle [--release]` builds the library and lays
-  out `target/bundled/MusicCraft Effects.clap` and
+- **Packaging.** `cargo xtask bundle [--release]` builds the library with its
+  `effects` feature and lays out `target/bundled/MusicCraft Effects.clap` and
   `target/bundled/MusicCraft Effects.vst3` for the current platform (nih-plug's
-  bundler). Install by copying them to the platform's CLAP and VST3 folders.
+  bundler); the same command builds the instruments bundle
+  (`docs/spec/plugin-instruments.md`). Install by copying them to the
+  platform's CLAP and VST3 folders.
 
 ## Tests
 

@@ -11,8 +11,8 @@ use musiccraft_antiserum::fx::{MODULES, module_specs};
 use musiccraft_antiserum::notes::SEQ_STEPS;
 use musiccraft_antiserum::params::{FX_BASE, LFOS, OSCS, PARAM_COUNT, fx_param};
 use musiccraft_antiserum::{
-    Antiserum, LfoPoint, LfoShape, Sequence, Source, Step, Wavetable, Zone, choices, index_of,
-    params,
+    Antiserum, Data, LfoPoint, LfoShape, Sequence, Source, Step, Wavetable, Zone, choices,
+    index_of, params,
 };
 use musiccraft_dsp::SampleBuffer;
 use musiccraft_patch::{Patch, SourceRef, StepData, TableRef};
@@ -150,6 +150,56 @@ pub fn apply(patch: &Patch, synth: &mut Antiserum) -> Vec<String> {
     }
     synth.set_sequence(&sequence(patch));
     warnings
+}
+
+/// Everything in `patch` that is not a parameter, built for a running synth
+/// to take in with `Antiserum::swap`: every oscillator's table and source,
+/// every LFO shape and the sequence. Samples come from [`load_sample`].
+/// Returns a warning per table or sample that could not be built.
+#[must_use]
+pub fn data(patch: &Patch, sample_rate: f32) -> (Vec<Data>, Vec<String>) {
+    let mut warnings = Vec::new();
+    let mut out = Vec::new();
+    for osc in 0..OSCS {
+        let table = wavetable(patch.table(osc)).or_else(|err| {
+            warnings.push(format!("oscillator {}: {err}", osc + 1));
+            wavetable(musiccraft_patch::DEFAULT_TABLE)
+        });
+        if let Ok(table) = table {
+            out.push(Data::Table(osc, table));
+        }
+        let (built, missing) = source(&patch.source(osc), &mut |name| {
+            load_sample(name, sample_rate)
+        });
+        warnings.extend(missing);
+        out.push(Data::Source(osc, Arc::new(built)));
+    }
+    for lfo in 0..LFOS {
+        out.push(Data::Shape(lfo, Box::new(lfo_shape(patch, lfo))));
+    }
+    out.push(Data::Sequence(Box::new(sequence(patch))));
+    (out, warnings)
+}
+
+/// Parses text typed for parameter `index`: a choice name, a number with or
+/// without its unit, or a percentage for bipolar amounts.
+#[must_use]
+pub fn parse(index: usize, typed: &str) -> Option<f32> {
+    let spec = params().get(index)?;
+    let typed = typed.trim();
+    if let Some(list) = choices(spec.name) {
+        if let Some(i) = list.iter().position(|c| c.eq_ignore_ascii_case(typed)) {
+            return Some(spec.sanitize(spec.min + i as f32));
+        }
+    }
+    if let Some((kind, own)) = fx_spec(index) {
+        return musiccraft_dsp::describe::parse(kind, &own, typed);
+    }
+    if spec.unit.is_empty() && !spec.integer && spec.min < 0.0 {
+        let number: f32 = typed.trim_end_matches('%').trim().parse().ok()?;
+        return Some(spec.sanitize(number / 100.0));
+    }
+    musiccraft_params::describe::parse(spec, typed)
 }
 
 /// A synth playing `patch` at `sample_rate`, with samples from

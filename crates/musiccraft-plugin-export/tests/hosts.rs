@@ -4,8 +4,9 @@
 //! its state. The library is built with nih-plug's `assert_process_allocs`
 //! here, so any allocation on the audio thread aborts the test.
 
-use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
-use std::path::{Path, PathBuf};
+mod common;
+
+use std::path::Path;
 
 use musiccraft_clap::ClapHost;
 use musiccraft_dsp::{Effect, ProcessContext};
@@ -20,49 +21,12 @@ const BLOCKS: usize = 24;
 const TEMPO: f64 = 120.0;
 const BUNDLE: &str = "MusicCraft Effects";
 
-/// The plugin library Cargo built for these tests.
-fn library() -> PathBuf {
-    let exe = std::env::current_exe().unwrap();
-    let deps = exe.parent().unwrap();
-    let name = format!("{DLL_PREFIX}musiccraft_plugin_export{DLL_SUFFIX}");
-    [deps.join(&name), deps.parent().unwrap().join(&name)]
-        .into_iter()
-        .find(|p| p.is_file())
-        .unwrap_or_else(|| panic!("no {name} next to {}", deps.display()))
-}
-
-/// Puts the library at `to`: a hard link (debug builds are hundreds of
-/// megabytes), or a copy across file systems.
-fn place(to: &Path) {
-    if std::fs::hard_link(library(), to).is_err() {
-        std::fs::copy(library(), to).unwrap();
-    }
-}
-
-/// A fresh folder, next to the library, holding it as `<BUNDLE>.clap` and as
-/// a `<BUNDLE>.vst3` bundle.
-fn install(tag: &str) -> PathBuf {
-    let target = library().parent().unwrap().to_path_buf();
-    let dir = target.join(format!("mc-export-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    place(&dir.join(format!("{BUNDLE}.clap")));
-    let arch = format!("{}-linux", std::env::consts::ARCH);
-    let binary = dir
-        .join(format!("{BUNDLE}.vst3/Contents"))
-        .join(arch)
-        .join(format!("{BUNDLE}.so"));
-    std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
-    place(&binary);
-    dir
+fn install(tag: &str) -> std::path::PathBuf {
+    common::install(tag, BUNDLE)
 }
 
 fn vst3_id(clap_id: &str) -> String {
-    let hex: String = vst3_class_id(clap_id)
-        .iter()
-        .map(|b| format!("{b:02X}"))
-        .collect();
-    format!("vst3:{hex}")
+    common::vst3_id(vst3_class_id(clap_id))
 }
 
 fn request<'a>(id: &'a str, state: Option<&'a [u8]>) -> PluginRequest<'a> {
@@ -134,7 +98,11 @@ fn difference(processor: &mut dyn External, kind: musiccraft_params::EffectKind)
 
 fn check_all(host: &dyn PluginFactory, id_of: impl Fn(&str) -> String) {
     let catalog = host.catalog();
-    assert_eq!(catalog.len(), KINDS.len(), "{:?}", host.scan_errors());
+    let effects = catalog
+        .iter()
+        .filter(|p| p.kind == PluginKind::Effect)
+        .count();
+    assert_eq!(effects, KINDS.len(), "{:?}", host.scan_errors());
     for (kind, clap_id) in KINDS.iter().zip(CLAP_IDS) {
         let id = id_of(clap_id);
         let info = catalog

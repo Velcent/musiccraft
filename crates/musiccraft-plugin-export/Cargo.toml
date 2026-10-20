@@ -11,11 +11,22 @@ license.workspace = true
 # `cdylib` is the plugin library; `lib` serves the standalone app and tests.
 crate-type = ["cdylib", "lib"]
 
+[features]
+default = ["effects", "instruments"]
+# Which plugins the library exports; `cargo xtask bundle` builds one bundle
+# per feature (MusicCraft Effects, MusicCraft Instruments).
+effects = []
+instruments = []
+
 [dependencies]
 egui.workspace = true
+musiccraft-antiserum.workspace = true
+musiccraft-antiserum-presets.workspace = true
 musiccraft-dsp.workspace = true
 musiccraft-editors.workspace = true
+musiccraft-instruments.workspace = true
 musiccraft-params.workspace = true
+musiccraft-patch.workspace = true
 musiccraft-plugin-editor.workspace = true
 nih_plug = { workspace = true, features = ["vst3"] }
 rtrb.workspace = true

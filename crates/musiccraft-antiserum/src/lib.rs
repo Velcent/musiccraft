@@ -29,7 +29,7 @@ pub use modulation::{LfoPoint, LfoShape};
 pub use notes::{Sequence, Step};
 pub use params::{PARAM_COUNT, choices, index_of, params};
 pub use source::{Source, Zone};
-pub use synth::{Antiserum, MAX_VOICES};
+pub use synth::{Antiserum, Data, MAX_VOICES};
 pub use voice::{CONTROL, MAX_UNISON};
 pub use warp::Warp;
 pub use wavetable::Wavetable;

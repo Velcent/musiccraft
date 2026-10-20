@@ -193,6 +193,7 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
 | Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |
 | Automation | Controllers: LFO, envelope, keyboard, peak, formula and macro sources driving a parameter | `cmd:controller.add` `cmd:controller.set` `spec:controllers.md` |
+| Plugins | Built-in instruments and Antiserum as CLAP and VST3 plugins, with the app's editors | `spec:plugin-instruments.md` `done` |
 | Release | Antiserum sample oscillators play stereo samples | `todo` |
 | Release | Warps on sample, multisample, granular and spectral oscillators | `todo` |
 | Release | Unison on granular, spectral and stretched-sample oscillators | `todo` |

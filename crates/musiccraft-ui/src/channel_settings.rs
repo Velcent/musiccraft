@@ -368,9 +368,13 @@ fn sound(
         }
         Instrument::Kit { pads } => {
             kit(ui, state, index, channel, pads, actions);
+            ui.add_space(6.0);
+            with_editor(ui, state, index, channel, actions, |ui, e| e.kit(ui));
         }
         Instrument::Zones { zones } => {
             crate::zone_editor::show(ui, state, frame, index, zones, actions);
+            ui.add_space(6.0);
+            with_editor(ui, state, index, channel, actions, |ui, e| e.zones(ui));
         }
         Instrument::Resynth { sample } => {
             resynth(ui, state, frame, index, channel, sample, actions);

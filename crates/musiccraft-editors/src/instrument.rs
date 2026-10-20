@@ -310,8 +310,43 @@ impl<'a> InstrumentEditor<'a> {
             Kind::Sampler => self.sampler(ui, &mut |_, _| {}),
             Kind::Granular => self.granular(ui),
             Kind::Resynth => self.resynth(ui),
-            Kind::Kit | Kind::Zones | Kind::Layer | Kind::External | Kind::MidiOut => {}
+            Kind::Kit => self.kit(ui),
+            Kind::Zones => self.zones(ui),
+            Kind::Layer | Kind::External | Kind::MidiOut => {}
         }
+    }
+
+    /// The kit's playback: the key of pad 1 and the pads' fades.
+    pub fn kit(&mut self, ui: &mut Ui) {
+        section(ui, "PLAYBACK", |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Pad 1 key");
+                self.drag(ui, inst::ROOT_KEY, Some(key_name))
+                    .hint("Pad n plays on this key + n − 1");
+                self.knob(ui, inst::FADE_IN, "Fade in");
+                self.knob(ui, inst::FADE_OUT, "Fade out");
+            });
+        });
+    }
+
+    /// The zones' playback: fades, glide, one-shot and reverse.
+    pub fn zones(&mut self, ui: &mut Ui) {
+        section(ui, "PLAYBACK", |ui| {
+            ui.horizontal(|ui| {
+                self.knob(ui, inst::FADE_IN, "Fade in");
+                self.knob(ui, inst::FADE_OUT, "Fade out");
+                self.knob(ui, inst::GLIDE, "Glide");
+            });
+            ui.horizontal(|ui| {
+                self.toggle(
+                    ui,
+                    inst::ONE_SHOT,
+                    "One shot",
+                    "Play each zone's whole sample regardless of note length",
+                );
+                self.toggle(ui, inst::REVERSE, "Reverse", "Play the samples backwards");
+            });
+        });
     }
 
     /// The amplitude envelope knobs and their graph.

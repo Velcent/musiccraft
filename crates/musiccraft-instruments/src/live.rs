@@ -634,6 +634,13 @@ impl Poly {
         }
     }
 
+    /// Silences every voice at once (the host reset the plugin).
+    pub fn reset(&mut self) {
+        for voice in &mut self.voices {
+            voice.active = false;
+        }
+    }
+
     /// Cuts the voices playing `key`.
     pub fn choke(&mut self, key: u8) {
         for voice in &mut self.voices {

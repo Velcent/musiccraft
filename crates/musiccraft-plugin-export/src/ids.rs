@@ -1,6 +1,7 @@
 //! Which effects are exported and what hosts know them by. Hosts store these
 //! IDs in their projects, so they never change (see the `frozen_ids` test).
 
+use musiccraft_instruments::Kind;
 use musiccraft_params::EffectKind;
 use nih_plug::prelude::{ClapFeature, Vst3SubCategory};
 
@@ -101,9 +102,107 @@ pub const CLAP_IDS: [&str; 44] = [
     "org.musiccraft.bitcrusher",
 ];
 
-/// The VST3 class ID for a CLAP ID: `MCfx` and the first 12 bytes of the
-/// ID's 128-bit FNV-1a hash.
+/// Exported instruments besides Antiserum, in menu order
+/// (`docs/spec/plugin-instruments.md`). Instrument plugin `K` plays
+/// `INSTRUMENT_KINDS[K]`.
+pub const INSTRUMENT_KINDS: [Kind; 11] = [
+    Kind::Synth,
+    Kind::DrumSynth,
+    Kind::Pluck,
+    Kind::Fm,
+    Kind::Keys,
+    Kind::Additive,
+    Kind::Sampler,
+    Kind::Granular,
+    Kind::Resynth,
+    Kind::Kit,
+    Kind::Zones,
+];
+
+/// Instrument names as project files write them, by instrument plugin.
+pub const INSTRUMENT_NAMES: [&str; 11] = [
+    "synth",
+    "drum_synth",
+    "pluck",
+    "fm",
+    "keys",
+    "additive",
+    "sampler",
+    "granular",
+    "resynth",
+    "kit",
+    "zones",
+];
+
+/// Plugin names, by instrument plugin.
+pub const INSTRUMENT_TITLES: [&str; 11] = [
+    "Synth",
+    "Drum synth",
+    "Pluck",
+    "FM",
+    "Keys",
+    "Additive",
+    "Sampler",
+    "Granular",
+    "Resynth",
+    "Kit",
+    "Zones",
+];
+
+/// CLAP IDs, by instrument plugin: `org.musiccraft.<instrument name>`.
+pub const INSTRUMENT_CLAP_IDS: [&str; 11] = [
+    "org.musiccraft.synth",
+    "org.musiccraft.drum_synth",
+    "org.musiccraft.pluck",
+    "org.musiccraft.fm",
+    "org.musiccraft.keys",
+    "org.musiccraft.additive",
+    "org.musiccraft.sampler",
+    "org.musiccraft.granular",
+    "org.musiccraft.resynth",
+    "org.musiccraft.kit",
+    "org.musiccraft.zones",
+];
+
+/// Antiserum's CLAP ID.
+pub const ANTISERUM_CLAP_ID: &str = "org.musiccraft.antiserum";
+
+/// The VST3 class ID for an effect's CLAP ID: `MCfx` and the first 12 bytes
+/// of the ID's 128-bit FNV-1a hash.
 pub const fn vst3_class_id(clap_id: &str) -> [u8; 16] {
+    class_id(*b"MCfx", clap_id)
+}
+
+/// The VST3 class ID for an instrument's CLAP ID: `MCin` and the same hash.
+pub const fn vst3_instrument_class_id(clap_id: &str) -> [u8; 16] {
+    class_id(*b"MCin", clap_id)
+}
+
+/// How an instrument is listed: a synthesizer, a sampler or a drum machine.
+pub const fn instrument_features(kind: Kind) -> &'static [ClapFeature] {
+    use ClapFeature::{Instrument, Stereo};
+    match kind {
+        Kind::Sampler | Kind::Granular | Kind::Resynth | Kind::Zones => {
+            &[Instrument, ClapFeature::Sampler, Stereo]
+        }
+        Kind::Kit | Kind::DrumSynth => &[Instrument, ClapFeature::DrumMachine, Stereo],
+        _ => &[Instrument, ClapFeature::Synthesizer, Stereo],
+    }
+}
+
+/// VST3 subcategories of an instrument.
+pub const fn instrument_subcategories(kind: Kind) -> &'static [Vst3SubCategory] {
+    use Vst3SubCategory as V;
+    match kind {
+        Kind::Sampler | Kind::Granular | Kind::Resynth | Kind::Zones => {
+            &[V::Instrument, V::Sampler]
+        }
+        Kind::Kit | Kind::DrumSynth => &[V::Instrument, V::Drum],
+        _ => &[V::Instrument, V::Synth],
+    }
+}
+
+const fn class_id(prefix: [u8; 4], clap_id: &str) -> [u8; 16] {
     const OFFSET: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
     const PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
     let bytes = clap_id.as_bytes();
@@ -116,10 +215,10 @@ pub const fn vst3_class_id(clap_id: &str) -> [u8; 16] {
     }
     let digest = hash.to_be_bytes();
     let mut id = [0; 16];
-    id[0] = b'M';
-    id[1] = b'C';
-    id[2] = b'f';
-    id[3] = b'x';
+    id[0] = prefix[0];
+    id[1] = prefix[1];
+    id[2] = prefix[2];
+    id[3] = prefix[3];
     let mut j = 0;
     while j < 12 {
         id[4 + j] = digest[j];

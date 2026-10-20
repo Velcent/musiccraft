@@ -6,7 +6,7 @@ use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 
-use musiccraft_antiserum::{Antiserum, LfoShape, Sequence, Source, Wavetable};
+use musiccraft_antiserum::{Antiserum, Source};
 use musiccraft_engine::{External, ExternalTransport, MAX_BLOCK};
 use musiccraft_patch::Patch;
 
@@ -16,17 +16,7 @@ const MAX_PENDING: usize = 128;
 const MAX_GATES: usize = 128;
 
 /// Data the bridge sends to a running synth.
-#[derive(Debug)]
-pub(crate) enum Swap {
-    /// Oscillator (0-based) and its new table; holds the old one on return.
-    Table(usize, Arc<Wavetable>),
-    /// LFO (0-based) and its new shape.
-    Shape(usize, Box<LfoShape>),
-    /// The sequencer's new pattern.
-    Sequence(Box<Sequence>),
-    /// Oscillator (0-based) and its new source; holds the old one on return.
-    Source(usize, Arc<Source>),
-}
+pub(crate) use musiccraft_antiserum::Data as Swap;
 
 #[derive(Debug, Clone, Copy)]
 enum Pending {
@@ -197,21 +187,8 @@ impl External for AntiserumExternal {
 
     fn receive(&mut self, mut data: Box<dyn Any + Send>) -> Box<dyn Any + Send> {
         if let Some(swap) = data.downcast_mut::<Swap>() {
-            match swap {
-                Swap::Table(osc, table) => {
-                    // The box takes the old table back; nothing is freed here.
-                    if let Some(old) = self.synth.set_wavetable(*osc, Arc::clone(table)) {
-                        *table = old;
-                    }
-                }
-                Swap::Shape(lfo, shape) => self.synth.set_lfo_shape(*lfo, **shape),
-                Swap::Source(osc, source) => {
-                    if let Some(old) = self.synth.set_source(*osc, Arc::clone(source)) {
-                        *source = old;
-                    }
-                }
-                Swap::Sequence(sequence) => self.synth.set_sequence(sequence),
-            }
+            // The box takes the old data back; nothing is freed here.
+            self.synth.swap(swap);
         }
         data
     }

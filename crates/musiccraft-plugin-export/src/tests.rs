@@ -4,7 +4,15 @@ use musiccraft_dsp::describe;
 use musiccraft_params::{EFFECT_KINDS, EffectKind};
 use nih_plug::prelude::{Param, Params};
 
-use crate::ids::{CLAP_IDS, KINDS, vst3_class_id};
+use musiccraft_instruments::Kind;
+
+use crate::antiserum::params::AntiserumParams;
+use crate::ids::{
+    ANTISERUM_CLAP_ID, CLAP_IDS, INSTRUMENT_CLAP_IDS, INSTRUMENT_KINDS, INSTRUMENT_NAMES, KINDS,
+    vst3_class_id, vst3_instrument_class_id,
+};
+use crate::instrument::data::Shared as InstrumentShared;
+use crate::instrument::params::InstrumentParams;
 use crate::params::{EffectParams, HostParam, STATE_KEY};
 use crate::shared::Shared;
 
@@ -16,12 +24,17 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// `clap-id vst3-class-id` per line, in plugin order.
+/// `clap-id vst3-class-id` per line, in plugin order: the effects, then the
+/// instruments and Antiserum.
 fn id_table() -> String {
-    CLAP_IDS
+    let effects = CLAP_IDS
         .iter()
-        .map(|id| format!("{id} {}\n", hex(&vst3_class_id(id))))
-        .collect()
+        .map(|id| format!("{id} {}\n", hex(&vst3_class_id(id))));
+    let instruments = INSTRUMENT_CLAP_IDS
+        .iter()
+        .chain([&ANTISERUM_CLAP_ID])
+        .map(|id| format!("{id} {}\n", hex(&vst3_instrument_class_id(id))));
+    effects.chain(instruments).collect()
 }
 
 #[test]
@@ -57,9 +70,144 @@ fn frozen_ids() {
         "plugin IDs changed; hosts would lose every saved instance"
     );
     let mut vst3: Vec<[u8; 16]> = CLAP_IDS.iter().map(|id| vst3_class_id(id)).collect();
+    vst3.extend(
+        INSTRUMENT_CLAP_IDS
+            .iter()
+            .chain([&ANTISERUM_CLAP_ID])
+            .map(|id| vst3_instrument_class_id(id)),
+    );
+    let count = vst3.len();
     vst3.sort_unstable();
     vst3.dedup();
-    assert_eq!(vst3.len(), CLAP_IDS.len(), "VST3 IDs are unique");
+    assert_eq!(vst3.len(), count, "VST3 IDs are unique");
+}
+
+#[test]
+fn instruments_are_named_like_project_files() {
+    for (i, kind) in INSTRUMENT_KINDS.iter().enumerate() {
+        assert_eq!(
+            INSTRUMENT_CLAP_IDS[i],
+            format!("org.musiccraft.{}", INSTRUMENT_NAMES[i])
+        );
+        // The name is the project file's instrument tag.
+        let tag = match kind {
+            Kind::Synth => "synth",
+            Kind::DrumSynth => "drum_synth",
+            Kind::Pluck => "pluck",
+            Kind::Fm => "fm",
+            Kind::Keys => "keys",
+            Kind::Additive => "additive",
+            Kind::Sampler => "sampler",
+            Kind::Granular => "granular",
+            Kind::Resynth => "resynth",
+            Kind::Kit => "kit",
+            Kind::Zones => "zones",
+            Kind::Layer | Kind::External | Kind::MidiOut => "",
+        };
+        assert_eq!(INSTRUMENT_NAMES[i], tag);
+    }
+}
+
+#[test]
+fn instrument_parameters_are_the_kinds_plus_swing_and_bend() {
+    for (kind, name) in INSTRUMENT_KINDS.into_iter().zip(INSTRUMENT_NAMES) {
+        let p = InstrumentParams::new(kind, name, Arc::new(InstrumentShared::new(kind).0));
+        let ids: Vec<String> = p.param_map().into_iter().map(|(id, _, _)| id).collect();
+        let mut expected: Vec<String> = kind.params().map(str::to_owned).collect();
+        expected.extend(["swing".to_owned(), "bend_range".to_owned()]);
+        assert_eq!(ids, expected, "{name}");
+        assert_eq!(
+            p.values(),
+            musiccraft_instruments::default_params(),
+            "{name}"
+        );
+        // Text reads like the app's knobs and parses back.
+        for slot in p.slots.iter().chain(&p.own) {
+            let HostParam::Float(param) = &slot.param else {
+                continue;
+            };
+            let n = param.preview_normalized(slot.spec.default);
+            let text = param.normalized_value_to_string(n, true);
+            assert_eq!(
+                text,
+                musiccraft_params::describe::display(&slot.spec, slot.spec.default)
+            );
+            let back = param
+                .string_to_normalized_value(&text)
+                .map(|n| param.preview_plain(n));
+            let back = back.unwrap_or_else(|| panic!("{name} {}: {text}", slot.spec.name));
+            let span = (slot.spec.max - slot.spec.min).abs();
+            assert!(
+                (back - slot.spec.default).abs() <= span * 0.01,
+                "{name} {}: {text} -> {back}",
+                slot.spec.name
+            );
+        }
+        // The state names the instrument and its samples.
+        let fields = p.serialize_fields();
+        let json = &fields[STATE_KEY];
+        assert!(
+            json.contains(&format!(r#""instrument":"{name}""#)),
+            "{json}"
+        );
+        assert_eq!(json.contains(r#""pads""#), kind == Kind::Kit, "{json}");
+    }
+}
+
+#[test]
+fn instrument_state_brings_back_samples() {
+    let kind = Kind::Zones;
+    let p = InstrumentParams::new(kind, "zones", Arc::new(InstrumentShared::new(kind).0));
+    let mut data = p.shared.data();
+    data.zones.push(musiccraft_patch::ZoneRef::new(
+        "builtin:snare".to_owned(),
+        62,
+        70,
+        64,
+    ));
+    p.shared.set_data(data.clone());
+    let fields = p.serialize_fields();
+    let other = InstrumentParams::new(kind, "zones", Arc::new(InstrumentShared::new(kind).0));
+    other.deserialize_fields(&fields);
+    assert_eq!(other.shared.data(), data);
+    // Another instrument's state is ignored.
+    let kit = InstrumentParams::new(
+        Kind::Kit,
+        "kit",
+        Arc::new(InstrumentShared::new(Kind::Kit).0),
+    );
+    let before = kit.shared.data();
+    kit.deserialize_fields(&fields);
+    assert_eq!(kit.shared.data(), before);
+}
+
+#[test]
+fn antiserum_parameters_are_its_table_and_its_state_is_a_patch() {
+    let (p, _) = AntiserumParams::new();
+    let ids: Vec<String> = p.param_map().into_iter().map(|(id, _, _)| id).collect();
+    let expected: Vec<&str> = musiccraft_antiserum::params()
+        .iter()
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(ids, expected);
+    assert_eq!(*p.values(), musiccraft_antiserum::params::defaults());
+    // Typed text parses through the app's descriptions.
+    let cutoff = musiccraft_antiserum::index_of("filter1_cutoff").unwrap();
+    let text = musiccraft_antiserum_presets::text(cutoff, 2_500.0);
+    let back = musiccraft_antiserum_presets::parse(cutoff, &text).unwrap();
+    assert!((back - 2_500.0).abs() < 1.0, "{text} -> {back}");
+    // A factory preset's data comes back through the state.
+    let preset = musiccraft_antiserum_presets::find("Glass Reese")
+        .unwrap()
+        .clone();
+    p.shared.set_patch(preset.clone());
+    let fields = p.serialize_fields();
+    let (other, _) = AntiserumParams::new();
+    other.deserialize_fields(&fields);
+    let restored = other.shared.patch();
+    assert_eq!(restored.tables, preset.tables);
+    assert_eq!(restored.lfo_shapes, preset.lfo_shapes);
+    assert_eq!(restored.sequence, preset.sequence);
 }
 
 #[test]
