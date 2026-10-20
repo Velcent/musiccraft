@@ -113,6 +113,15 @@ pub fn parse(kind: EffectKind, spec: &ParamSpec, typed: &str) -> Option<f32> {
         if let Some(i) = VOWELS.iter().position(|v| v.eq_ignore_ascii_case(typed)) {
             return Some(spec.sanitize(i as f32));
         }
+        // "a→e" is anywhere between two vowels; halfway reads the same.
+        if let Some((from, _)) = typed.split_once('→') {
+            if let Some(i) = VOWELS
+                .iter()
+                .position(|v| v.eq_ignore_ascii_case(from.trim()))
+            {
+                return Some(spec.sanitize(i as f32 + 0.5));
+            }
+        }
     }
     // Routing values read "from 3", "ch 2", "to 5"; harmonies "+7 st".
     let number = ["from ", "ch ", "to "]

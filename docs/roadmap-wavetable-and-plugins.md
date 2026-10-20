@@ -204,6 +204,17 @@ Each oscillator can switch to one of these:
 - **Manual smoke tests** in two or three free or open hosts: Ardour, Bitwig's demo, REAPER's evaluation version.
 - **Performance and denormal checks.**
 
+**Done (2026-10-20),** spec `docs/spec/validation.md`, except the manual smoke tests:
+
+- Project renders with a built-in instrument or effect match the same render with our plugin, through both hosts.
+- `cargo xtask validate` runs both validators in CI. Both bundles pass with no failures. clap-validator found 278 failures at first:
+  - three nih-plug bugs, fixed in a patched copy (`vendor/nih_plug/PATCHES.md`);
+  - parameter texts that did not read back as themselves;
+  - denormal input.
+- Denormal input is flushed in the effect plugins and the mixer. Tests check tails for subnormals, and timing through our host.
+- A release benchmark gives every effect and instrument a CPU budget.
+- The manual smoke tests are a checklist (`docs/smoke-tests.md`). They need a person with those hosts and have not been run.
+
 ### Phase 9: release (S)
 
 - Plugin bundles in the release artifacts for Linux, Windows and macOS.

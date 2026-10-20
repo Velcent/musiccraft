@@ -41,6 +41,7 @@ pub fn install(tag: &str, bundle: &str) -> PathBuf {
 }
 
 /// Our VST3 host's ID for a class ID.
+#[allow(dead_code)] // Each test file compiles this module; not all use VST3.
 pub fn vst3_id(class: [u8; 16]) -> String {
     let hex: String = class.iter().map(|b| format!("{b:02X}")).collect();
     format!("vst3:{hex}")

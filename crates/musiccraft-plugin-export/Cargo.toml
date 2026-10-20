@@ -35,7 +35,9 @@ serde_json.workspace = true
 
 [dev-dependencies]
 musiccraft-clap.workspace = true
+musiccraft-commands.workspace = true
 musiccraft-engine.workspace = true
+musiccraft-project.workspace = true
 musiccraft-render.workspace = true
 musiccraft-samples.workspace = true
 musiccraft-vst3.workspace = true

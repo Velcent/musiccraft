@@ -125,16 +125,31 @@ impl ParamSpec {
     /// Formats a value with its unit for display.
     #[must_use]
     pub fn format(&self, value: f32) -> String {
+        // The unit is chosen after rounding, and a value that rounds to zero
+        // shows as zero, so the text parses back to a value that shows the
+        // same text (999.7 Hz is "1.00 kHz", not "1000 Hz"; -0.01 is "0.0").
+        let shown = |value: f32, decimals: i32| shown(value, decimals);
         match self.unit {
-            "Hz" if value >= 1_000.0 => format!("{:.2} kHz", value / 1_000.0),
-            "Hz" => format!("{value:.0} Hz"),
-            "s" if value < 1.0 => format!("{:.0} ms", value * 1_000.0),
+            "Hz" if shown(value, 0) >= 1_000.0 => format!("{:.2} kHz", value / 1_000.0),
+            "Hz" => format!("{:.0} Hz", shown(value, 0)),
+            "s" if shown(value * 1_000.0, 0) < 1_000.0 => {
+                format!("{:.0} ms", shown(value * 1_000.0, 0))
+            }
             "s" => format!("{value:.2} s"),
-            "" if self.integer => format!("{value:.0}"),
-            "" => format!("{:.0}%", value * 100.0),
-            unit => format!("{value:.1} {unit}"),
+            "" if self.integer => format!("{:.0}", shown(value, 0)),
+            "" => format!("{:.0}%", shown(value * 100.0, 0)),
+            unit => format!("{:.1} {unit}", shown(value, 1)),
         }
     }
+}
+
+/// `value` rounded to `decimals` places as display text shows it, with no
+/// negative zero: format the result with the same number of decimals so the
+/// text reads back to the value it shows.
+#[must_use]
+pub fn shown(value: f32, decimals: i32) -> f32 {
+    let scale = 10f32.powi(decimals);
+    (value * scale).round() / scale + 0.0
 }
 
 /// Fader position (0..1) of a linear gain: silence at the bottom, -24 dB at a

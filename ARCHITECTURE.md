@@ -172,6 +172,11 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
   every effect's output is compared with `Effect::process` run directly. The
   library is built with nih-plug's `assert_process_allocs` in tests. With an
   X display (Xvfb in CI) the host also opens a plugin's editor.
+- Plugin validation (`docs/spec/validation.md`): project renders through our
+  hosted plugins match the in-app render; `cargo xtask validate` runs
+  clap-validator and the VST3 SDK's validator on the bundles in CI; tests
+  check tails and denormal input; a release benchmark gives every plugin a
+  CPU budget.
 
 ## Dependencies
 
@@ -188,7 +193,8 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `vst3` | Rust declarations of the VST3 interfaces, generated from Steinberg's (MIT-licensed) SDK headers, plus `ComPtr`/`ComWrapper` reference counting; MIT or Apache-2.0. |
 | `libc` | `poll(2)` for file descriptors plugin windows register (Unix only). |
 | `x11rb` | A pure-Rust X11 window for plugins that embed their editor (Linux only; already in the tree through the windowing stack). |
-| `nih_plug` (git, pinned) | Exports our effects as CLAP and VST3 plugins and standalone apps (roadmap D2; ISC, VST3 export GPLv3). |
+| `nih_plug` (git, pinned) | Exports our effects as CLAP and VST3 plugins and standalone apps (roadmap D2; ISC, VST3 export GPLv3). Used as the patched copy in `vendor/nih_plug` (through `[patch]`), which fixes what clap-validator found (`vendor/nih_plug/PATCHES.md`); `vendor/` is outside the workspace, so the `unsafe` ban and our lints do not apply to it. |
+| clap-validator, VST3 SDK validator (CI tools, not dependencies) | Built at pinned versions in CI and run by `cargo xtask validate`; nothing from them is linked or copied. |
 | `nih_plug_xtask` (git, pinned) | nih-plug's bundler behind `cargo xtask bundle` (lays out `.clap`/`.vst3` per platform). |
 | `baseview` (git, pinned) | The plugin editor's child window in the host's window, with an OpenGL context (X11, Win32, Cocoa). |
 | `egui_glow`, `glow` | Paint egui with OpenGL inside that window (the app already uses them through eframe). |

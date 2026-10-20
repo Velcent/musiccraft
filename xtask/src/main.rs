@@ -3,7 +3,10 @@
 //! `cargo xtask bundle [--release]` builds the plugin bundles
 //! (`target/bundled/MusicCraft Effects.clap` and `.vst3`, and
 //! `MusicCraft Instruments.clap` and `.vst3`) with nih-plug's bundler, one
-//! build of the plugin crate per feature.
+//! build of the plugin crate per feature. `cargo xtask validate` runs
+//! clap-validator and the VST3 validator on those bundles.
+
+mod validate;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -11,8 +14,7 @@ use std::process::ExitCode;
 use musiccraft_commands::{Invocation, SESSION_COMMANDS};
 use musiccraft_ui::{Chord, Keymap};
 
-const USAGE: &str =
-    "usage: cargo xtask parity [--min <percent>]\n       cargo xtask bundle [cargo build options]";
+const USAGE: &str = "usage: cargo xtask parity [--min <percent>]\n       cargo xtask bundle [cargo build options]\n       cargo xtask validate";
 
 /// The package whose library holds the exported plugins.
 const PLUGIN_PACKAGE: &str = "musiccraft-plugin-export";
@@ -266,6 +268,7 @@ fn main() -> ExitCode {
     {
         ["parity"] => parity(None),
         ["bundle", options @ ..] => bundle(options),
+        ["validate"] => validate::validate(&BUNDLES),
         ["parity", "--min", value] => match value.parse() {
             Ok(min) => parity(Some(min)),
             Err(_) => {

@@ -185,7 +185,7 @@ impl DcBlock {
         for (state, channel) in self.state.iter_mut().zip([left, right]) {
             for s in channel.iter_mut() {
                 let (x1, y1) = *state;
-                let y = *s - x1 + r * y1;
+                let y = flush_denormal(*s - x1 + r * y1);
                 *state = (*s, if y.is_finite() { y } else { 0.0 });
                 *s = state.1;
             }
@@ -233,7 +233,7 @@ impl Hilbert {
         let mut x = input;
         for (st, c) in states.iter_mut().zip(coeffs) {
             let c2 = c * c;
-            let y = c2 * (x + st[3]) - st[1];
+            let y = flush_denormal(c2 * (x + st[3]) - st[1]);
             *st = [x, st[0], y, st[2]];
             if !y.is_finite() {
                 *st = [0.0; 4];

@@ -352,3 +352,58 @@ fn editor_sizes_fit_every_effect() {
         assert!(w >= 400 && (300..=900).contains(&h), "{kind}: {w}×{h}");
     }
 }
+
+/// A parameter's normalized value → text and text → normalized value.
+type Conversions<'a> = (&'a dyn Fn(f32) -> String, &'a dyn Fn(&str) -> Option<f32>);
+
+/// Texts of `slots` that do not survive value → text → value → text, over
+/// 501 steps of each range (what clap-validator's `param-conversions` does).
+fn text_mismatches(plugin: &str, slots: &[crate::params::Slot]) -> Vec<String> {
+    let mut wrong = Vec::new();
+    for slot in slots {
+        let (show, read): Conversions<'_> = match &slot.param {
+            HostParam::Float(p) => (&|n| p.normalized_value_to_string(n, true), &|t| {
+                p.string_to_normalized_value(t)
+            }),
+            HostParam::Int(p) => (&|n| p.normalized_value_to_string(n, true), &|t| {
+                p.string_to_normalized_value(t)
+            }),
+        };
+        for step in 0..=500 {
+            let shown = show(step as f32 / 500.0);
+            match read(&shown) {
+                Some(n) if show(n) == shown => {}
+                Some(n) => wrong.push(format!(
+                    "{plugin}/{}: {shown:?} -> {:?}",
+                    slot.spec.name,
+                    show(n)
+                )),
+                None => wrong.push(format!("{plugin}/{}: {shown:?} unreadable", slot.spec.name)),
+            }
+        }
+    }
+    wrong
+}
+
+#[test]
+fn every_parameter_text_reads_back_as_itself() {
+    let mut wrong = Vec::new();
+    for kind in KINDS {
+        wrong.extend(text_mismatches(kind.name(), &params(kind).slots));
+    }
+    for (kind, name) in INSTRUMENT_KINDS.into_iter().zip(INSTRUMENT_NAMES) {
+        let p = InstrumentParams::new(kind, name, Arc::new(InstrumentShared::new(kind).0));
+        wrong.extend(text_mismatches(name, &p.slots));
+    }
+    wrong.extend(text_mismatches(
+        "antiserum",
+        &AntiserumParams::new().0.slots,
+    ));
+    wrong.dedup();
+    assert!(
+        wrong.is_empty(),
+        "{} texts:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
+}

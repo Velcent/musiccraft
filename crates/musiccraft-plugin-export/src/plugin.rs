@@ -4,7 +4,7 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use musiccraft_dsp::{Effect, ProcessContext as DspContext};
+use musiccraft_dsp::{Effect, ProcessContext as DspContext, flush_subnormals};
 use musiccraft_params::EffectKind;
 use nih_plug::prelude::*;
 
@@ -174,6 +174,14 @@ impl<const K: usize> Plugin for EffectPlugin<K> {
 
         if self.params.bypass.value() {
             return ProcessStatus::Normal;
+        }
+        for channel in buffer.as_slice().iter_mut() {
+            flush_subnormals(channel);
+        }
+        for input in aux.inputs.iter_mut() {
+            for channel in input.as_slice().iter_mut() {
+                flush_subnormals(channel);
+            }
         }
         let values = self.params.values();
         let held = self.highest_held();

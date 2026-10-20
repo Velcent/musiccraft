@@ -124,6 +124,9 @@ and Antiserum follow with the same wrapper and editor adapter.
   note.
 - An impulse file is loaded, resampled and handed to the audio thread; an
   unreadable path keeps the previous impulse and reports an error.
+- Validators, render round trips, denormal and CPU checks:
+  `docs/spec/validation.md`. Effect plugins zero subnormal input samples
+  before processing.
 
 ## Sources
 

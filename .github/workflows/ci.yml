@@ -32,6 +32,41 @@ jobs:
       - run: xvfb-run -a cargo test --workspace --locked
       - name: Plugin bundles
         run: cargo xtask bundle
+      # clap-validator (MIT) and the VST3 SDK's validator (GPLv3 option),
+      # pinned; built once and cached (docs/spec/validation.md).
+      - name: Cache the plugin validators
+        uses: actions/cache@v4
+        with:
+          path: ~/validators
+          key: validators-${{ runner.os }}-clap-b2f1d9b-vst3sdk-v3.8.1_build_84
+      - name: Build the plugin validators
+        run: |
+          mkdir -p ~/validators
+          if [ ! -x ~/validators/clap-validator ]; then
+            cargo install --locked --root ~/validators/clap \
+              --git https://github.com/free-audio/clap-validator \
+              --rev b2f1d9b79b1d264a5747f46707d72b1aa40a02ef clap-validator
+            cp ~/validators/clap/bin/clap-validator ~/validators/
+          fi
+          if [ ! -x ~/validators/validator ]; then
+            git clone -q --depth 1 --branch v3.8.1_build_84 \
+              https://github.com/steinbergmedia/vst3sdk "$RUNNER_TEMP/vst3sdk"
+            git -C "$RUNNER_TEMP/vst3sdk" submodule update -q --init --depth 1 \
+              base pluginterfaces public.sdk cmake
+            cmake -S "$RUNNER_TEMP/vst3sdk" -B "$RUNNER_TEMP/vst3sdk/build" \
+              -DCMAKE_BUILD_TYPE=Release -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF \
+              -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF \
+              -DSMTG_RUN_VST_VALIDATOR=OFF
+            cmake --build "$RUNNER_TEMP/vst3sdk/build" --target validator -j 4
+            cp "$RUNNER_TEMP/vst3sdk/build/bin/Release/validator" ~/validators/
+          fi
+      - name: Validate the plugin bundles
+        run: |
+          CLAP_VALIDATOR=~/validators/clap-validator \
+          VST3_VALIDATOR=~/validators/validator \
+          cargo xtask validate
+      - name: Plugin CPU benchmark
+        run: cargo run --release --locked -p musiccraft-plugin-export --example bench
       - name: Standalone apps (own workspace)
         run: |
           cargo fmt --manifest-path standalone/Cargo.toml -- --check

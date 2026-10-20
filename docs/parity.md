@@ -204,3 +204,7 @@ of contents; see `docs/clean-room.md`.
 | Release | User preset folder listed in the browser, with save into it | `cmd:antiserum.save_preset` `cmd:antiserum.delete_preset` `spec:antiserum-app.md` |
 | Release | Convolution reverb plugin loads impulse files | `spec:plugin-export.md` `done` |
 | Release | Sidechain input and MIDI follow tested through our CLAP and VST3 hosts | `spec:plugin-export.md` `done` |
+| Validation | Offline renders with our plugins match the in-app render (CLAP and VST3) | `spec:validation.md` `done` |
+| Validation | clap-validator and the VST3 validator pass on both bundles in CI | `spec:validation.md` `done` |
+| Validation | Denormal and CPU-budget checks for every plugin | `spec:validation.md` `done` |
+| Validation | Manual smoke tests in Ardour, Bitwig and REAPER | `todo` |

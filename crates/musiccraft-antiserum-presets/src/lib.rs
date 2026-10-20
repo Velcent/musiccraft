@@ -297,7 +297,9 @@ pub fn text(index: usize, value: f32) -> String {
         return musiccraft_dsp::describe::text(kind, &own, value);
     }
     match spec.unit {
-        "" if !spec.integer && spec.min < 0.0 => format!("{:+.0}%", value * 100.0),
+        "" if !spec.integer && spec.min < 0.0 => {
+            format!("{:+.0}%", musiccraft_params::shown(value * 100.0, 0))
+        }
         _ => spec.format(value),
     }
 }

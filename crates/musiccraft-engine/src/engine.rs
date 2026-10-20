@@ -1722,13 +1722,18 @@ fn band_split(
     }
 }
 
-/// Replaces non-finite samples with silence. Returns whether any were found.
+/// Replaces non-finite and subnormal samples with silence. Returns whether
+/// any non-finite ones were found.
 fn scrub(left: &mut [f32], right: &mut [f32]) -> bool {
     let mut found = false;
     for sample in left.iter_mut().chain(right.iter_mut()) {
         if !sample.is_finite() {
             *sample = 0.0;
             found = true;
+        } else if sample.is_subnormal() {
+            // Too quiet to hear and slow to compute with (see
+            // `musiccraft_dsp::flush_subnormals`); not a fault.
+            *sample = 0.0;
         }
     }
     found
