@@ -105,7 +105,8 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 ### Plugins
 
 - Plugins are reached only through traits: the engine's `External` (audio
-  thread: notes, parameter changes, `process`, `stop`) and render's
+  thread: notes, parameter changes, a sidechain signal for the first aux
+  input, `process`, `stop`) and render's
   `PluginFactory` / `PluginInstance` (main thread: create, parameters, state,
   window). The bridge keeps one live instance per project plugin instance
   number and installs its processor in one of the engine's fixed external

@@ -58,10 +58,17 @@ and Antiserum follow with the same wrapper and editor adapter.
   the host's beat position; while it is stopped they run on a free clock, as
   in the app.
 - **Convolution reverb.** The impulse is one of the app's generated rooms
-  (`room`, `chamber`, `plate`, `hall`, `cathedral`), chosen in the editor and
-  stored in the state; it is not automatable. A new room is built off the
-  audio thread and handed over through a lock-free queue; the old one is
-  dropped off the audio thread. Loading an impulse file comes later.
+  (`room`, `chamber`, `plate`, `hall`, `cathedral`) or a WAV file, as in the
+  app's mixer. The editor has the room list and a path field with **Load**
+  (Enter also loads); the picker then shows the file's name. The choice is
+  stored in the state (a room name, or the file's path) and is not
+  automatable. A file is read and resampled to the plugin's rate off the
+  audio thread; one that cannot be read keeps the previous impulse and the
+  editor shows why. Loading the same file again re-reads it. A new impulse
+  is built off the audio thread and handed over through a lock-free queue;
+  the old one is dropped off the audio thread. A project that moves to
+  another computer needs the file at the same path; when it is missing the
+  plugin keeps its default room and shows the error.
 - **State.** The host saves nih-plug's parameter map plus a `musiccraft` field
   holding our own versioned JSON:
   `{"format":1,"effect":"<name>","values":{"<param>":value,…},"impulse":"hall"}`.
@@ -108,9 +115,15 @@ and Antiserum follow with the same wrapper and editor adapter.
 - The shared effect editor's edits (drags as one gesture, clicks as single
   sets) are tested headlessly with egui. With an X display (Xvfb), our CLAP
   host opens a plugin's editor in a host window.
-- Our hosts have no sidechain input and send effects no MIDI, so the
-  sidechain and follow switches are tested only as parameters so far
-  (Phase 8 adds hosts that exercise them).
+- Our hosts feed a plugin's first auxiliary input from
+  `External::sidechain` (silence in blocks without a call); the VST3 host
+  activates every audio input bus. Through both hosts, the compressor and the
+  vocoder with `sidechain` on match the mixer's effects keyed by the same
+  signal (and the key changes the sound), and the pitch corrector with
+  `follow` on, sent a note, matches the mixer's corrector following that
+  note.
+- An impulse file is loaded, resampled and handed to the audio thread; an
+  unreadable path keeps the previous impulse and reports an error.
 
 ## Sources
 

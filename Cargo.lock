@@ -1936,6 +1936,7 @@ dependencies = [
  "musiccraft-patch",
  "musiccraft-plugin-editor",
  "musiccraft-render",
+ "musiccraft-samples",
  "musiccraft-vst3",
  "nih_plug",
  "rtrb",

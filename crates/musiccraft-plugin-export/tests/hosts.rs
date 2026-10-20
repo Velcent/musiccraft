@@ -253,3 +253,154 @@ fn the_editor_opens_in_a_host_window() {
     drop(host);
     let _ = std::fs::remove_dir_all(Path::new(&dir));
 }
+
+/// The host id of the parameter whose label mentions `word`.
+fn param_named(live: &LivePlugin, word: &str) -> u32 {
+    let params = live.instance.params();
+    params
+        .iter()
+        .find(|p| p.name.to_lowercase().contains(word))
+        .unwrap_or_else(|| panic!("{word} in {params:?}"))
+        .id
+}
+
+/// A loud, pulsing key: a 110 Hz tone on for half of every 4,800 frames.
+fn key(block: usize) -> (Vec<f32>, Vec<f32>) {
+    (0..BLOCK)
+        .map(|i| {
+            let n = block * BLOCK + i;
+            let t = n as f32 / RATE as f32;
+            let on = (n / 2_400) % 2 == 0;
+            let s = if on {
+                0.9 * (std::f32::consts::TAU * 110.0 * t).sin()
+            } else {
+                0.0
+            };
+            (s, 0.8 * s)
+        })
+        .unzip()
+}
+
+/// Largest differences between the plugin and the effect run directly with
+/// the key, and between the effect with and without the key.
+fn keyed_difference(
+    processor: &mut dyn External,
+    kind: musiccraft_params::EffectKind,
+) -> (f32, f32) {
+    let mut keyed = Effect::new(kind, RATE as f32);
+    let mut unkeyed = Effect::new(kind, RATE as f32);
+    let mut values = kind.defaults();
+    if let Some(i) = kind.sidechain_index() {
+        values[i] = 1.0;
+    }
+    let (mut worst, mut effect_of_key) = (0.0f32, 0.0f32);
+    for block in 0..BLOCKS * 2 {
+        let (mut pl, mut pr) = input(block);
+        let (mut kl, mut kr) = (pl.clone(), pr.clone());
+        let (mut ul, mut ur) = (pl.clone(), pr.clone());
+        let (sl, sr) = key(block);
+        processor.sidechain(&sl, &sr);
+        processor.process(&mut pl, &mut pr, &transport(block));
+        let ctx = ProcessContext {
+            sample_rate: RATE as f32,
+            tempo_bpm: TEMPO,
+            beats: beats(block),
+        };
+        keyed.process_keyed(&mut kl, &mut kr, &values, ctx, Some((&sl, &sr)));
+        unkeyed.process(&mut ul, &mut ur, &values, ctx);
+        for ((a, b), c) in pl
+            .iter()
+            .chain(&pr)
+            .zip(kl.iter().chain(&kr))
+            .zip(ul.iter().chain(&ur))
+        {
+            worst = worst.max((a - b).abs());
+            effect_of_key = effect_of_key.max((b - c).abs());
+        }
+    }
+    (worst, effect_of_key)
+}
+
+/// The compressor and the vocoder hear the host's sidechain input once their
+/// `sidechain` switch is on; the pitch corrector follows the notes the host
+/// sends once `follow` is on. Both match the mixer's effects fed the same key
+/// or note.
+fn sidechain_and_follow(host: &dyn PluginFactory, id_of: impl Fn(&str) -> String) {
+    use musiccraft_params::EffectKind;
+    for kind in [EffectKind::Compressor, EffectKind::Vocoder] {
+        let clap_id = KINDS
+            .iter()
+            .zip(CLAP_IDS)
+            .find(|(k, _)| **k == kind)
+            .map(|(_, id)| id)
+            .unwrap();
+        let mut live = host.instantiate(&request(&id_of(clap_id), None)).unwrap();
+        let switch = param_named(&live, "sidechain");
+        live.processor.set_param(switch, 1.0);
+        let (diff, effect_of_key) = keyed_difference(live.processor.as_mut(), kind);
+        assert!(effect_of_key > 0.01, "{kind}: the key changes the sound");
+        assert!(diff < 1e-4, "{kind} keyed differs by {diff}");
+        live.processor.stop();
+    }
+
+    let kind = EffectKind::PitchCorrect;
+    let mut live = host
+        .instantiate(&request(&id_of("org.musiccraft.pitch_correct"), None))
+        .unwrap();
+    let follow = param_named(&live, "follow");
+    live.processor.set_param(follow, 1.0);
+    live.processor.note_on(0, 64, 1.0, 0.0, None);
+    let mut following = Effect::new(kind, RATE as f32);
+    let mut free = Effect::new(kind, RATE as f32);
+    if let Effect::PitchCorrect(c) = &mut following {
+        c.set_follow(Some(64));
+    }
+    let mut values = kind.defaults();
+    if let Some(i) = kind.channel_ref_index() {
+        values[i] = 1.0;
+    }
+    let (mut worst, mut effect_of_note) = (0.0f32, 0.0f32);
+    for block in 0..BLOCKS * 2 {
+        let (mut pl, mut pr) = input(block);
+        let (mut fl, mut fr) = (pl.clone(), pr.clone());
+        let (mut nl, mut nr) = (pl.clone(), pr.clone());
+        live.processor.process(&mut pl, &mut pr, &transport(block));
+        let ctx = ProcessContext {
+            sample_rate: RATE as f32,
+            tempo_bpm: TEMPO,
+            beats: beats(block),
+        };
+        following.process(&mut fl, &mut fr, &values, ctx);
+        free.process(&mut nl, &mut nr, &values, ctx);
+        for ((a, b), c) in pl
+            .iter()
+            .chain(&pr)
+            .zip(fl.iter().chain(&fr))
+            .zip(nl.iter().chain(&nr))
+        {
+            worst = worst.max((a - b).abs());
+            effect_of_note = effect_of_note.max((b - c).abs());
+        }
+    }
+    assert!(effect_of_note > 0.01, "following a note changes the sound");
+    assert!(worst < 1e-4, "following differs by {worst}");
+    live.processor.stop();
+}
+
+#[test]
+fn sidechain_and_follow_work_through_clap() {
+    let dir = install("clap-keyed");
+    let host = ClapHost::with_folders(vec![dir.clone()]);
+    sidechain_and_follow(&host, str::to_owned);
+    drop(host);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn sidechain_and_follow_work_through_vst3() {
+    let dir = install("vst3-keyed");
+    let host = Vst3Host::with_folders(vec![dir.clone()]);
+    sidechain_and_follow(&host, vst3_id);
+    drop(host);
+    let _ = std::fs::remove_dir_all(dir);
+}

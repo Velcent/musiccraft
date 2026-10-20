@@ -256,6 +256,10 @@ struct Ports {
     buses: Vec<AudioBusBuffers>,
     /// Pointers to the main bus's first two channels (or one, twice).
     main: Option<(*mut f32, *mut f32)>,
+    /// The same for the first auxiliary (sidechain) bus.
+    aux: Option<(*mut f32, *mut f32)>,
+    /// Samples in each buffer.
+    frames: usize,
 }
 
 impl Ports {
@@ -282,16 +286,45 @@ impl Ports {
                 },
             })
             .collect();
-        let main = pointers.first().and_then(|bus| match bus.as_slice() {
+        let pair = |bus: &Vec<*mut f32>| match bus.as_slice() {
             [mono] => Some((*mono, *mono)),
             [l, r, ..] => Some((*l, *r)),
             [] => None,
-        });
+        };
+        let main = pointers.first().and_then(pair);
+        let aux = pointers.get(1).and_then(pair);
         Self {
             _samples: samples,
             _pointers: pointers,
             buses,
             main,
+            aux,
+            frames: frames.max(1),
+        }
+    }
+
+    /// Copies `left` and `right` into the first auxiliary bus, silent past
+    /// their end (both empty: silence). Allocation-free.
+    fn fill_aux(&mut self, left: &[f32], right: &[f32]) {
+        let Some((l, r)) = self.aux else {
+            return;
+        };
+        // SAFETY: the aux buffers hold `frames` samples, are owned by these
+        // buses and only touched on the audio thread, outside `process`.
+        let al = unsafe { std::slice::from_raw_parts_mut(l, self.frames) };
+        for (i, s) in al.iter_mut().enumerate() {
+            let (x, y) = (left.get(i).copied(), right.get(i).copied());
+            *s = match (l == r, x, y) {
+                (true, Some(x), Some(y)) => (x + y) * 0.5,
+                (_, x, _) => x.unwrap_or(0.0),
+            };
+        }
+        if l != r {
+            // SAFETY: as above; a different buffer from `al`.
+            let ar = unsafe { std::slice::from_raw_parts_mut(r, self.frames) };
+            for (i, s) in ar.iter_mut().enumerate() {
+                *s = right.get(i).copied().unwrap_or(0.0);
+            }
         }
     }
 }
@@ -323,6 +356,10 @@ pub(crate) struct Vst3Processor {
     inputs: Ports,
     outputs: Ports,
     max_frames: usize,
+    /// Whether a key signal was given for the next block, and whether the
+    /// aux input still holds one from an earlier block.
+    keyed: bool,
+    aux_dirty: bool,
     in_changes: ComWrapper<ParamChanges>,
     out_changes: ComWrapper<ParamChanges>,
     event_list: ComWrapper<EventList>,
@@ -360,6 +397,8 @@ impl Vst3Processor {
             inputs: Ports::new(inputs, max_frames),
             outputs: Ports::new(outputs, max_frames),
             max_frames,
+            keyed: false,
+            aux_dirty: false,
             in_changes: ComWrapper::new(ParamChanges::new()),
             out_changes: ComWrapper::new(ParamChanges::new()),
             event_list: ComWrapper::new(EventList {
@@ -481,6 +520,11 @@ impl Vst3Processor {
 }
 
 impl External for Vst3Processor {
+    fn sidechain(&mut self, left: &[f32], right: &[f32]) {
+        self.inputs.fill_aux(left, right);
+        self.keyed = true;
+    }
+
     fn note_on(&mut self, delay: u32, key: u8, velocity: f32, _pan: f32, gate: Option<u64>) {
         if self.held.len() >= MAX_HELD || !self.queue_note(delay, key, velocity, true) {
             return;
@@ -556,6 +600,12 @@ impl External for Vst3Processor {
                 }
             }
         }
+
+        if !self.keyed && self.aux_dirty {
+            self.inputs.fill_aux(&[], &[]);
+        }
+        self.aux_dirty = self.keyed;
+        self.keyed = false;
 
         self.event_list
             .events

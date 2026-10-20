@@ -212,7 +212,7 @@ Each oscillator can switch to one of these:
 
 **Release blockers (owner, 2026-10-20).** Every limitation reported while
 building Antiserum and the plugins is fixed before the release ships. Each is
-a `todo` row in `docs/parity.md` (area "Release") until it is done.
+a row in `docs/parity.md` (area "Release"); all ten are done (2026-10-20).
 
 1. Antiserum's sample oscillators play samples in stereo, not summed to mono.
 2. Warps apply to sample, multisample, granular and spectral oscillators where

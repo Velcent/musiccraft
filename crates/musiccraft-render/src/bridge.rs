@@ -959,7 +959,7 @@ impl Bridge {
             Some(name) => Convolver::builtin(name, sr),
             None => {
                 let buffer = self.load(file, warnings);
-                Convolver::new(buffer.left(), buffer.right(), sr)
+                Convolver::from_buffer(&buffer, sr)
             }
         };
         Effect::Convolution(convolver)

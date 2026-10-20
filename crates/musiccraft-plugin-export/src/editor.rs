@@ -36,7 +36,8 @@ pub fn size(params: &EffectParams) -> (u32, u32) {
     let rows = knobs.div_ceil(KNOBS_PER_ROW) as u32;
     let mut extra = 0;
     if kind == EffectKind::Convolution {
-        extra += LINE;
+        // The room, the file path and a line for a load error.
+        extra += 3 * LINE;
     }
     if params.slots.iter().any(|s| is_routing(kind, s.index)) {
         extra += LINE;
@@ -96,13 +97,25 @@ fn draw(
     }
 }
 
-/// The convolution reverb's generated rooms.
+/// What the impulse picker shows for `impulse`: a room's name, or a file's.
+fn impulse_label(impulse: &str) -> String {
+    if IMPULSE_RESPONSES.contains(&impulse) {
+        effect::pretty(impulse)
+    } else {
+        std::path::Path::new(impulse)
+            .file_name()
+            .map_or_else(|| impulse.to_owned(), |n| n.to_string_lossy().into_owned())
+    }
+}
+
+/// The convolution reverb's impulse: a generated room, or a WAV file typed
+/// or pasted as a path.
 fn room_picker(ui: &mut egui::Ui, params: &EffectParams) {
     let current = params.shared.impulse_name();
     ui.horizontal(|ui| {
         ui.label("Impulse");
         egui::ComboBox::from_id_salt("impulse")
-            .selected_text(effect::pretty(&current))
+            .selected_text(impulse_label(&current))
             .show_ui(ui, |ui| {
                 for room in IMPULSE_RESPONSES {
                     if ui
@@ -116,6 +129,32 @@ fn room_picker(ui: &mut egui::Ui, params: &EffectParams) {
             .response
             .hint("Generated rooms, from small to huge");
     });
+    ui.horizontal(|ui| {
+        let id = egui::Id::new("impulse-path");
+        let mut path = ui.data_mut(|d| {
+            d.get_temp_mut_or_insert_with(id, || {
+                if IMPULSE_RESPONSES.contains(&current.as_str()) {
+                    String::new()
+                } else {
+                    current.clone()
+                }
+            })
+            .clone()
+        });
+        let field = ui.add(
+            egui::TextEdit::singleline(&mut path)
+                .hint_text("WAV file path")
+                .desired_width(220.0),
+        );
+        let entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if (ui.button("Load").clicked() || entered) && !path.trim().is_empty() {
+            params.shared.set_impulse(path.trim());
+        }
+        ui.data_mut(|d| d.insert_temp(id, path));
+    });
+    if let Some(error) = params.shared.impulse_error() {
+        ui.colored_label(ui.visuals().error_fg_color, error);
+    }
 }
 
 /// The switches that replace routing: sidechain input, following notes.

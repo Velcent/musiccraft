@@ -60,6 +60,11 @@ pub trait External: Send + fmt::Debug {
     /// plugins ignore it, as the knob is hidden for them.
     fn set_transpose(&mut self, _semitones: f32) {}
 
+    /// The key signal for the next [`External::process`] call, fed to the
+    /// plugin's first auxiliary (sidechain) input. Without a call the aux
+    /// input is silent for that block. Processors with no aux input ignore it.
+    fn sidechain(&mut self, _left: &[f32], _right: &[f32]) {}
+
     /// Takes data sent with [`crate::EngineMessage::ExternalData`] and
     /// returns a box for the main thread to drop: the same box, holding
     /// whatever the data replaced. Processors that take no data return it

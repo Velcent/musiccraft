@@ -37,6 +37,7 @@ serde_json.workspace = true
 musiccraft-clap.workspace = true
 musiccraft-engine.workspace = true
 musiccraft-render.workspace = true
+musiccraft-samples.workspace = true
 musiccraft-vst3.workspace = true
 nih_plug = { workspace = true, features = ["vst3", "assert_process_allocs"] }
 

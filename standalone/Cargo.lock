@@ -1227,6 +1227,7 @@ dependencies = [
  "musiccraft-dsp",
  "musiccraft-params",
  "musiccraft-patch",
+ "musiccraft-paths",
  "musiccraft-samples",
  "musiccraft-wavetables",
 ]
@@ -1250,6 +1251,7 @@ dependencies = [
  "musiccraft-instruments",
  "musiccraft-params",
  "musiccraft-patch",
+ "musiccraft-paths",
  "musiccraft-wavetables",
 ]
 
@@ -1287,6 +1289,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "musiccraft-paths"
+version = "0.2.2"
 
 [[package]]
 name = "musiccraft-plugin-editor"
