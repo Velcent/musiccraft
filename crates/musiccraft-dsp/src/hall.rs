@@ -119,6 +119,7 @@ impl HallReverb {
         }
         self.damp = [0.0; LINES];
         self.low_cut = [0.0; 2];
+        self.phase = 0.0;
     }
 
     /// Processes a block in place.

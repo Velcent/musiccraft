@@ -9,6 +9,7 @@ mod automation;
 mod browser;
 mod channel_rack;
 mod channel_settings;
+mod chrome;
 mod controllers;
 mod dialogs;
 mod effect_window;
@@ -518,6 +519,16 @@ const TYPING_KEYS: [(egui::Key, u8); 29] = {
 };
 /// Key that the first typing-keyboard note (Z) plays: C4.
 const TYPING_BASE: u8 = 48;
+
+/// The colour the user gave a pattern; patterns have none by default.
+pub(crate) fn pattern_color(pattern: &musiccraft_project::Pattern) -> Option<egui::Color32> {
+    pattern.color.map(theme::track_color)
+}
+
+/// Colour of a pattern's name: its own colour, or plain text.
+pub(crate) fn pattern_text(pattern: &musiccraft_project::Pattern) -> egui::Color32 {
+    pattern_color(pattern).unwrap_or(theme::TEXT)
+}
 
 fn typing_note(key: egui::Key, modifiers: egui::Modifiers) -> Option<u8> {
     if modifiers.any() && !modifiers.shift_only() {

@@ -205,7 +205,8 @@ fn patterns_menu(
     menu_item(ui, state, "Previous pattern", "pattern.prev", actions);
     ui.separator();
     for (i, pattern) in project.patterns.iter().enumerate() {
-        let text = RichText::new(format!("{}  {}", i + 1, pattern.name)).color(theme::palette(i));
+        let text = RichText::new(format!("{}  {}", i + 1, pattern.name))
+            .color(crate::pattern_text(pattern));
         if ui
             .selectable_label(i == project.current_pattern, text)
             .clicked()
@@ -313,48 +314,51 @@ fn hint_bar(ui: &mut egui::Ui, state: &UiState, width: f32) {
         });
 }
 
+/// Width the one-band toolbar needs: menus and hints, transport, window buttons.
+const ONE_BAND_WIDTH: f32 = 1300.0;
+/// Width of the menu and hint column in the one-band toolbar.
+const MENU_COLUMN: f32 = 300.0;
+
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    if ui.available_width() >= ONE_BAND_WIDTH {
+        one_band(ui, state, frame, actions);
+    } else {
+        two_bands(ui, state, frame, actions);
+    }
+}
+
+/// Menus over the hint bar at the left, the transport beside them and the
+/// window buttons at the right, in one band (see `docs/spec/window-layout.md`).
+fn one_band(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    egui::Panel::top("toolbar")
+        .frame(
+            egui::Frame::new()
+                .fill(theme::PANEL_DARK)
+                .inner_margin(egui::Margin::symmetric(6, 3)),
+        )
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(MENU_COLUMN);
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    egui::MenuBar::new().ui(ui, |ui| menus(ui, state, frame, actions));
+                    status(ui, state, frame, MENU_COLUMN - 14.0);
+                });
+                ui.add_space(4.0);
+                transport(ui, state, frame, actions);
+                window_buttons(ui, state);
+            });
+        });
+}
+
+fn two_bands(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     egui::Panel::top("menu").show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
-            let menu = |label: &str| RichText::new(label).small().strong();
-            ui.menu_button(menu("FILE"), |ui| file_menu(ui, state, actions));
-            ui.menu_button(menu("EDIT"), |ui| {
-                let undo = match &frame.history.undo {
-                    Some(label) => format!("Undo {label}"),
-                    None => "Undo".to_owned(),
-                };
-                ui.add_enabled_ui(frame.history.undo.is_some(), |ui| {
-                    menu_item(ui, state, &undo, "edit.undo", actions);
-                });
-                ui.add_enabled_ui(frame.history.can_redo, |ui| {
-                    menu_item(ui, state, "Redo", "edit.redo", actions);
-                });
-            });
-            ui.menu_button(menu("ADD"), |ui| add_menu(ui, frame, actions));
-            ui.menu_button(menu("PATTERNS"), |ui| {
-                patterns_menu(ui, state, frame, actions)
-            });
-            ui.menu_button(menu("VIEW"), |ui| view_menu(ui, state, frame, actions));
-            ui.menu_button(menu("OPTIONS"), |ui| {
-                options_menu(ui, state, frame, actions)
-            });
-            ui.menu_button(menu("TOOLS"), |ui| tools_menu(ui, frame, state, actions));
-            ui.menu_button(menu("HELP"), |ui| help_menu(ui, state));
+            menus(ui, state, frame, actions);
             ui.add_space(6.0);
             let width = ui.available_width() - 150.0;
-            if frame.settings.show_hints && width > 80.0 {
-                hint_bar(ui, state, width);
-            } else if width > 80.0 {
-                let color = if state.status.error {
-                    theme::DANGER
-                } else {
-                    theme::TEXT_DIM
-                };
-                ui.add_sized(
-                    [width, 18.0],
-                    egui::Label::new(RichText::new(&state.status.text).small().color(color))
-                        .truncate(),
-                );
+            if width > 80.0 {
+                status(ui, state, frame, width);
             }
             window_buttons(ui, state);
         });
@@ -369,6 +373,50 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
         .show(ui, |ui| {
             ui.horizontal(|ui| transport(ui, state, frame, actions));
         });
+}
+
+/// The hint bar, or the plain status line when hints are off.
+fn status(ui: &mut egui::Ui, state: &UiState, frame: &Frame<'_>, width: f32) {
+    if frame.settings.show_hints {
+        hint_bar(ui, state, width);
+    } else {
+        let color = if state.status.error {
+            theme::DANGER
+        } else {
+            theme::TEXT_DIM
+        };
+        ui.add_sized(
+            [width, 18.0],
+            egui::Label::new(RichText::new(&state.status.text).small().color(color)).truncate(),
+        );
+    }
+}
+
+fn menus(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    let menu = |label: &str| RichText::new(label).small().strong();
+    ui.menu_button(menu("FILE"), |ui| file_menu(ui, state, actions));
+    ui.menu_button(menu("EDIT"), |ui| {
+        let undo = match &frame.history.undo {
+            Some(label) => format!("Undo {label}"),
+            None => "Undo".to_owned(),
+        };
+        ui.add_enabled_ui(frame.history.undo.is_some(), |ui| {
+            menu_item(ui, state, &undo, "edit.undo", actions);
+        });
+        ui.add_enabled_ui(frame.history.can_redo, |ui| {
+            menu_item(ui, state, "Redo", "edit.redo", actions);
+        });
+    });
+    ui.menu_button(menu("ADD"), |ui| add_menu(ui, frame, actions));
+    ui.menu_button(menu("PATTERNS"), |ui| {
+        patterns_menu(ui, state, frame, actions)
+    });
+    ui.menu_button(menu("VIEW"), |ui| view_menu(ui, state, frame, actions));
+    ui.menu_button(menu("OPTIONS"), |ui| {
+        options_menu(ui, state, frame, actions)
+    });
+    ui.menu_button(menu("TOOLS"), |ui| tools_menu(ui, frame, state, actions));
+    ui.menu_button(menu("HELP"), |ui| help_menu(ui, state));
 }
 
 /// Window buttons at the right end of the menu bar.
@@ -546,12 +594,12 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
                 current + 1,
                 project.current_pattern().name
             ))
-            .color(theme::palette(current)),
+            .color(crate::pattern_text(project.current_pattern())),
         )
         .show_ui(ui, |ui| {
             for (i, pattern) in project.patterns.iter().enumerate() {
-                let text =
-                    RichText::new(format!("{}  {}", i + 1, pattern.name)).color(theme::palette(i));
+                let text = RichText::new(format!("{}  {}", i + 1, pattern.name))
+                    .color(crate::pattern_text(pattern));
                 if ui.selectable_label(i == current, text).clicked() {
                     run(actions, &format!("pattern.select {}", i + 1));
                 }

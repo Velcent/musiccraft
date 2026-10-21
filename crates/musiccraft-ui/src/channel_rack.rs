@@ -10,7 +10,8 @@ use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME
 use crate::dialogs::Dialog;
 use crate::{Action, Frame, UiState, theme, widgets};
 
-const STEP_SIZE: egui::Vec2 = egui::Vec2::new(16.0, 22.0);
+const STEP_SIZE: egui::Vec2 = egui::Vec2::new(14.0, 24.0);
+const NAME_WIDTH: f32 = 96.0;
 
 fn run(actions: &mut Vec<Action>, name: &str, args: impl IntoIterator<Item = String>) {
     actions.push(Action::Run(Invocation::new(name, args)));
@@ -26,45 +27,57 @@ pub fn show(
     let project = frame.project;
     let area = state.workspace;
     state.step_layout.clear();
-    let window = egui::Window::new("Channel rack")
-        .id(egui::Id::new("channel-rack"))
-        .open(&mut open)
-        .default_pos(area.left_top() + egui::vec2(150.0, 40.0))
-        .default_width((area.width() - 200.0).clamp(420.0, 760.0))
-        .constrain_to(area)
-        .show(ctx, |ui| {
-            header(ui, state, project, actions);
-            ui.separator();
-            egui::ScrollArea::both()
-                .id_salt("rack-scroll")
-                .auto_shrink([false, true])
-                .max_height(420.0)
-                .show(ui, |ui| {
-                    for (index, channel) in project.channels.iter().enumerate() {
-                        let shown = state
-                            .rack_group
-                            .as_ref()
-                            .is_none_or(|group| *group == channel.group);
-                        if shown {
-                            row(ui, state, project, index, channel, actions);
-                        }
+    let id = egui::Id::new("channel-rack");
+    let folded = crate::chrome::collapsed(ctx, id);
+    let window = open
+        .then(|| {
+            egui::Window::new("Channel rack")
+                .id(id)
+                .title_bar(false)
+                .resizable(!folded)
+                .default_pos(area.left_top() + egui::vec2(150.0, 40.0))
+                .default_width((area.width() - 200.0).clamp(420.0, 560.0))
+                .constrain_to(area)
+                .show(ctx, |ui| {
+                    let folded = crate::chrome::header(ui, id, "Channel rack", &mut open, |ui| {
+                        header(ui, state, project, actions);
+                    });
+                    if folded {
+                        return;
                     }
-                    if project.channels.is_empty() {
-                        ui.label(
-                            RichText::new(
-                                "No channels yet. Add a sound from the browser or below.",
-                            )
-                            .color(theme::TEXT_DIM),
-                        );
+                    ui.separator();
+                    egui::ScrollArea::both()
+                        .id_salt("rack-scroll")
+                        .auto_shrink([false, true])
+                        .max_height(420.0)
+                        .show(ui, |ui| {
+                            for (index, channel) in project.channels.iter().enumerate() {
+                                let shown = state
+                                    .rack_group
+                                    .as_ref()
+                                    .is_none_or(|group| *group == channel.group);
+                                if shown {
+                                    row(ui, state, project, index, channel, actions);
+                                }
+                            }
+                            if project.channels.is_empty() {
+                                ui.label(
+                                    RichText::new(
+                                        "No channels yet. Add a sound from the browser or below.",
+                                    )
+                                    .color(theme::TEXT_DIM),
+                                );
+                            }
+                        });
+                    if state.graph.is_some() {
+                        ui.separator();
+                        graph_editor(ui, state, project, actions);
                     }
-                });
-            if state.graph.is_some() {
-                ui.separator();
-                graph_editor(ui, state, project, actions);
-            }
-            ui.separator();
-            add_menu(ui, frame.plugins, actions);
-        });
+                    ui.separator();
+                    add_menu(ui, frame.plugins, actions);
+                })
+        })
+        .flatten();
     state.windows.channel_rack = open;
     // A stroke whose row was not drawn when the button was let go is dropped.
     if !ctx.input(|i| i.pointer.any_down()) {
@@ -147,6 +160,18 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                 .strong()
                 .color(theme::HIGHLIGHT),
         );
+        ui.label(RichText::new("swing").color(theme::TEXT_DIM))
+            .on_hover_text("Project swing; each channel's swing mix scales it");
+        let mut swing = (project.swing * 100.0).round();
+        let response = ui.add(
+            egui::DragValue::new(&mut swing)
+                .range(0.0..=100.0)
+                .speed(0.5)
+                .suffix("%"),
+        );
+        if response.changed() {
+            run(actions, "project.set_swing", [format!("{swing}")]);
+        }
         ui.label(RichText::new("steps").color(theme::TEXT_DIM));
         let mut steps = pattern.length_steps;
         let response = ui.add(egui::DragValue::new(&mut steps).range(1..=256).speed(0.2));
@@ -166,18 +191,6 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
             .changed()
         {
             state.graph = open.then_some(crate::piano_roll::LaneMode::Velocity);
-        }
-        ui.label(RichText::new("swing").color(theme::TEXT_DIM))
-            .on_hover_text("Project swing; each channel's swing mix scales it");
-        let mut swing = (project.swing * 100.0).round();
-        let response = ui.add(
-            egui::DragValue::new(&mut swing)
-                .range(0.0..=100.0)
-                .speed(0.5)
-                .suffix("%"),
-        );
-        if response.changed() {
-            run(actions, "project.set_swing", [format!("{swing}")]);
         }
     });
 }
@@ -287,26 +300,32 @@ fn row(
         } else {
             theme::RAISED
         })
-        .min_size(vec2(120.0, STEP_SIZE.y));
-        let response = ui.add(name).hint(match &channel.instrument {
-            Instrument::Sampler { sample } => format!("Sampler: {sample}"),
-            Instrument::Synth => "Synth".to_owned(),
-            Instrument::Antiserum { patch } => format!("Antiserum: {}", patch.name),
-            Instrument::DrumSynth => "Drum synth".to_owned(),
-            Instrument::Pluck => "Pluck".to_owned(),
-            Instrument::Fm => "FM synth".to_owned(),
-            Instrument::Keys => "Keys".to_owned(),
-            Instrument::Additive => "Additive synth".to_owned(),
-            Instrument::Granular { sample } => format!("Granular: {sample}"),
-            Instrument::Resynth { sample } => format!("Resynth: {sample}"),
-            Instrument::Kit { .. } => "Drum kit (16 pads)".to_owned(),
-            Instrument::Zones { zones } => format!("Zone sampler ({} zones)", zones.len()),
-            Instrument::Layer { channels } => format!("Layer of {} channels", channels.len()),
-            Instrument::Plugin { plugin } => format!("Plugin: {} ({})", plugin.name, plugin.id),
-            Instrument::MidiOut { midi_channel } => {
-                format!("MIDI Out: external gear on MIDI channel {midi_channel}")
-            }
-        });
+        .truncate();
+        let response =
+            ui.add_sized(vec2(NAME_WIDTH, STEP_SIZE.y), name)
+                .hint(match &channel.instrument {
+                    Instrument::Sampler { sample } => format!("Sampler: {sample}"),
+                    Instrument::Synth => "Synth".to_owned(),
+                    Instrument::Antiserum { patch } => format!("Antiserum: {}", patch.name),
+                    Instrument::DrumSynth => "Drum synth".to_owned(),
+                    Instrument::Pluck => "Pluck".to_owned(),
+                    Instrument::Fm => "FM synth".to_owned(),
+                    Instrument::Keys => "Keys".to_owned(),
+                    Instrument::Additive => "Additive synth".to_owned(),
+                    Instrument::Granular { sample } => format!("Granular: {sample}"),
+                    Instrument::Resynth { sample } => format!("Resynth: {sample}"),
+                    Instrument::Kit { .. } => "Drum kit (16 pads)".to_owned(),
+                    Instrument::Zones { zones } => format!("Zone sampler ({} zones)", zones.len()),
+                    Instrument::Layer { channels } => {
+                        format!("Layer of {} channels", channels.len())
+                    }
+                    Instrument::Plugin { plugin } => {
+                        format!("Plugin: {} ({})", plugin.name, plugin.id)
+                    }
+                    Instrument::MidiOut { midi_channel } => {
+                        format!("MIDI Out: external gear on MIDI channel {midi_channel}")
+                    }
+                });
         if response.clicked() {
             // Clicking the selected channel again closes its settings.
             let reopen = state.selected_channel != index || !state.windows.channel_settings;
@@ -316,15 +335,20 @@ fn row(
         response.context_menu(|ui| context_menu(ui, state, project, index, channel, actions));
 
         steps(ui, state, project, index, channel, actions);
-        // The selection switch at the end of the row.
+        // The selection switch at the end of the row, set apart from the steps.
+        ui.add_space(4.0);
         let (rect, switch) = ui.allocate_exact_size(vec2(8.0, STEP_SIZE.y), egui::Sense::click());
-        let fill = if selected {
-            theme::ACCENT
+        let pill = rect.shrink2(vec2(1.5, 1.0));
+        if selected {
+            ui.painter().rect_filled(pill, 2.0, theme::ACCENT);
         } else {
-            theme::RAISED
-        };
-        ui.painter()
-            .rect_filled(rect.shrink2(vec2(1.0, 2.0)), 2.0, fill);
+            ui.painter().rect_stroke(
+                pill,
+                2.0,
+                egui::Stroke::new(1.0, theme::RAISED_HOVER),
+                egui::StrokeKind::Inside,
+            );
+        }
         if switch.hint("Select this channel").clicked() {
             state.selected_channel = index;
         }
@@ -626,8 +650,8 @@ fn mini_roll(
 }
 
 fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Action>) {
-    ui.horizontal(|ui| {
-        ui.menu_button("+ Add channel", |ui| {
+    ui.vertical_centered(|ui| {
+        ui.menu_button(RichText::new("+").size(16.0), |ui| {
             for name in BUILTIN_SAMPLES {
                 if ui.button(name.replace('_', " ")).clicked() {
                     run(
@@ -680,7 +704,9 @@ fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Actio
                     Invocation::new("channel.add_plugin", [p.id.clone(), p.name.clone()])
                 });
             });
-        });
+        })
+        .response
+        .hint("Add a channel");
     });
 }
 

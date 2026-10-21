@@ -85,6 +85,9 @@ impl Shared {
     }
 }
 
+/// The random state a new (or reset) synth starts from.
+const FIRST_SEED: u32 = 0x2545_f491;
+
 /// The Antiserum synthesizer.
 pub struct Antiserum {
     shared: Shared,
@@ -150,7 +153,7 @@ impl Antiserum {
             stack_len: 0,
             last_pitch: None,
             age: 0,
-            seed: 0x2545_f491,
+            seed: FIRST_SEED,
             rack: Rack::new(sample_rate),
             fx_offsets: Box::new([0.0; FX_PARAMS]),
             fx_values: Box::new([0.0; FX_PARAMS]),
@@ -553,12 +556,15 @@ impl Antiserum {
         }
     }
 
-    /// Silences everything at once (effect tails too) and forgets held keys
-    /// and glide.
+    /// Silences everything at once (effect tails too), forgets held keys and
+    /// glide, and restarts the random state, so the same notes sound as they
+    /// did the first time.
     pub fn reset(&mut self) {
         let _ = self.generator.stop();
         self.stack_len = 0;
         self.last_pitch = None;
+        self.age = 0;
+        self.seed = FIRST_SEED;
         for voice in &mut self.voices {
             voice.kill();
         }

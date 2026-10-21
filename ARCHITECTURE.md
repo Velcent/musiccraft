@@ -176,7 +176,9 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
   hosted plugins match the in-app render; `cargo xtask validate` runs
   clap-validator and the VST3 SDK's validator on the bundles in CI; tests
   check tails and denormal input; a release benchmark gives every plugin a
-  CPU budget.
+  CPU budget. `tools/host-smoke/run.sh` (not in CI) drives REAPER and Ardour
+  headless with the bundles and checks loading, playback, parameters,
+  sidechain routing and save/reopen.
 
 ## Dependencies
 

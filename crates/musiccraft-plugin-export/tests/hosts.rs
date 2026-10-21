@@ -118,6 +118,14 @@ fn check_all(host: &dyn PluginFactory, id_of: impl Fn(&str) -> String) {
             diff < 1e-4,
             "{kind} differs by {diff} from the mixer effect"
         );
+        // After a reset (the host stops and starts processing, as before a
+        // render) the plugin sounds like a new effect again: no tails left.
+        live.processor.stop();
+        let again = difference(live.processor.as_mut(), *kind);
+        assert!(
+            again < 1e-4,
+            "{kind} differs by {again} from a new effect after a reset"
+        );
         live.processor.stop();
     }
 }

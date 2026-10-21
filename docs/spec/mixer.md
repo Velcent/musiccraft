@@ -139,10 +139,11 @@ Ranges and defaults are defined in `musiccraft-params`.
 
 ## Layout
 
-- The mixer window opens across the whole workspace. Each strip shows, top to
-  bottom: number, name, pan and stereo separation knobs, the peak meter beside
-  the fader, the level readout, ON and S buttons, the effect count and the
-  route arrow.
+- The mixer window opens across the whole workspace. Each strip is narrow and
+  shows, top to bottom: number, name (written vertically), the ON switch, the
+  pan knob, the peak meter beside the fader, the stereo separation knob, the
+  level readout in dB, the S button, the effect count and the route arrow
+  (sizes in `window-layout.md`).
 - **Routing**: the arrow under every strip the selected insert may feed shows
   whether it does and toggles it. The selected strip itself shows where it
   goes (`→ M`, `→ 3`, or `→ M, 3, 5`). With the master selected no arrows

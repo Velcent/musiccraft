@@ -142,6 +142,7 @@ of contents; see `docs/clean-room.md`.
 | Windows | Browser | `key:Alt+F8=view.toggle browser` |
 | Options | Settings window: audio device, rate, buffer, MIDI port, scale, folders, project info | `key:F10=ui.settings` `spec:settings.md` |
 | Interface | Hint bar showing what the hovered control does | `done` |
+| Interface | Compact layout: one-band toolbar, tools on each window's title row, narrow mixer strips | `spec:window-layout.md` `done` |
 | Editing | Draw, paint, delete and select tools in the piano roll and playlist | `spec:piano-roll.md` `spec:playlist.md` |
 | Piano roll | Ghost notes of other channels | `spec:piano-roll.md` |
 | Piano roll | Strum, humanize, legato, chop, glue, flip, snap to scale, arpeggiate | `cmd:note.strum` `cmd:note.humanize` `cmd:note.legato` `cmd:note.chop` `cmd:note.glue` `cmd:note.flip` `cmd:note.to_scale` `cmd:note.arpeggiate` |
@@ -207,5 +208,6 @@ of contents; see `docs/clean-room.md`.
 | Validation | Offline renders with our plugins match the in-app render (CLAP and VST3) | `spec:validation.md` `done` |
 | Validation | clap-validator and the VST3 validator pass on both bundles in CI | `spec:validation.md` `done` |
 | Validation | Denormal and CPU-budget checks for every plugin | `spec:validation.md` `done` |
-| Validation | Manual smoke tests in Ardour, Bitwig and REAPER | `todo` |
+| Validation | Smoke tests in REAPER (CLAP, VST3) and Ardour (VST3), scripted in `tools/host-smoke` | `spec:validation.md` `done` |
+| Validation | Smoke test in Bitwig Studio and on Windows and macOS hosts, by hand | `todo` |
 | Release | Plugin bundles for Linux, Windows and macOS in the release downloads, with install notes | `spec:plugin-export.md` `done` |

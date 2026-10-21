@@ -62,6 +62,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             rename,
         ),
         cmd(
+            "pattern.set_color",
+            "pattern.set_color <pattern> <1-16|none>",
+            "Colour a pattern; patterns have no colour until one is set.",
+            set_color,
+        ),
+        cmd(
             "pattern.set_length",
             "pattern.set_length <pattern> <steps>",
             "Set a pattern's length in steps.",
@@ -239,6 +245,31 @@ fn rename(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
     Ok(Outcome::undoable(
         format!("pattern {} renamed to {name}", index + 1),
         Invocation::new(args.name(), [(index + 1).to_string(), previous]),
+    ))
+}
+
+fn set_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = pattern_arg(project, args, 0)?;
+    let color = match args.str(1)? {
+        "none" => None,
+        _ => {
+            let n = args.number(1, "colour")?;
+            if !(1..=16).contains(&n) {
+                return Err(args.invalid("colours are 1 to 16"));
+            }
+            Some(u8::try_from(n - 1).unwrap_or(0))
+        }
+    };
+    let previous = std::mem::replace(&mut project.patterns[index].color, color);
+    let label = |c: Option<u8>| c.map_or_else(|| "none".to_owned(), |c| (c + 1).to_string());
+    let message = format!("pattern {} colour {}", index + 1, label(color));
+    if previous == color {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(args.name(), [(index + 1).to_string(), label(previous)]),
     ))
 }
 

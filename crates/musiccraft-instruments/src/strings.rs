@@ -37,6 +37,24 @@ impl KsString {
         self.last = 0.0;
     }
 
+    /// A placeholder with no delay line, made without allocating; it is only
+    /// ever swapped out again (see `Voice::clear`).
+    pub fn empty() -> Self {
+        Self {
+            line: Vec::new(),
+            write: 0,
+            delay: 100.0,
+            last: 0.0,
+        }
+    }
+
+    /// Returns the string to how `new` made it, keeping its delay line.
+    pub fn reset(&mut self) {
+        self.clear();
+        self.write = 0;
+        self.delay = 100.0;
+    }
+
     /// Silences the string.
     pub fn clear(&mut self) {
         self.line.fill(0.0);

@@ -452,6 +452,56 @@ mod tests {
     use super::*;
     use musiccraft_params::EFFECT_KINDS;
 
+    /// After `reset` an effect sounds exactly like a new one: no tails, LFO
+    /// phases or other state left from what it processed before. Hosts reset
+    /// plugins before a render, so this is what makes renders repeatable.
+    #[test]
+    fn reset_makes_every_effect_as_good_as_new() {
+        let ctx = ProcessContext {
+            beats: 0.0,
+            sample_rate: 48_000.0,
+            tempo_bpm: 120.0,
+        };
+        let input = |seed: u32| -> (Vec<f32>, Vec<f32>) {
+            let mut s = seed;
+            (0..9_600)
+                .map(|_| {
+                    s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    let v = ((s >> 8) as f32 / (1 << 24) as f32 - 0.5) * 0.8;
+                    (v, -v * 0.7)
+                })
+                .unzip()
+        };
+        let run = |fx: &mut Effect, seed: u32| {
+            let (mut l, mut r) = input(seed);
+            for (l, r) in l.chunks_mut(256).zip(r.chunks_mut(256)) {
+                fx.process(l, r, &fx.kind().defaults(), ctx);
+            }
+            (l, r)
+        };
+        let mut stale = Vec::new();
+        for kind in EFFECT_KINDS {
+            let mut used = Effect::new(kind, ctx.sample_rate);
+            let _ = run(&mut used, 1);
+            used.reset();
+            let mut fresh = Effect::new(kind, ctx.sample_rate);
+            let (a, b) = (run(&mut used, 2), run(&mut fresh, 2));
+            let worst =
+                a.0.iter()
+                    .chain(&a.1)
+                    .zip(b.0.iter().chain(&b.1))
+                    .fold(0.0_f32, |w, (x, y)| w.max((x - y).abs()));
+            if worst > 1e-6 {
+                stale.push(format!("{kind} ({worst})"));
+            }
+        }
+        assert!(
+            stale.is_empty(),
+            "not as new after reset: {}",
+            stale.join(", ")
+        );
+    }
+
     #[test]
     fn every_effect_is_finite_with_default_params() {
         let ctx = ProcessContext {

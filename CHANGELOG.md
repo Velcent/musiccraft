@@ -3,7 +3,50 @@
 Notable changes per release. GitHub's generated release notes list every
 commit; this file says what they add up to.
 
-## Unreleased (since 0.2.2)
+## Unreleased (since 0.3.0)
+
+### A more compact interface
+
+- The toolbar is one band in a wide window: menus over the hint bar, then
+  the transport, then the window buttons.
+- The channel rack, piano roll and mixer put their tools on the title row.
+- Mixer strips are half as wide, with names written vertically, so twice as
+  many inserts fit.
+- Taller step buttons, shaded more clearly by beat; a narrower browser,
+  taller playlist tracks and a taller piano roll event lane.
+
+### Pattern colours
+
+- Patterns have no colour until you set one (right-click a pattern →
+  Colour, or `pattern.set_color`). Uncoloured clips are drawn neutral, and
+  the notes inside every pattern clip show their own colours, as in the
+  piano roll, so one pattern can show several.
+- The playlist's picker shows each pattern as a miniature of its notes (and
+  any automation recorded into it), so patterns with default names are easy
+  to tell apart. In previews, a
+  step-sequenced pattern (every note on one key, as drums usually are) gets
+  one row per channel.
+
+### Fixes
+
+- Rendering a project twice in a DAW gives the same audio. A host reset,
+  which DAWs do before a render, now makes every plugin as good as new:
+  - Antiserum stops its voices and effect tails at once, where it used to
+    only release them, and restarts its random phases.
+  - The built-in instruments return each voice to new; the drum synth's
+    noise used to differ on every render.
+  - The chorus, flanger, pitch shifter and hall reverb restart their LFO and
+    sweep phases.
+
+### Checked in other DAWs
+
+- `tools/host-smoke/run.sh` drives REAPER (CLAP and VST3) and Ardour (VST3)
+  headless. It loads all 112 plugins, plays and renders, sets parameters
+  from the host, opens editors, routes a sidechain, and saves and reopens.
+  Results are in `docs/smoke-tests.md`: every check passes in REAPER 7.82
+  and Ardour 8.4.
+
+## 0.3.0 (2026-10-20)
 
 ### Antiserum, the built-in wavetable synth
 
@@ -56,5 +99,5 @@ commit; this file says what they add up to.
 
 - Builds and plugins are not code-signed or notarized (see
   `docs/releasing.md`).
-- The plugins have not yet been tried by hand in Ardour, Bitwig or REAPER
-  (`docs/smoke-tests.md`).
+- The plugins had not yet been tried in Ardour, Bitwig or REAPER
+  (`docs/smoke-tests.md`); REAPER and Ardour have been since.

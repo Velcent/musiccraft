@@ -18,7 +18,7 @@ use crate::{Action, Frame, UiState, theme};
 const KEYS_WIDTH: f32 = 52.0;
 const RULER_HEIGHT: f32 = 18.0;
 /// Height of the velocity lane pinned to the bottom of the view.
-const LANE_HEIGHT: f32 = 64.0;
+const LANE_HEIGHT: f32 = 96.0;
 const KEYS: u32 = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -365,24 +365,41 @@ pub fn show(
         None => "Piano roll".to_owned(),
     };
     let area = state.workspace;
-    let window = egui::Window::new(title)
-        .id(egui::Id::new("piano-roll"))
-        .open(&mut open)
-        .default_pos(area.left_top() + egui::vec2(40.0, 60.0))
-        .default_size([
-            (area.width() - 80.0).max(480.0),
-            (area.height() - 120.0).max(300.0),
-        ])
-        .constrain_to(area)
-        .show(ctx, |ui| {
-            if project.channels.is_empty() {
-                ui.label(RichText::new("Add a channel to write notes.").color(theme::TEXT_DIM));
-                return;
-            }
-            toolbar(ui, state, project, actions);
-            ui.separator();
-            canvas(ui, state, frame, actions);
-        });
+    let id = egui::Id::new("piano-roll");
+    let folded = crate::chrome::collapsed(ctx, id);
+    let window = open
+        .then(|| {
+            egui::Window::new("Piano roll")
+                .id(id)
+                .title_bar(false)
+                .resizable(!folded)
+                .default_pos(area.left_top() + egui::vec2(40.0, 60.0))
+                .default_size([
+                    (area.width() - 80.0).max(480.0),
+                    (area.height() - 120.0).max(300.0),
+                ])
+                .constrain_to(area)
+                .show(ctx, |ui| {
+                    let empty = project.channels.is_empty();
+                    let folded = crate::chrome::header(ui, id, &title, &mut open, |ui| {
+                        if !empty {
+                            toolbar(ui, state, project, actions);
+                        }
+                    });
+                    if folded {
+                        return;
+                    }
+                    if empty {
+                        ui.label(
+                            RichText::new("Add a channel to write notes.").color(theme::TEXT_DIM),
+                        );
+                        return;
+                    }
+                    ui.separator();
+                    canvas(ui, state, frame, actions);
+                })
+        })
+        .flatten();
     state.windows.piano_roll = open;
     let hovered = window.is_some_and(|w| {
         ctx.pointer_hover_pos()
@@ -453,6 +470,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
         } else {
             format!("Colour {}", state.roll.color + 1)
         };
+        crate::chrome::fit(ui, 130.0);
         egui::ComboBox::from_id_salt("roll-color")
             .width(96.0)
             .selected_text(label)
@@ -466,6 +484,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             .response
             .hint("Colour group of new notes (also their MIDI channel for plugins)");
         ui.add_space(4.0);
+        crate::chrome::fit(ui, 164.0);
         egui::ComboBox::from_id_salt("roll-channel")
             .width(130.0)
             .selected_text(
@@ -479,6 +498,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                     ui.selectable_value(&mut state.selected_channel, i, &c.name);
                 }
             });
+        crate::chrome::fit(ui, 150.0);
         ui.label("Snap");
         egui::ComboBox::from_id_salt("roll-snap")
             .width(80.0)
@@ -488,6 +508,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
                     ui.selectable_value(&mut state.roll.snap, snap, snap.label());
                 }
             });
+        crate::chrome::fit(ui, 104.0);
         egui::ComboBox::from_id_salt("roll-chord")
             .width(70.0)
             .selected_text(state.roll.chord.unwrap_or("Note"))
@@ -507,6 +528,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             ),
             None => "No scale".to_owned(),
         };
+        crate::chrome::fit(ui, 154.0);
         egui::ComboBox::from_id_salt("roll-scale")
             .width(120.0)
             .selected_text(scale_label)

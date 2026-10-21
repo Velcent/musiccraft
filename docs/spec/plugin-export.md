@@ -53,6 +53,11 @@ and Antiserum follow with the same wrapper and editor adapter.
   automation) and at most 512 frames long. Parameters are read once per
   sub-block, as the app's engine does once per block. Nothing allocates,
   locks or does I/O on the audio thread.
+- **Reset.** When the host resets a plugin (processing starts again, for
+  example before a render), the effect is as good as new: delay lines,
+  reverb tails, LFO and sweep phases all start over. Rendering a project
+  twice gives the same audio. A test checks every effect against a new one
+  after a reset, directly and through both hosts.
 - **Transport.** Tempo comes from the host (120 BPM when it gives none). While
   the host plays, synced effects (delay, gate, auto-pan, stutter, …) follow
   the host's beat position; while it is stopped they run on a free clock, as

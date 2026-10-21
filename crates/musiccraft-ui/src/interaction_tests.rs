@@ -460,8 +460,8 @@ fn velocity_lane_drag_is_one_undo_step() {
     h.settle();
     let (grid, clip) = h.state.roll.last_view.unwrap();
     let x = grid.x(10.0);
-    let from = pos2(x, clip.bottom() - 30.0);
-    let to = pos2(x, clip.bottom() - 60.0);
+    let from = pos2(x, clip.bottom() - 45.0);
+    let to = pos2(x, clip.bottom() - 90.0);
     let commands = h.drag(from, to);
     assert!(!commands.is_empty());
     assert!(
@@ -898,12 +898,17 @@ fn missing_plugins_explain_themselves_instead_of_showing_knobs() {
 fn hints_show_in_the_bar_and_settings_open_from_f10() {
     let mut h = Harness::new(&[]);
     h.settle();
-    // Hover the play button: its hint reaches the hint bar next frame.
-    let play = pos2(130.0, 52.0);
-    h.frame(vec![Event::PointerMoved(play)]);
-    h.frame(vec![]);
-    let hint = h.state.hint.clone().unwrap_or_default();
-    assert!(hint.contains("Play"), "hint bar shows {hint:?}");
+    // Hover along the toolbar until the play button's hint reaches the hint
+    // bar (it shows the next frame).
+    let found = (0..90).map(|i| pos2(8.0 + 8.0 * i as f32, 20.0)).any(|p| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state
+            .hint
+            .as_deref()
+            .is_some_and(|hint| hint.contains("Play"))
+    });
+    assert!(found, "no play hint along the toolbar");
     h.frame(vec![Event::Key {
         key: egui::Key::F10,
         physical_key: None,
@@ -1271,6 +1276,49 @@ fn alt_dragging_a_segment_bends_it_in_one_step() {
     let point = h.session.project().automations[0].points[0];
     assert!(point.tension > 0.3, "bent down: {}", point.tension);
     assert_eq!(h.session.undo_depth(), depth + 1);
+}
+
+#[test]
+fn pattern_miniatures_in_the_picker_select_the_pattern_to_paint() {
+    let mut h = Harness::new(&[
+        "channel.add_sampler builtin:kick",
+        "step.toggle 1 1",
+        "pattern.add",
+        "pattern.select 1",
+    ]);
+    h.state.windows.playlist = true;
+    h.state.playlist.paint_audio = Some(h.session.project().channels[0].id);
+    h.settle();
+    let items = h.state.playlist.picker_items.clone();
+    assert_eq!(items.len(), 2, "one miniature per pattern: {items:?}");
+    assert!(items[0].height() >= 30.0 && items[1].top() > items[0].bottom());
+    // Clicking the second pattern's miniature selects it and paints patterns
+    // again instead of audio.
+    let commands = h.click(items[1].center(), PointerButton::Primary);
+    assert_eq!(commands, ["pattern.select 2"]);
+    assert_eq!(h.state.playlist.paint_audio, None);
+    // Clicking the selected one again changes nothing in the project.
+    let items = h.state.playlist.picker_items.clone();
+    assert!(
+        h.click(items[1].center(), PointerButton::Primary)
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_long_pattern_list_scrolls_without_covering_the_miniatures() {
+    // Nine patterns are taller than the list, so it shows a scroll bar.
+    let mut setup = vec!["channel.add_sampler builtin:kick"];
+    setup.extend(["pattern.add"; 8]);
+    setup.push("pattern.select 1");
+    let mut h = Harness::new(&setup);
+    h.state.windows.playlist = true;
+    h.settle();
+    let items = h.state.playlist.picker_items.clone();
+    assert_eq!(items.len(), 9);
+    // The right edge of a miniature still selects its pattern.
+    let edge = pos2(items[2].right() - 2.0, items[2].center().y);
+    assert_eq!(h.click(edge, PointerButton::Primary), ["pattern.select 3"]);
 }
 
 #[test]

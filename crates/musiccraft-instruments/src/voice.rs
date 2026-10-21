@@ -220,6 +220,24 @@ pub struct Voice {
 
 impl Voice {
     pub fn new(sample_rate: f32) -> Self {
+        Self::with_strings(sample_rate, std::array::from_fn(|_| KsString::new()))
+    }
+
+    /// Returns the voice to how [`Voice::new`] made it (silent, noise and
+    /// filters back to their start) but keeps its string buffers, so a host
+    /// reset on the audio thread allocates nothing.
+    pub fn clear(&mut self) {
+        let mut strings = std::mem::replace(
+            &mut self.strings,
+            std::array::from_fn(|_| KsString::empty()),
+        );
+        for string in &mut strings {
+            string.reset();
+        }
+        *self = Self::with_strings(self.sample_rate, strings);
+    }
+
+    fn with_strings(sample_rate: f32, strings: [KsString; MAX_STRINGS]) -> Self {
         Self {
             active: false,
             live: false,
@@ -249,7 +267,7 @@ impl Voice {
             elapsed: 0,
             drum_phase: 0.0,
             noise: 0x9E37_79B9,
-            strings: std::array::from_fn(|_| KsString::new()),
+            strings,
             bow_noise: 0.0,
             resyn_levels: [0.0; PARTIALS],
             string_peak: 0.0,
