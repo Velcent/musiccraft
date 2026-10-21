@@ -21,8 +21,9 @@ commit; this file says what they add up to.
   Colour, or `pattern.set_color`). Uncoloured clips are drawn neutral, and
   the notes inside every pattern clip show their own colours, as in the
   piano roll, so one pattern can show several.
-- The playlist's picker shows each pattern as a miniature of its notes, so
-  patterns with default names are easy to tell apart. In previews, a
+- The playlist's picker shows each pattern as a miniature of its notes (and
+  any automation recorded into it), so patterns with default names are easy
+  to tell apart. In previews, a
   step-sequenced pattern (every note on one key, as drums usually are) gets
   one row per channel.
 

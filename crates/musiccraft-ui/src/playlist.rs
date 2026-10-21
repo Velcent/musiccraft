@@ -306,98 +306,105 @@ fn pattern_section(
                 .strong()
                 .color(theme::TEXT_DIM),
         );
-        egui::ScrollArea::vertical()
-            .id_salt("pattern-list")
-            .max_height(260.0)
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 3.0;
-                for (i, pattern) in project.patterns.iter().enumerate() {
-                    let selected = i == project.current_pattern;
-                    let painting = state.playlist.paint_automation.is_none()
-                        && state.playlist.paint_audio.is_none();
-                    let response = miniature(ui, project, pattern, selected && painting)
-                        .hint("Click to paint this pattern; right-click for options");
-                    state.playlist.picker_items.push(response.rect);
-                    if response.clicked() {
-                        state.playlist.paint_automation = None;
-                        state.playlist.paint_audio = None;
-                        if !selected {
-                            actions.push(Action::Run(Invocation::new(
-                                "pattern.select",
-                                [(i + 1).to_string()],
-                            )));
-                        }
-                    }
-                    response.context_menu(|ui| {
-                        if ui.button("Rename…").clicked() {
-                            state.open_dialog(Dialog::rename_pattern(i, &pattern.name));
-                            ui.close();
-                        }
-                        if ui.button("Clone").clicked() {
-                            actions.push(Action::Run(Invocation::new(
-                                "pattern.clone",
-                                [(i + 1).to_string()],
-                            )));
-                            ui.close();
-                        }
-                        ui.menu_button("Colour", |ui| {
-                            let mut pick = |ui: &mut egui::Ui, text: RichText, arg: String| {
-                                if ui.button(text).clicked() {
-                                    actions.push(Action::Run(Invocation::new(
-                                        "pattern.set_color",
-                                        [(i + 1).to_string(), arg],
-                                    )));
-                                    ui.close();
-                                }
-                            };
-                            pick(ui, RichText::new("None"), "none".to_owned());
-                            for c in 0..16u8 {
-                                let text = RichText::new(format!("■ Colour {}", c + 1))
-                                    .color(theme::track_color(c));
-                                pick(ui, text, (c + 1).to_string());
-                            }
-                        });
-                        let sig = pattern.time_signature;
-                        ui.menu_button(format!("Time signature ({sig})…"), |ui| {
-                            if let Some(new) =
-                                signature::picker(ui, Some(sig), &mut state.sig_draft)
-                            {
+        // A solid scroll bar takes its own strip: a floating one would lie
+        // over the right edge of the miniatures and catch their clicks.
+        ui.scope(|ui| {
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+            egui::ScrollArea::vertical()
+                .id_salt("pattern-list")
+                .max_height(260.0)
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 3.0;
+                    for (i, pattern) in project.patterns.iter().enumerate() {
+                        let selected = i == project.current_pattern;
+                        let painting = state.playlist.paint_automation.is_none()
+                            && state.playlist.paint_audio.is_none();
+                        let response = miniature(ui, project, pattern, selected && painting)
+                            .hint("Click to paint this pattern; right-click for options");
+                        state.playlist.picker_items.push(response.rect);
+                        if response.clicked() {
+                            state.playlist.paint_automation = None;
+                            state.playlist.paint_audio = None;
+                            if !selected {
                                 actions.push(Action::Run(Invocation::new(
-                                    "pattern.set_time_signature",
-                                    [(i + 1).to_string(), new.to_string()],
+                                    "pattern.select",
+                                    [(i + 1).to_string()],
                                 )));
                             }
-                        });
-                        if !pattern.automation.is_empty()
-                            && ui
-                                .button(format!(
-                                    "Clear automation ({} lanes)",
-                                    pattern.automation.len()
-                                ))
-                                .on_hover_text("Remove the knob moves recorded into this pattern")
-                                .clicked()
-                        {
-                            actions.push(Action::Run(Invocation::new(
-                                "pattern.clear_events",
-                                [(i + 1).to_string()],
-                            )));
-                            ui.close();
                         }
-                        ui.add_enabled_ui(project.patterns.len() > 1, |ui| {
-                            if ui
-                                .button(RichText::new("Delete").color(theme::DANGER))
-                                .clicked()
-                            {
+                        response.context_menu(|ui| {
+                            if ui.button("Rename…").clicked() {
+                                state.open_dialog(Dialog::rename_pattern(i, &pattern.name));
+                                ui.close();
+                            }
+                            if ui.button("Clone").clicked() {
                                 actions.push(Action::Run(Invocation::new(
-                                    "pattern.remove",
+                                    "pattern.clone",
                                     [(i + 1).to_string()],
                                 )));
                                 ui.close();
                             }
+                            ui.menu_button("Colour", |ui| {
+                                let mut pick = |ui: &mut egui::Ui, text: RichText, arg: String| {
+                                    if ui.button(text).clicked() {
+                                        actions.push(Action::Run(Invocation::new(
+                                            "pattern.set_color",
+                                            [(i + 1).to_string(), arg],
+                                        )));
+                                        ui.close();
+                                    }
+                                };
+                                pick(ui, RichText::new("None"), "none".to_owned());
+                                for c in 0..16u8 {
+                                    let text = RichText::new(format!("■ Colour {}", c + 1))
+                                        .color(theme::track_color(c));
+                                    pick(ui, text, (c + 1).to_string());
+                                }
+                            });
+                            let sig = pattern.time_signature;
+                            ui.menu_button(format!("Time signature ({sig})…"), |ui| {
+                                if let Some(new) =
+                                    signature::picker(ui, Some(sig), &mut state.sig_draft)
+                                {
+                                    actions.push(Action::Run(Invocation::new(
+                                        "pattern.set_time_signature",
+                                        [(i + 1).to_string(), new.to_string()],
+                                    )));
+                                }
+                            });
+                            if !pattern.automation.is_empty()
+                                && ui
+                                    .button(format!(
+                                        "Clear automation ({} lanes)",
+                                        pattern.automation.len()
+                                    ))
+                                    .on_hover_text(
+                                        "Remove the knob moves recorded into this pattern",
+                                    )
+                                    .clicked()
+                            {
+                                actions.push(Action::Run(Invocation::new(
+                                    "pattern.clear_events",
+                                    [(i + 1).to_string()],
+                                )));
+                                ui.close();
+                            }
+                            ui.add_enabled_ui(project.patterns.len() > 1, |ui| {
+                                if ui
+                                    .button(RichText::new("Delete").color(theme::DANGER))
+                                    .clicked()
+                                {
+                                    actions.push(Action::Run(Invocation::new(
+                                        "pattern.remove",
+                                        [(i + 1).to_string()],
+                                    )));
+                                    ui.close();
+                                }
+                            });
                         });
-                    });
-                }
-            });
+                    }
+                });
+        });
         if ui.button("+ New pattern").clicked() {
             state.playlist.paint_automation = None;
             state.playlist.paint_audio = None;
@@ -444,7 +451,7 @@ fn miniature(
         pos2(rect.left() + 3.0, title.bottom() + 2.0),
         pos2(rect.right() - 3.0, rect.bottom() - 2.0),
     );
-    if pattern.notes.is_empty() {
+    if pattern.notes.is_empty() && pattern.automation.is_empty() {
         painter.text(
             body.center(),
             Align2::CENTER_CENTER,
@@ -453,6 +460,7 @@ fn miniature(
             theme::TEXT_DIM,
         );
     } else {
+        lane_thumbnail(&painter, pattern, body);
         pattern_thumbnail(&painter, project, pattern, body);
     }
     let edge = if selected {
@@ -959,6 +967,36 @@ fn pattern_preview(
             note_mark(painter, x0, x1, y, note_tint(project, note));
         }
         offset += period;
+    }
+}
+
+/// The automation recorded into `pattern`, as faint curves under its notes.
+fn lane_thumbnail(painter: &egui::Painter, pattern: &musiccraft_project::Pattern, body: Rect) {
+    let length = pattern.length_ticks().max(1) as f32;
+    let color = theme::AUTOMATION.gamma_multiply(0.6);
+    for lane in &pattern.automation {
+        let points: Vec<Pos2> = lane
+            .points
+            .iter()
+            .map(|p| {
+                pos2(
+                    body.left() + (p.tick as f32 / length).min(1.0) * body.width(),
+                    body.bottom() - p.value.clamp(0.0, 1.0) * body.height(),
+                )
+            })
+            .collect();
+        match points[..] {
+            [] => {}
+            [only] => {
+                painter.line_segment(
+                    [pos2(body.left(), only.y), pos2(body.right(), only.y)],
+                    Stroke::new(1.0, color),
+                );
+            }
+            _ => {
+                painter.add(egui::Shape::line(points, Stroke::new(1.0, color)));
+            }
+        }
     }
 }
 
@@ -2243,5 +2281,69 @@ mod tests {
             "playlist.resize_clip 1 384t 1152t"
         );
         assert!(finish(&drag(DragKind::Move, 0, 384, 384)).is_none());
+    }
+
+    #[test]
+    fn previews_place_notes_by_key_or_by_channel_row() {
+        let mut s = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "channel.add_sampler builtin:kick",
+            "channel.add_sampler builtin:hat",
+            "channel.add_synth",
+            // Pattern 1: steps, hat entered before kick.
+            "step.toggle 2 1",
+            "step.toggle 1 1",
+            "step.toggle 2 5",
+            // Pattern 2: a melody on two keys.
+            "pattern.add",
+            "note.add 3 0 4 C4 100",
+            "note.add 3 4 4 C5 100",
+            // Pattern 3: steps of one channel.
+            "pattern.add",
+            "step.toggle 1 1",
+            "step.toggle 1 9",
+        ] {
+            s.run_line(line).unwrap_or_else(|e| panic!("{line}: {e}"));
+        }
+        let project = s.project();
+        let body = Rect::from_min_size(pos2(0.0, 0.0), vec2(100.0, 20.0));
+        let ys = |pattern: &musiccraft_project::Pattern| -> Vec<(usize, f32)> {
+            let rows = NoteRows::of(project, pattern);
+            pattern
+                .notes
+                .iter()
+                .map(|n| {
+                    let channel = project.channel_position(n.channel).unwrap_or(99);
+                    (channel, rows.y(project, n, body))
+                })
+                .collect()
+        };
+
+        // Drums: one row per channel, in rack order whatever the note order.
+        let steps = &project.patterns[0];
+        assert!(matches!(NoteRows::of(project, steps), NoteRows::Channels(ref r) if r == &[0, 1]));
+        for (channel, y) in ys(steps) {
+            let want = if channel == 0 { 5.0 } else { 15.0 };
+            assert!((y - want).abs() < 1e-4, "channel {channel} at {y}");
+        }
+        // A melody: by key, the lowest at the bottom.
+        let melody = &project.patterns[1];
+        let mut by_key: Vec<(u8, f32)> = melody
+            .notes
+            .iter()
+            .map(|n| (n.key, NoteRows::of(project, melody).y(project, n, body)))
+            .collect();
+        by_key.sort_by_key(|(key, _)| *key);
+        assert_eq!(
+            by_key.iter().map(|(_, y)| *y).collect::<Vec<_>>(),
+            [19.0, 1.0]
+        );
+        // One channel on one key: a single centre line.
+        let single = &project.patterns[2];
+        assert!(matches!(NoteRows::of(project, single), NoteRows::Single));
+        assert!(ys(single).iter().all(|(_, y)| (*y - 10.0).abs() < 1e-4));
     }
 }

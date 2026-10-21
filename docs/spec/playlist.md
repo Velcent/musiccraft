@@ -205,11 +205,13 @@
   deletes. The pattern list next to the playlist selects the pattern to paint.
 - **Pattern miniatures**: the picker shows each pattern as a small clip, so
   patterns are told apart by their content even when they keep their default
-  names. A miniature is the width of the picker and 34 points tall: the name
-  in a title strip, then one pass of the pattern's notes laid out as in a
-  clip preview (above), on the pattern's colour or the neutral fill. An empty
-  pattern says "empty". The pattern being painted is outlined in the accent
-  colour. Click selects it for painting; right-click opens the pattern menu
+  names. A miniature is the width of the picker (less the scroll bar, which
+  takes its own strip when the list scrolls, so it never covers a miniature)
+  and 34 points tall: the name in a title strip, then one pass of the
+  pattern's notes laid out as in a clip preview (above), on the pattern's
+  colour or the neutral fill. Automation recorded into the pattern shows as
+  faint curves under the notes. A pattern with neither notes nor automation
+  says "empty". The pattern being painted is outlined in the accent colour. Click selects it for painting; right-click opens the pattern menu
   (rename, clone, colour, time signature, clear automation, delete).
 - The playlist is the main workspace. Click or drag on the ruler to move the
   playhead; during song playback the view follows the playhead.

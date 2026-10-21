@@ -1306,6 +1306,22 @@ fn pattern_miniatures_in_the_picker_select_the_pattern_to_paint() {
 }
 
 #[test]
+fn a_long_pattern_list_scrolls_without_covering_the_miniatures() {
+    // Nine patterns are taller than the list, so it shows a scroll bar.
+    let mut setup = vec!["channel.add_sampler builtin:kick"];
+    setup.extend(["pattern.add"; 8]);
+    setup.push("pattern.select 1");
+    let mut h = Harness::new(&setup);
+    h.state.windows.playlist = true;
+    h.settle();
+    let items = h.state.playlist.picker_items.clone();
+    assert_eq!(items.len(), 9);
+    // The right edge of a miniature still selects its pattern.
+    let edge = pos2(items[2].right() - 2.0, items[2].center().y);
+    assert_eq!(h.click(edge, PointerButton::Primary), ["pattern.select 3"]);
+}
+
+#[test]
 fn the_picker_paints_audio_clips_at_their_length() {
     let mut h = Harness::new(&[
         "channel.add_sampler builtin:kick",
