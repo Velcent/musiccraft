@@ -1610,3 +1610,26 @@ fn dragging_the_piano_roll_ruler_selects_a_time_range() {
     h.settle();
     assert_eq!(h.state.roll.time_selection, None);
 }
+
+#[test]
+fn ctrl_clicking_a_key_selects_its_notes() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 1 60",
+        "note.add 1 4 1 60",
+        "note.add 1 8 1 64",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    let (_, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let key = pos2(clip.left() + 40.0, h.roll_point(0, 60).y);
+    h.modifiers = Modifiers::COMMAND;
+    let ran = h.click(key, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    assert!(ran.is_empty(), "{ran:?}");
+    let selected: Vec<_> = h.state.roll.selection.iter().copied().collect();
+    assert_eq!(selected, [(0, 60), (4 * step, 60)]);
+    assert!(h.state.roll.preview.is_none(), "no note was left sounding");
+}

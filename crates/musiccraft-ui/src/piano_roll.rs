@@ -105,7 +105,7 @@ pub struct RollState {
     last_length: u32,
     velocity: u8,
     drag: Option<NoteDrag>,
-    preview: Option<(usize, u8)>,
+    pub(crate) preview: Option<(usize, u8)>,
     /// Channel the view was last centred for.
     centred_for: Option<usize>,
     /// Grid and visible area from the last frame (used by tests and tools).
@@ -1022,7 +1022,19 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 Stroke::NONE,
             ));
         }
-        velocity_lane(ui, state, &grid, clip, &notes, channel_index, actions);
+        let ghosts: Vec<&Note> = pattern
+            .notes
+            .iter()
+            .filter(|n| n.channel != channel.id)
+            .collect();
+        velocity_lane(
+            ui,
+            state,
+            (&grid, clip),
+            (&notes, &ghosts),
+            channel_index,
+            actions,
+        );
         if response.hovered() {
             let zoom = ui.input(|i| i.zoom_delta());
             if zoom != 1.0 {
@@ -1030,7 +1042,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     (state.roll.px_per_step * zoom).clamp(STEP_WIDTH_RANGE.0, STEP_WIDTH_RANGE.1);
             }
         }
-        keyboard(ui, state, &grid, clip, channel_index, actions);
+        keyboard(ui, state, (&grid, clip), &notes, channel_index, actions);
     });
     state.roll.offset = output.state.offset;
     let notes: Vec<&Note> = pattern.notes_of(channel.id).collect();
@@ -2424,8 +2436,8 @@ impl LaneMode {
             Self::Pan => "Pan",
             Self::Release => "Release",
             Self::Fine => "Fine pitch",
-            Self::ModX => "Mod X",
-            Self::ModY => "Mod Y",
+            Self::ModX => "Mod A",
+            Self::ModY => "Mod B",
         }
     }
 
@@ -2510,9 +2522,8 @@ pub(crate) fn pattern_position(project: &Project, position: f64) -> Option<u32> 
 fn velocity_lane(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    grid: &Grid,
-    clip: Rect,
-    notes: &[&Note],
+    (grid, clip): (&Grid, Rect),
+    (notes, ghosts): (&[&Note], &[&Note]),
     channel: usize,
     actions: &mut Vec<Action>,
 ) {
@@ -2525,9 +2536,18 @@ fn velocity_lane(
     let strip = Rect::from_min_max(pos2(clip.left(), lane.top()), lane.right_bottom());
     let painter = ui.painter_at(strip);
     painter.rect_filled(strip, 0.0, theme::PANEL_DARK);
+    lane_grid(&painter, grid, lane, &state.roll.meter);
     painter.line_segment(
         [strip.left_top(), strip.right_top()],
         Stroke::new(1.0, theme::GRID_BAR),
+    );
+    // The target's name, faint, like a watermark.
+    painter.text(
+        lane.left_top() + vec2(6.0, 4.0),
+        Align2::LEFT_TOP,
+        mode.label(),
+        FontId::proportional(theme::FONT_DISPLAY),
+        theme::WATERMARK,
     );
     // The lane's target: a menu of what it edits.
     let label_rect = Rect::from_min_size(
@@ -2544,7 +2564,7 @@ fn velocity_lane(
                 }
             })
             .response
-            .hint("What the lane edits: velocity, pan, release, fine pitch, Mod X or Mod Y")
+            .hint("What the lane edits: velocity, pan, release, fine pitch, Mod A or Mod B")
     });
     if mode.centred() {
         painter.line_segment(
@@ -2575,32 +2595,85 @@ fn velocity_lane(
         state.roll.lane_drag = None;
     }
     let color = theme::palette(channel);
-    let y_of = |t: f32| lane.bottom() - 4.0 - t * (lane.height() - 8.0);
+    let stem = Stem {
+        lane,
+        centred: mode.centred(),
+    };
+    for note in ghosts {
+        stem.draw(&painter, grid, note, mode.value(note), theme::GHOST_NOTE);
+    }
     for note in notes {
         let t = match shown {
             Some((n, t)) if n.start == note.start && n.key == note.key => t,
             _ => mode.value(note),
         };
+        let tone = if state.roll.selection.contains(&(note.start, note.key)) {
+            theme::NOTE_SELECTED
+        } else if note.props.color > 0 {
+            theme::note_color(note.props.color)
+        } else {
+            color
+        };
+        stem.draw(&painter, grid, note, t, tone);
+    }
+}
+
+/// How the lane draws one note's value.
+struct Stem {
+    lane: Rect,
+    centred: bool,
+}
+
+impl Stem {
+    /// A bar from the baseline to the value with a round head, and a thin
+    /// tail running right for the note's length.
+    fn draw(&self, painter: &egui::Painter, grid: &Grid, note: &Note, t: f32, color: Color32) {
+        let lane = self.lane;
         let x = grid.x(note.start as f32) + 2.0;
-        if x < lane.left() || x > lane.right() {
-            continue;
+        let end = grid.x((note.start + note.length) as f32) - 1.0;
+        if end < lane.left() || x > lane.right() {
+            return;
         }
-        let base = if mode.centred() {
+        let base = if self.centred {
             lane.center().y
         } else {
             lane.bottom()
         };
-        let tip = y_of(t);
+        let tip = lane.bottom() - 4.0 - t * (lane.height() - 8.0);
         painter.line_segment([pos2(x, base), pos2(x, tip)], Stroke::new(2.0, color));
+        if end > x + 3.0 {
+            painter.line_segment([pos2(x, tip), pos2(end, tip)], Stroke::new(1.0, color));
+        }
         painter.circle_filled(pos2(x, tip), 3.0, color);
+    }
+}
+
+/// The grid's step, beat and bar lines through the lane, a step quieter.
+fn lane_grid(painter: &egui::Painter, grid: &Grid, lane: Rect, meter: &Meter) {
+    let first = grid.tick_at(lane.left()).max(0.0) as u32 / TICKS_PER_STEP * TICKS_PER_STEP;
+    let last = grid.tick_at(lane.right()).max(0.0) as u32;
+    let sig = meter.first();
+    for tick in (first..=last).step_by(TICKS_PER_STEP as usize) {
+        let color = if tick % sig.bar_ticks() == 0 {
+            theme::GRID_BEAT
+        } else if tick % sig.beat_ticks() == 0 {
+            theme::GRID_LINE
+        } else {
+            theme::at_strength(theme::GRID_LINE, 110)
+        };
+        let x = grid.x(tick as f32);
+        painter.line_segment(
+            [pos2(x, lane.top()), pos2(x, lane.bottom())],
+            Stroke::new(1.0, color),
+        );
     }
 }
 
 fn keyboard(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    grid: &Grid,
-    clip: Rect,
+    (grid, clip): (&Grid, Rect),
+    notes: &[&Note],
     channel: usize,
     actions: &mut Vec<Action>,
 ) {
@@ -2617,6 +2690,17 @@ fn keyboard(
     let first = grid.row_at(keys_rect.top()).unwrap_or(0);
     let last = grid.row_at(keys_rect.bottom() - 1.0).unwrap_or(KEYS - 1);
     let held = state.roll.preview.map(|(_, k)| k);
+    let hovered = response
+        .hover_pos()
+        .and_then(|p| grid.row_at(p.y))
+        .map(key_of_row);
+    let response = match hovered {
+        Some(key) => response.hint(format!(
+            "{} · click to hear · Ctrl+click selects its notes",
+            key_name(key)
+        )),
+        None => response,
+    };
     let ivory = theme::KEY_WHITE;
     let ebony = theme::KEY_BLACK;
     // White keys run the full width behind the black ones, like a piano.
@@ -2632,13 +2716,26 @@ fn keyboard(
             let black = Rect::from_min_max(r.min, pos2(r.left() + r.width() * 0.62, r.bottom()));
             let fill = if held == Some(key) {
                 theme::ACCENT
+            } else if hovered == Some(key) {
+                theme::mix(ebony, ivory, 0.18)
             } else {
                 ebony
             };
-            painter.rect_filled(black, 2.0, fill);
+            painter.rect_filled(
+                black,
+                egui::CornerRadius {
+                    nw: 0,
+                    sw: 0,
+                    ne: 2,
+                    se: 2,
+                },
+                fill,
+            );
         } else {
             if held == Some(key) {
                 painter.rect_filled(r, 0.0, theme::ACCENT);
+            } else if hovered == Some(key) {
+                painter.rect_filled(r, 0.0, theme::shade(40));
             }
             // A seam between neighbouring white keys (E/F and B/C).
             if matches!(key % 12, 4 | 11) {
@@ -2657,6 +2754,29 @@ fn keyboard(
                 theme::BACKGROUND,
             );
         }
+    }
+    // Ctrl+click selects every note of the key; Shift adds to the selection.
+    // (A preview already sounding still gets its note-off below.)
+    let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
+    if ctrl && state.roll.preview.is_none() {
+        if let Some(key) = response
+            .clicked()
+            .then(|| response.interact_pointer_pos())
+            .flatten()
+            .and_then(|p| grid.row_at(p.y))
+            .map(key_of_row)
+        {
+            if !shift {
+                state.roll.selection.clear();
+            }
+            state.roll.selection.extend(
+                notes
+                    .iter()
+                    .filter(|n| n.key == key)
+                    .map(|n| (n.start, n.key)),
+            );
+        }
+        return;
     }
     let pressed_key = response
         .interact_pointer_pos()

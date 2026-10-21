@@ -57,9 +57,10 @@
   notes); on the others they play normally.
 - **Muted notes** stay in the pattern but do not play; they are drawn hollow.
   The piano roll's Mute tool toggles muting on the notes it clicks or sweeps.
-- The bottom lane edits velocity, pan, release, fine pitch, Mod X or Mod Y.
+- The bottom lane edits velocity, pan, release, fine pitch, Mod A or Mod B
+  (the note properties `mod_x` and `mod_y`).
 - New notes take the toolbar's colour and Portamento setting. Fine pitch,
-  release velocity and Mod X/Y apply to the built-in instruments; plugins get
+  release velocity and Mod A/B apply to the built-in instruments; plugins get
   the note's key and velocity.
 - Project files store only properties that differ from their defaults.
 
@@ -102,7 +103,7 @@ Shape / Generate in the piano roll use the defaults in brackets).
   octaves into it (clamped when the range is under an octave) [C4–B5].
 - `note.lfo <channel> <velocity|pan|fine|mod_x|mod_y> <period> <depth>
   [sine|triangle|square|saw]`: sets the property from an LFO over each note's
-  start time, swinging around the property's centre (velocity and Mod X/Y
+  start time, swinging around the property's centre (velocity and Mod A/B
   64, pan and fine 0) by `depth` percent of the room on either side [one bar,
   50% velocity or 80% pan, sine].
 - `note.scale_levels <channel> <prop> <percent> [offset]`: scales the
@@ -266,8 +267,12 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - Notes have a pan, -100 to 100 (`note.set_pan`; `note.add` takes it as an
   optional sixth argument; `note.set_all` rows may carry it as a fifth value).
   It is applied as a balance on top of the channel pan.
-- The bottom lane edits velocity, pan, release, fine pitch, Mod X or Mod Y,
-  picked from the menu at its left. In centred modes (pan, fine pitch…)
+- The bottom lane edits velocity, pan, release, fine pitch, Mod A or Mod B,
+  picked from the menu at its left. The target's name is written faintly at
+  the lane's top left; the grid's bar, beat and step lines run through the
+  lane a step quieter. Each stem has a round head and a thin tail running
+  right for the note's length; selected notes' stems take the selection
+  tone, and other channels' notes show faint ghost stems behind. In centred modes (pan, fine pitch…)
   stems grow up or down from the centre and snap to centre within ±3.
 - The ruler marks the playhead with a triangle whenever it is inside the
   shown pattern (the loop position in pattern mode; in song mode, inside a
@@ -291,6 +296,9 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   selected channel. Dragging vertically sets the velocity of the note under the
   pointer (the latest-starting one when notes overlap); one drag is one undo step.
 - Clicking a key on the keyboard previews the note on the selected channel.
+  The hovered key is shaded (white keys darker, black keys lighter) and its
+  name shows in the hint. Ctrl+click on a key selects every note of that key
+  (Shift adds them to the selection).
 
 ## Sources
 
