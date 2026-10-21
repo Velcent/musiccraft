@@ -1633,3 +1633,21 @@ fn ctrl_clicking_a_key_selects_its_notes() {
     assert_eq!(selected, [(0, 60), (4 * step, 60)]);
     assert!(h.state.roll.preview.is_none(), "no note was left sounding");
 }
+
+#[test]
+fn double_clicking_an_audio_clip_opens_its_channel_settings() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_sampler builtin:kick",
+        "playlist.add_audio_clip 2 1 0 2",
+    ]);
+    h.state.windows.playlist = true;
+    h.state.selected_channel = 0;
+    h.settle();
+    let at = h.playlist_point(musiccraft_project::params::PPQ * 2, 0);
+    h.click(at, PointerButton::Primary);
+    h.click(at, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.windows.channel_settings);
+    assert_eq!(h.state.selected_channel, 1);
+}

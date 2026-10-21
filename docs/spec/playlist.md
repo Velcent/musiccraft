@@ -228,6 +228,15 @@
   scrolls and whose ends zoom, and the vertical zoom box, which sets the
   track height (18 to 96 points; double-click resets 36). A vertical scroll
   bar runs down the right of the ruler and tracks.
+- The ruler has short beat ticks and longer bar ticks rising from its bottom
+  edge; in song mode a triangle marks the playhead and its line runs down the
+  lanes whether or not the song is playing (the view follows it only while
+  playing). A clip's glyph and name stay in view when the clip starts left
+  of the visible lanes. Zoomed far in (a bar wider than 240 points), each
+  bar is its own group for the shading and the strongest lines.
+- Double-clicking a pattern clip opens it in the piano roll; an automation
+  clip opens the automation editor; an audio clip opens its channel's
+  settings.
 
 ## Sources
 

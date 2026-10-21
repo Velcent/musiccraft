@@ -815,15 +815,18 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 egui::StrokeKind::Inside,
             );
         }
-        if frame.engine.playing && project.play_mode == PlayMode::Song {
+        if project.play_mode == PlayMode::Song {
+            // The playhead line shows in song mode, stopped or playing.
             let x = grid.x(frame.engine.position_ticks as f32);
-            painter.line_segment(
-                [pos2(x, clip.top()), pos2(x, clip.bottom())],
-                Stroke::new(1.5, theme::PLAYHEAD),
-            );
-            // Follow the playhead when it leaves the view.
+            if x >= clip.left() + HEADER_WIDTH {
+                painter.line_segment(
+                    [pos2(x, clip.top()), pos2(x, clip.bottom())],
+                    Stroke::new(1.5, theme::PLAYHEAD),
+                );
+            }
+            // While playing, follow the playhead when it leaves the view.
             let visible = clip.left() + HEADER_WIDTH..clip.right() - 40.0;
-            if !visible.contains(&x) && state.playlist.drag.is_none() {
+            if frame.engine.playing && !visible.contains(&x) && state.playlist.drag.is_none() {
                 let target = Rect::from_min_size(
                     pos2(x - HEADER_WIDTH - 20.0, clip.top()),
                     vec2(clip.width() - 60.0, 1.0),
@@ -845,6 +848,22 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             state.playlist.loop_drag,
             &meter,
         );
+        if project.play_mode == PlayMode::Song {
+            // The ruler marks the playhead with a small triangle.
+            let x = grid.x(frame.engine.position_ticks as f32);
+            if x >= clip.left() + HEADER_WIDTH {
+                let bottom = clip.top() + RULER_HEIGHT;
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        pos2(x - 5.0, bottom - 8.0),
+                        pos2(x + 5.0, bottom - 8.0),
+                        pos2(x, bottom),
+                    ],
+                    theme::PLAYHEAD,
+                    Stroke::NONE,
+                ));
+            }
+        }
         ruler(ui, state, project, &grid, clip, actions);
         headers(ui, state, project, &grid, clip, actions);
         if response.hovered() {
@@ -942,6 +961,8 @@ fn overview(painter: &egui::Painter, rail: Rect, project: &Project, view: crate:
 
 /// Bars in one bar group: the unit of the shading and the strongest lines.
 const BAR_GROUP: u32 = 4;
+/// Above this many points per bar, a bar group is a single bar.
+const WIDE_BAR: f32 = 240.0;
 
 /// One lane tone with track separators, alternate bar groups washed a
 /// little lighter, and step, beat, bar and group lines getting stronger in
@@ -954,9 +975,12 @@ fn draw_grid(painter: &egui::Painter, grid: &Grid, (clip, rect): (Rect, Rect), m
     let (top, bottom) = (grid.origin.y, rect.bottom());
     let first_bar = meter.bar(first).index;
     let last_bar = meter.bar(last).index;
-    for bar in (first_bar..=last_bar).filter(|b| (b / BAR_GROUP) % 2 == 1 && b % BAR_GROUP == 0) {
+    // Zoomed far in, each bar is its own group.
+    let bar_px = grid.px_per_tick * meter.bar(first).len as f32;
+    let group = if bar_px > WIDE_BAR { 1 } else { BAR_GROUP };
+    for bar in (first_bar..=last_bar).filter(|b| (b / group) % 2 == 1 && b % group == 0) {
         let x0 = grid.x(meter.bar_start(bar) as f32);
-        let x1 = grid.x(meter.bar_start(bar + BAR_GROUP) as f32);
+        let x1 = grid.x(meter.bar_start(bar + group) as f32);
         painter.rect_filled(
             Rect::from_min_max(pos2(x0, top), pos2(x1, bottom)),
             0.0,
@@ -982,7 +1006,7 @@ fn draw_grid(painter: &egui::Painter, grid: &Grid, (clip, rect): (Rect, Rect), m
                 continue;
             }
             theme::GRID_BEAT
-        } else if beat.bar % BAR_GROUP == 0 {
+        } else if beat.bar % group == 0 {
             theme::GRID_GROUP
         } else {
             theme::GRID_BAR
@@ -1086,7 +1110,13 @@ fn draw_clip(
     }
     let text = faded(theme::text_on(strip));
     let strip_painter = painter.with_clip_rect(title.intersect(painter.clip_rect()));
-    let glyph_rect = Rect::from_min_size(title.min + vec2(1.0, 0.0), vec2(title_h, title_h));
+    // The glyph and name stay in view when the clip starts left of the
+    // lanes (scrolled past), up to the clip's right end.
+    let lanes_left = painter.clip_rect().left() + HEADER_WIDTH;
+    let left = (title.left() + 1.0)
+        .max(lanes_left + 1.0)
+        .min((title.right() - title_h - 24.0).max(title.left() + 1.0));
+    let glyph_rect = Rect::from_min_size(pos2(left, title.top()), vec2(title_h, title_h));
     icons::paint(&strip_painter, glyph_rect, glyph, text);
     strip_painter.text(
         pos2(glyph_rect.right() + 1.0, title.center().y),
@@ -1468,8 +1498,32 @@ fn draw_ruler(
     } else {
         4
     };
-    for bar in (first.index..=last_bar).filter(|b| b % every == 0) {
-        let x = grid.x(meter.bar_start(bar) as f32);
+    let lanes_left = ruler.left() + HEADER_WIDTH;
+    for bar in first.index..=last_bar {
+        let info = meter.bar(meter.bar_start(bar));
+        let x = grid.x(info.start as f32);
+        // Short beat ticks and a longer bar tick rise from the bottom edge.
+        if grid.px_per_tick * info.sig.beat_ticks() as f32 >= 6.0 {
+            let beat = info.sig.beat_ticks().max(1);
+            for at in (info.start + beat..info.end()).step_by(beat as usize) {
+                let bx = grid.x(at as f32);
+                if bx > lanes_left {
+                    painter.line_segment(
+                        [pos2(bx, ruler.bottom() - 3.0), pos2(bx, ruler.bottom())],
+                        Stroke::new(1.0, theme::GRID_BEAT),
+                    );
+                }
+            }
+        }
+        if x > lanes_left {
+            painter.line_segment(
+                [pos2(x, ruler.bottom() - 6.0), pos2(x, ruler.bottom())],
+                Stroke::new(1.0, theme::GRID_BAR),
+            );
+        }
+        if bar % every != 0 {
+            continue;
+        }
         painter.text(
             pos2(x + 3.0, ruler.center().y),
             Align2::LEFT_CENTER,
@@ -2476,7 +2530,13 @@ fn edit(
                             state.windows.piano_roll = true;
                         }
                     }
-                    _ => {}
+                    Some(ClipSource::Audio(id)) => {
+                        if let Some(index) = project.channel_position(id) {
+                            state.selected_channel = index;
+                            state.windows.channel_settings = true;
+                        }
+                    }
+                    None => {}
                 }
             }
         }
