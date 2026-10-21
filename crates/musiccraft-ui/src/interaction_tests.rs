@@ -899,9 +899,13 @@ fn missing_plugins_explain_themselves_instead_of_showing_knobs() {
 fn hints_show_in_the_bar_and_settings_open_from_f10() {
     let mut h = Harness::new(&[]);
     h.settle();
-    // Hover along the toolbar until the play button's hint reaches the hint
-    // bar (it shows the next frame).
-    let found = (0..90).map(|i| pos2(8.0 + 8.0 * i as f32, 20.0)).any(|p| {
+    // Hover along both toolbar rows until the play button's hint reaches
+    // the hint bar (it shows the next frame).
+    let rows = [14.0, 38.0, 60.0];
+    let points = rows
+        .into_iter()
+        .flat_map(|y| (0..120).map(move |i| pos2(8.0 + 8.0 * i as f32, y)));
+    let found = points.into_iter().any(|p| {
         h.frame(vec![Event::PointerMoved(p)]);
         h.frame(vec![]);
         h.state
@@ -1472,4 +1476,26 @@ fn the_mixer_opens_at_the_top_beside_the_channel_rack() {
     );
     assert!(mixer.top() - area.top() < 8.0, "{mixer:?} in {area:?}");
     assert!(mixer.bottom() < area.center().y, "{mixer:?} in {area:?}");
+}
+
+#[test]
+fn the_count_in_toggle_sits_in_the_toolbar() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let before = h.session.project().record.count_in;
+    let spot = [14.0, 38.0]
+        .into_iter()
+        .flat_map(|y| (0..120).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Count-in"))
+        })
+        .expect("a count-in toggle in the toolbar");
+    h.click(spot, PointerButton::Primary);
+    h.settle();
+    assert_ne!(h.session.project().record.count_in, before);
 }

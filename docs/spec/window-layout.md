@@ -47,11 +47,30 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Toolbar
 
-- When the window is at least 1300 points wide, the toolbar is one band: the
-  menus over the hint bar in a column at the left, the transport and
-  displays beside them, and the window buttons at the right end.
-- In a narrower window it falls back to two bands: menus, hint bar and window
-  buttons, then the transport below.
+- The toolbar is one band across the top of the main window, in the panel
+  tone, two button rows tall. At the left a recessed column holds the menu
+  bar (File, Edit, Add, Patterns, View, Options, Tools, Help) over the hint
+  field (the project name, then the hint or last message). Beside it are two
+  racks, each packed to the left:
+  - **upper rack**: the option toggles (Metronome, Wait for input,
+    Count-in, Blend recording, Loop recording, Computer keyboard as piano,
+    Step edit), the time display, the output monitor (a scope beside two
+    horizontal peak bars) and the performance panel (CPU and voices);
+  - **lower rack**: the master volume knob, the mode switch (Pattern over
+    Song, one button wide; right-click a half to open the channel rack or the
+    playlist), play (a pause glyph while playing), stop, record, the tempo
+    display, TAP and the time signature, the pattern panel (the pattern list
+    and a plus) and the window buttons (Playlist, Channel rack, Piano roll,
+    Browser, Mixer).
+- Option toggles all light the same way: an accent fill with a dark glyph.
+- The time display's digits read bar.beat.step with the last field smaller;
+  while counting in or waiting for the first note they read COUNT-IN or
+  WAITING instead. The tempo display shows whole BPM large and three
+  decimals smaller. Each display has a tiny caption in its top-right corner.
+- Record pulses while a take is running.
+- When the window is narrower than 1000 points it falls back to two bands:
+  menus, hint field and window buttons, then the two racks without the
+  window buttons.
 
 ## Density
 
@@ -114,6 +133,11 @@ stay our own. The full target look, window by window, is the style guide in
   route arrow. The slot panel is 270 points wide.
 
 ## Sources
+
+- The toolbar's two racks, the option toggles, the stacked mode switch, the
+  display captions and the menu and hint column: the interface style guide,
+  `docs/spec/style/toolbar.md` (owner's 2026-10-21 decision to follow the
+  manual's layout). Glyphs and wording are our own.
 
 - Compared with the FL Studio online manual's screenshots and descriptions of
   the main window ("Interface overview" in Basics:

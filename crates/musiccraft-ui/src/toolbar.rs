@@ -226,7 +226,7 @@ fn view_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     window_toggle(ui, state, "Spectrum analyzer", "spectrum");
     ui.separator();
     let mut hints = frame.settings.show_hints;
-    if ui.checkbox(&mut hints, "Hint bar").changed() {
+    if ui.checkbox(&mut hints, "Show hint bar").changed() {
         actions.push(Action::Settings(Box::new(crate::Settings {
             show_hints: hints,
             ..frame.settings.clone()
@@ -251,7 +251,10 @@ fn options_menu(
     if ui.checkbox(&mut metronome, "Metronome").changed() {
         run(actions, "transport.toggle_metronome");
     }
-    ui.checkbox(&mut state.typing_keyboard, "Typing keyboard to piano");
+    ui.checkbox(
+        &mut state.typing_keyboard,
+        "Play notes from the computer keyboard",
+    );
 }
 
 fn tools_menu(ui: &mut egui::Ui, frame: &Frame<'_>, state: &UiState, actions: &mut Vec<Action>) {
@@ -296,27 +299,43 @@ fn help_menu(ui: &mut egui::Ui, state: &mut UiState) {
     }
 }
 
-/// The hint bar: what the hovered control does, otherwise the last message.
-fn hint_bar(ui: &mut egui::Ui, state: &UiState, width: f32) {
-    let (text, color) = match &state.hint {
-        Some(hint) => (hint.as_str(), theme::TEXT),
+/// The hint field: the project name over what the hovered control does,
+/// otherwise the last message.
+fn hint_field(ui: &mut egui::Ui, state: &UiState, frame: &Frame<'_>, width: f32) {
+    let hint = if frame.settings.show_hints {
+        state.hint.as_deref()
+    } else {
+        None
+    };
+    let (text, color) = match hint {
+        Some(hint) => (hint, theme::TEXT),
         None if state.status.error => (state.status.text.as_str(), theme::DANGER),
         None => (state.status.text.as_str(), theme::TEXT_DIM),
     };
-    egui::Frame::new()
-        .fill(theme::LCD_BG)
-        .stroke(egui::Stroke::new(1.0, theme::LCD_EDGE))
-        .corner_radius(3.0)
-        .inner_margin(egui::Margin::symmetric(6, 2))
-        .show(ui, |ui| {
-            ui.set_width(width.max(60.0));
-            ui.add(egui::Label::new(RichText::new(text).small().color(color)).truncate());
-        });
+    let (rect, _) = ui.allocate_exact_size(vec2(width.max(60.0), icons::ROW), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 3.0, theme::PANEL_DARK);
+    painter.rect_stroke(
+        rect,
+        3.0,
+        egui::Stroke::new(1.0, theme::LCD_EDGE),
+        egui::StrokeKind::Inside,
+    );
+    let font = egui::FontId::proportional(theme::FONT_CAPTION);
+    let line = |text: &str, color, y| {
+        let mut job =
+            egui::text::LayoutJob::simple_singleline(text.to_owned(), font.clone(), color);
+        job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 10.0);
+        let galley = painter.layout_job(job);
+        painter.galley(egui::pos2(rect.left() + 5.0, y), galley, color);
+    };
+    line(frame.project.name(), theme::TEXT_DIM, rect.top() + 1.0);
+    line(text, color, rect.center().y);
 }
 
-/// Width the one-band toolbar needs: menus and hints, transport, window buttons.
-const ONE_BAND_WIDTH: f32 = 1300.0;
-/// Width of the menu and hint column in the one-band toolbar.
+/// Width the one-band toolbar needs: the menu column and both racks.
+const ONE_BAND_WIDTH: f32 = 1000.0;
+/// Width of the menu and hint column.
 const MENU_COLUMN: f32 = 300.0;
 
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
@@ -327,75 +346,89 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
     }
 }
 
-/// Menus over the hint bar at the left, the transport beside them and the
-/// window buttons at the right, in one band (see `docs/spec/window-layout.md`).
+fn band_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(theme::PANEL)
+        .inner_margin(egui::Margin::symmetric(6, 3))
+}
+
+/// The menu and hint column at the left, then the upper and lower racks
+/// (see `docs/spec/window-layout.md`, "Toolbar").
 fn one_band(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     egui::Panel::top("toolbar")
-        .frame(
-            egui::Frame::new()
-                .fill(theme::PANEL_DARK)
-                .inner_margin(egui::Margin::symmetric(6, 3)),
-        )
+        .frame(band_frame())
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(MENU_COLUMN);
                     ui.spacing_mut().item_spacing.y = 2.0;
-                    egui::MenuBar::new().ui(ui, |ui| menus(ui, state, frame, actions));
-                    status(ui, state, frame, MENU_COLUMN - 14.0);
+                    menu_bar(ui, state, frame, actions);
+                    hint_field(ui, state, frame, MENU_COLUMN);
                 });
-                ui.add_space(4.0);
-                transport(ui, state, frame, actions);
-                window_buttons(ui, state);
+                ui.add_space(8.0);
+                racks(ui, state, frame, actions, true);
             });
         });
 }
 
+/// The narrow fallback: menus, hint field and window buttons, then the racks.
 fn two_bands(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
-    egui::Panel::top("menu").show(ui, |ui| {
-        egui::MenuBar::new().ui(ui, |ui| {
-            menus(ui, state, frame, actions);
+    egui::Panel::top("menu").frame(band_frame()).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            menu_bar(ui, state, frame, actions);
             ui.add_space(6.0);
-            let width = ui.available_width() - 150.0;
+            let width = ui.available_width() - 160.0;
             if width > 80.0 {
-                status(ui, state, frame, width);
+                hint_field(ui, state, frame, width);
             }
-            window_buttons(ui, state);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                window_buttons(ui, state);
+            });
         });
     });
-
     egui::Panel::top("transport")
-        .frame(
-            egui::Frame::new()
-                .fill(theme::PANEL_DARK)
-                .inner_margin(egui::Margin::symmetric(8, 6)),
-        )
+        .frame(band_frame())
+        .show(ui, |ui| racks(ui, state, frame, actions, false));
+}
+
+/// The menu titles in their recessed field.
+fn menu_bar(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    egui::Frame::new()
+        .fill(theme::PANEL_DARK)
+        .corner_radius(3.0)
+        .inner_margin(egui::Margin::symmetric(2, 0))
         .show(ui, |ui| {
-            ui.horizontal(|ui| transport(ui, state, frame, actions));
+            ui.set_min_height(icons::ROW - 2.0);
+            egui::MenuBar::new().ui(ui, |ui| menus(ui, state, frame, actions));
         });
 }
 
-/// The hint bar, or the plain status line when hints are off.
-fn status(ui: &mut egui::Ui, state: &UiState, frame: &Frame<'_>, width: f32) {
-    if frame.settings.show_hints {
-        hint_bar(ui, state, width);
-    } else {
-        let color = if state.status.error {
-            theme::DANGER
-        } else {
-            theme::TEXT_DIM
-        };
-        ui.add_sized(
-            [width, 18.0],
-            egui::Label::new(RichText::new(&state.status.text).small().color(color)).truncate(),
-        );
-    }
+/// The upper rack (option toggles and displays) over the lower rack
+/// (transport, tempo, pattern and window buttons).
+fn racks(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    actions: &mut Vec<Action>,
+    with_windows: bool,
+) {
+    ui.vertical(|ui| {
+        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.horizontal(|ui| upper_rack(ui, state, frame, actions));
+        ui.horizontal(|ui| {
+            lower_rack(ui, state, frame, actions);
+            if with_windows {
+                divider(ui);
+                window_buttons(ui, state);
+            }
+        });
+    });
 }
 
 fn menus(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
-    let menu = |label: &str| RichText::new(label).small().strong();
-    ui.menu_button(menu("FILE"), |ui| file_menu(ui, state, actions));
-    ui.menu_button(menu("EDIT"), |ui| {
+    let menu = |label: &str| RichText::new(label).size(theme::FONT_LABEL);
+    ui.menu_button(menu("File"), |ui| file_menu(ui, state, actions));
+    ui.menu_button(menu("Edit"), |ui| {
         let undo = match &frame.history.undo {
             Some(label) => format!("Undo {label}"),
             None => "Undo".to_owned(),
@@ -407,69 +440,268 @@ fn menus(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mu
             menu_item(ui, state, "Redo", "edit.redo", actions);
         });
     });
-    ui.menu_button(menu("ADD"), |ui| add_menu(ui, frame, actions));
-    ui.menu_button(menu("PATTERNS"), |ui| {
+    ui.menu_button(menu("Add"), |ui| add_menu(ui, frame, actions));
+    ui.menu_button(menu("Patterns"), |ui| {
         patterns_menu(ui, state, frame, actions)
     });
-    ui.menu_button(menu("VIEW"), |ui| view_menu(ui, state, frame, actions));
-    ui.menu_button(menu("OPTIONS"), |ui| {
+    ui.menu_button(menu("View"), |ui| view_menu(ui, state, frame, actions));
+    ui.menu_button(menu("Options"), |ui| {
         options_menu(ui, state, frame, actions)
     });
-    ui.menu_button(menu("TOOLS"), |ui| tools_menu(ui, frame, state, actions));
-    ui.menu_button(menu("HELP"), |ui| help_menu(ui, state));
+    ui.menu_button(menu("Tools"), |ui| tools_menu(ui, frame, state, actions));
+    ui.menu_button(menu("Help"), |ui| help_menu(ui, state));
 }
 
-/// Window buttons at the right end of the menu bar.
+/// The window buttons: playlist, channel rack, piano roll, browser, mixer.
 fn window_buttons(ui: &mut egui::Ui, state: &mut UiState) {
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        ui.spacing_mut().item_spacing.x = 3.0;
-        let w = &mut state.windows;
-        for (icon, open, hint) in [
-            (Icon::Mixer, &mut w.mixer, "Mixer (F9)"),
-            (Icon::PianoRoll, &mut w.piano_roll, "Piano roll (F7)"),
-            (Icon::ChannelRack, &mut w.channel_rack, "Channel rack (F6)"),
-            (Icon::Playlist, &mut w.playlist, "Playlist (F5)"),
-            (Icon::Browser, &mut w.browser, "Browser (Alt+F8)"),
+    ui.spacing_mut().item_spacing.x = 1.0;
+    let w = &mut state.windows;
+    for (icon, open, hint) in [
+        (Icon::Playlist, &mut w.playlist, "Playlist (F5)"),
+        (Icon::ChannelRack, &mut w.channel_rack, "Channel rack (F6)"),
+        (Icon::PianoRoll, &mut w.piano_roll, "Piano roll (F7)"),
+        (Icon::Browser, &mut w.browser, "Browser (Alt+F8)"),
+        (Icon::Mixer, &mut w.mixer, "Mixer (F9)"),
+    ] {
+        if icons::toggle(ui, icon, *open, hint).clicked() {
+            *open = !*open;
+        }
+    }
+}
+
+/// A thin vertical line between groups.
+fn divider(ui: &mut egui::Ui) {
+    ui.add_space(3.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(1.0, icons::ROW - 4.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, theme::SEPARATOR);
+    ui.add_space(3.0);
+}
+
+/// Buttons in a group nearly touch.
+fn group(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    ui.spacing_mut().item_spacing.x = 1.0;
+    add(ui);
+    ui.spacing_mut().item_spacing.x = 4.0;
+}
+
+/// A latching option toggle: an accent fill with a dark glyph while on.
+fn option_toggle(
+    ui: &mut egui::Ui,
+    state: &UiState,
+    (icon, on, name): (Icon, bool, &str),
+    invocation: &str,
+) -> bool {
+    let key = shortcut(state, invocation);
+    let word = if on { "on" } else { "off" };
+    let hint = if key.is_empty() {
+        format!("{name}: {word}")
+    } else {
+        format!("{name}: {word} ({key})")
+    };
+    icons::button(ui, icon, on, theme::ACCENT, &hint).clicked()
+}
+
+/// Option toggles, the time display, the output monitor and the performance
+/// panel.
+fn upper_rack(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    actions: &mut Vec<Action>,
+) {
+    let project = frame.project;
+    let record = project.record;
+    group(ui, |ui| {
+        for (icon, on, name, invocation) in [
+            (
+                Icon::Metronome,
+                project.metronome,
+                "Metronome",
+                "transport.toggle_metronome",
+            ),
+            (
+                Icon::Wait,
+                record.wait_for_input,
+                "Wait for input",
+                "record.toggle_wait",
+            ),
+            (
+                Icon::CountIn,
+                record.count_in,
+                "Count-in",
+                "record.toggle_count_in",
+            ),
+            (
+                Icon::Blend,
+                record.mode == musiccraft_project::RecordMode::Blend,
+                "Blend recording (off: replace)",
+                "",
+            ),
+            (
+                Icon::LoopRecord,
+                record.loop_record,
+                "Loop recording",
+                "record.toggle_loop",
+            ),
+            (
+                Icon::Keyboard,
+                state.typing_keyboard,
+                "Computer keyboard as piano",
+                "ui.typing_keyboard",
+            ),
+            (
+                Icon::StepEdit,
+                project.step_edit(),
+                "Step edit",
+                "record.toggle_step_edit",
+            ),
         ] {
-            if icons::toggle(ui, icon, *open, hint).clicked() {
-                *open = !*open;
+            if !option_toggle(ui, state, (icon, on, name), invocation) {
+                continue;
+            }
+            match icon {
+                Icon::Keyboard => state.typing_keyboard = !state.typing_keyboard,
+                Icon::Blend => {
+                    let mode = if on { "replace" } else { "blend" };
+                    run(actions, &format!("record.set_mode {mode}"));
+                }
+                _ => run(actions, invocation),
             }
         }
     });
+    divider(ui);
+    time_display(ui, state, frame);
+    divider(ui);
+    let recent = frame.engine.scope.len().saturating_sub(256);
+    let scope = frame.engine.scope.get(recent..).unwrap_or_default();
+    let levels = state.meters.first().copied().unwrap_or_default();
+    if icons::output_monitor(ui, scope, levels, 124.0)
+        .hint("Master output · click for the spectrum analyzer")
+        .clicked()
+    {
+        state.windows.spectrum = !state.windows.spectrum;
+    }
+    ui.add_space(2.0);
+    icons::performance(ui, frame.engine.load, frame.engine.voices).hint(format!(
+        "Audio load {:.0}% · {} voices · {} · {}",
+        frame.engine.load * 100.0,
+        frame.engine.voices,
+        frame.engine.audio,
+        frame.engine.midi
+    ));
 }
 
-fn group(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    ui.spacing_mut().item_spacing.x = 3.0;
-    add(ui);
-    ui.spacing_mut().item_spacing.x = 8.0;
-    ui.add_space(6.0);
+/// The song position: bar.beat.step (last field smaller) or minutes and
+/// seconds; COUNT-IN or WAITING while recording waits to start.
+fn time_display(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) {
+    let project = frame.project;
+    let ticks = frame.engine.position_ticks.max(0.0);
+    let seconds = ticks / f64::from(musiccraft_project::params::PPQ) * 60.0 / project.tempo_bpm();
+    let time = format!("{}:{:05.2}", (seconds / 60.0) as u32, seconds % 60.0);
+    let bars = position_label(ticks, &project.playing_meter());
+    let bars = bars.trim();
+    let (digits, caption) = if frame.engine.counting_in {
+        (("COUNT-IN", ""), "REC")
+    } else if frame.engine.waiting {
+        (("WAITING", ""), "REC")
+    } else if state.show_seconds {
+        (
+            time.rsplit_once('.')
+                .map_or((time.as_str(), ""), |(a, _)| (a, "")),
+            "TIME",
+        )
+    } else {
+        (
+            bars.rsplit_once('.').map_or((bars, ""), |(a, _)| (a, "")),
+            "BARS",
+        )
+    };
+    // The least-significant field, drawn smaller.
+    let tail = if frame.engine.counting_in || frame.engine.waiting {
+        String::new()
+    } else if state.show_seconds {
+        time.rsplit_once('.')
+            .map(|(_, b)| format!(".{b}"))
+            .unwrap_or_default()
+    } else {
+        bars.rsplit_once('.')
+            .map(|(_, b)| format!(".{b}"))
+            .unwrap_or_default()
+    };
+    let position = icons::display(ui, 100.0, (digits.0, &tail), caption, egui::Sense::click())
+        .hint(format!(
+            "Song position ({}) · click to show {}",
+            if state.show_seconds { bars } else { &time },
+            if state.show_seconds {
+                "bars and beats"
+            } else {
+                "minutes and seconds"
+            }
+        ));
+    if position.clicked() {
+        state.show_seconds = !state.show_seconds;
+    }
 }
 
-fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+/// The master knob, the mode switch and transport, tempo, signature and the
+/// pattern panel.
+fn lower_rack(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    actions: &mut Vec<Action>,
+) {
     let project = frame.project;
     let playing = project.transport().is_playing();
-
-    let mode = usize::from(project.play_mode == PlayMode::Song);
-    if let Some(choice) =
-        icons::segmented(ui, &["PAT", "SONG"], mode, "Pattern or song playback (L)")
-    {
-        if choice != mode {
-            let label = if choice == 1 { "song" } else { "pattern" };
+    if let Some(master) = project.mixer.first() {
+        let knob = widgets::knob(
+            ui,
+            master.volume,
+            0.0,
+            musiccraft_project::MAX_VOLUME,
+            1.0,
+            false,
+        );
+        if knob.started {
+            state.begin_gesture();
+        }
+        if let Some(value) = knob.changed {
+            actions.push(Action::Coalesced(
+                Invocation::new("mixer.set_volume", ["0".to_owned(), format!("{value:.3}")]),
+                state.gesture(),
+            ));
+        }
+        knob.response.hint(format!(
+            "Master volume: {:.1} dB",
+            20.0 * master.volume.max(1e-6).log10()
+        ));
+    }
+    divider(ui);
+    group(ui, |ui| {
+        let song = project.play_mode == PlayMode::Song;
+        let (switch, over) = icons::mode_switch(
+            ui,
+            song,
+            "Pattern or song playback (L) · right-click a half to open the channel rack or playlist",
+        );
+        if switch.clicked() {
+            let label = if song { "pattern" } else { "song" };
             run(actions, &format!("transport.set_mode {label}"));
         }
-    }
-    ui.add_space(6.0);
-
-    group(ui, |ui| {
-        if icons::button(
-            ui,
-            Icon::Play,
-            playing,
-            theme::ACCENT,
-            "Play / stop (Space)",
-        )
-        .clicked()
-        {
+        if switch.secondary_clicked() {
+            match over {
+                Some(0) => state.windows.channel_rack = true,
+                Some(_) => state.windows.playlist = true,
+                None => {}
+            }
+        }
+        ui.add_space(3.0);
+        let (icon, hint) = if playing {
+            (Icon::Pause, "Stop (Space)")
+        } else {
+            (Icon::Play, "Play (Space)")
+        };
+        if icons::button(ui, icon, playing, theme::ACCENT, hint).clicked() {
             run(actions, "transport.toggle");
         }
         if icons::button(
@@ -483,62 +715,91 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
         {
             run(actions, "transport.stop");
         }
+        ui.add_space(3.0);
         let record_hint = format!(
-            "Record live notes into the pattern while playing ({}); right-click for options",
+            "Record ({}) · right-click for options",
             shortcut(state, "record.toggle")
         );
         let armed = project.is_armed();
-        let rec = icons::button(ui, Icon::Record, armed, theme::DANGER, &record_hint);
+        let taking = armed && (playing || frame.engine.counting_in || frame.engine.waiting);
+        let rec = icons::button(
+            ui,
+            Icon::Record,
+            armed,
+            record_tone(ui, taking),
+            &record_hint,
+        );
         if rec.clicked() {
             run(actions, "record.toggle");
         }
         rec.context_menu(|ui| record_options(ui, state, project, actions));
-        if frame.engine.counting_in {
-            ui.label(RichText::new("COUNT-IN").strong().color(theme::DANGER));
-        } else if frame.engine.waiting {
-            ui.label(RichText::new("WAITING").strong().color(theme::DANGER))
-                .on_hover_text("Playback starts with the first note you play");
-        } else if project.step_edit() {
-            ui.label(RichText::new("STEP").strong().color(theme::HIGHLIGHT))
-                .on_hover_text("Step edit: played notes go in at the playhead");
-        }
     });
-
-    let ticks = frame.engine.position_ticks.max(0.0);
-    let seconds = ticks / f64::from(musiccraft_project::params::PPQ) * 60.0 / project.tempo_bpm();
-    let time = format!("{}:{:05.2}", (seconds / 60.0) as u32, seconds % 60.0);
-    let bars = position_label(ticks, &project.playing_meter());
-    let (main, caption) = if state.show_seconds {
-        (time.as_str(), "MIN:SEC")
-    } else {
-        (bars.trim(), "BAR.BEAT.STEP")
-    };
-    let position = icons::lcd(ui, 92.0, main, caption, egui::Sense::click()).hint(format!(
-        "Song position ({}). Click to show {}",
-        if state.show_seconds {
-            bars.trim()
-        } else {
-            &time
-        },
-        if state.show_seconds {
-            "bars and beats"
-        } else {
-            "minutes and seconds"
+    divider(ui);
+    tempo(ui, state, project, actions);
+    group(ui, |ui| {
+        ui.add_space(2.0);
+        if ui
+            .small_button("TAP")
+            .hint("Tap the beat a few times to set the tempo")
+            .clicked()
+        {
+            let now = ui.input(|i| i.time);
+            if state.taps.is_empty() || state.taps.last().is_some_and(|t| now - t > 2.0) {
+                state.begin_gesture();
+            }
+            if let Some(bpm) = musiccraft_commands::tap_tempo::tap(&mut state.taps, now) {
+                actions.push(Action::Coalesced(
+                    Invocation::new("project.set_tempo", [format!("{bpm:.2}")]),
+                    state.gesture(),
+                ));
+            }
         }
-    ));
-    if position.clicked() {
-        state.show_seconds = !state.show_seconds;
-    }
+        let sig = project.time_signature;
+        ui.menu_button(RichText::new(sig.to_string()).monospace(), |ui| {
+            if let Some(new) = signature::picker(ui, Some(sig), &mut state.sig_draft) {
+                run(actions, &format!("project.set_time_signature {new}"));
+            }
+        })
+        .response
+        .hint(
+            "Time signature of the song and of new patterns (changes: right-click the playlist ruler)",
+        );
+    });
+    divider(ui);
+    pattern_panel(ui, project, actions);
+}
 
+/// Record's fill: the danger tone, pulsing while a take runs.
+fn record_tone(ui: &egui::Ui, taking: bool) -> egui::Color32 {
+    if !taking {
+        return theme::DANGER;
+    }
+    ui.ctx().request_repaint();
+    let t = ui.input(|i| i.time);
+    let strength = 0.6 + 0.4 * (t * std::f64::consts::PI).sin().abs() as f32;
+    theme::mix(theme::PANEL, theme::DANGER, strength)
+}
+
+/// The tempo display: whole BPM large, decimals small; drag or scroll.
+fn tempo(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &musiccraft_project::Project,
+    actions: &mut Vec<Action>,
+) {
     let tempo = project.tempo_bpm();
-    let tempo_lcd = icons::lcd(
+    let text = format!("{tempo:.3}");
+    let (whole, decimals) = text.split_once('.').unwrap_or((text.as_str(), "000"));
+    let tempo_lcd = icons::display(
         ui,
-        76.0,
-        &format!("{tempo:.2}"),
+        74.0,
+        (whole, &format!(".{decimals}")),
         "BPM",
         egui::Sense::click_and_drag(),
     )
-    .hint("Tempo: drag up/down or scroll (Shift for fine steps)");
+    .hint(format!(
+        "Tempo: {tempo:.3} BPM · drag up/down or scroll (Shift for fine steps)"
+    ));
     let fine = ui.input(|i| i.modifiers.shift);
     let scroll = if tempo_lcd.hovered() {
         ui.input(|i| i.smooth_scroll_delta.y)
@@ -557,34 +818,14 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             state.gesture(),
         ));
     }
-    if ui
-        .small_button("TAP")
-        .hint("Tap the beat a few times to set the tempo")
-        .clicked()
-    {
-        let now = ui.input(|i| i.time);
-        if state.taps.is_empty() || state.taps.last().is_some_and(|t| now - t > 2.0) {
-            state.begin_gesture();
-        }
-        if let Some(bpm) = musiccraft_commands::tap_tempo::tap(&mut state.taps, now) {
-            actions.push(Action::Coalesced(
-                Invocation::new("project.set_tempo", [format!("{bpm:.2}")]),
-                state.gesture(),
-            ));
-        }
-    }
-    let sig = project.time_signature;
-    ui.menu_button(RichText::new(sig.to_string()).monospace(), |ui| {
-        if let Some(new) = signature::picker(ui, Some(sig), &mut state.sig_draft) {
-            run(actions, &format!("project.set_time_signature {new}"));
-        }
-    })
-    .response
-    .hint(
-        "Time signature of the song and of new patterns (changes: right-click the playlist ruler)",
-    );
-    ui.add_space(4.0);
+}
 
+/// The pattern list and the plus that adds the next empty pattern.
+fn pattern_panel(
+    ui: &mut egui::Ui,
+    project: &musiccraft_project::Project,
+    actions: &mut Vec<Action>,
+) {
     let current = project.current_pattern;
     egui::ComboBox::from_id_salt("pattern-select")
         .width(118.0)
@@ -607,90 +848,16 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
         })
         .response
         .hint("Selected pattern (Plus / Minus)");
-    if ui
-        .small_button("+")
-        .hint("New pattern (F4: next empty pattern)")
-        .clicked()
+    if icons::button(
+        ui,
+        Icon::Plus,
+        false,
+        theme::ACCENT,
+        "New pattern (F4: next empty pattern)",
+    )
+    .clicked()
     {
         run(actions, "pattern.add");
-    }
-    ui.add_space(4.0);
-
-    group(ui, |ui| {
-        let metronome_hint = format!(
-            "Metronome ({})",
-            shortcut(state, "transport.toggle_metronome")
-        );
-        if icons::button(
-            ui,
-            Icon::Metronome,
-            project.metronome,
-            theme::HIGHLIGHT,
-            &metronome_hint,
-        )
-        .clicked()
-        {
-            run(actions, "transport.toggle_metronome");
-        }
-        let typing_hint = format!(
-            "Typing keyboard plays notes: Z–M and Q–P rows ({})",
-            shortcut(state, "ui.typing_keyboard")
-        );
-        if icons::button(
-            ui,
-            Icon::Keyboard,
-            state.typing_keyboard,
-            theme::ACCENT,
-            &typing_hint,
-        )
-        .clicked()
-        {
-            state.typing_keyboard = !state.typing_keyboard;
-        }
-    });
-
-    if let Some(master) = project.mixer.first() {
-        let knob = widgets::knob(
-            ui,
-            master.volume,
-            0.0,
-            musiccraft_project::MAX_VOLUME,
-            1.0,
-            false,
-        );
-        if knob.started {
-            state.begin_gesture();
-        }
-        if let Some(value) = knob.changed {
-            actions.push(Action::Coalesced(
-                Invocation::new("mixer.set_volume", ["0".to_owned(), format!("{value:.3}")]),
-                state.gesture(),
-            ));
-        }
-        knob.response.hint(format!(
-            "Master volume {:.1} dB",
-            20.0 * master.volume.max(1e-6).log10()
-        ));
-    }
-    let master = state.meters.first().copied().unwrap_or_default();
-    widgets::meter(ui, master, vec2(10.0, 32.0)).hint("Master level");
-    if ui.available_width() > 150.0 {
-        let recent = frame.engine.scope.len().saturating_sub(256);
-        let scope = frame.engine.scope.get(recent..).unwrap_or_default();
-        if icons::scope(ui, scope, vec2(96.0, 32.0))
-            .hint("Master output; click for the spectrum analyzer")
-            .clicked()
-        {
-            state.windows.spectrum = !state.windows.spectrum;
-        }
-    }
-    if ui.available_width() > 50.0 {
-        icons::load_bar(ui, frame.engine.load).hint(format!(
-            "Audio load {:.0}% · {} · {}",
-            frame.engine.load * 100.0,
-            frame.engine.audio,
-            frame.engine.midi
-        ));
     }
 }
 
