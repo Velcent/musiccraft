@@ -48,9 +48,9 @@ Sources.
 - **Behaviour specs come first.** Where a guide file describes behaviour, the
   window's own spec (`channel-rack.md`, `piano-roll.md`, `playlist.md`,
   `mixer.md`, `controls.md`, `keymap.md`, …) is authoritative. Anything marked
-  **Proposed (needs `<spec>.md` updated first)** is a suggestion: update that
-  spec, then the code (`docs/clean-room.md`, Process). Current behaviour stays
-  the default until then.
+  **Proposed (needs `<spec>.md` updated first)** is approved as the target
+  (owner's decision below): update that spec, then the code
+  (`docs/clean-room.md`, Process).
 - **Layout is the target.** Where the guide's layout differs from
   `window-layout.md` (for example the shared header: window menu at the far
   left, collapse, maximise and close at the far right), the window file lists
@@ -77,36 +77,32 @@ Sources.
 4. Name the manual page compared with in that file's Sources.
 5. When in doubt, differentiate, or ask the owner.
 
-## Open questions for the owner
+## Owner's decision: follow the manual
 
-The section authors flagged these. Each file's text keeps the current
-behaviour until they are decided.
+On 2026-10-21 the owner decided that wherever the guide offers a choice
+between our current layout or behaviour and the manual's, **the manual's
+wins**. Where a window file keeps current behaviour "until decided", or marks
+something "Proposed", the manual's way is now the target. This settles:
 
-- **Solo buttons.** The manual solos from the mute light (right-click). The
-  mixer and playlist files propose that and keep our visible "S" buttons until
-  decided.
-- **Channel rack selection switch.** The manual places it between the name
-  button and the steps; `window-layout.md` puts it at the end of the row.
-- **Step buttons.** Left-click toggles today; the manual's default is
-  left-click on, right-click off. The guide proposes a setting.
-- **Fine-drag modifier.** We use Shift; the manual uses Ctrl.
-- **Window frame.** Drawing our own application frame (no system title bar)
-  would move closer in feel; it is platform-sensitive.
-- **Embedding plugin editors** inside our windows instead of companion
-  windows needs new windowing work in the plugin hosts.
-- **Detaching windows** needs egui multi-viewport support with our backend,
-  not yet verified.
-- **Native file dialogs** need a new dependency (and a line in
-  `ARCHITECTURE.md`).
-- **Toolbar shape.** The toolbar file proposes a two-row band that roughly
-  doubles its height; the owner should confirm against our one-band layout.
-- **Label renames** proposed to put distance between our words and the
-  original's: "Claw every 2nd" → "Keep every 2nd", "Mod X / Mod Y" → neutral
-  names, the automation curve names, "PAT / SONG" → "Pattern / Song", and the
-  playlist's "picker" → "Clip list".
-- **Record arm** on mixer strips versus today's arming of playlist tracks.
-- **Stereo separation direction**: ours turns left toward mono; the manual's
-  turns right.
+- **Solo** from the mute light (right-click), as the manual does; the
+  separate "S" buttons go.
+- **Channel rack selection switch** between the name button and the steps.
+- **Step buttons**: left-click turns a step on, right-click turns it off.
+- **Fine drag** with Ctrl, as the manual does.
+- **Window frame**: our own application frame with its own window buttons,
+  where the platform allows.
+- **Plugin editors** embedded under our window header.
+- **Detachable windows** and **native file dialogs**.
+- **Toolbar** as the manual's two-row band.
+- **Record arm** on mixer strips.
+- **Stereo separation** turning right toward mono.
+
+This covers layout and behaviour only. Colours, icons, fonts, the drawing of
+every control, labels and names stay our own (`docs/clean-room.md`), so the
+proposed label renames that move away from the original's words stand
+("Claw every 2nd" → "Keep every 2nd", neutral names for "Mod X / Mod Y", our
+own automation curve names, "Pattern / Song", "Clip list"). Each change
+still updates its behaviour spec before the code.
 
 ## Sources
 
@@ -114,5 +110,7 @@ behaviour until they are decided.
 - The public online manual's pages and screenshots, listed per file in each
   file's Sources; compared for layout, proportions, density and behaviour
   only. No colours were sampled and nothing was traced or measured.
+- Owner's decision of 2026-10-21 to follow the manual on every open choice
+  of layout and behaviour.
 - Own design: the guide's structure, the colour roles, every glyph, every
-  label, the default for every open question, and the proposed tokens.
+  label, and the proposed tokens.

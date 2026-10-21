@@ -65,6 +65,10 @@ general workflow are not themselves something we copy from source. Even so:
   drawings, and wording. We never sample colours from, trace or overlay their
   screenshots, and we never match them pixel for pixel. Each change of this kind
   names the manual page it was compared with in its spec's Sources.
+- **Owner's decision (2026-10-21): follow the manual.** Where the style guide
+  (`docs/spec/style/`) offers a choice between our current layout or behaviour
+  and the manual's, the manual's wins. Colours, icons, fonts, drawings and
+  wording stay our own as above.
 
 ## Process
 
