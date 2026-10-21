@@ -18,6 +18,8 @@ pub struct PluginEntry {
     pub vendor: String,
     /// `true` for instruments, `false` for effects.
     pub instrument: bool,
+    /// Plugin format as shown in the browser ("CLAP", "VST3"), or empty.
+    pub format: String,
 }
 
 /// One parameter of a running plugin, with its current value.

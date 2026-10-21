@@ -204,47 +204,41 @@ fn settings(
     });
 }
 
-/// The "Controllers" section of the browser's project list.
-pub(crate) fn section(
+/// The controller list the browser shows under "This project".
+pub(crate) fn list(
     ui: &mut egui::Ui,
     state: &mut UiState,
     project: &Project,
     actions: &mut Vec<Action>,
 ) {
-    let title = RichText::new(format!("Controllers ({})", project.controllers.len())).strong();
-    egui::CollapsingHeader::new(title)
-        .id_salt("browser-controllers")
-        .default_open(!project.controllers.is_empty())
-        .show(ui, |ui| {
-            if project.controllers.is_empty() {
-                ui.label(
-                    RichText::new("Right-click a knob and add a controller")
-                        .small()
-                        .color(theme::TEXT_DIM),
-                );
+    if project.controllers.is_empty() {
+        ui.label(
+            RichText::new("Right-click a knob and add a controller")
+                .small()
+                .color(theme::TEXT_DIM),
+        );
+    }
+    for (i, controller) in project.controllers.iter().enumerate() {
+        let n = i + 1;
+        ui.horizontal(|ui| {
+            let mut enabled = controller.enabled;
+            if ui.checkbox(&mut enabled, "").changed() {
+                let flag = if enabled { "on" } else { "off" };
+                actions.push(Action::Run(set(n, "enabled", flag.to_owned())));
             }
-            for (i, controller) in project.controllers.iter().enumerate() {
-                let n = i + 1;
-                ui.horizontal(|ui| {
-                    let mut enabled = controller.enabled;
-                    if ui.checkbox(&mut enabled, "").changed() {
-                        let flag = if enabled { "on" } else { "off" };
-                        actions.push(Action::Run(set(n, "enabled", flag.to_owned())));
-                    }
-                    ui.label(RichText::new(&controller.name).color(theme::AUTOMATION));
-                    if ui
-                        .small_button("×")
-                        .hint("Delete this controller")
-                        .clicked()
-                    {
-                        actions.push(Action::Run(Invocation::new(
-                            "controller.remove",
-                            [n.to_string()],
-                        )));
-                    }
-                });
-                settings(ui, state, project, n, controller, actions);
-                ui.separator();
+            ui.label(RichText::new(&controller.name).color(theme::AUTOMATION));
+            if ui
+                .small_button("×")
+                .hint("Delete this controller")
+                .clicked()
+            {
+                actions.push(Action::Run(Invocation::new(
+                    "controller.remove",
+                    [n.to_string()],
+                )));
             }
         });
+        settings(ui, state, project, n, controller, actions);
+        ui.separator();
+    }
 }

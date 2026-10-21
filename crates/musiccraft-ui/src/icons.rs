@@ -51,6 +51,26 @@ pub enum Icon {
     More,
     /// Refresh (three quarters of a ring ending in an arrowhead).
     Refresh,
+    /// Fold all (an upward chevron over two short bars).
+    FoldAll,
+    /// An open marker or a list (a small downward chevron).
+    ChevronDown,
+    /// An open folder (the folder outline with its front lifted).
+    FolderOpen,
+    /// Audio (a centre line crossed by bars of different heights).
+    Wave,
+    /// Plugins (a 2 × 2 grid of rounded squares, one outlined).
+    Plugins,
+    /// Presets (a knob: a circle with a pointer line).
+    Knob,
+    /// An effect (a box with an S-curve corner to corner).
+    Effect,
+    /// Automation (a zigzag with a dot at each node).
+    Automation,
+    /// A controller (one period of a sine wave).
+    Sine,
+    /// Sound packs (a box with a lid line).
+    Pack,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -348,6 +368,119 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 color,
                 Stroke::NONE,
             ));
+        }
+        Icon::FoldAll => {
+            painter.add(Shape::line(
+                vec![p(r, 0.2, 0.4), p(r, 0.5, 0.1), p(r, 0.8, 0.4)],
+                stroke,
+            ));
+            painter.line_segment([p(r, 0.15, 0.65), p(r, 0.85, 0.65)], stroke);
+            painter.line_segment([p(r, 0.15, 0.9), p(r, 0.85, 0.9)], stroke);
+        }
+        Icon::ChevronDown => {
+            painter.add(Shape::line(
+                vec![p(r, 0.15, 0.35), p(r, 0.5, 0.7), p(r, 0.85, 0.35)],
+                stroke,
+            ));
+        }
+        Icon::FolderOpen => {
+            painter.add(Shape::line(
+                vec![
+                    p(r, 0.85, 0.3),
+                    p(r, 0.5, 0.3),
+                    p(r, 0.4, 0.15),
+                    p(r, 0.0, 0.15),
+                    p(r, 0.0, 0.9),
+                ],
+                stroke,
+            ));
+            painter.add(Shape::convex_polygon(
+                vec![
+                    p(r, 0.2, 0.45),
+                    p(r, 1.0, 0.45),
+                    p(r, 0.8, 0.9),
+                    p(r, 0.0, 0.9),
+                ],
+                Color32::TRANSPARENT,
+                stroke,
+            ));
+        }
+        Icon::Wave => {
+            painter.line_segment([p(r, 0.0, 0.5), p(r, 1.0, 0.5)], Stroke::new(1.0, color));
+            for (x, h) in [
+                (0.1, 0.18),
+                (0.3, 0.4),
+                (0.5, 0.28),
+                (0.7, 0.45),
+                (0.9, 0.15),
+            ] {
+                painter.line_segment([p(r, x, 0.5 - h), p(r, x, 0.5 + h)], stroke);
+            }
+        }
+        Icon::Plugins => {
+            for (i, (x, y)) in [(0.0, 0.0), (0.55, 0.0), (0.0, 0.55), (0.55, 0.55)]
+                .into_iter()
+                .enumerate()
+            {
+                let cell = Rect::from_min_max(p(r, x, y), p(r, x + 0.45, y + 0.45));
+                if i == 1 {
+                    painter.rect_stroke(cell, 1.5, stroke, egui::StrokeKind::Inside);
+                } else {
+                    painter.rect_filled(cell, 1.5, color);
+                }
+            }
+        }
+        Icon::Knob => {
+            let radius = r.width().min(r.height()) * 0.45;
+            painter.circle_stroke(r.center(), radius, stroke);
+            painter.line_segment([r.center(), p(r, 0.82, 0.18)], stroke);
+        }
+        Icon::Effect => {
+            painter.rect_stroke(
+                Rect::from_min_max(p(r, 0.0, 0.0), p(r, 1.0, 1.0)),
+                1.5,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+            let curve: Vec<Pos2> = (0..=12)
+                .map(|i| {
+                    let t = i as f32 / 12.0;
+                    let y =
+                        0.5 - 0.35 * (t * std::f32::consts::PI - std::f32::consts::FRAC_PI_2).sin();
+                    p(r, 0.12 + t * 0.76, y)
+                })
+                .collect();
+            painter.add(Shape::line(curve, stroke));
+        }
+        Icon::Automation => {
+            let nodes = [
+                p(r, 0.05, 0.8),
+                p(r, 0.35, 0.25),
+                p(r, 0.65, 0.65),
+                p(r, 0.95, 0.15),
+            ];
+            painter.add(Shape::line(nodes.to_vec(), stroke));
+            for node in nodes {
+                painter.circle_filled(node, 1.6, color);
+            }
+        }
+        Icon::Sine => {
+            let wave: Vec<Pos2> = (0..=16)
+                .map(|i| {
+                    let t = i as f32 / 16.0;
+                    p(r, t, 0.5 - 0.4 * (t * std::f32::consts::TAU).sin())
+                })
+                .collect();
+            painter.add(Shape::line(wave, stroke));
+        }
+        Icon::Pack => {
+            painter.rect_stroke(
+                Rect::from_min_max(p(r, 0.05, 0.15), p(r, 0.95, 0.9)),
+                1.0,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+            painter.line_segment([p(r, 0.05, 0.35), p(r, 0.95, 0.35)], stroke);
         }
         Icon::Browser => {
             painter.add(Shape::convex_polygon(

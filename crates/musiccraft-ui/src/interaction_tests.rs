@@ -825,6 +825,7 @@ fn plugin_channels_show_parameters_and_open_their_window() {
             name: "Keys".into(),
             vendor: "Example".into(),
             instrument: true,
+            format: "CLAP".into(),
         }],
         live: vec![LivePluginView {
             instance,

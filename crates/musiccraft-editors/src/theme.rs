@@ -20,6 +20,8 @@ pub const STEP_A: Color32 = Color32::from_rgb(0x3d, 0x45, 0x53);
 pub const STEP_B: Color32 = Color32::from_rgb(0x2a, 0x2f, 0x39);
 pub const GRID_LINE: Color32 = Color32::from_rgb(0x2b, 0x31, 0x3b);
 pub const GRID_BEAT: Color32 = Color32::from_rgb(0x38, 0x3f, 0x4b);
+/// Faint lines joining a browser row to its parent folder.
+pub const TREE_LINE: Color32 = GRID_BEAT;
 pub const GRID_BAR: Color32 = Color32::from_rgb(0x50, 0x5a, 0x6a);
 pub const WHITE_KEY_ROW: Color32 = Color32::from_rgb(0x22, 0x27, 0x30);
 pub const BLACK_KEY_ROW: Color32 = Color32::from_rgb(0x1c, 0x20, 0x27);

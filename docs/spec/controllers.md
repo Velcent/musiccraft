@@ -56,7 +56,7 @@ pattern-based DAWs, with our own design.
 - Right-clicking a knob or fader offers "Add controller" next to "Create
   automation clip", with one entry per kind (envelope and keyboard listen to
   the first channel, peak to insert 1 until changed).
-- The browser's project section lists controllers: an on/off box, the name,
+- The browser lists controllers under "This project" (`browser.md`): an on/off box, the name,
   a delete button, the kind's settings as dragged numbers (one undo step per
   drag), a text field for formulas (applied when it loses focus) and the
   output range.
