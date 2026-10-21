@@ -207,12 +207,9 @@ fn check_all(host: &dyn PluginFactory, id_of: impl Fn(&str) -> String) {
         assert_eq!(info.name, INSTRUMENT_TITLES[i]);
         assert_eq!(info.vendor, "MusicCraft");
         let mut live = host.instantiate(&request(&id, None)).unwrap();
-        compare(
-            INSTRUMENT_TITLES[i],
-            &hosted(live.processor.as_mut()),
-            &voices(kind),
-        );
-        live.processor.stop();
+        let first = hosted(live.processor.as_mut());
+        compare(INSTRUMENT_TITLES[i], &first, &voices(kind));
+        played_again_after_a_reset(INSTRUMENT_TITLES[i], live.processor.as_mut(), &first);
     }
     let id = id_of(ANTISERUM_CLAP_ID);
     assert!(
@@ -221,8 +218,23 @@ fn check_all(host: &dyn PluginFactory, id_of: impl Fn(&str) -> String) {
             .any(|p| p.id == id && p.name == "Antiserum")
     );
     let mut live = host.instantiate(&request(&id, None)).unwrap();
-    compare("Antiserum", &hosted(live.processor.as_mut()), &antiserum());
-    live.processor.stop();
+    let first = hosted(live.processor.as_mut());
+    compare("Antiserum", &first, &antiserum());
+    played_again_after_a_reset("Antiserum", live.processor.as_mut(), &first);
+}
+
+/// After the host stops and restarts processing (a reset, as before a
+/// render), the same notes give the same audio: nothing from the first pass
+/// (notes still in their release, effect tails) sounds into the second.
+fn played_again_after_a_reset(name: &str, processor: &mut dyn External, first: &[f32]) {
+    processor.stop();
+    let again = hosted(processor);
+    let worst = first
+        .iter()
+        .zip(&again)
+        .fold(0.0_f32, |w, (a, b)| w.max((a - b).abs()));
+    assert!(worst == 0.0, "{name}: differs by {worst} after a reset");
+    processor.stop();
 }
 
 #[test]

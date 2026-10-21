@@ -636,9 +636,13 @@ impl Poly {
 
     /// Silences every voice at once (the host reset the plugin).
     pub fn reset(&mut self) {
+        // Every voice as new (noise, filters, strings) and the note count
+        // from zero, so notes after a reset sound as they did the first time
+        // and a second render matches the first.
         for voice in &mut self.voices {
-            voice.active = false;
+            voice.clear();
         }
+        self.counter = 0;
     }
 
     /// Cuts the voices playing `key`.

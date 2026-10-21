@@ -114,7 +114,9 @@ impl Plugin for AntiserumPlugin {
     }
 
     fn reset(&mut self) {
-        self.synth.all_notes_off();
+        // A host reset starts from silence: voices stop at once and the
+        // effects' tails are cleared, so a second render matches the first.
+        self.synth.reset();
     }
 
     fn process(

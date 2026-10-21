@@ -113,6 +113,7 @@ impl Flanger {
         for line in &mut self.lines {
             line.fill(0.0);
         }
+        self.phase = 0.0;
     }
 
     fn read(line: &[f32], write: usize, delay: f32) -> f32 {

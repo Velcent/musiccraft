@@ -207,5 +207,6 @@ of contents; see `docs/clean-room.md`.
 | Validation | Offline renders with our plugins match the in-app render (CLAP and VST3) | `spec:validation.md` `done` |
 | Validation | clap-validator and the VST3 validator pass on both bundles in CI | `spec:validation.md` `done` |
 | Validation | Denormal and CPU-budget checks for every plugin | `spec:validation.md` `done` |
-| Validation | Manual smoke tests in Ardour, Bitwig and REAPER | `todo` |
+| Validation | Smoke tests in REAPER (CLAP, VST3) and Ardour (VST3), scripted in `tools/host-smoke` | `spec:validation.md` `done` |
+| Validation | Smoke test in Bitwig Studio and on Windows and macOS hosts, by hand | `todo` |
 | Release | Plugin bundles for Linux, Windows and macOS in the release downloads, with install notes | `spec:plugin-export.md` `done` |

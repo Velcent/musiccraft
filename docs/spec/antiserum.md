@@ -23,6 +23,10 @@ effects and sequencer (Phase 5), the UI and presets (Phase 6) and plugin export
   - `process(left, right)`, which overwrites the two buffers
 - Events apply at the start of the next `process` call. A host that needs
   sample-accurate events splits its block at each event.
+- `reset()` returns the synth to how it started: every voice and effect tail
+  silenced, held keys and glide forgotten, and the random state (per-note
+  random phases and values) back to its first seed. The same notes after a
+  reset therefore sound exactly as they did the first time.
 - `set_wavetable(osc, Arc<Wavetable>)` returns the table it replaces, so the
   caller drops it where freeing memory is allowed. `set_source(osc,
   Arc<Source>)` does the same for an oscillator's sample, multisample zones

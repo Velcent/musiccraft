@@ -3,7 +3,28 @@
 Notable changes per release. GitHub's generated release notes list every
 commit; this file says what they add up to.
 
-## Unreleased (since 0.2.2)
+## Unreleased (since 0.3.0)
+
+### Fixes
+
+- Rendering a project twice in a DAW gives the same audio. A host reset,
+  which DAWs do before a render, now makes every plugin as good as new:
+  - Antiserum stops its voices and effect tails at once, where it used to
+    only release them, and restarts its random phases.
+  - The built-in instruments return each voice to new; the drum synth's
+    noise used to differ on every render.
+  - The chorus, flanger, pitch shifter and hall reverb restart their LFO and
+    sweep phases.
+
+### Checked in other DAWs
+
+- `tools/host-smoke/run.sh` drives REAPER (CLAP and VST3) and Ardour (VST3)
+  headless. It loads all 112 plugins, plays and renders, sets parameters
+  from the host, opens editors, routes a sidechain, and saves and reopens.
+  Results are in `docs/smoke-tests.md`: every check passes in REAPER 7.82
+  and Ardour 8.4.
+
+## 0.3.0 (2026-10-20)
 
 ### Antiserum, the built-in wavetable synth
 
@@ -56,5 +77,5 @@ commit; this file says what they add up to.
 
 - Builds and plugins are not code-signed or notarized (see
   `docs/releasing.md`).
-- The plugins have not yet been tried by hand in Ardour, Bitwig or REAPER
-  (`docs/smoke-tests.md`).
+- The plugins had not yet been tried in Ardour, Bitwig or REAPER
+  (`docs/smoke-tests.md`); REAPER and Ardour have been since.

@@ -213,7 +213,7 @@ Each oscillator can switch to one of these:
   - denormal input.
 - Denormal input is flushed in the effect plugins and the mixer. Tests check tails for subnormals, and timing through our host.
 - A release benchmark gives every effect and instrument a CPU budget.
-- The manual smoke tests are a checklist (`docs/smoke-tests.md`). They need a person with those hosts and have not been run.
+- Smoke tests in other hosts (2026-10-21): `tools/host-smoke/run.sh` drives REAPER 7.82 (CLAP, VST3) and Ardour 8.4 (VST3) headless, and every check passes. Carla 2.5.8 discovers all 56 VST3s. Bitwig and Windows/macOS hosts remain a by-hand checklist (`docs/smoke-tests.md`).
 
 ### Phase 9: release (S)
 

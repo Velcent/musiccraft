@@ -263,6 +263,8 @@ impl PitchShifter {
         for line in &mut self.lines {
             line.fill(0.0);
         }
+        self.write = 0;
+        self.phase = 0.0;
     }
 
     fn read(line: &[f32], position: f32) -> f32 {

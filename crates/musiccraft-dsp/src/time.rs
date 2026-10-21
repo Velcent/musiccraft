@@ -385,6 +385,7 @@ impl Chorus {
         self.left.fill(0.0);
         self.right.fill(0.0);
         self.tone = [0.0; 2];
+        self.phase = 0.0;
     }
 
     fn read(buffer: &[f32], write: usize, delay: f32) -> f32 {

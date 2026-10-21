@@ -114,6 +114,11 @@ Not exported: **layer** (it routes notes to other channels), **MIDI out**
     aftertouch sources.
   - Antiserum's own arpeggiator and sequencer follow the host's tempo and
     position.
+  - When the host resets the plugin (processing starts again, for example
+    before a render or after a transport jump), every voice stops at once and
+    the effects rack's tails are cleared, as for the other instruments. Notes
+    released earlier do not keep sounding into the next render, so rendering
+    a project twice gives the same audio.
 - **Data.**
   - Antiserum keeps data that is not a parameter: wavetables, drawn LFO shapes,
     sequencer steps and oscillator sources.

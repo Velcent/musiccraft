@@ -93,10 +93,25 @@ Antiserum has its own benchmark (`musiccraft-antiserum --example bench`,
 
 ## Manual smoke tests
 
-Hosts we cannot run in CI are checked by hand before a release, with the
-checklist in `docs/smoke-tests.md`: load both bundles, play, automate, save
-and reopen a project, open and close editors. The results go in that file,
-with the host, its version and the date.
+Hosts we cannot run in CI are checked before a release
+(`docs/smoke-tests.md`). `tools/host-smoke/run.sh` drives REAPER (CLAP and
+VST3) and Ardour (VST3) headless:
+- load every plugin;
+- play notes into a render;
+- set parameters from the host;
+- open editors;
+- route a sidechain;
+- save and reopen, comparing renders sample for sample.
+
+What needs a person (another OS, Bitwig, real audio hardware, dragging in an
+editor) is a checklist in the same file. Results go there with the host, its
+version and the date.
+
+- **Reset.** A host reset (before a render, when processing restarts) makes
+  every plugin as good as new, so rendering twice gives the same audio. Tests
+  play, reset and play again through both of our hosts and require identical
+  output from every effect and instrument. A DSP test checks every effect
+  against a new one after `reset`.
 
 ## Sources
 
