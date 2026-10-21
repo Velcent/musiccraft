@@ -405,7 +405,7 @@ All glyphs are vector drawings in the style of `crates/musiccraft-ui/src/icons.r
 | Preview waveform | played part `theme::ACCENT`, unplayed `theme::ACCENT_DIM` | Playhead line `theme::PLAYHEAD`; centre line `theme::LCD_EDGE` |
 | Preview overlay controls | `theme::TEXT_DIM` | `theme::TEXT` on hover; loop on in `theme::ACCENT` |
 | Scroll bar | handle `theme::RAISED` | `theme::RAISED_HOVER` on hover, `theme::ACCENT_DIM` while dragged |
-| Drag ghost | today: fill `theme::ACCENT`, text `theme::BACKGROUND` | Proposed in the main-window section: `theme::RAISED` fill, `theme::TEXT` label, `theme::ACCENT` hairline outline |
+| Drag ghost | `theme::RAISED` fill, `theme::TEXT` label, `theme::ACCENT` hairline outline | As the main-window section proposes |
 | Drop-target outline | `theme::ACCENT` | Existing for the rack; the same on mixer strips, slots and playlist rows |
 | Dock drop zones while dragging the title | `theme::ACCENT_DIM` translucent band with a `theme::ACCENT` outline | Only over a valid edge, as in the main-window section |
 

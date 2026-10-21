@@ -173,9 +173,9 @@ impl Default for Windows {
     fn default() -> Self {
         Self {
             channel_rack: true,
-            piano_roll: false,
+            piano_roll: true,
             playlist: true,
-            mixer: false,
+            mixer: true,
             browser: true,
             shortcuts: false,
             channel_settings: false,
@@ -473,12 +473,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
             let galley = painter.layout_no_wrap(
                 format!("♪ {}", dragged.label()),
                 egui::FontId::proportional(13.0),
-                theme::BACKGROUND,
+                theme::TEXT,
             );
             let rect =
                 egui::Rect::from_min_size(pos + egui::vec2(12.0, 8.0), galley.size()).expand(5.0);
-            painter.rect_filled(rect, 4.0, theme::ACCENT);
-            painter.galley(rect.min + egui::vec2(5.0, 5.0), galley, theme::BACKGROUND);
+            painter.rect(
+                rect,
+                3.0,
+                theme::RAISED,
+                egui::Stroke::new(1.0, theme::ACCENT),
+                egui::StrokeKind::Inside,
+            );
+            painter.galley(rect.min + egui::vec2(5.0, 5.0), galley, theme::TEXT);
         }
     }
     handle_keys(&ctx, state, frame, &mut actions);
@@ -745,7 +751,7 @@ mod tests {
             settings_info: &SettingsInfo::default(),
         };
         let mut state = UiState::default();
-        assert!(!state.windows.mixer);
+        assert!(state.windows.mixer, "all four editors start open");
         let out = resolve_ui_actions(
             &mut state,
             &frame,
@@ -755,7 +761,7 @@ mod tests {
                 Action::Run(Invocation::parse("ui.save").unwrap()),
             ],
         );
-        assert!(state.windows.mixer);
+        assert!(!state.windows.mixer);
         assert_eq!(out, [Action::Run(Invocation::bare("transport.toggle"))]);
         assert!(state.dialog.is_some(), "unsaved project asks for a path");
         state.dialog = None;

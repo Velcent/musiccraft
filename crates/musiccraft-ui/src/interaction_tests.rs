@@ -40,6 +40,8 @@ impl Harness {
         state.windows.channel_rack = false;
         state.windows.playlist = false;
         state.windows.browser = false;
+        state.windows.mixer = false;
+        state.windows.piano_roll = false;
         Self {
             ctx: egui::Context::default(),
             state,
@@ -1650,4 +1652,31 @@ fn double_clicking_an_audio_clip_opens_its_channel_settings() {
     h.settle();
     assert!(h.state.windows.channel_settings);
     assert_eq!(h.state.selected_channel, 1);
+}
+
+#[test]
+fn dragging_a_browser_item_over_a_window_button_opens_that_window() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    assert!(!h.state.windows.mixer);
+    let spot = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..160).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Mixer (F9)"))
+        })
+        .expect("a mixer button in the toolbar");
+    assert!(!h.state.windows.mixer, "hovering alone opens nothing");
+    egui::DragAndDrop::set_payload(
+        &h.ctx,
+        crate::browser::Dragged::Sample("kick.wav".to_owned()),
+    );
+    h.frame(vec![Event::PointerMoved(spot + vec2(1.0, 0.0))]);
+    h.frame(vec![]);
+    assert!(h.state.windows.mixer);
 }

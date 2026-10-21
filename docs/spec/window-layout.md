@@ -8,6 +8,21 @@ DAWs expect them (see the owner's decision of 2026-10-21 in
 stay our own. The full target look, window by window, is the style guide in
 `docs/spec/style/README.md`; its gap lists say what changes here next.
 
+## Starting layout
+
+- All four editors (channel rack, mixer, playlist, piano roll) and the browser
+  are open when the app starts: the rack top-left, the mixer to its right, the
+  playlist across the lower part and the piano roll floating over the right
+  half (each section below).
+
+## Dragging from the browser
+
+- The drag ghost is a small raised chip beside the pointer: a `RAISED` fill,
+  a hairline `ACCENT` outline and the item's name in `TEXT`, so it stays
+  quieter than the toolbar's lit buttons.
+- While a browser item is dragged, hovering over a toolbar window button
+  opens and raises that window, so the drag can continue into it.
+
 ## Window header
 
 - Every editor window (playlist, channel rack, piano roll, mixer) and every secondary
@@ -149,6 +164,11 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Sources
 
+- Starting layout and drag feedback: the style guide's main-window section
+  (`docs/spec/style/main-window.md`, from the public manual's
+  `basics_interface.htm` overview and `toolbar_panels.htm`, which says
+  dragging content over the window buttons raises that window). Ghost tones
+  are our own.
 - The piano roll's header pickers, scroll/zoom row and corner block: the
   interface style guide, `docs/spec/style/piano-roll.md`. Glyphs and sizes
   are our own.

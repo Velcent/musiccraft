@@ -455,18 +455,46 @@ fn menus(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mu
 /// The window buttons: playlist, channel rack, piano roll, browser, mixer.
 fn window_buttons(ui: &mut egui::Ui, state: &mut UiState) {
     ui.spacing_mut().item_spacing.x = 1.0;
+    let dragging = egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ui.ctx());
     let w = &mut state.windows;
-    for (icon, open, hint) in [
-        (Icon::Playlist, &mut w.playlist, "Playlist (F5)"),
-        (Icon::ChannelRack, &mut w.channel_rack, "Channel rack (F6)"),
-        (Icon::PianoRoll, &mut w.piano_roll, "Piano roll (F7)"),
-        (Icon::Browser, &mut w.browser, "Browser (Alt+F8)"),
-        (Icon::Mixer, &mut w.mixer, "Mixer (F9)"),
+    for (icon, open, hint, window) in [
+        (
+            Icon::Playlist,
+            &mut w.playlist,
+            "Playlist (F5)",
+            "playlist-window",
+        ),
+        (
+            Icon::ChannelRack,
+            &mut w.channel_rack,
+            "Channel rack (F6)",
+            "channel-rack",
+        ),
+        (
+            Icon::PianoRoll,
+            &mut w.piano_roll,
+            "Piano roll (F7)",
+            "piano-roll",
+        ),
+        (Icon::Browser, &mut w.browser, "Browser (Alt+F8)", ""),
+        (Icon::Mixer, &mut w.mixer, "Mixer (F9)", "mixer-window"),
     ] {
-        if icons::toggle(ui, icon, *open, hint).clicked() {
+        let response = icons::toggle(ui, icon, *open, hint);
+        if response.clicked() {
             *open = !*open;
         }
+        // A browser item dragged over the button opens and raises its window,
+        // so the drag can go on into it.
+        if dragging && !window.is_empty() && response.contains_pointer() {
+            *open = true;
+            raise(ui.ctx(), egui::Id::new(window));
+        }
     }
+}
+
+/// Puts a workspace window on top of the others.
+fn raise(ctx: &egui::Context, id: egui::Id) {
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, id));
 }
 
 /// A thin vertical line between groups.
