@@ -143,6 +143,7 @@ of contents; see `docs/clean-room.md`.
 | Options | Settings window: audio device, rate, buffer, MIDI port, scale, folders, project info | `key:F10=ui.settings` `spec:settings.md` |
 | Interface | Hint bar showing what the hovered control does | `done` |
 | Interface | Compact layout: one-band toolbar, tools on each window's title row, narrow mixer strips | `spec:window-layout.md` `done` |
+| Interface | Look and feel per the style guide: the gaps it lists for each window | `spec:style/README.md` `todo` |
 | Editing | Draw, paint, delete and select tools in the piano roll and playlist | `spec:piano-roll.md` `spec:playlist.md` |
 | Piano roll | Ghost notes of other channels | `spec:piano-roll.md` |
 | Piano roll | Strum, humanize, legato, chop, glue, flip, snap to scale, arpeggiate | `cmd:note.strum` `cmd:note.humanize` `cmd:note.legato` `cmd:note.chop` `cmd:note.glue` `cmd:note.flip` `cmd:note.to_scale` `cmd:note.arpeggiate` |

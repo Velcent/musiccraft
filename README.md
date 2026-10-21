@@ -190,7 +190,8 @@ cargo xtask parity          # feature checklist (docs/parity.md)
 ```
 
 - `CLAUDE.md` — working rules; `ARCHITECTURE.md` — crates and threading;
-  `docs/spec/` — behavior specs; `docs/clean-room.md` — provenance rules.
+  `docs/spec/` — behavior specs; `docs/spec/style/` — interface style guide;
+  `docs/clean-room.md` — provenance rules.
 - `MUSICCRAFT_SCREENSHOT=out.png musiccraft …` saves one frame and exits.
 
 MusicCraft is an independent project and is not affiliated with any other DAW.

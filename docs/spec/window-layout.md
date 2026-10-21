@@ -5,7 +5,8 @@ aim is a dark, compact interface where the workspace, not window chrome,
 takes the room, with the panels and controls where users of pattern-based
 DAWs expect them (see the owner's decision of 2026-10-21 in
 `docs/clean-room.md`). Colours, icons, fonts and the drawing of every control
-stay our own.
+stay our own. The full target look, window by window, is the style guide in
+`docs/spec/style/README.md`; its gap lists say what changes here next.
 
 ## Window header
 
