@@ -403,9 +403,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
    - The guide puts it in the step column under the focused channel's steps, hiding the other rows' steps, hanging below the window, with tabs along the bottom, value-following bar brightness and its own two-way resize corner.
    - Missing tabs: Key, Offset, Repeat. Missing gestures: Ctrl-scale, right-drag ramp, Alt reset.
    - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`graph_editor`), `crates/musiccraft-ui/src/piano_roll.rs` (`LaneMode::ALL`).
-5. **Step look.**
-   - All lit steps share one colour, so beat grouping disappears on lit steps.
-   - Velocity is not shown. (The playing step is now marked with `STEP_PLAYING`, and hover lifts an off step to `STEP_HOVER`.)
+5. **Step look.** Lit steps keep the beat grouping (one step darker in odd groups, `theme::step_lit`) and dim with velocity, and lit steps under the playhead brighten. Still missing: the brief flash of lit steps for the step's duration.
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`steps`).
 6. **Scrolling, footer and placement.**
    - The rack has the simplified bars (rail, thumb and chevrons, shown only when the rows overflow; `scrollbars::plain_area`), but they scroll whole rows sideways, so mute, knobs and names scroll away with the steps. Only the step column should scroll horizontally.
@@ -417,41 +415,35 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
    - No kind glyph, no padlock, no missing-file warning state.
    - Left-click opens settings, but close-on-second-click, Ctrl+click preview, Shift+scroll reorder and drag reorder are missing.
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
-8. **Pan knob barely visible.** At centre, the bipolar arc is empty and the raised body almost disappears into the panel, so only the pointer line shows (visible in `docs/screenshots/channel-rack.png`). Add a ring.
-   - File: `crates/musiccraft-editors/src/widgets.rs` (`knob`).
-9. **Solo is stored as mutes.** `channel.solo` mutes every other channel, so "silenced by solo" cannot be told apart from "muted", and there is no soloed state to ring. The solo light roles need solo kept as its own state.
+8. **Solo is stored as mutes.** `channel.solo` mutes every other channel, so "silenced by solo" cannot be told apart from "muted", and there is no soloed state to ring. The solo light roles need solo kept as its own state.
    - Files: `docs/spec/channel-rack.md` (`channel.solo`), `crates/musiccraft-project/src/model.rs`.
-10. **Note preview.**
-    - Shading alternates by beat; the guide wants it by bar.
+9. **Note preview.**
     - Left-click only opens the piano roll (does not toggle), and right-click "open at this point" is missing.
     - There is no all-rows piano-roll view.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`mini_roll`).
-11. **Channel context menu.**
+10. **Channel context menu.**
     - It is a flat list ordered Group…, Channel settings, Open in piano roll, Rename…, Change sample…, Solo, Steps ▸, Clone, Move up/down, Clear notes in pattern, Delete.
     - "Steps ▸ Clear" duplicates "Clear notes in pattern".
     - Missing: colour and icon items, insert and replace, cut, copy and paste steps, choke itself, MIDI items, graph editor entry.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`context_menu`).
-12. **Mute light.** No right-click solo menu, no Ctrl+click solo on the light (keyboard only), no Shift+click lock.
+11. **Mute light.** No right-click solo menu, no Ctrl+click solo on the light (keyboard only), no Shift+click lock.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
-13. **Mixer-track box.**
+12. **Mixer-track box.**
     - Layer and MIDI-out channels still show an editable number although they make no sound of their own.
     - There is no option to hide the column.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
-14. **Group filter.**
+13. **Group filter.**
     - No right-click new, rename or delete; no Page Up/Down cycling.
     - New channels do not join the shown group.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`header`, `add_menu`).
-15. **Pattern length.**
-    - The drag box allows 1–256 steps while the model allows `MAX_PATTERN_STEPS` (1024).
-    - No "auto" length and no right-click bar presets.
-    - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`), `crates/musiccraft-project/src/model.rs`.
-16. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
+14. **Pattern length.** The length box takes 1–1024 steps, but there is no "auto" length and no right-click bar presets.
+    - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`).
+15. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
     - File: `crates/musiccraft-ui/src/channel_rack.rs`.
-17. **Shift+scroll over the header does not change patterns.**
+16. **Shift+scroll over the header does not change patterns.**
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`).
-18. **Labels to rename (proposals):** "Unsorted" → "No group" (`header`, and `docs/spec/channel-rack.md` "Display filter groups"); "Mod X" / "Mod Y" → "Mod A" / "Mod B" (`LaneMode` in `crates/musiccraft-ui/src/piano_roll.rs`, and the "Step graph editor" spec text); "Fill every N steps" → "Turn on every Nth step" (`context_menu`).
-19. **Keymap.** Ctrl+K, Alt+M, Alt+G, Alt+Z, Alt+U, Page Up/Down, Ctrl+C/X/V and F2 over the rack are new window-local bindings for `docs/spec/keymap.md` ("Over the channel rack") and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today; F2 over the rack takes precedence over the toolbar's proposed global F2 for pattern rename while the pointer is over the rack.
-20. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
+17. **Keymap.** Ctrl+K, Alt+M, Alt+G, Alt+Z, Alt+U, Page Up/Down, Ctrl+C/X/V and F2 over the rack are new window-local bindings for `docs/spec/keymap.md` ("Over the channel rack") and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today; F2 over the rack takes precedence over the toolbar's proposed global F2 for pattern rename while the pointer is over the rack.
+18. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
 
 ## Sources
 

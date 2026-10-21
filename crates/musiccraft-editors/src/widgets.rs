@@ -53,6 +53,8 @@ pub fn knob(
     let center = rect.center();
     let radius = size / 2.0 - 2.0;
     painter.circle_filled(center, radius, theme::RAISED);
+    // A thin ring keeps a centred knob visible on dark wells.
+    painter.circle_stroke(center, radius, Stroke::new(1.0, theme::GRID_BAR));
     let t = ((shown - min) / range).clamp(0.0, 1.0);
     let start = PI * 0.75;
     let sweep = PI * 1.5;

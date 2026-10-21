@@ -29,12 +29,12 @@
 - **Step graph editor**: the rack's Graph toggle opens a strip under the rows
   for the selected channel, one bar per step of the pattern, showing the note
   that starts on that step (the highest, when several do): velocity, pan,
-  release, fine pitch, Mod X or Mod Y. Dragging a bar sets that note's value
+  release, fine pitch, Mod A or Mod B. Dragging a bar sets that note's value
   through the usual note commands; one drag is one undo step.
 - **Display filter groups**: `channel.set_group <n> [group]` (undoable,
   saved as `"group"`; no name removes it) puts a channel in a named group. The
   rack's group menu (always at the top left of the rack) shows All, one
-  group, or Unsorted (channels without one). Right-click a channel → Group…
+  group, or No group (channels without one). Right-click a channel → Group…
   sets it. Filtering only hides rows; numbering and keys stay the same.
 - `channel.solo <n>` mutes every other channel; running it again on an already
   soloed channel unmutes all channels.
@@ -47,6 +47,11 @@
   the first click gave (on or off). Right-click turns a step off, and
   dragging with the right button erases every step it passes. A whole drag
   is one undo step. Turning a step on previews the channel's sound.
+  A lit step is filled with the channel colour, one step darker in odd beat
+  groups so the grouping survives, and dimmer for a lower velocity (with a
+  readable minimum); lit steps under the playhead light one step brighter.
+  Melodic rows show a miniature roll whose alternate bars are shaded.
+  The pattern length box takes 1 to 1024 steps.
 - **Row layout** (UI), left to right: mute dot, pan knob, volume knob, the
   mixer track box, the name button, the steps (or a miniature roll), and a
   **selection switch** that selects the channel without opening its
@@ -366,7 +371,7 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   Studio online manual, "Channel settings" (miscellaneous functions: time,
   echo delay). Units, ranges and rules are our own.
 - Display filter groups follow the channel rack filter groups described in the
-  FL Studio online manual, "Channel Rack". "Unsorted" and the menu are our own.
+  FL Studio online manual, "Channel Rack". "No group" and the menu are our own.
 - The step graph editor follows the channel rack graph editor described in the
   FL Studio online manual, "Channel Rack" (graph editor). Its properties match
   our piano roll lane; the layout is our own.

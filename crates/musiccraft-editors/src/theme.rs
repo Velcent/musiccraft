@@ -91,6 +91,20 @@ pub const PALETTE: [Color32; 8] = [
     Color32::from_rgb(0xe0, 0xd0, 0x5c),
 ];
 
+/// A lit step: the channel colour, one step darker in odd beat groups, and
+/// dimmed toward the off tone for a lower velocity (never below a readable
+/// minimum).
+#[must_use]
+pub fn step_lit(color: Color32, odd: bool, velocity: u8) -> Color32 {
+    let base = if odd {
+        mix(color, BACKGROUND, 0.2)
+    } else {
+        color
+    };
+    let strength = 0.45 + 0.55 * f32::from(velocity.min(127)) / 127.0;
+    mix(STEP_A, base, strength)
+}
+
 /// Colour `index` (0..16) of the playlist track palette: the clip colours,
 /// then darker versions of them.
 #[must_use]
@@ -272,6 +286,16 @@ pub fn watermark(ui: &egui::Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lit_steps_keep_beat_groups_and_show_velocity() {
+        let luma = |c: Color32| u32::from(c.r()) + u32::from(c.g()) + u32::from(c.b());
+        let color = PALETTE[0];
+        assert!(luma(step_lit(color, true, 100)) < luma(step_lit(color, false, 100)));
+        assert!(luma(step_lit(color, false, 20)) < luma(step_lit(color, false, 127)));
+        // Even the softest step stays clearly lighter than an off step.
+        assert!(luma(step_lit(color, true, 1)) > luma(STEP_A) + 30);
+    }
 
     #[test]
     fn content_never_shares_a_signal_colour() {

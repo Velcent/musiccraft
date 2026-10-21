@@ -143,7 +143,7 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                 .width(90.0)
                 .selected_text(match &state.rack_group {
                     None => "All".to_owned(),
-                    Some(g) if g.is_empty() => "Unsorted".to_owned(),
+                    Some(g) if g.is_empty() => "No group".to_owned(),
                     Some(g) => g.clone(),
                 })
                 .show_ui(ui, |ui| {
@@ -155,7 +155,7 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                             *group,
                         );
                     }
-                    ui.selectable_value(&mut state.rack_group, Some(String::new()), "Unsorted");
+                    ui.selectable_value(&mut state.rack_group, Some(String::new()), "No group");
                 })
                 .response
                 .on_hover_text("Show one display filter group (right-click a channel → Group…)");
@@ -180,7 +180,11 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
         }
         ui.label(RichText::new("steps").color(theme::TEXT_DIM));
         let mut steps = pattern.length_steps;
-        let response = ui.add(egui::DragValue::new(&mut steps).range(1..=256).speed(0.2));
+        let response = ui.add(
+            egui::DragValue::new(&mut steps)
+                .range(1..=musiccraft_project::MAX_PATTERN_STEPS)
+                .speed(0.2),
+        );
         if response.changed() && steps != pattern.length_steps {
             run(
                 actions,
@@ -401,8 +405,8 @@ pub(crate) fn context_menu(
         ui.close();
     }
     ui.menu_button("Steps", |ui| {
-        for every in [2, 4, 8] {
-            if ui.button(format!("Fill every {every} steps")).clicked() {
+        for (every, nth) in [(2, "2nd"), (4, "4th"), (8, "8th")] {
+            if ui.button(format!("Turn on every {nth} step")).clicked() {
                 run(actions, "step.fill", [number.clone(), every.to_string()]);
                 ui.close();
             }
@@ -480,13 +484,17 @@ fn steps(
     let notes: Vec<&musiccraft_project::Note> = pattern.notes_of(channel.id).collect();
     ui.add_space(6.0);
     if !is_step_only(&notes) {
-        mini_roll(ui, state, (index, beat_steps as u32), &notes, count);
+        let bar_steps = (pattern.time_signature.bar_ticks() / TICKS_PER_STEP).max(1);
+        mini_roll(ui, state, (index, bar_steps), &notes, count);
         return;
     }
     let mut on = vec![false; count as usize];
+    let mut velocity = vec![0_u8; count as usize];
     for note in &notes {
-        if let Some(slot) = on.get_mut((note.start / TICKS_PER_STEP) as usize) {
+        let step = (note.start / TICKS_PER_STEP) as usize;
+        if let (Some(slot), Some(v)) = (on.get_mut(step), velocity.get_mut(step)) {
             *slot = true;
+            *v = (*v).max(note.velocity);
         }
     }
     let pointer = ui.input(|i| {
@@ -556,14 +564,21 @@ fn steps(
                 shown = stroke.on;
             }
         }
-        let base = if (step / beat_steps) % 2 == 0 {
-            theme::STEP_A
-        } else {
-            theme::STEP_B
+        let odd = (step / beat_steps) % 2 == 1;
+        let base = if odd { theme::STEP_B } else { theme::STEP_A };
+        // A step lit by the stroke in progress shows at full velocity.
+        let level = match velocity.get(step).copied() {
+            Some(v) if *lit => v,
+            _ => 100,
         };
         // Hover lifts an off step one tone, never darker than its group.
         let fill = if shown {
-            theme::palette(index)
+            let lit = theme::step_lit(theme::palette(index), odd, level);
+            if playing == Some(step) {
+                theme::mix(lit, theme::TEXT, 0.3)
+            } else {
+                lit
+            }
         } else if response.hovered() {
             theme::STEP_HOVER
         } else {
@@ -604,7 +619,7 @@ pub(crate) struct StepStroke {
 fn mini_roll(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    (index, beat_steps): (usize, u32),
+    (index, bar_steps): (usize, u32),
     notes: &[&musiccraft_project::Note],
     steps: u32,
 ) {
@@ -612,13 +627,14 @@ fn mini_roll(
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect.shrink(1.0), 3.0, theme::PANEL_DARK);
-    let beat = beat_steps as f32 * STEP_SIZE.x;
-    for k in 0..steps.div_ceil(beat_steps) {
-        let x = rect.left() + k as f32 * beat;
+    // Alternate bars are shaded.
+    let bar = bar_steps as f32 * STEP_SIZE.x;
+    for k in 0..steps.div_ceil(bar_steps) {
+        let x = rect.left() + k as f32 * bar;
         if k % 2 == 1 {
             let band = egui::Rect::from_min_max(
                 egui::pos2(x, rect.top() + 1.0),
-                egui::pos2((x + beat).min(rect.right()), rect.bottom() - 1.0),
+                egui::pos2((x + bar).min(rect.right()), rect.bottom() - 1.0),
             );
             painter.rect_filled(band, 0.0, theme::BLACK_KEY_ROW);
         }
