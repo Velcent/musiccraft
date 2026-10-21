@@ -9,7 +9,9 @@ use musiccraft_project::{MAX_VOLUME, MixerTrack, Project};
 use crate::dialogs::Dialog;
 use crate::{Action, Frame, UiState, theme, widgets};
 
-const STRIP_WIDTH: f32 = 62.0;
+const STRIP_WIDTH: f32 = 40.0;
+/// Height of the vertical name on a strip.
+const NAME_HEIGHT: f32 = 68.0;
 
 fn run(actions: &mut Vec<Action>, name: &str, args: impl IntoIterator<Item = String>) {
     actions.push(Action::Run(Invocation::new(name, args)));
@@ -32,15 +34,21 @@ pub fn show(
         Some(track) if state.selected_track > 0 => format!("Mixer — {}", track.name),
         _ => "Mixer — Master".to_owned(),
     };
-    egui::Window::new(title)
-        .id(egui::Id::new("mixer-window"))
-        .open(&mut open)
-        .default_pos(area.left_bottom() + egui::vec2(8.0, -(STRIPS_HEIGHT + 90.0)))
+    let id = egui::Id::new("mixer-window");
+    let folded = crate::chrome::collapsed(ctx, id);
+    if !open {
+        return;
+    }
+    egui::Window::new("Mixer")
+        .id(id)
+        .title_bar(false)
+        .resizable(!folded)
+        .default_pos(area.left_bottom() + egui::vec2(8.0, -(STRIPS_HEIGHT + 60.0)))
         .default_width((area.width() - 16.0).max(500.0))
         .max_width((area.width() - 8.0).max(500.0))
         .constrain_to(area)
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
+            let folded = crate::chrome::header(ui, id, &title, &mut open, |ui| {
                 if ui
                     .small_button("+ Insert")
                     .hint("Add an insert track")
@@ -56,6 +64,9 @@ pub fn show(
                     .color(theme::TEXT_DIM),
                 );
             });
+            if folded {
+                return;
+            }
             let height = STRIPS_HEIGHT;
             ui.horizontal_top(|ui| {
                 egui::ScrollArea::horizontal()
@@ -80,6 +91,29 @@ pub fn show(
 }
 
 const EFFECTS_WIDTH: f32 = 270.0;
+
+/// A strip's name, written bottom to top so narrow strips fit long names.
+fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(STRIP_WIDTH, NAME_HEIGHT), egui::Sense::click());
+    let mut job = egui::text::LayoutJob::simple_singleline(
+        name.to_owned(),
+        egui::FontId::proportional(11.0),
+        if selected {
+            theme::TEXT
+        } else {
+            theme::TEXT_DIM
+        },
+    );
+    job.wrap = egui::text::TextWrapping::truncate_at_width(NAME_HEIGHT - 4.0);
+    let galley = ui.painter().layout_job(job);
+    let pos = egui::pos2(rect.center().x - galley.size().y / 2.0, rect.bottom() - 2.0);
+    ui.painter().add(
+        egui::epaint::TextShape::new(pos, galley, theme::TEXT)
+            .with_angle(-std::f32::consts::FRAC_PI_2),
+    );
+    response
+}
 
 fn led(
     ui: &mut egui::Ui,
@@ -145,16 +179,10 @@ fn strip(
                 index.to_string()
             };
             ui.label(RichText::new(label).strong().size(13.0).color(color));
-            let name = ui
-                .add(
-                    egui::Label::new(RichText::new(&track.name).small())
-                        .truncate()
-                        .sense(egui::Sense::click()),
-                )
-                .hint(format!(
-                    "{} — click to select, right-click for options",
-                    track.name
-                ));
+            let name = vertical_name(ui, &track.name, selected).hint(format!(
+                "{} — click to select, right-click for options",
+                track.name
+            ));
             if name.clicked() {
                 state.selected_track = index;
             }
@@ -215,9 +243,10 @@ fn strip(
                     ui.close();
                 }
             });
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                ui.add_space((STRIP_WIDTH - 48.0) / 2.0);
+            if led(ui, !track.mute, theme::ACCENT, "ON", "Enable / mute").clicked() {
+                run(actions, "mixer.toggle_mute", [number.clone()]);
+            }
+            {
                 let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
                 crate::automation::menu(&pan.response, &format!("mixer:{index}:pan"), actions);
                 if pan.started {
@@ -230,35 +259,17 @@ fn strip(
                     ));
                 }
                 pan.response.hint(format!("Pan {:+.0}", track.pan * 100.0));
-                let sep = widgets::knob(ui, track.separation, -1.0, 1.0, 0.0, true);
-                if sep.started {
-                    state.begin_gesture();
-                }
-                if let Some(value) = sep.changed {
-                    actions.push(Action::Coalesced(
-                        Invocation::new(
-                            "mixer.set_separation",
-                            [number.clone(), format!("{value:.3}")],
-                        ),
-                        state.gesture(),
-                    ));
-                }
-                sep.response.hint(format!(
-                    "Stereo separation {:+.0} (left: mono, right: wider)",
-                    track.separation * 100.0
-                ));
-            });
-            let fader_height = (ui.available_height() - 72.0).max(80.0);
+            }
+            let fader_height = (ui.available_height() - 100.0).max(80.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                ui.add_space(2.0);
                 let levels = state.meters.get(index).copied().unwrap_or_default();
-                widgets::meter(ui, levels, vec2(14.0, fader_height));
+                widgets::meter(ui, levels, vec2(8.0, fader_height));
                 let fader = widgets::fader(
                     ui,
                     track.volume,
                     MAX_VOLUME,
-                    vec2(STRIP_WIDTH - 22.0, fader_height),
+                    vec2(STRIP_WIDTH - 10.0, fader_height),
                 );
                 crate::automation::menu(&fader.response, &format!("mixer:{index}:volume"), actions);
                 if fader.started {
@@ -271,28 +282,43 @@ fn strip(
                     ));
                 }
             });
+            let sep = widgets::knob(ui, track.separation, -1.0, 1.0, 0.0, true);
+            if sep.started {
+                state.begin_gesture();
+            }
+            if let Some(value) = sep.changed {
+                actions.push(Action::Coalesced(
+                    Invocation::new(
+                        "mixer.set_separation",
+                        [number.clone(), format!("{value:.3}")],
+                    ),
+                    state.gesture(),
+                ));
+            }
+            sep.response.hint(format!(
+                "Stereo separation {:+.0} (left: mono, right: wider)",
+                track.separation * 100.0
+            ));
             let db = 20.0 * track.volume.max(1e-6).log10();
             let readout = if track.volume <= 1e-6 {
                 "-inf".to_owned()
             } else {
-                format!("{db:+.1} dB")
+                format!("{db:+.1}")
             };
             ui.label(
                 RichText::new(readout)
                     .monospace()
                     .size(10.0)
                     .color(theme::TEXT_DIM),
-            );
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 3.0;
-                ui.add_space((STRIP_WIDTH - 48.0) / 2.0);
-                if led(ui, !track.mute, theme::ACCENT, "ON", "Enable / mute").clicked() {
-                    run(actions, "mixer.toggle_mute", [number.clone()]);
-                }
-                if index > 0 && led(ui, track.solo, theme::HIGHLIGHT, "S", "Solo").clicked() {
+            )
+            .hint("Level in dB");
+            if index > 0 {
+                if led(ui, track.solo, theme::HIGHLIGHT, "S", "Solo").clicked() {
                     run(actions, "mixer.toggle_solo", [number.clone()]);
                 }
-            });
+            } else {
+                ui.add_space(16.0);
+            }
             let fx = track.effects.iter().filter(|e| e.enabled).count();
             ui.label(
                 RichText::new(if fx > 0 {

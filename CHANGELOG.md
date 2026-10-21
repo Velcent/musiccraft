@@ -5,6 +5,16 @@ commit; this file says what they add up to.
 
 ## Unreleased (since 0.3.0)
 
+### A more compact interface
+
+- The toolbar is one band in a wide window: menus over the hint bar, then
+  the transport, then the window buttons.
+- The channel rack, piano roll and mixer put their tools on the title row.
+- Mixer strips are half as wide, with names written vertically, so twice as
+  many inserts fit.
+- Taller step buttons, shaded more clearly by beat; a narrower browser,
+  taller playlist tracks and a taller piano roll event lane.
+
 ### Fixes
 
 - Rendering a project twice in a DAW gives the same audio. A host reset,

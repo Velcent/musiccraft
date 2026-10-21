@@ -9,6 +9,7 @@ mod automation;
 mod browser;
 mod channel_rack;
 mod channel_settings;
+mod chrome;
 mod controllers;
 mod dialogs;
 mod effect_window;

@@ -55,6 +55,16 @@ general workflow are not themselves something we copy from source. Even so:
 - Keep shortcuts in a keymap data file so they are easy to change.
 - Avoid pixel-for-pixel copies of another product's screens. Close imitation of a
   distinctive interface can raise trade dress concerns; when in doubt, differentiate.
+- **Owner's decision (2026-10-21): layout plus general feel.** We may compare our
+  screens with the screenshots in the public online manual and move closer to them
+  in **layout and general feel**:
+  - which panels and controls exist and where they sit, and their proportions;
+  - the density of a dark, compact UI, control sizes and spacing.
+
+  We keep **our own** colour palette, icons, fonts, knob, button and meter
+  drawings, and wording. We never sample colours from, trace or overlay their
+  screenshots, and we never match them pixel for pixel. Each change of this kind
+  names the manual page it was compared with in its spec's Sources.
 
 ## Process
 

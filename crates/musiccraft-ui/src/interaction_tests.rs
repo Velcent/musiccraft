@@ -460,8 +460,8 @@ fn velocity_lane_drag_is_one_undo_step() {
     h.settle();
     let (grid, clip) = h.state.roll.last_view.unwrap();
     let x = grid.x(10.0);
-    let from = pos2(x, clip.bottom() - 30.0);
-    let to = pos2(x, clip.bottom() - 60.0);
+    let from = pos2(x, clip.bottom() - 45.0);
+    let to = pos2(x, clip.bottom() - 90.0);
     let commands = h.drag(from, to);
     assert!(!commands.is_empty());
     assert!(
@@ -898,12 +898,17 @@ fn missing_plugins_explain_themselves_instead_of_showing_knobs() {
 fn hints_show_in_the_bar_and_settings_open_from_f10() {
     let mut h = Harness::new(&[]);
     h.settle();
-    // Hover the play button: its hint reaches the hint bar next frame.
-    let play = pos2(130.0, 52.0);
-    h.frame(vec![Event::PointerMoved(play)]);
-    h.frame(vec![]);
-    let hint = h.state.hint.clone().unwrap_or_default();
-    assert!(hint.contains("Play"), "hint bar shows {hint:?}");
+    // Hover along the toolbar until the play button's hint reaches the hint
+    // bar (it shows the next frame).
+    let found = (0..90).map(|i| pos2(8.0 + 8.0 * i as f32, 20.0)).any(|p| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state
+            .hint
+            .as_deref()
+            .is_some_and(|hint| hint.contains("Play"))
+    });
+    assert!(found, "no play hint along the toolbar");
     h.frame(vec![Event::Key {
         key: egui::Key::F10,
         physical_key: None,

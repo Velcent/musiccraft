@@ -43,7 +43,7 @@ usage: musiccraft [project.mcproj] [--keymap <file>] [--empty] [--open <windows>
   --open <windows>   comma-separated windows to show at start:
                      channel_rack, piano_roll, playlist, mixer, browser,
                      channel_settings, automation, settings[:<tab>],
-                     effect:<track>:<slot>";
+                     effect:<track>:<slot>, channel:<n> (selects channel n)";
 
 /// A sample's key, min/max overview and length in seconds.
 type Overview = (String, Vec<(f32, f32)>, f64);
@@ -287,6 +287,13 @@ impl App {
             w.browser = windows.iter().any(|n| n == "browser");
             w.channel_settings = windows.iter().any(|n| n == "channel_settings");
             w.spectrum = windows.iter().any(|n| n == "spectrum");
+            if let Some(n) = windows
+                .iter()
+                .filter_map(|n| n.strip_prefix("channel:")?.parse::<usize>().ok())
+                .next_back()
+            {
+                ui.selected_channel = n.saturating_sub(1);
+            }
             for spec in windows.iter().filter_map(|n| n.strip_prefix("effect:")) {
                 if let Some((track, slot)) = spec.split_once(':') {
                     if let (Ok(track), Ok(slot)) = (track.parse::<usize>(), slot.parse::<usize>()) {

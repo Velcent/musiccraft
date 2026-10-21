@@ -571,7 +571,7 @@ fn current_project(ui: &mut egui::Ui, frame: &Frame<'_>, search: &str, actions: 
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     egui::Panel::left("browser")
         .resizable(true)
-        .default_size(190.0)
+        .default_size(170.0)
         .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(8.0))
         .show(ui, |ui| {
             ui.horizontal(|ui| {

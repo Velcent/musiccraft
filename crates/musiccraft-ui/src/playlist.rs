@@ -78,7 +78,7 @@ impl Default for PlaylistState {
     fn default() -> Self {
         Self {
             px_per_bar: 72.0,
-            row_height: 30.0,
+            row_height: 36.0,
             snap: Snap::Bar,
             drag: None,
             last_view: None,

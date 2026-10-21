@@ -280,7 +280,7 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
 
 /// A square toolbar button showing an icon; `active` lights it in `accent`.
 pub fn button(ui: &mut Ui, icon: Icon, active: bool, accent: Color32, hint: &str) -> Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(30.0, 26.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(24.0, 22.0), Sense::click());
     let hovered = response.hovered();
     let fill = if active {
         accent.gamma_multiply(0.85)
