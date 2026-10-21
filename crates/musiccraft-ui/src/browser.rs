@@ -515,8 +515,8 @@ fn current_project(ui: &mut egui::Ui, frame: &Frame<'_>, search: &str, actions: 
                         if !matches(search, &pattern.name) {
                             continue;
                         }
-                        let text =
-                            RichText::new(format!("▪ {}", pattern.name)).color(theme::palette(i));
+                        let text = RichText::new(format!("▪ {}", pattern.name))
+                            .color(crate::pattern_text(pattern));
                         if ui
                             .add(egui::Button::new(text).frame(false))
                             .hint("Click to select this pattern")

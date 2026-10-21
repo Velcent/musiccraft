@@ -86,6 +86,7 @@ const SCRIPT: &[&str] = &[
     "step.toggle 2 8",
     "pattern.clone 1",
     "pattern.rename 2 Chorus",
+    "pattern.set_color 2 5",
     "pattern.set_length 2 32",
     "project.set_swing 33",
     "note.clear 3 @1",
@@ -1885,4 +1886,18 @@ fn windows_sample_paths_localize_and_imports_report_them() {
     );
     musiccraft_paths::configure(musiccraft_paths::PathConfig::default());
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn patterns_have_no_colour_until_one_is_set() {
+    let mut s = session();
+    assert_eq!(s.project().patterns[0].color, None);
+    run(&mut s, "pattern.set_color 1 3");
+    assert_eq!(s.project().patterns[0].color, Some(2));
+    run(&mut s, "pattern.set_color 1 none");
+    assert_eq!(s.project().patterns[0].color, None);
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().patterns[0].color, Some(2));
+    fails(&mut s, "pattern.set_color 1 17");
+    fails(&mut s, "pattern.set_color 9 1");
 }

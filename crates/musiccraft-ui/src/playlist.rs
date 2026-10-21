@@ -307,8 +307,8 @@ fn pattern_section(
             .show(ui, |ui| {
                 for (i, pattern) in project.patterns.iter().enumerate() {
                     let selected = i == project.current_pattern;
-                    let text =
-                        RichText::new(format!("■ {}", pattern.name)).color(theme::palette(i));
+                    let text = RichText::new(format!("■ {}", pattern.name))
+                        .color(crate::pattern_text(pattern));
                     let painting = state.playlist.paint_automation.is_none()
                         && state.playlist.paint_audio.is_none();
                     let response = ui.selectable_label(selected && painting, text);
@@ -334,6 +334,23 @@ fn pattern_section(
                             )));
                             ui.close();
                         }
+                        ui.menu_button("Colour", |ui| {
+                            let mut pick = |ui: &mut egui::Ui, text: RichText, arg: String| {
+                                if ui.button(text).clicked() {
+                                    actions.push(Action::Run(Invocation::new(
+                                        "pattern.set_color",
+                                        [(i + 1).to_string(), arg],
+                                    )));
+                                    ui.close();
+                                }
+                            };
+                            pick(ui, RichText::new("None"), "none".to_owned());
+                            for c in 0..16u8 {
+                                let text = RichText::new(format!("■ Colour {}", c + 1))
+                                    .color(theme::track_color(c));
+                                pick(ui, text, (c + 1).to_string());
+                            }
+                        });
                         let sig = pattern.time_signature;
                         ui.menu_button(format!("Time signature ({sig})…"), |ui| {
                             if let Some(new) =
@@ -623,10 +640,14 @@ fn draw_clip(
     let project = frame.project;
     let (color, name) = match clip.source {
         ClipSource::Pattern(id) => {
-            let index = project.pattern_position(id).unwrap_or(0);
+            let pattern = project
+                .pattern_position(id)
+                .and_then(|i| project.patterns.get(i));
             (
-                theme::palette(index),
-                project.patterns.get(index).map_or("", |p| p.name.as_str()),
+                pattern
+                    .and_then(crate::pattern_color)
+                    .unwrap_or(UNCOLOURED_CLIP),
+                pattern.map_or("", |p| p.name.as_str()),
             )
         }
         ClipSource::Automation(id) => (
@@ -697,7 +718,7 @@ fn draw_clip(
                 .pattern_position(id)
                 .and_then(|i| project.patterns.get(i))
             {
-                pattern_preview(painter, grid, pattern, body, start, length);
+                pattern_preview(painter, grid, project, pattern, body, (start, length));
             }
         }
         ClipSource::Automation(id) => {
@@ -765,13 +786,18 @@ fn draw_clip(
 const TITLE_HEIGHT: f32 = 11.0;
 
 /// Miniature of a pattern's notes, repeated across the clip.
+/// Fill of a clip whose pattern has no colour of its own.
+const UNCOLOURED_CLIP: Color32 = Color32::from_rgb(0x4a, 0x53, 0x63);
+
+/// The notes of `pattern` across a clip at `start` lasting `length`, each in
+/// its own colour as in the piano roll.
 fn pattern_preview(
     painter: &egui::Painter,
     grid: &Grid,
+    project: &Project,
     pattern: &musiccraft_project::Pattern,
     body: Rect,
-    start: u32,
-    length: u32,
+    (start, length): (u32, u32),
 ) {
     let period = pattern.length_ticks().max(1);
     let (lo, hi) = pattern
@@ -797,10 +823,17 @@ fn pattern_preview(
                     - (f32::from(note.key - lo.min(note.key)) / span) * (body.height() - 2.0)
                     - 1.0
             };
+            let tint = if note.props.color > 0 {
+                crate::piano_roll::note_color(note.props.color)
+            } else {
+                theme::palette(project.channel_position(note.channel).unwrap_or(0))
+            };
+            // A dark edge keeps notes readable on a coloured clip.
             painter.line_segment(
                 [pos2(x0, y), pos2(x1, y)],
-                Stroke::new(1.5, Color32::from_black_alpha(150)),
+                Stroke::new(3.0, Color32::from_black_alpha(110)),
             );
+            painter.line_segment([pos2(x0, y), pos2(x1, y)], Stroke::new(1.5, tint));
         }
         offset += period;
     }

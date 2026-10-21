@@ -205,7 +205,8 @@ fn patterns_menu(
     menu_item(ui, state, "Previous pattern", "pattern.prev", actions);
     ui.separator();
     for (i, pattern) in project.patterns.iter().enumerate() {
-        let text = RichText::new(format!("{}  {}", i + 1, pattern.name)).color(theme::palette(i));
+        let text = RichText::new(format!("{}  {}", i + 1, pattern.name))
+            .color(crate::pattern_text(pattern));
         if ui
             .selectable_label(i == project.current_pattern, text)
             .clicked()
@@ -593,12 +594,12 @@ fn transport(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
                 current + 1,
                 project.current_pattern().name
             ))
-            .color(theme::palette(current)),
+            .color(crate::pattern_text(project.current_pattern())),
         )
         .show_ui(ui, |ui| {
             for (i, pattern) in project.patterns.iter().enumerate() {
-                let text =
-                    RichText::new(format!("{}  {}", i + 1, pattern.name)).color(theme::palette(i));
+                let text = RichText::new(format!("{}  {}", i + 1, pattern.name))
+                    .color(crate::pattern_text(pattern));
                 if ui.selectable_label(i == current, text).clicked() {
                     run(actions, &format!("pattern.select {}", i + 1));
                 }

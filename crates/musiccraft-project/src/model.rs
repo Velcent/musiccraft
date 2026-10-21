@@ -468,6 +468,9 @@ pub struct Pattern {
     /// The pattern's time signature.
     #[serde(default, skip_serializing_if = "TimeSig::is_common")]
     pub time_signature: TimeSig,
+    /// Colour index 0–15 (shown as 1–16) set by the user; none by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<u8>,
 }
 
 /// One parameter's automation inside a pattern; ticks from the pattern start.
@@ -497,6 +500,7 @@ impl Pattern {
             legacy_swing: 0.0,
             automation: Vec::new(),
             time_signature: sig,
+            color: None,
         }
     }
 

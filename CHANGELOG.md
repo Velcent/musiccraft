@@ -15,6 +15,13 @@ commit; this file says what they add up to.
 - Taller step buttons, shaded more clearly by beat; a narrower browser,
   taller playlist tracks and a taller piano roll event lane.
 
+### Pattern colours
+
+- Patterns have no colour until you set one (right-click a pattern →
+  Colour, or `pattern.set_color`). Uncoloured clips are drawn neutral, and
+  the notes inside every pattern clip show their own colours, as in the
+  piano roll, so one pattern can show several.
+
 ### Fixes
 
 - Rendering a project twice in a DAW gives the same audio. A host reset,

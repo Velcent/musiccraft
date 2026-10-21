@@ -74,6 +74,13 @@
 ## Clip kinds
 
 - **Pattern clips** (`playlist.add_clip`) play a pattern, repeating it.
+- **Pattern colour**: a pattern has no colour until one is set with
+  `pattern.set_color <pattern> <1-16|none>` (undoable; also from the pattern
+  list's right-click menu). An uncoloured pattern's clips are drawn in a
+  neutral fill and its name in the plain text colour. Inside a pattern clip
+  the notes are drawn in their own colours, as in the piano roll: a note's
+  colour group, or its channel's colour for group "channel". Notes of one
+  pattern can therefore show several colours.
 - **Audio clips** (`playlist.add_audio_clip <channel> <track> <start> <length>`)
   play a sampler channel's sample once from the clip start, unpitched (at the
   channel's root key), cut at the clip end. Dropping a sound from the browser on
@@ -205,6 +212,9 @@
   online manual, "Automation clips"; the formulas, ranges and step counts are
   our own.
 
+- Patterns without a colour of their own, with notes shown in their own
+  colours inside clips: the project owner's account of how the software
+  behaves (2026-10-21); the neutral fill is our own.
 - Pattern clips arranged on a playlist and a song/pattern mode switch follow the
   workflow described in the FL Studio online manual, "Playlist" section. Row
   count, overlap rule and command names are our own.
