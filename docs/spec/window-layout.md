@@ -91,6 +91,9 @@ stay our own. The full target look, window by window, is the style guide in
 - The selection switch at the end of a row stands apart from the steps: an
   outline when the channel is not selected, filled when it is.
 - The button that adds a channel is a "+" centred under the rows.
+- When the rows overflow, the rack shows the simplified scroll bars (rail,
+  thumb and chevrons, no zoom grips): a vertical bar at the right and a
+  horizontal bar underneath, each only while needed.
 
 ## Playlist
 

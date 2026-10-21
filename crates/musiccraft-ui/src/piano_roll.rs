@@ -758,11 +758,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
     // right; the view (ruler, keyboard, grid and lane) fills the rest.
     let body = ui.available_rect_before_wrap();
     ui.advance_cursor_after_rect(body);
-    let bar_h = crate::scrollbars::BAR;
-    let view_rect = Rect::from_min_max(
-        pos2(body.left(), body.top() + bar_h),
-        pos2(body.right() - bar_h, body.bottom()),
-    );
+    let view_rect = crate::scrollbars::view_rect(body);
     let mut view_ui = ui.new_child(egui::UiBuilder::new().max_rect(view_rect));
     let mut scroll = egui::ScrollArea::both()
         .id_salt("roll-scroll")
@@ -1055,85 +1051,43 @@ fn scroll_row(
     (notes, total, bar_length): (&[&Note], u32, u32),
     color: Color32,
 ) {
-    use crate::scrollbars::{self, BAR, Request, Span, ZoomBox};
+    use crate::scrollbars::{self, Setup};
     let roll = &mut state.roll;
-    let px_per_tick = roll.px_per_step / TICKS_PER_STEP as f32;
-    let key_h = roll.key_height;
-    let grid_w = (view.x - KEYS_WIDTH).max(1.0);
-    let grid_h = (view.y - RULER_HEIGHT - LANE_HEIGHT).max(1.0);
-    let ticks = Span {
-        first: roll.offset.x / px_per_tick,
-        span: grid_w / px_per_tick,
-        total: total as f32,
+    let tps = TICKS_PER_STEP as f32;
+    let (lo, hi) = STEP_WIDTH_RANGE;
+    let setup = Setup {
+        view,
+        offset: roll.offset,
+        lead: KEYS_WIDTH,
+        top: RULER_HEIGHT,
+        tail: LANE_HEIGHT,
+        x: (
+            roll.px_per_step / tps,
+            total as f32,
+            bar_length as f32,
+            (lo / tps, hi / tps),
+        ),
+        y: (roll.key_height, KEYS as f32, KEY_HEIGHT_RANGE, KEY_HEIGHT),
+        y_label: "Key height",
     };
-    let rows = Span {
-        first: roll.offset.y / key_h,
-        span: grid_h / key_h,
-        total: KEYS as f32,
-    };
-    let hbar = Rect::from_min_max(
-        pos2(body.left() + KEYS_WIDTH, body.top()),
-        pos2(body.right() - BAR, body.top() + BAR),
-    );
-    let tint = roll.offset;
-    let request = scrollbars::horizontal(
+    let out = scrollbars::around(
         ui,
-        hbar,
-        egui::Id::new("roll-hbar"),
-        (ticks, bar_length as f32),
-        |painter, rail| overview(painter, rail, (notes, color), ticks),
+        body,
+        egui::Id::new("roll-bars"),
+        setup,
+        |p, rail, span| {
+            overview(p, rail, (notes, color), span);
+        },
     );
-    let mut jump = None;
-    match request {
-        Some(Request::To(first)) => {
-            let first = first.clamp(0.0, (ticks.total - ticks.span).max(0.0));
-            jump = Some(vec2(first * px_per_tick, tint.y));
-        }
-        Some(Request::Show { first, span }) => {
-            let (lo, hi) = STEP_WIDTH_RANGE;
-            let step = (grid_w / span.max(1.0) * TICKS_PER_STEP as f32).clamp(lo, hi);
-            roll.px_per_step = step;
-            jump = Some(vec2(first.max(0.0) * step / TICKS_PER_STEP as f32, tint.y));
-        }
-        None => {}
+    if let Some(scale) = out.scale {
+        roll.px_per_step = scale * tps;
     }
-    let vbar = Rect::from_min_max(
-        pos2(body.right() - BAR, body.top() + BAR),
-        pos2(body.right(), body.bottom() - LANE_HEIGHT),
-    );
-    if let Some(first) = scrollbars::vertical(ui, vbar, egui::Id::new("roll-vbar"), (rows, 1.0)) {
-        let first = first.clamp(0.0, (rows.total - rows.span).max(0.0));
-        jump = Some(vec2(jump.map_or(tint.x, |j| j.x), first * key_h));
+    if let Some(row) = out.row {
+        roll.key_height = row;
     }
-    let zoom = Rect::from_min_size(pos2(body.right() - BAR, body.top()), vec2(BAR, BAR));
-    let (lo, hi) = KEY_HEIGHT_RANGE;
-    let level = (key_h - lo) / (hi - lo);
-    let asked = scrollbars::zoom_box(
-        ui,
-        zoom,
-        egui::Id::new("roll-zoom-box"),
-        level,
-        &format!("Key height: {key_h:.0} pt · drag up or down to zoom, double-click to reset"),
-    );
-    let new_h = match asked {
-        Some(ZoomBox::Drag(dy)) => Some((key_h - dy * 0.15).clamp(lo, hi)),
-        Some(ZoomBox::Reset) => Some(KEY_HEIGHT),
-        None => None,
-    };
-    if let Some(new_h) = new_h {
-        // Keep the row in the middle of the view where it is.
-        let centre = rows.first + rows.span / 2.0;
-        let first = (centre - grid_h / new_h / 2.0).max(0.0);
-        roll.key_height = new_h;
-        jump = Some(vec2(jump.map_or(tint.x, |j| j.x), first * new_h));
+    if out.jump.is_some() {
+        roll.jump = out.jump;
     }
-    if jump.is_some() {
-        roll.jump = jump;
-        ui.ctx().request_repaint();
-    }
-    // The lane's end of the right column stays plain.
-    let rest = Rect::from_min_max(vbar.left_bottom(), body.right_bottom());
-    ui.painter().rect_filled(rest, 0.0, theme::PANEL_DARK);
 }
 
 /// A miniature of the channel's notes along the scroll rail, brighter inside

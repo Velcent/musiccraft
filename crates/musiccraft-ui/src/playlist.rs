@@ -4,7 +4,7 @@ use crate::hint::Hint;
 use std::collections::BTreeSet;
 
 use egui::{
-    Align2, Color32, FontId, PointerButton, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2,
+    Align2, Color32, FontId, PointerButton, Pos2, Rect, RichText, Sense, Stroke, Vec2, pos2, vec2,
 };
 use musiccraft_commands::Invocation;
 use musiccraft_project::params::PPQ;
@@ -42,11 +42,20 @@ struct ClipDrag {
 /// Ticks the zoom (`px_per_bar`) measures: a 4/4 bar, whatever the song's
 /// signature.
 const ZOOM_TICKS: u32 = 4 * PPQ;
+/// Horizontal zoom range, in points per 4/4 bar.
+const BAR_WIDTH_RANGE: (f32, f32) = (16.0, 400.0);
+/// Track height: the default and the vertical zoom range, in points.
+const TRACK_HEIGHT: f32 = 36.0;
+const TRACK_HEIGHT_RANGE: (f32, f32) = (18.0, 96.0);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaylistState {
     px_per_bar: f32,
     row_height: f32,
+    /// Scroll offset of the last frame, in points.
+    offset: Vec2,
+    /// Scroll offset asked for by the scroll bars, applied next frame.
+    jump: Option<Vec2>,
     snap: Snap,
     drag: Option<ClipDrag>,
     /// Grid and visible area from the last frame (used by tests and tools).
@@ -81,7 +90,9 @@ impl Default for PlaylistState {
     fn default() -> Self {
         Self {
             px_per_bar: 72.0,
-            row_height: 36.0,
+            row_height: TRACK_HEIGHT,
+            offset: Vec2::ZERO,
+            jump: None,
             snap: Snap::Bar,
             drag: None,
             last_view: None,
@@ -308,10 +319,10 @@ fn window_menu(
     ui.menu_button("Snap", |ui| snap_list(ui, state));
     ui.menu_button("Zoom", |ui| {
         if ui.button("Zoom in").hint("Ctrl+wheel also zooms").clicked() {
-            state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
+            state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(BAR_WIDTH_RANGE.1);
         }
         if ui.button("Zoom out").clicked() {
-            state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(16.0);
+            state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(BAR_WIDTH_RANGE.0);
         }
         if ui.button("Fit the song").clicked() {
             if let Some((_, view)) = state.playlist.last_view {
@@ -321,7 +332,8 @@ fn window_menu(
                     .index
                     .max(1);
                 let width = view.width() - HEADER_WIDTH - 12.0;
-                state.playlist.px_per_bar = (width / bars as f32).clamp(16.0, 400.0);
+                state.playlist.px_per_bar =
+                    (width / bars as f32).clamp(BAR_WIDTH_RANGE.0, BAR_WIDTH_RANGE.1);
             }
             ui.close();
         }
@@ -710,129 +722,222 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         HEADER_WIDTH + meter.bar_start(bars) as f32 * px_per_tick,
         RULER_HEIGHT + PLAYLIST_TRACKS as f32 * row_h,
     );
-    egui::ScrollArea::both()
+    // The scroll/zoom row runs along the top and the vertical bar down the
+    // right; the view (ruler, track headers and lanes) fills the rest.
+    let body = ui.available_rect_before_wrap();
+    ui.advance_cursor_after_rect(body);
+    let mut view_ui =
+        ui.new_child(egui::UiBuilder::new().max_rect(crate::scrollbars::view_rect(body)));
+    let mut scroll = egui::ScrollArea::both()
         .id_salt("playlist-scroll")
         .auto_shrink([false, false])
-        .show(ui, |ui| {
-            let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-            let clip = ui.clip_rect();
-            let grid = Grid {
-                origin: pos2(rect.left() + HEADER_WIDTH, rect.top() + RULER_HEIGHT),
-                px_per_tick,
-                row_height: row_h,
-                rows: PLAYLIST_TRACKS,
-            };
-            state.playlist.last_view = Some((grid, clip));
-            let painter = ui.painter_at(clip);
-            draw_grid(&painter, &grid, (clip, rect), &meter);
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
+    if let Some(jump) = state.playlist.jump.take() {
+        scroll = scroll.scroll_offset(jump);
+    }
+    let output = scroll.show(&mut view_ui, |ui| {
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+        let clip = ui.clip_rect();
+        let grid = Grid {
+            origin: pos2(rect.left() + HEADER_WIDTH, rect.top() + RULER_HEIGHT),
+            px_per_tick,
+            row_height: row_h,
+            rows: PLAYLIST_TRACKS,
+        };
+        state.playlist.last_view = Some((grid, clip));
+        let painter = ui.painter_at(clip);
+        draw_grid(&painter, &grid, (clip, rect), &meter);
 
-            let clips = &project.playlist.clips;
-            let moving = moving_clips(state, clips);
-            let (dt, dtrack, dl) = drag_delta(state, &moving);
-            for clip_item in clips {
-                let is_moving = moving.contains(clip_item);
-                let erasing = state.playlist.erased.contains(clip_item);
-                if !is_moving && !erasing {
-                    let selected = state
-                        .playlist
-                        .selection
-                        .contains(&(clip_item.track, clip_item.start));
-                    draw_clip(
-                        &painter,
-                        &grid,
-                        frame,
-                        clip_item,
-                        (clip_item.track, clip_item.start, clip_item.length),
-                        if selected {
-                            Look::Selected
-                        } else {
-                            Look::Normal
-                        },
-                    );
-                }
-            }
-            // Clips being painted, drawn as the current pattern.
-            let pattern_id = project.current_pattern().id;
-            for (track, start, length) in &state.playlist.painted {
-                let preview = Clip {
-                    source: ClipSource::Pattern(pattern_id),
-                    track: *track,
-                    start: *start,
-                    length: *length,
-                    offset: 0,
-                    muted: false,
-                };
+        let clips = &project.playlist.clips;
+        let moving = moving_clips(state, clips);
+        let (dt, dtrack, dl) = drag_delta(state, &moving);
+        for clip_item in clips {
+            let is_moving = moving.contains(clip_item);
+            let erasing = state.playlist.erased.contains(clip_item);
+            if !is_moving && !erasing {
+                let selected = state
+                    .playlist
+                    .selection
+                    .contains(&(clip_item.track, clip_item.start));
                 draw_clip(
                     &painter,
                     &grid,
                     frame,
-                    &preview,
-                    (*track, *start, *length),
-                    Look::Ghost,
+                    clip_item,
+                    (clip_item.track, clip_item.start, clip_item.length),
+                    if selected {
+                        Look::Selected
+                    } else {
+                        Look::Normal
+                    },
                 );
             }
-            for c in &moving {
-                let (track, start) = shifted(c, dt, dtrack);
-                let length = u32::try_from((i64::from(c.length) + dl).max(1)).unwrap_or(1);
-                draw_clip(
-                    &painter,
-                    &grid,
-                    frame,
-                    c,
-                    (track, start, length),
-                    Look::Ghost,
-                );
-            }
-            if let Some((origin, current)) = state.playlist.marquee {
-                let area = Rect::from_two_pos(origin, current);
-                painter.rect_filled(area, 0.0, theme::SELECTION_FILL);
-                painter.rect_stroke(
-                    area,
-                    0.0,
-                    Stroke::new(1.0, theme::ACCENT),
-                    egui::StrokeKind::Inside,
-                );
-            }
-            if frame.engine.playing && project.play_mode == PlayMode::Song {
-                let x = grid.x(frame.engine.position_ticks as f32);
-                painter.line_segment(
-                    [pos2(x, clip.top()), pos2(x, clip.bottom())],
-                    Stroke::new(1.5, theme::PLAYHEAD),
-                );
-                // Follow the playhead when it leaves the view.
-                let visible = clip.left() + HEADER_WIDTH..clip.right() - 40.0;
-                if !visible.contains(&x) && state.playlist.drag.is_none() {
-                    let target = Rect::from_min_size(
-                        pos2(x - HEADER_WIDTH - 20.0, clip.top()),
-                        vec2(clip.width() - 60.0, 1.0),
-                    );
-                    ui.scroll_to_rect(target, Some(egui::Align::Min));
-                }
-            }
-            let boxes: Vec<(usize, Rect)> = clips
-                .iter()
-                .enumerate()
-                .map(|(i, c)| (i, grid.span(c.track, c.start, c.length)))
-                .collect();
-            edit(ui, state, project, &grid, &response, clip, &boxes, actions);
-            draw_ruler(
+        }
+        // Clips being painted, drawn as the current pattern.
+        let pattern_id = project.current_pattern().id;
+        for (track, start, length) in &state.playlist.painted {
+            let preview = Clip {
+                source: ClipSource::Pattern(pattern_id),
+                track: *track,
+                start: *start,
+                length: *length,
+                offset: 0,
+                muted: false,
+            };
+            draw_clip(
                 &painter,
                 &grid,
-                clip,
-                project,
-                state.playlist.loop_drag,
-                &meter,
+                frame,
+                &preview,
+                (*track, *start, *length),
+                Look::Ghost,
             );
-            ruler(ui, state, project, &grid, clip, actions);
-            headers(ui, state, project, &grid, clip, actions);
-            if response.hovered() {
-                let zoom = ui.input(|i| i.zoom_delta());
-                if zoom != 1.0 {
-                    state.playlist.px_per_bar =
-                        (state.playlist.px_per_bar * zoom).clamp(16.0, 400.0);
-                }
+        }
+        for c in &moving {
+            let (track, start) = shifted(c, dt, dtrack);
+            let length = u32::try_from((i64::from(c.length) + dl).max(1)).unwrap_or(1);
+            draw_clip(
+                &painter,
+                &grid,
+                frame,
+                c,
+                (track, start, length),
+                Look::Ghost,
+            );
+        }
+        if let Some((origin, current)) = state.playlist.marquee {
+            let area = Rect::from_two_pos(origin, current);
+            painter.rect_filled(area, 0.0, theme::SELECTION_FILL);
+            painter.rect_stroke(
+                area,
+                0.0,
+                Stroke::new(1.0, theme::ACCENT),
+                egui::StrokeKind::Inside,
+            );
+        }
+        if frame.engine.playing && project.play_mode == PlayMode::Song {
+            let x = grid.x(frame.engine.position_ticks as f32);
+            painter.line_segment(
+                [pos2(x, clip.top()), pos2(x, clip.bottom())],
+                Stroke::new(1.5, theme::PLAYHEAD),
+            );
+            // Follow the playhead when it leaves the view.
+            let visible = clip.left() + HEADER_WIDTH..clip.right() - 40.0;
+            if !visible.contains(&x) && state.playlist.drag.is_none() {
+                let target = Rect::from_min_size(
+                    pos2(x - HEADER_WIDTH - 20.0, clip.top()),
+                    vec2(clip.width() - 60.0, 1.0),
+                );
+                ui.scroll_to_rect(target, Some(egui::Align::Min));
             }
-        });
+        }
+        let boxes: Vec<(usize, Rect)> = clips
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (i, grid.span(c.track, c.start, c.length)))
+            .collect();
+        edit(ui, state, project, &grid, &response, clip, &boxes, actions);
+        draw_ruler(
+            &painter,
+            &grid,
+            clip,
+            project,
+            state.playlist.loop_drag,
+            &meter,
+        );
+        ruler(ui, state, project, &grid, clip, actions);
+        headers(ui, state, project, &grid, clip, actions);
+        if response.hovered() {
+            let zoom = ui.input(|i| i.zoom_delta());
+            if zoom != 1.0 {
+                state.playlist.px_per_bar =
+                    (state.playlist.px_per_bar * zoom).clamp(BAR_WIDTH_RANGE.0, BAR_WIDTH_RANGE.1);
+            }
+        }
+    });
+    state.playlist.offset = output.state.offset;
+    let total = meter.bar_start(bars) as f32;
+    bars_around(ui, state, project, body, (output.inner_rect.size(), total));
+}
+
+/// The shared scroll/zoom row and vertical bar around the playlist's view.
+fn bars_around(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    body: Rect,
+    (view, total): (Vec2, f32),
+) {
+    use crate::scrollbars::{self, Setup};
+    let list = &mut state.playlist;
+    let zoom = ZOOM_TICKS as f32;
+    let (lo, hi) = BAR_WIDTH_RANGE;
+    let setup = Setup {
+        view,
+        offset: list.offset,
+        lead: HEADER_WIDTH,
+        top: RULER_HEIGHT,
+        tail: 0.0,
+        x: (
+            list.px_per_bar / zoom,
+            total,
+            list.meter.bar_start(1) as f32,
+            (lo / zoom, hi / zoom),
+        ),
+        y: (
+            list.row_height,
+            PLAYLIST_TRACKS as f32,
+            TRACK_HEIGHT_RANGE,
+            TRACK_HEIGHT,
+        ),
+        y_label: "Track height",
+    };
+    let out = scrollbars::around(
+        ui,
+        body,
+        egui::Id::new("playlist-bars"),
+        setup,
+        |p, rail, span| {
+            overview(p, rail, project, span);
+        },
+    );
+    if let Some(scale) = out.scale {
+        list.px_per_bar = scale * zoom;
+    }
+    if let Some(row) = out.row {
+        list.row_height = row;
+    }
+    if out.jump.is_some() {
+        list.jump = out.jump;
+    }
+    // Above the track headers, beside the scroll row.
+    let corner = Rect::from_min_size(body.min, vec2(HEADER_WIDTH, scrollbars::BAR));
+    ui.painter().rect_filled(corner, 0.0, theme::PANEL_DARK);
+}
+
+/// A miniature of the song along the scroll rail: one dash per clip in its
+/// colour, brighter inside the visible range.
+fn overview(painter: &egui::Painter, rail: Rect, project: &Project, view: crate::scrollbars::Span) {
+    let total = view.total.max(1.0);
+    // Spread the tracks that hold clips over the rail's height.
+    let used = project
+        .playlist
+        .clips
+        .iter()
+        .map(|c| c.track + 1)
+        .max()
+        .unwrap_or(1)
+        .max(4) as f32;
+    for clip in &project.playlist.clips {
+        let (color, _, _) = clip_identity(project, clip);
+        let x0 = rail.left() + clip.start as f32 / total * rail.width();
+        let w = (clip.length as f32 / total * rail.width()).max(1.5);
+        let y = rail.top() + (clip.track as f32 + 0.5) / used * rail.height();
+        let inside = (clip.start as f32) < view.first + view.span
+            && (clip.start + clip.length) as f32 > view.first;
+        let tone = theme::at_strength(color, if inside { 220 } else { 110 });
+        painter.line_segment([pos2(x0, y), pos2(x0 + w, y)], Stroke::new(1.5, tone));
+    }
 }
 
 /// Bars in one bar group: the unit of the shading and the strongest lines.
@@ -2161,8 +2266,8 @@ fn tool_stroke(
                     } else {
                         1.5
                     };
-                    state.playlist.px_per_bar =
-                        (state.playlist.px_per_bar * factor).clamp(16.0, 400.0);
+                    state.playlist.px_per_bar = (state.playlist.px_per_bar * factor)
+                        .clamp(BAR_WIDTH_RANGE.0, BAR_WIDTH_RANGE.1);
                 }
                 _ => {}
             }

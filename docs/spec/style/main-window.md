@@ -394,7 +394,7 @@ Ordered by visual impact. Each needs `docs/spec/window-layout.md` (or the spec n
    - Only the channel rack, playlist and browser are open at start; the mixer and piano roll start closed (`Windows::default()` in `crates/musiccraft-ui/src/lib.rs`). The default layout shows all four editors.
    - The screenshots `docs/screenshots/piano-roll.png` and `playlist-mixer.png` show this.
 2. **Scroll bars.**
-   - The piano roll has the shared bars (`crates/musiccraft-ui/src/scrollbars.rs`): the top row with chevrons, a thumb with zoom grips and the vertical zoom box, and the vertical bar. The playlist and channel rack still use the toolkit's default floating scroll bars (`ScrollArea::both` in `playlist.rs`, `channel_rack.rs`).
+   - The piano roll and playlist have the shared bars (`crates/musiccraft-ui/src/scrollbars.rs`): the top row with chevrons, a thumb with zoom grips and the vertical zoom box, and the vertical bar. The channel rack has the simplified bars (`plain_area`). The mixer and browser still use the toolkit's default floating scroll bars.
    - Nowhere is there right-drag two-way scrolling or a thin scroll bar setting.
 3. **No window snapping.** Windows neither snap to each other nor to the workspace edges, and there is no Alt override (all `egui::Window` uses).
 4. **Maximize has no key.** The header button, a double-click on the header and the window menu maximize and restore, but Enter is not bound (`crates/musiccraft-ui/keymap/default.keymap`; `keymap.md` first).

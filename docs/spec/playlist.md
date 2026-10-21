@@ -222,10 +222,18 @@
 - Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
   dragging moves or resizes every selected clip; Delete removes; Ctrl+A selects
   all; Ctrl+B duplicates the selection right after its end. One undo step each.
-- Ctrl+scroll zooms horizontally.
+- Ctrl+scroll zooms horizontally. The shared scroll/zoom row runs above the
+  ruler (as in the piano roll): chevrons that scroll a bar and repeat when
+  held, a rail that pages and shows a miniature of the clips, a thumb that
+  scrolls and whose ends zoom, and the vertical zoom box, which sets the
+  track height (18 to 96 points; double-click resets 36). A vertical scroll
+  bar runs down the right of the ruler and tracks.
 
 ## Sources
 
+- The scroll/zoom row, song overview and track-height zoom box: the
+  interface style guide (`docs/spec/style/main-window.md`, "Scroll and zoom
+  bars"). Drawing and sizes are our own.
 - The playlist as a window, its header and window menu, one lane tone with
   step, beat, bar and bar-group lines, bar-group shading, and clips drawn as a
   strong title strip over a dark body: the interface style guide,

@@ -1531,3 +1531,57 @@ fn the_piano_roll_opens_over_the_right_half_with_its_own_bars() {
     h.settle();
     assert!(h.state.roll.porta);
 }
+
+#[test]
+fn the_playlist_zoom_box_sets_the_track_height() {
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.expect("playlist drawn");
+    let bar = crate::scrollbars::BAR;
+    let zoom = pos2(clip.right() + bar / 2.0, clip.top() - bar / 2.0);
+    h.drag(zoom, zoom - vec2(0.0, 60.0));
+    h.settle();
+    let taller = h.state.playlist.last_view.unwrap().0.row_height;
+    assert!(taller > grid.row_height, "{taller} > {}", grid.row_height);
+
+    // The right chevron scrolls the lanes one bar to the left.
+    let right = pos2(clip.right() - bar / 2.0, clip.top() - bar / 2.0);
+    let before = h.state.playlist.last_view.unwrap().0.origin.x;
+    h.click(right, PointerButton::Primary);
+    h.settle();
+    let after = h.state.playlist.last_view.unwrap().0.origin.x;
+    assert!(after < before, "{after} < {before}");
+}
+
+#[test]
+fn a_long_channel_rack_gets_the_plain_scroll_bar() {
+    let setup: Vec<&str> = std::iter::repeat_n("channel.add_sampler builtin:kick", 24).collect();
+    let mut h = Harness::new(&setup);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let bar = crate::scrollbars::BAR;
+    let hint_at = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    let x = (0..40)
+        .map(|i| rack.right() - 2.0 - i as f32)
+        .find(|x| hint_at(&mut h, pos2(*x, rack.center().y)).starts_with("Click to page"))
+        .expect("a vertical rail at the rack's right edge");
+    let down = (0..200)
+        .map(|i| pos2(x, rack.bottom() - i as f32 * 2.0))
+        .find(|p| hint_at(&mut h, *p) == "Scroll down")
+        .expect("a down chevron under the rail");
+    assert!(rack.right() - x < 4.0 * bar, "{x} near {rack:?}");
+    let offset =
+        |h: &Harness| crate::scrollbars::plain_offset(&h.ctx, egui::Id::new("rack-bars")).y;
+    assert_eq!(offset(&h), 0.0);
+    for _ in 0..3 {
+        h.click(down, PointerButton::Primary);
+    }
+    h.settle();
+    assert!(offset(&h) > 0.0, "the rows scrolled");
+}

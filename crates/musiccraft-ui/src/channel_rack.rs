@@ -50,29 +50,30 @@ pub fn show(
                     return;
                 }
                 ui.separator();
-                egui::ScrollArea::both()
+                let area = egui::ScrollArea::both()
                     .id_salt("rack-scroll")
                     .auto_shrink([false, true])
-                    .max_height(420.0)
-                    .show(ui, |ui| {
-                        for (index, channel) in project.channels.iter().enumerate() {
-                            let shown = state
-                                .rack_group
-                                .as_ref()
-                                .is_none_or(|group| *group == channel.group);
-                            if shown {
-                                row(ui, state, project, (index, playing), channel, actions);
-                            }
+                    .max_height(420.0);
+                let bars = (egui::Id::new("rack-bars"), 27.0);
+                crate::scrollbars::plain_area(ui, area, bars, |ui| {
+                    for (index, channel) in project.channels.iter().enumerate() {
+                        let shown = state
+                            .rack_group
+                            .as_ref()
+                            .is_none_or(|group| *group == channel.group);
+                        if shown {
+                            row(ui, state, project, (index, playing), channel, actions);
                         }
-                        if project.channels.is_empty() {
-                            ui.label(
-                                RichText::new(
-                                    "No channels yet. Add a sound from the browser or below.",
-                                )
-                                .color(theme::TEXT_DIM),
-                            );
-                        }
-                    });
+                    }
+                    if project.channels.is_empty() {
+                        ui.label(
+                            RichText::new(
+                                "No channels yet. Add a sound from the browser or below.",
+                            )
+                            .color(theme::TEXT_DIM),
+                        );
+                    }
+                });
                 if state.graph.is_some() {
                     ui.separator();
                     graph_editor(ui, state, project, actions);

@@ -107,6 +107,28 @@ pub fn horizontal(
     (view, step): (Span, f32),
     overview: impl FnOnce(&Painter, Rect),
 ) -> Option<Request> {
+    horizontal_bar(ui, rect, id, (view, step), Some(overview))
+}
+
+/// The simplified horizontal bar (channel rack, mixer): chevrons, rail and
+/// thumb, with no zoom grips. Returns where the view should start.
+pub fn plain_horizontal(ui: &Ui, rect: Rect, id: Id, (view, step): (Span, f32)) -> Option<f32> {
+    let none: Option<fn(&Painter, Rect)> = None;
+    match horizontal_bar(ui, rect, id, (view, step), none) {
+        Some(Request::To(first)) => Some(first),
+        _ => None,
+    }
+}
+
+/// The horizontal bar; zoom grips and the overview come with `overview`.
+fn horizontal_bar(
+    ui: &Ui,
+    rect: Rect,
+    id: Id,
+    (view, step): (Span, f32),
+    overview: Option<impl FnOnce(&Painter, Rect)>,
+) -> Option<Request> {
+    let zooms = overview.is_some();
     let left = Rect::from_min_size(rect.min, vec2(BAR, rect.height()));
     let right = Rect::from_min_size(pos2(rect.right() - BAR, rect.top()), left.size());
     let rail = Rect::from_min_max(left.right_top(), right.left_bottom());
@@ -116,35 +138,18 @@ pub fn horizontal(
     let thumb = Rect::from_x_y_ranges(x0..=x1, rail.y_range()).shrink2(vec2(0.0, 2.0));
     let rail_response = ui
         .interact(rail, id.with("rail"), Sense::click())
-        .hint("Click to page · drag the thumb to scroll · drag its ends to zoom");
-    let body = ui.interact(thumb, id.with("thumb"), Sense::drag());
-    let grips = [
-        Rect::from_min_size(thumb.min, vec2(GRIP, thumb.height())),
-        Rect::from_min_size(
-            pos2(thumb.right() - GRIP, thumb.top()),
-            vec2(GRIP, thumb.height()),
-        ),
-    ];
-    let grip_responses = [0, 1].map(|i| {
-        ui.interact(grips[i], id.with(("grip", i)), Sense::drag())
-            .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
-    });
-    painter.rect_filled(thumb, CornerRadius::same(3), thumb_fill(&body));
-    for (grip, response) in grips.iter().zip(&grip_responses) {
-        let tone = if response.hovered() || response.dragged() {
-            theme::TEXT_DIM
+        .hint(if zooms {
+            "Click to page · drag the thumb to scroll · drag its ends to zoom"
         } else {
-            theme::TEXT_FAINT
-        };
-        let x = grip.center().x;
-        painter.line_segment(
-            [pos2(x, grip.top() + 2.0), pos2(x, grip.bottom() - 2.0)],
-            Stroke::new(1.0, tone),
-        );
-    }
-    overview(&painter, rail.shrink2(vec2(0.0, 2.0)));
-
+            "Click to page · drag the thumb to scroll"
+        });
+    let body = ui.interact(thumb, id.with("thumb"), Sense::drag());
+    painter.rect_filled(thumb, CornerRadius::same(3), thumb_fill(&body));
     let mut request = None;
+    if let Some(overview) = overview {
+        request = grips(ui, &painter, id, thumb, (view, rail));
+        overview(&painter, rail.shrink2(vec2(0.0, 2.0)));
+    }
     if chevron(ui, left, id.with("left"), Icon::ChevronLeft, "Scroll left") {
         request = Some(Request::To(view.first - step));
     }
@@ -173,6 +178,41 @@ pub fn horizontal(
             view.first + dx / rail.width().max(1.0) * view.total,
         ));
     }
+    request
+}
+
+/// The zoom grips at both ends of the horizontal thumb.
+fn grips(
+    ui: &Ui,
+    painter: &Painter,
+    id: Id,
+    thumb: Rect,
+    (view, rail): (Span, Rect),
+) -> Option<Request> {
+    let grips = [
+        Rect::from_min_size(thumb.min, vec2(GRIP, thumb.height())),
+        Rect::from_min_size(
+            pos2(thumb.right() - GRIP, thumb.top()),
+            vec2(GRIP, thumb.height()),
+        ),
+    ];
+    let grip_responses = [0, 1].map(|i| {
+        ui.interact(grips[i], id.with(("grip", i)), Sense::drag())
+            .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+    });
+    for (grip, response) in grips.iter().zip(&grip_responses) {
+        let tone = if response.hovered() || response.dragged() {
+            theme::TEXT_DIM
+        } else {
+            theme::TEXT_FAINT
+        };
+        let x = grip.center().x;
+        painter.line_segment(
+            [pos2(x, grip.top() + 2.0), pos2(x, grip.bottom() - 2.0)],
+            Stroke::new(1.0, tone),
+        );
+    }
+    let mut request = None;
     let end = view.first + view.span;
     let pointer = |r: &Response| {
         r.interact_pointer_pos()
@@ -289,6 +329,201 @@ pub fn zoom_box(ui: &Ui, rect: Rect, id: Id, level: f32, hint: &str) -> Option<Z
     } else {
         None
     }
+}
+
+/// `area` with the simplified bars in place of the toolkit's: a vertical bar
+/// at the right and a horizontal bar underneath, each shown only while the
+/// content overflows that way. Chevrons step by `step` points.
+pub fn plain_area<R>(
+    ui: &mut Ui,
+    area: egui::ScrollArea,
+    (id, step): (Id, f32),
+    add: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    let key = id.with("plain-bars");
+    let (over_x, over_y, jump) = ui
+        .data(|d| d.get_temp::<(bool, bool, Option<egui::Vec2>)>(key))
+        .unwrap_or_default();
+    let mut area = area.scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
+    if let Some(jump) = jump {
+        area = area.scroll_offset(jump);
+    }
+    if over_y {
+        area = area.max_width(ui.available_width() - BAR);
+    }
+    let output = area.show(ui, add);
+    let inner = output.inner_rect;
+    let content = output.content_size;
+    let offset = output.state.offset;
+    let mut next = None;
+    if over_y {
+        let rect = Rect::from_min_size(inner.right_top(), vec2(BAR, inner.height()));
+        let view = Span {
+            first: offset.y,
+            span: inner.height(),
+            total: content.y,
+        };
+        if let Some(first) = vertical(ui, rect, id.with("v"), (view, step)) {
+            let y = first.clamp(0.0, (content.y - inner.height()).max(0.0));
+            next = Some(vec2(offset.x, y));
+        }
+    }
+    if over_x {
+        let (rect, _) = ui.allocate_exact_size(vec2(inner.width(), BAR), Sense::hover());
+        let view = Span {
+            first: offset.x,
+            span: inner.width(),
+            total: content.x,
+        };
+        if let Some(first) = plain_horizontal(ui, rect, id.with("h"), (view, step)) {
+            let x = first.clamp(0.0, (content.x - inner.width()).max(0.0));
+            next = Some(vec2(x, next.map_or(offset.y, |n| n.y)));
+        }
+    }
+    let state = (
+        content.x > inner.width() + 0.5,
+        content.y > inner.height() + 0.5,
+        next,
+    );
+    if state != (over_x, over_y, None) {
+        ui.ctx().request_repaint();
+    }
+    ui.data_mut(|d| {
+        d.insert_temp(key, state);
+        d.insert_temp(id.with("offset"), offset);
+    });
+    output.inner
+}
+
+/// The scroll offset `plain_area` had in the last frame.
+#[cfg(test)]
+pub fn plain_offset(ctx: &egui::Context, id: Id) -> egui::Vec2 {
+    ctx.data(|d| d.get_temp(id.with("offset")))
+        .unwrap_or_default()
+}
+
+/// An editor's view and the bars around it.
+#[derive(Debug, Clone, Copy)]
+pub struct Setup {
+    /// Size of the visible view and its scroll offset, in points.
+    pub view: egui::Vec2,
+    pub offset: egui::Vec2,
+    /// Fixed panes inside the view: the left column (keys, track headers),
+    /// the ruler on top and a lane at the bottom.
+    pub lead: f32,
+    pub top: f32,
+    pub tail: f32,
+    /// Horizontal: points per unit, units in all, one chevron step, and the
+    /// zoom range in points per unit.
+    pub x: (f32, f32, f32, (f32, f32)),
+    /// Vertical: row height, rows, the zoom range and the default height.
+    pub y: (f32, f32, (f32, f32), f32),
+    /// What the zoom box sets ("Key height", "Track height").
+    pub y_label: &'static str,
+}
+
+/// What the bars ask the editor to change; it applies them next frame.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Outcome {
+    /// New scroll offset, in points.
+    pub jump: Option<egui::Vec2>,
+    /// New horizontal zoom, in points per unit.
+    pub scale: Option<f32>,
+    /// New row height, in points.
+    pub row: Option<f32>,
+}
+
+/// The view's rect inside `body`: everything but the scroll/zoom row along
+/// the top and the vertical bar down the right.
+pub fn view_rect(body: Rect) -> Rect {
+    Rect::from_min_max(
+        pos2(body.left(), body.top() + BAR),
+        pos2(body.right() - BAR, body.bottom()),
+    )
+}
+
+/// Draws the scroll/zoom row, the zoom box and the vertical bar around the
+/// view in `body`, and turns their gestures into an [`Outcome`].
+pub fn around(
+    ui: &Ui,
+    body: Rect,
+    id: Id,
+    setup: Setup,
+    overview: impl FnOnce(&Painter, Rect, Span),
+) -> Outcome {
+    let (scale, total, step, (lo_x, hi_x)) = setup.x;
+    let (row, rows_total, (lo_y, hi_y), default_row) = setup.y;
+    let grid_w = (setup.view.x - setup.lead).max(1.0);
+    let grid_h = (setup.view.y - setup.top - setup.tail).max(1.0);
+    let across = Span {
+        first: setup.offset.x / scale,
+        span: grid_w / scale,
+        total,
+    };
+    let down = Span {
+        first: setup.offset.y / row,
+        span: grid_h / row,
+        total: rows_total,
+    };
+    let mut out = Outcome::default();
+    let mut x = setup.offset.x;
+    let mut y = setup.offset.y;
+    let hbar = Rect::from_min_max(
+        pos2(body.left() + setup.lead, body.top()),
+        pos2(body.right() - BAR, body.top() + BAR),
+    );
+    let request = horizontal(ui, hbar, id.with("h"), (across, step), |painter, rail| {
+        overview(painter, rail, across);
+    });
+    match request {
+        Some(Request::To(first)) => {
+            x = first.clamp(0.0, (total - across.span).max(0.0)) * scale;
+            out.jump = Some(vec2(x, y));
+        }
+        Some(Request::Show { first, span }) => {
+            let new = (grid_w / span.max(f32::EPSILON)).clamp(lo_x, hi_x);
+            x = first.max(0.0) * new;
+            out.scale = Some(new);
+            out.jump = Some(vec2(x, y));
+        }
+        None => {}
+    }
+    let vbar = Rect::from_min_max(
+        pos2(body.right() - BAR, body.top() + BAR),
+        pos2(body.right(), body.bottom() - setup.tail),
+    );
+    if let Some(first) = vertical(ui, vbar, id.with("v"), (down, 1.0)) {
+        y = first.clamp(0.0, (rows_total - down.span).max(0.0)) * row;
+        out.jump = Some(vec2(x, y));
+    }
+    let zoom = Rect::from_min_size(pos2(body.right() - BAR, body.top()), vec2(BAR, BAR));
+    let label = setup.y_label;
+    let asked = zoom_box(
+        ui,
+        zoom,
+        id.with("zoom"),
+        (row - lo_y) / (hi_y - lo_y),
+        &format!("{label}: {row:.0} pt · drag up or down to zoom, double-click to reset"),
+    );
+    let new_row = match asked {
+        Some(ZoomBox::Drag(dy)) => Some((row - dy * 0.15).clamp(lo_y, hi_y)),
+        Some(ZoomBox::Reset) => Some(default_row),
+        None => None,
+    };
+    if let Some(new_row) = new_row {
+        // Keep the row in the middle of the view where it is.
+        let centre = down.first + down.span / 2.0;
+        y = (centre - grid_h / new_row / 2.0).max(0.0) * new_row;
+        out.row = Some(new_row);
+        out.jump = Some(vec2(x, y));
+    }
+    // Below the vertical bar, beside the bottom lane, the column stays plain.
+    let rest = Rect::from_min_max(vbar.left_bottom(), body.right_bottom());
+    ui.painter().rect_filled(rest, 0.0, theme::PANEL_DARK);
+    if out != Outcome::default() {
+        ui.ctx().request_repaint();
+    }
+    out
 }
 
 #[cfg(test)]

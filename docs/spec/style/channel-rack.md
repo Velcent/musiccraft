@@ -408,7 +408,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
    - Velocity is not shown. (The playing step is now marked with `STEP_PLAYING`, and hover lifts an off step to `STEP_HOVER`.)
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`steps`).
 6. **Scrolling, footer and placement.**
-   - `ScrollArea::both` scrolls whole rows sideways, so mute, knobs and names scroll away with the steps. Only the step column should scroll horizontally.
+   - The rack has the simplified bars (rail, thumb and chevrons, shown only when the rows overflow; `scrollbars::plain_area`), but they scroll whole rows sideways, so mute, knobs and names scroll away with the steps. Only the step column should scroll horizontally.
    - The height is hard-capped (`max_height(420.0)`) instead of following a height mode.
    - The plus button is centred under the whole window rather than the name column (`window-layout.md` "Channel rack" says "centred under the rows" and changes first).
    - There is no corner grip, so there is no way to widen the rack to reveal or extend steps.
