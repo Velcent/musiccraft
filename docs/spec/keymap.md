@@ -35,6 +35,8 @@
 | Ctrl+T | Typing keyboard plays notes |
 | F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer |
 | Alt+F8 | Browser |
+| Enter | Maximize the playlist, or restore it (opens it if closed) |
+| Ctrl+Shift+H | Put the windows back in the default layout |
 | Alt+T | Add a playlist marker at the playhead |
 | F10 | Settings |
 | F4 | Next empty pattern (adds one if none), then name it |
@@ -84,3 +86,6 @@ keyboard is off); they take precedence over the global keys above.
   choice to both editors is our own simplification.
 - Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo and redo: common desktop convention (own
   choice; the manual describes a different undo toggle).
+- Enter (maximize the playlist) and Ctrl+Shift+H (default window layout)
+  follow the FL Studio online manual, "Keyboard shortcuts", "Window
+  Navigation". What the default layout restores is our own design.

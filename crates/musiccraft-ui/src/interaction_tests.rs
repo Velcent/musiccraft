@@ -1680,3 +1680,35 @@ fn dragging_a_browser_item_over_a_window_button_opens_that_window() {
     h.frame(vec![]);
     assert!(h.state.windows.mixer);
 }
+
+#[test]
+fn enter_maximizes_the_playlist_and_ctrl_shift_h_restores_the_default_layout() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let key = |key, modifiers| Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    let playlist = egui::Id::new("playlist-window");
+    h.frame(vec![key(egui::Key::Enter, Modifiers::NONE)]);
+    h.settle();
+    assert!(h.state.windows.playlist, "Enter opens the playlist");
+    assert!(crate::chrome::maximized(&h.ctx, playlist));
+    let maximized = window_rect(&h, "playlist-window");
+    assert!(maximized.width() > 1300.0, "{maximized:?}");
+
+    let layout = Modifiers::COMMAND | Modifiers::SHIFT;
+    h.modifiers = layout;
+    h.frame(vec![key(egui::Key::H, layout)]);
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    let w = &h.state.windows;
+    assert!(w.playlist && w.channel_rack && w.mixer && w.piano_roll && w.browser);
+    assert!(!crate::chrome::maximized(&h.ctx, playlist));
+    let rack = window_rect(&h, "channel-rack");
+    let list = window_rect(&h, "playlist-window");
+    assert!(rack.bottom() <= list.top() + 1.0, "{rack:?} over {list:?}");
+}

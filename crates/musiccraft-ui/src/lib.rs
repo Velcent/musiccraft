@@ -184,6 +184,43 @@ impl Default for Windows {
     }
 }
 
+/// A change to the window arrangement (`view.default_layout`,
+/// `view.maximize`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrange {
+    /// Every editor back in its default slot.
+    DefaultLayout,
+    /// Maximize or restore the playlist.
+    MaximizePlaylist,
+}
+
+/// The editor windows' ids, as each window module names them.
+const EDITOR_WINDOWS: [&str; 4] = [
+    "playlist-window",
+    "channel-rack",
+    "mixer-window",
+    "piano-roll",
+];
+
+/// Applies a pending [`Arrange`] before the windows are drawn.
+fn arrange(ctx: &egui::Context, state: &mut UiState) {
+    match state.arrange.take() {
+        Some(Arrange::DefaultLayout) => {
+            for id in EDITOR_WINDOWS {
+                chrome::reset(ctx, egui::Id::new(id));
+            }
+            // The mixer follows the rack's width again for a few frames.
+            ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("mixer-settle")));
+        }
+        Some(Arrange::MaximizePlaylist) => {
+            // A playlist that was closed is drawn once before it maximizes.
+            let done = chrome::toggle_maximized(ctx, egui::Id::new("playlist-window"));
+            state.arrange = (!done && state.windows.playlist).then_some(Arrange::MaximizePlaylist);
+        }
+        None => {}
+    }
+}
+
 /// A status line message.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StatusLine {
@@ -230,6 +267,8 @@ pub struct UiState {
     pub workspace: egui::Rect,
     /// Letter keys play notes on the selected channel.
     pub typing_keyboard: bool,
+    /// A window arrangement asked for by a key, applied next frame.
+    pub arrange: Option<Arrange>,
     /// Times (seconds) of the latest tempo taps.
     pub taps: Vec<f64>,
     /// The custom time signature being entered in a signature menu.
@@ -333,6 +372,7 @@ impl UiState {
             automation_view: None,
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
+            arrange: None,
             taps: Vec::new(),
             sig_draft: (4, 4),
             channel_tab: channel_settings::ChannelTab::default(),
@@ -449,6 +489,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     state.workspace = workspace;
 
     let ctx = ui.ctx().clone();
+    arrange(&ctx, state);
     playlist::show(&ctx, state, frame, &mut actions);
     channel_rack::show(&ctx, state, frame, &mut actions);
     // After the rack, so the mixer can first open beside it.
@@ -617,6 +658,20 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                     *flag = !*flag;
                 }
             }
+            "view.default_layout" if state.dialog.is_none() => {
+                let w = &mut state.windows;
+                (w.playlist, w.channel_rack, w.mixer, w.piano_roll, w.browser) =
+                    (true, true, true, true, true);
+                state.arrange = Some(Arrange::DefaultLayout);
+            }
+            "view.maximize"
+                if state.dialog.is_none()
+                    && invocation.args.first().map(String::as_str) == Some("playlist") =>
+            {
+                state.windows.playlist = true;
+                state.arrange = Some(Arrange::MaximizePlaylist);
+            }
+            "view.default_layout" | "view.maximize" => {}
             "ui.new" => out.push(Action::Run(Invocation::bare("project.new"))),
             "ui.open" => state.dialog = Some(dialogs::Dialog::open(frame.project)),
             "ui.save" => match frame.project.path() {

@@ -55,6 +55,26 @@ fn set_maximized(ctx: &egui::Context, id: egui::Id, maximize: bool) {
     });
 }
 
+/// Maximizes window `id`, or restores it when it is maximized. Returns
+/// false, changing nothing, when the window has not been drawn yet (it has
+/// no size to restore to).
+pub fn toggle_maximized(ctx: &egui::Context, id: egui::Id) -> bool {
+    let drawn = ctx.data_mut(|d| d.get_temp::<Rect>(key(id, "rect")).is_some());
+    if drawn {
+        set_maximized(ctx, id, !maximized(ctx, id));
+    }
+    drawn
+}
+
+/// Puts window `id` back where it first opened: unfolded, not maximized.
+pub fn reset(ctx: &egui::Context, id: egui::Id) {
+    ctx.data_mut(|d| {
+        d.remove::<Rect>(key(id, "restore-to"));
+        d.insert_persisted(id.with("collapsed"), false);
+        d.insert_temp(key(id, "reset"), true);
+    });
+}
+
 /// A floating window `id` with the shared frame: no title bar of its own
 /// (draw [`Header`] first in its contents), barely rounded, no shadow, kept
 /// inside `area`, opening at `default` (a zero width or height leaves that
@@ -381,10 +401,7 @@ fn window_menu<T>(
                 .hint("Put the window back where it first opened")
                 .clicked()
             {
-                if maximized {
-                    set_maximized(&ctx, id, false);
-                }
-                ctx.data_mut(|d| d.insert_temp(key(id, "reset"), true));
+                reset(&ctx, id);
             }
         });
 }

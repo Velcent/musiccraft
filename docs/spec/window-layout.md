@@ -14,6 +14,11 @@ stay our own. The full target look, window by window, is the style guide in
   are open when the app starts: the rack top-left, the mixer to its right, the
   playlist across the lower part and the piano roll floating over the right
   half (each section below).
+- Ctrl+Shift+H (`view.default_layout`) puts them back: the four editors and
+  the browser open, each window unfolded, not maximized and moved to its slot.
+- Enter (`view.maximize playlist`) maximizes the playlist over the workspace
+  or restores it, opening it first if it was closed. Neither key acts while a
+  dialog is open or a text field has focus.
 
 ## Dragging from the browser
 
