@@ -1337,3 +1337,95 @@ fn the_picker_paints_audio_clips_at_their_length() {
     );
     assert_eq!(placed, ["playlist.add_audio_clip 1 2 384t 384t"]);
 }
+
+/// The outer rectangle of window `id`.
+fn window_rect(h: &Harness, id: &str) -> Rect {
+    h.ctx
+        .memory(|m| m.area_rect(egui::Id::new(id)))
+        .expect("window drawn")
+}
+
+/// The centre of header button `n`, counted from the right end (0 = close).
+fn header_button(h: &Harness, id: &str, n: f32) -> Pos2 {
+    let rect = window_rect(h, id);
+    pos2(rect.right() - 7.0 - 9.0 - 20.0 * n, rect.top() + 6.0 + 10.0)
+}
+
+#[test]
+fn window_buttons_collapse_maximize_restore_and_close() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let before = window_rect(&h, "channel-rack");
+    // Maximize fills the workspace; restore returns to the old rectangle.
+    h.click(
+        header_button(&h, "channel-rack", 1.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(crate::chrome::maximized(
+        &h.ctx,
+        egui::Id::new("channel-rack")
+    ));
+    let full = window_rect(&h, "channel-rack");
+    assert!(
+        (full.width() - h.state.workspace.width()).abs() < 2.0,
+        "{full:?}"
+    );
+    assert!(
+        (full.height() - h.state.workspace.height()).abs() < 2.0,
+        "{full:?}"
+    );
+    h.click(
+        header_button(&h, "channel-rack", 1.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(!crate::chrome::maximized(
+        &h.ctx,
+        egui::Id::new("channel-rack")
+    ));
+    let back = window_rect(&h, "channel-rack");
+    assert!(
+        (back.width() - before.width()).abs() < 2.0,
+        "{back:?} vs {before:?}"
+    );
+    assert!(
+        (back.left() - before.left()).abs() < 2.0,
+        "{back:?} vs {before:?}"
+    );
+    // Collapse rolls the window up to its header.
+    h.click(
+        header_button(&h, "channel-rack", 2.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(crate::chrome::collapsed(
+        &h.ctx,
+        egui::Id::new("channel-rack")
+    ));
+    assert!(window_rect(&h, "channel-rack").height() < 40.0);
+    // Close hides it.
+    h.click(
+        header_button(&h, "channel-rack", 0.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(!h.state.windows.channel_rack);
+}
+
+#[test]
+fn a_narrow_header_folds_its_tools_instead_of_wrapping() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    // Rolled up, the header is a single row however many tools it has.
+    h.click(header_button(&h, "piano-roll", 2.0), PointerButton::Primary);
+    h.settle();
+    assert!(crate::chrome::collapsed(
+        &h.ctx,
+        egui::Id::new("piano-roll")
+    ));
+    let rect = window_rect(&h, "piano-roll");
+    assert!(rect.height() < 40.0, "{rect:?}");
+}

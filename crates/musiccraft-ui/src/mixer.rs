@@ -35,35 +35,31 @@ pub fn show(
         _ => "Mixer — Master".to_owned(),
     };
     let id = egui::Id::new("mixer-window");
-    let folded = crate::chrome::collapsed(ctx, id);
     if !open {
         return;
     }
-    egui::Window::new("Mixer")
-        .id(id)
-        .title_bar(false)
-        .resizable(!folded)
-        .default_pos(area.left_bottom() + egui::vec2(8.0, -(STRIPS_HEIGHT + 60.0)))
-        .default_width((area.width() - 16.0).max(500.0))
+    let default = egui::Rect::from_min_size(
+        area.left_bottom() + egui::vec2(8.0, -(STRIPS_HEIGHT + 60.0)),
+        egui::vec2((area.width() - 16.0).max(500.0), 0.0),
+    );
+    let window = crate::chrome::window(ctx, id, "Mixer", area, default, true)
         .max_width((area.width() - 8.0).max(500.0))
-        .constrain_to(area)
         .show(ctx, |ui| {
-            let folded = crate::chrome::header(ui, id, &title, &mut open, |ui| {
-                if ui
-                    .small_button("+ Insert")
-                    .hint("Add an insert track")
-                    .clicked()
-                {
-                    run(actions, "mixer.add_track", []);
-                }
-                ui.label(
-                    RichText::new(
-                        "Click a strip to select it · arrows under the strips set where it sends",
-                    )
-                    .small()
-                    .color(theme::TEXT_DIM),
-                );
-            });
+            let folded = crate::chrome::Header::new(id, &title).title_at_end().show(
+                ui,
+                &mut open,
+                actions,
+                |_, _| {},
+                |ui, actions| {
+                    if ui
+                        .small_button("+ Insert")
+                        .hint("Add an insert track")
+                        .clicked()
+                    {
+                        run(actions, "mixer.add_track", []);
+                    }
+                },
+            );
             if folded {
                 return;
             }
@@ -88,6 +84,7 @@ pub fn show(
             });
         });
     state.windows.mixer = open;
+    crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
 }
 
 const EFFECTS_WIDTH: f32 = 270.0;

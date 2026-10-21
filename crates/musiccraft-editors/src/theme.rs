@@ -27,11 +27,47 @@ pub const METER_BG: Color32 = Color32::from_rgb(0x0c, 0x0e, 0x12);
 pub const AUTOMATION: Color32 = Color32::from_rgb(0xe0, 0x8c, 0xff);
 pub const PLAYHEAD: Color32 = Color32::from_rgb(0xff, 0xe0, 0x8a);
 
-/// Distinct clip/channel colours, cycled by index.
+// Role names from the interface style guide (`docs/spec/style/`). Some share
+// a value with a token above; the name says what the colour is for.
+
+/// Header rows of windows that are not focused.
+pub const HEADER: Color32 = PANEL;
+/// The focused window's header: `PANEL` lifted halfway toward `RAISED`.
+pub const HEADER_ACTIVE: Color32 = Color32::from_rgb(0x29, 0x2e, 0x38);
+/// The outer edge of a floating window, and the hairline round menus.
+pub const WINDOW_EDGE: Color32 = RAISED_HOVER;
+/// Menus, popups and tooltips: one step above the panel they open over.
+pub const MENU_BG: Color32 = RAISED;
+/// Separators and the edges of wells.
+pub const SEPARATOR: Color32 = LCD_EDGE;
+/// Text and glyphs of disabled controls: `TEXT_DIM` moved toward `PANEL`.
+pub const TEXT_FAINT: Color32 = Color32::from_rgb(0x57, 0x5e, 0x6b);
+/// Digits in display wells and live values.
+pub const LCD_TEXT: Color32 = PLAYHEAD;
+/// An off step under the pointer: one step lighter than `STEP_A`.
+pub const STEP_HOVER: Color32 = Color32::from_rgb(0x48, 0x51, 0x60);
+/// The column over the step that is playing: `PLAYHEAD` at low strength.
+pub const STEP_PLAYING: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xe0, 0x8a, 40);
+/// The fill of a rubber-band selection: `ACCENT` at low strength.
+pub const SELECTION_FILL: Color32 = Color32::from_rgba_unmultiplied_const(0x2e, 0xc4, 0xb6, 24);
+/// Playlist lanes, one tone for every track.
+pub const LANE: Color32 = WHITE_KEY_ROW;
+/// Piano-roll keyboard keys and the seam between white keys.
+pub const KEY_WHITE: Color32 = Color32::from_rgb(0xdf, 0xe3, 0xea);
+pub const KEY_BLACK: Color32 = Color32::from_rgb(0x1e, 0x22, 0x29);
+pub const KEY_SEAM: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xab);
+/// Clips with no colour of their own.
+pub const CLIP_NEUTRAL: Color32 = Color32::from_rgb(0x4a, 0x53, 0x63);
+/// The faint product name in the empty workspace.
+pub const WATERMARK: Color32 = Color32::from_rgba_unmultiplied_const(0xd8, 0xde, 0xe9, 14);
+
+/// Distinct clip/channel colours, cycled by index. The teal and the amber are
+/// a step lighter than `ACCENT` and `HIGHLIGHT`, so content never shares a
+/// signal colour.
 pub const PALETTE: [Color32; 8] = [
-    Color32::from_rgb(0x2e, 0xc4, 0xb6),
+    Color32::from_rgb(0x6c, 0xdc, 0xd0),
     Color32::from_rgb(0x6c, 0x8c, 0xf5),
-    Color32::from_rgb(0xff, 0xb3, 0x47),
+    Color32::from_rgb(0xff, 0xcc, 0x7a),
     Color32::from_rgb(0xc7, 0x7d, 0xf0),
     Color32::from_rgb(0x8b, 0xd4, 0x5c),
     Color32::from_rgb(0xf0, 0x7a, 0x9a),
@@ -49,6 +85,28 @@ pub fn track_color(index: u8) -> Color32 {
     } else {
         base
     }
+}
+
+/// The colour of piano-roll note group `index`, from the same 16 colours as
+/// tracks and patterns so a pattern, its channel and its notes can match.
+#[must_use]
+pub fn note_color(index: u8) -> Color32 {
+    track_color(index % 16)
+}
+
+/// Black at strength `alpha`: the one shading used to darken content (clip
+/// title strips, past-the-end areas, edges drawn on colour).
+#[must_use]
+pub const fn shade(alpha: u8) -> Color32 {
+    Color32::from_black_alpha(alpha)
+}
+
+/// `color` at strength `alpha` (0–255): how content and signal tokens are
+/// drawn faintly (muted clips, loop shading, scale tints).
+#[must_use]
+pub fn at_strength(color: Color32, alpha: u8) -> Color32 {
+    let [r, g, b, _] = color.to_array();
+    Color32::from_rgba_unmultiplied(r, g, b, alpha)
 }
 
 /// Colour for item `index`.
@@ -79,25 +137,74 @@ pub fn fonts() -> egui::FontDefinitions {
     fonts
 }
 
+/// Text sizes, in points (`docs/spec/style/design-language.md`, Typography).
+/// LCD value lines.
+pub const FONT_DISPLAY: f32 = 16.0;
+/// Window header titles.
+pub const FONT_TITLE: f32 = 13.0;
+/// Knob captions, track and strip names, note names.
+pub const FONT_LABEL: f32 = 11.0;
+/// LCD captions, unit marks, empty-slot text.
+pub const FONT_CAPTION: f32 = 8.5;
+/// Small changing numbers (mono).
+pub const FONT_VALUE: f32 = 10.0;
+
 /// Installs the MusicCraft fonts and visuals on a context.
 pub fn apply(ctx: &egui::Context) {
     ctx.set_fonts(fonts());
     let mut visuals = Visuals::dark();
     visuals.panel_fill = PANEL;
-    visuals.window_fill = PANEL;
+    // Popups, menus and tooltips take the window fill; windows draw their own
+    // frame (`window_frame`).
+    visuals.window_fill = MENU_BG;
     visuals.extreme_bg_color = PANEL_DARK;
     visuals.faint_bg_color = RAISED;
     visuals.selection.bg_fill = ACCENT_DIM;
     visuals.selection.stroke = Stroke::new(1.0, ACCENT);
     visuals.hyperlink_color = ACCENT;
-    visuals.window_corner_radius = CornerRadius::same(6);
-    visuals.window_stroke = Stroke::new(1.0, Color32::from_rgb(0x3a, 0x42, 0x50));
+    // Tiled windows read as one surface: barely rounded, no shadow. Menus,
+    // popups and tooltips lift off the window with a faint one.
+    visuals.window_corner_radius = CornerRadius::same(2);
+    visuals.window_shadow = egui::Shadow::NONE;
+    visuals.window_stroke = Stroke::new(1.0, WINDOW_EDGE);
+    visuals.menu_corner_radius = CornerRadius::same(2);
+    visuals.popup_shadow = egui::Shadow {
+        offset: [0, 2],
+        blur: 6,
+        spread: 0,
+        color: shade(70),
+    };
     visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, SEPARATOR);
     visuals.widgets.inactive.weak_bg_fill = RAISED;
     visuals.widgets.inactive.bg_fill = RAISED;
-    visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(0x3a, 0x42, 0x50);
+    visuals.widgets.hovered.weak_bg_fill = RAISED_HOVER;
     visuals.widgets.active.weak_bg_fill = ACCENT_DIM;
     ctx.set_visuals(visuals);
+}
+
+/// The frame of a floating window: `PANEL` body, barely rounded, no shadow,
+/// with a `WINDOW_EDGE` outline, or `ACCENT_DIM` when `focused`.
+pub fn window_frame(focused: bool) -> egui::Frame {
+    egui::Frame::new()
+        .fill(PANEL)
+        .corner_radius(2)
+        .inner_margin(6)
+        .stroke(Stroke::new(
+            1.0,
+            if focused { ACCENT_DIM } else { WINDOW_EDGE },
+        ))
+}
+
+/// The frame of a modal dialog: like a window, with one faint shadow so it
+/// lifts off the workspace.
+pub fn dialog_frame() -> egui::Frame {
+    window_frame(false).shadow(egui::Shadow {
+        offset: [0, 3],
+        blur: 10,
+        spread: 0,
+        color: shade(90),
+    })
 }
 
 /// Faint product name in the empty workspace.
@@ -108,6 +215,36 @@ pub fn watermark(ui: &egui::Ui) {
         egui::Align2::RIGHT_BOTTOM,
         "MusicCraft",
         egui::FontId::proportional(28.0),
-        Color32::from_rgba_unmultiplied(0xd8, 0xde, 0xe9, 14),
+        WATERMARK,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn content_never_shares_a_signal_colour() {
+        for colour in PALETTE {
+            for signal in [ACCENT, ACCENT_DIM, HIGHLIGHT, DANGER, AUTOMATION, PLAYHEAD] {
+                assert_ne!(colour, signal);
+            }
+        }
+    }
+
+    #[test]
+    fn note_groups_use_the_track_palette() {
+        for group in 0..16 {
+            assert_eq!(note_color(group), track_color(group));
+        }
+        assert_eq!(note_color(16), track_color(0));
+    }
+
+    #[test]
+    fn step_hover_lifts_both_step_groups() {
+        let lum = |c: Color32| u32::from(c.r()) + u32::from(c.g()) + u32::from(c.b());
+        assert!(lum(STEP_HOVER) > lum(STEP_A));
+        assert!(lum(STEP_A) > lum(STEP_B));
+        assert!(lum(HEADER_ACTIVE) > lum(HEADER) && lum(HEADER_ACTIVE) < lum(RAISED));
+    }
 }

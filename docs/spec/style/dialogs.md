@@ -600,7 +600,7 @@ Ordered by visual impact.
    The tab order is also Audio first, where the guide puts MIDI first. That order is a small preference and can stay if the owner prefers. `docs/spec/settings.md` lists the tabs and must be updated first for the new tabs, the grouping and the control-then-label layout.
 4. **No event editor** for pattern lanes. Lanes can be recorded and cleared (`crates/musiccraft-ui/src/playlist.rs`, "Clear automation (n lanes)"), but there is no window to see or draw them, and no convert-to-clip command. A spec section and commands come first (`docs/spec/recording.md`).
 5. **Automation clip editor is a bare canvas** (`crates/musiccraft-ui/src/automation.rs`, `show`, `canvas`):
-   - The window title uses "Automation — <name>", which matches. But it repeats the name in the body with a hint line instead of a header with menu and tools.
+   - The window now has the shared header ("Automation — <name>") and its gestures are in the hint bar, but the header has no tools yet.
    - The canvas is a fixed-height strip with no scroll bars, zoom, ruler playhead or footer toggles.
    - Points are added by left-click and deleted by right-click, as `docs/spec/playlist.md` specifies. The guide proposes right-click adds, left-click deselects and right-click on a point opens the point menu; that is a behaviour change that needs `playlist.md` updated first, and today's gestures stay until then.
    - Bending is Alt+drag on the segment (also in `playlist.md`), and there are no visible hollow tension handles.
@@ -619,8 +619,7 @@ Ordered by visual impact.
 11. **No progress display anywhere**. Exports and rescans block silently. The hint bar has no progress line (`crates/musiccraft-editors/src/hint.rs`; the hint bar itself is drawn in `crates/musiccraft-ui/src/toolbar.rs`).
 12. **Shape labels "Single curve" and "Double curve"** in `crates/musiccraft-ui/src/automation.rs` (context menu) are the reference's own terms. Proposed rename to "Curve" and "S-curve" (labels only).
 13. **Prompts and canvases carry hard-coded sizes** (`set_min_width` in `dialogs.rs`, `default_size` in `settings.rs`, the `HEIGHT` constant in `automation.rs`). New sizes should come from `docs/spec/window-layout.md` once its secondary-window entries are written.
-14. **Window headers put a collapse arrow at the left** today (`crates/musiccraft-ui/src/chrome.rs`; `docs/spec/window-layout.md`, "Window header": arrow, then title). The shared header in the main-window section puts the window menu at the far left and collapse, maximize and close at the far right. `window-layout.md` changes first; the event editor, automation clip editor and a popped-out sample editor then follow it.
-15. **No shared section-box rule yet.** This section, the controls section and the plugin-windows section must draw section and group boxes the same way (darker box, small heading inside its top-left corner). The design-language section settles the one rule; until then nothing in code changes for it.
+14. **No shared section-box rule yet.** This section, the controls section and the plugin-windows section must draw section and group boxes the same way (darker box, small heading inside its top-left corner). The design-language section settles the one rule; until then nothing in code changes for it.
 
 ## Sources
 

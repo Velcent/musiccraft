@@ -202,6 +202,7 @@ pub fn show(
     let mut open = true;
     let center = state.workspace.center();
     egui::Window::new("Settings")
+        .frame(theme::dialog_frame())
         .open(&mut open)
         .pivot(egui::Align2::CENTER_CENTER)
         .default_pos(center)

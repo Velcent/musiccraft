@@ -411,9 +411,7 @@ Ordered by visual impact. File references are where the change lands. `docs/spec
    `crates/musiccraft-ui/src/mixer.rs` (`effects`, `slot_row`, `routing`, `output_row`).
 5. **Track EQ.** Today it is three small gain knobs labelled "low", "mid", "high", with the frequency only in a right-click number field. There is no response graph, no band faders and no frequency or bandwidth knobs. The model has no per-band bandwidth (the mid band's Q is fixed), so the "Q" row needs `mixer.set_eq` to take a width first. `crates/musiccraft-ui/src/mixer.rs` (`eq_row`); `musiccraft-project` `TrackEq`; `docs/spec/mixer.md` ("Track EQ and slot mix").
 6. **Header.**
-   - The top-left slot is a collapse arrow, not the shared window menu button, and collapse is not in the right-hand group (shared gap; `crates/musiccraft-ui/src/chrome.rs`). `window-layout.md` "Window header" and its "Mixer" line ("Header: arrow, title, …") change first.
-   - Today the title sits at the left, not over the slot panel.
-   - It has a text button "+ Insert" and a full instruction sentence ("Click a strip to select it · arrows under the strips…").
+   - The shared header is in place (window menu at the left, title at the right end before the window buttons), but "+ Insert" is still a text button.
    - There is no options menu, strip-details toggle, slot-panel toggle or layout selector.
    `crates/musiccraft-ui/src/mixer.rs` (`show`); shared header in `crates/musiccraft-ui/src/chrome.rs`.
 7. **Docks.** The master is separated from the inserts only by a small extra gap, and everything scrolls together (the master scrolls out of view). There is no fixed left dock, no right dock, no divider and no height handle. Docking needs a stored per-track dock (a new undoable command, e.g. `mixer.set_dock <track> left|middle|right`). `crates/musiccraft-ui/src/mixer.rs` (`show`); `crates/musiccraft-project/src/model.rs` (`MixerTrack`).

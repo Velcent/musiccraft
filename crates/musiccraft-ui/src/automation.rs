@@ -1,7 +1,8 @@
 //! Automation editing: the curve editor window, and the "Create automation
 //! clip" menu attached to knobs and faders.
 
-use egui::{Align2, Color32, FontId, PointerButton, Pos2, RichText, Sense, Stroke, pos2, vec2};
+use crate::hint::Hint;
+use egui::{Align2, FontId, PointerButton, Pos2, RichText, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
 use musiccraft_project::{Automation, AutomationPoint, Curve, Meter, PLAYLIST_TRACKS, Project};
 
@@ -102,30 +103,28 @@ pub fn show(
     let automation = &project.automations[index];
     let mut open = true;
     let area = state.workspace;
-    egui::Window::new(format!("Automation — {}", automation.name))
-        .id(egui::Id::new("automation-editor"))
-        .open(&mut open)
-        .default_pos(area.left_bottom() + vec2(60.0, -HEIGHT - 120.0))
-        .default_width((area.width() - 120.0).max(400.0))
-        .constrain_to(area)
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(&automation.name)
-                        .strong()
-                        .color(theme::AUTOMATION),
-                );
-                ui.label(
-                    RichText::new("Click to add a point · drag to move · right-click to delete")
-                        .small()
-                        .color(theme::TEXT_DIM),
-                );
-            });
-            // Curve ticks count from the clip start: bars of the project
-            // signature.
-            let meter = Meter::new(project.time_signature);
-            canvas(ui, state, (index, automation), &meter, actions);
-        });
+    let window_id = egui::Id::new("automation-editor");
+    let title = format!("Automation — {}", automation.name);
+    let default = egui::Rect::from_min_size(
+        area.left_bottom() + vec2(60.0, -HEIGHT - 120.0),
+        vec2((area.width() - 120.0).max(400.0), 0.0),
+    );
+    crate::chrome::window(ctx, window_id, "Automation", area, default, true).show(ctx, |ui| {
+        let folded = crate::chrome::Header::new(window_id, &title).show(
+            ui,
+            &mut open,
+            &mut (),
+            |_, _| {},
+            |_, _| {},
+        );
+        if folded {
+            return;
+        }
+        // Curve ticks count from the clip start: bars of the project
+        // signature.
+        let meter = Meter::new(project.time_signature);
+        canvas(ui, state, (index, automation), &meter, actions);
+    });
     if !open {
         state.automation_editor = None;
     }
@@ -142,6 +141,8 @@ fn canvas(
         meter.round_up_to_bar(automation.length_ticks().max(meter.bar_start(4))) + meter.bar(0).len;
     let width = ui.available_width().max(200.0);
     let (rect, response) = ui.allocate_exact_size(vec2(width, HEIGHT), Sense::click_and_drag());
+    let response = response
+        .hint("Automation curve: click to add a point · drag to move · right-click to delete");
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, theme::LCD_BG);
     let inner = rect.shrink2(vec2(8.0, 10.0));
@@ -217,7 +218,7 @@ fn canvas(
         painter.circle_stroke(
             pos2(x_of(*t as f32), y_of(*v)),
             POINT_RADIUS,
-            Stroke::new(1.0, Color32::BLACK),
+            Stroke::new(1.0, theme::BACKGROUND),
         );
     }
     let hit = |pos: Pos2| {

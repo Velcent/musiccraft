@@ -366,26 +366,40 @@ pub fn show(
     };
     let area = state.workspace;
     let id = egui::Id::new("piano-roll");
-    let folded = crate::chrome::collapsed(ctx, id);
+    let default = egui::Rect::from_min_size(
+        area.left_top() + egui::vec2(40.0, 60.0),
+        egui::vec2(
+            (area.width() - 80.0).max(480.0),
+            (area.height() - 120.0).max(300.0),
+        ),
+    );
     let window = open
         .then(|| {
-            egui::Window::new("Piano roll")
-                .id(id)
-                .title_bar(false)
-                .resizable(!folded)
-                .default_pos(area.left_top() + egui::vec2(40.0, 60.0))
-                .default_size([
-                    (area.width() - 80.0).max(480.0),
-                    (area.height() - 120.0).max(300.0),
-                ])
-                .constrain_to(area)
+            crate::chrome::window(ctx, id, "Piano roll", area, default, true)
+                .default_height(default.height())
                 .show(ctx, |ui| {
                     let empty = project.channels.is_empty();
-                    let folded = crate::chrome::header(ui, id, &title, &mut open, |ui| {
-                        if !empty {
-                            toolbar(ui, state, project, actions);
-                        }
-                    });
+                    let number = (state.selected_channel + 1).to_string();
+                    let folded = crate::chrome::Header::new(id, &title).show_with_extra(
+                        ui,
+                        &mut open,
+                        &mut (&mut *state, &mut *actions),
+                        |ui, (state, actions)| {
+                            if !empty {
+                                options_menu(ui, state, project, &number, actions);
+                            }
+                        },
+                        |ui, (state, _)| {
+                            if !empty {
+                                tools(ui, state);
+                            }
+                        },
+                        |ui, (state, _)| {
+                            if !empty {
+                                settings(ui, state, project);
+                            }
+                        },
+                    );
                     if folded {
                         return;
                     }
@@ -401,6 +415,7 @@ pub fn show(
         })
         .flatten();
     state.windows.piano_roll = open;
+    crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
     let hovered = window.is_some_and(|w| {
         ctx.pointer_hover_pos()
             .is_some_and(|p| w.response.rect.contains(p))
@@ -410,61 +425,69 @@ pub fn show(
     }
 }
 
-fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
-    let channel = state.selected_channel;
-    let number = (channel + 1).to_string();
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 2.0;
-        options_menu(ui, state, project, &number, actions);
-        ui.add_space(4.0);
-        for (tool, icon, hint) in [
-            (
-                Tool::Draw,
-                Icon::Pencil,
-                "Draw (P): click adds a note, drag moves or resizes, Ctrl+drag selects",
-            ),
-            (
-                Tool::Paint,
-                Icon::Brush,
-                "Paint (B): drag to lay down notes one after another",
-            ),
-            (
-                Tool::Delete,
-                Icon::Eraser,
-                "Delete (D): click or drag over notes to delete them",
-            ),
-            (
-                Tool::Select,
-                Icon::Select,
-                "Select (E): drag a box around notes; click empty space to clear",
-            ),
-            (
-                Tool::Mute,
-                Icon::Mute,
-                "Mute (T): click or drag over notes to mute or unmute them",
-            ),
-            (
-                Tool::Slice,
-                Icon::Slice,
-                "Slice (C): click a note to cut it in two there",
-            ),
-            (Tool::Play, Icon::Play, "Play (Y): click to hear a note or key"),
-            (
-                Tool::Zoom,
-                Icon::Zoom,
-                "Zoom (Z): click to zoom in, Shift+click to zoom out",
-            ),
-        ] {
-            if icons::button(ui, icon, state.roll.tool == tool, theme::ACCENT, hint).clicked() {
-                state.roll.tool = tool;
-            }
+/// The header's main tool group: the editing tools, then Slide and Porta.
+fn tools(ui: &mut egui::Ui, state: &mut UiState) {
+    ui.spacing_mut().item_spacing.x = 2.0;
+    for (tool, icon, hint) in [
+        (
+            Tool::Draw,
+            Icon::Pencil,
+            "Draw (P): click adds a note, drag moves or resizes, Ctrl+drag selects",
+        ),
+        (
+            Tool::Paint,
+            Icon::Brush,
+            "Paint (B): drag to lay down notes one after another",
+        ),
+        (
+            Tool::Delete,
+            Icon::Eraser,
+            "Delete (D): click or drag over notes to delete them",
+        ),
+        (
+            Tool::Select,
+            Icon::Select,
+            "Select (E): drag a box around notes; click empty space to clear",
+        ),
+        (
+            Tool::Mute,
+            Icon::Mute,
+            "Mute (T): click or drag over notes to mute or unmute them",
+        ),
+        (
+            Tool::Slice,
+            Icon::Slice,
+            "Slice (C): click a note to cut it in two there",
+        ),
+        (
+            Tool::Play,
+            Icon::Play,
+            "Play (Y): click to hear a note or key",
+        ),
+        (
+            Tool::Zoom,
+            Icon::Zoom,
+            "Zoom (Z): click to zoom in, Shift+click to zoom out",
+        ),
+    ] {
+        if icons::button(ui, icon, state.roll.tool == tool, theme::ACCENT, hint).clicked() {
+            state.roll.tool = tool;
         }
-        ui.spacing_mut().item_spacing.x = 8.0;
-        ui.toggle_value(&mut state.roll.slide, "Slide")
+    }
+    ui.add_space(6.0);
+    ui.toggle_value(&mut state.roll.slide, "Slide")
             .hint("(S) New notes are slide notes: they bend the notes they overlap (in their colour group) to their key");
-        ui.toggle_value(&mut state.roll.porta, "Porta").hint(
-            "(O) New notes are portamento notes: they glide from the previous note and retrigger",
-        );
+    ui.toggle_value(&mut state.roll.porta, "Porta").hint(
+        "(O) New notes are portamento notes: they glide from the previous note and retrigger",
+    );
+}
+
+/// The header's second group, after the title: colour group, channel, snap,
+/// chord, scale and velocity. It folds away first when the window is narrow.
+fn settings(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
+    let channel = state.selected_channel;
+    ui.spacing_mut().item_spacing.x = 8.0;
+    {
         let label = if state.roll.color == 0 {
             "Colour: channel".to_owned()
         } else {
@@ -477,7 +500,8 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut state.roll.color, 0, "Channel colour");
                 for c in 1..16u8 {
-                    let text = RichText::new(format!("Colour {}", c + 1)).color(note_color(c));
+                    let text =
+                        RichText::new(format!("Colour {}", c + 1)).color(theme::note_color(c));
                     ui.selectable_value(&mut state.roll.color, c, text);
                 }
             })
@@ -550,10 +574,10 @@ fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &
             .hint("Highlight the keys of a scale");
         ui.label("Velocity");
         ui.add(egui::DragValue::new(&mut state.roll.velocity).range(1..=127));
-    });
+    }
 }
 
-/// The menu at the left of the toolbar: zoom, quantize, note tools,
+/// The piano roll's own window-menu items: zoom, quantize, note tools,
 /// transposing by octaves and clearing the channel's notes.
 fn options_menu(
     ui: &mut egui::Ui,
@@ -567,7 +591,7 @@ fn options_menu(
         all.extend(args.iter().map(|a| (*a).to_owned()));
         actions.push(Action::Run(Invocation::new(name, all)));
     };
-    ui.menu_button("☰", |ui| {
+    {
         ui.horizontal(|ui| {
             ui.label("Zoom");
             if ui.button("−").clicked() {
@@ -616,9 +640,7 @@ fn options_menu(
             run(actions, "note.clear", &[]);
             ui.close();
         }
-    })
-    .response
-    .hint("Piano roll options: zoom, quantize, tools, transpose, clear");
+    }
 }
 
 fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
@@ -710,7 +732,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 continue;
             }
             let tint = if note.props.color > 0 {
-                note_color(note.props.color)
+                theme::note_color(note.props.color)
             } else {
                 color
             };
@@ -745,7 +767,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                         [a, pos2(a.x, b.y), b],
                         false,
                         Color32::TRANSPARENT,
-                        Stroke::new(1.5, Color32::from_white_alpha(170)),
+                        Stroke::new(1.5, theme::at_strength(theme::TEXT, 170)),
                     ),
                 ));
             }
@@ -761,7 +783,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                         pos2(r.left() + w, r.top()),
                         pos2(r.left() + w, r.bottom()),
                     ],
-                    Color32::from_white_alpha(150),
+                    theme::at_strength(theme::TEXT, 150),
                     Stroke::NONE,
                 ));
             }
@@ -835,11 +857,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         }
         if let Some((origin, current)) = state.roll.marquee {
             let area = Rect::from_two_pos(origin, current);
-            painter.rect_filled(
-                area,
-                0.0,
-                Color32::from_rgba_unmultiplied(0x2e, 0xc4, 0xb6, 24),
-            );
+            painter.rect_filled(area, 0.0, theme::SELECTION_FILL);
             painter.rect_stroke(
                 area,
                 0.0,
@@ -918,13 +936,12 @@ fn draw_note(
     } else {
         110 + u32::from(velocity)
     };
-    let fill =
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha.min(255) as u8);
+    let fill = theme::at_strength(color, alpha.min(255) as u8);
     painter.rect_filled(rect, 3.0, fill);
     painter.rect_stroke(
         rect,
         3.0,
-        Stroke::new(1.0, Color32::from_black_alpha(120)),
+        Stroke::new(1.0, theme::shade(120)),
         egui::StrokeKind::Inside,
     );
     if rect.width() > 28.0 {
@@ -978,7 +995,7 @@ fn draw_background(
     painter.rect_filled(
         Rect::from_min_max(pos2(end, grid.origin.y), rect.right_bottom()),
         0.0,
-        Color32::from_black_alpha(60),
+        theme::shade(60),
     );
     let first_tick = grid.tick_at(clip.left()) as u32 / TICKS_PER_STEP * TICKS_PER_STEP;
     let last_tick = grid.tick_at(clip.right()) as u32;
@@ -1023,7 +1040,7 @@ fn draw_scale(
                     pos2(rect.right(), y + grid.row_height),
                 ),
                 0.0,
-                Color32::from_rgba_unmultiplied(0x2e, 0xc4, 0xb6, tint),
+                theme::at_strength(theme::ACCENT, tint),
             );
         }
     }
@@ -1262,12 +1279,6 @@ fn tools_menu(
     if let Some(invocation) = toggled {
         actions.push(Action::Run(invocation));
     }
-}
-
-/// The colour of note group `index` (1–15; 0 uses the channel colour).
-pub(crate) fn note_color(index: u8) -> Color32 {
-    let hue = f32::from(index % 16) / 16.0;
-    egui::ecolor::Hsva::new(hue, 0.55, 0.85, 1.0).into()
 }
 
 /// Right button: click deletes the note under the pointer; dragging deletes
@@ -1983,7 +1994,7 @@ impl LaneMode {
 /// Where the playhead is inside the shown pattern, in pattern ticks: the
 /// loop position in pattern mode; in song mode, inside a clip of this
 /// pattern under the playhead (none elsewhere).
-fn pattern_position(project: &Project, position: f64) -> Option<u32> {
+pub(crate) fn pattern_position(project: &Project, position: f64) -> Option<u32> {
     let pattern = project.current_pattern();
     let period = pattern.length_ticks().max(1);
     let tick = position.max(0.0) as u32;
@@ -2108,8 +2119,8 @@ fn keyboard(
     let first = grid.row_at(keys_rect.top()).unwrap_or(0);
     let last = grid.row_at(keys_rect.bottom() - 1.0).unwrap_or(KEYS - 1);
     let held = state.roll.preview.map(|(_, k)| k);
-    let ivory = Color32::from_rgb(0xdf, 0xe3, 0xea);
-    let ebony = Color32::from_rgb(0x1e, 0x22, 0x29);
+    let ivory = theme::KEY_WHITE;
+    let ebony = theme::KEY_BLACK;
     // White keys run the full width behind the black ones, like a piano.
     painter.rect_filled(keys_rect, 0.0, ivory);
     for row in first..=last {
@@ -2135,7 +2146,7 @@ fn keyboard(
             if matches!(key % 12, 4 | 11) {
                 painter.line_segment(
                     [r.left_top(), r.right_top()],
-                    Stroke::new(1.0, Color32::from_rgb(0x9a, 0xa0, 0xab)),
+                    Stroke::new(1.0, theme::KEY_SEAM),
                 );
             }
         }

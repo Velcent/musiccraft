@@ -10,15 +10,40 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Window header
 
-- The channel rack, piano roll and mixer have no separate title bar. Their
-  first row is a compact **header**: a collapse arrow, the window's title in
-  small text at the left, the window's own tools on the same row, and a close
-  cross at the right end.
-- Drag the header, or any empty part of the window, to move it.
-- The arrow collapses the window to its header row and expands it again; the
+- Every editor window (channel rack, piano roll, mixer) and every secondary
+  window (channel settings, effect windows, automation editor, spectrum
+  analyzer, keyboard shortcuts) has no separate title bar. Its first row is
+  one compact **header**, left to right:
+  1. the **window menu** button (three short bars), flush with the top-left
+     corner;
+  2. the window's own tools;
+  3. the **title**: the window's name, an em dash, then its context
+     ("Piano roll — Lead"). The mixer puts its title at the right end
+     instead, just before the window buttons;
+  4. empty space, which is the handle for moving the window;
+  5. the **window buttons**, set close together at the right end: collapse,
+     maximize (or restore) and close. Fixed-size windows leave out maximize.
+- The header never wraps onto a second line. When the window is too narrow
+  for its tools, the whole tool group folds into a "more" button (two small
+  chevrons) just before the window buttons; clicking it shows the tools in a
+  popup. The title is cut short with an ellipsis before anything else goes.
+- The window menu lists the window's own items first, then a separator and
+  the common items: Maximize (or Restore), Collapse to header (or Expand) and
+  Reset position, which puts the window back where it first opened.
+- Drag the header, or any empty part of the window, to move it. Double-click
+  empty header space to maximize or restore.
+- Collapse rolls the window up to its header row and expands it again; the
   window keeps its size for when it is expanded.
-- Other windows (channel settings, effect windows, dialogs) keep a standard
-  title bar.
+- Maximize fills the workspace and covers the other windows; the window keeps
+  its header, cannot be moved or resized, and keeps filling the workspace if
+  the main window is resized. Restore returns it to its previous rectangle.
+- The window on top is the focused one: its header is a shade lighter, its
+  title is in the normal text tone (dimmed in other windows) and its outer
+  edge is drawn in the dim accent.
+- Windows have barely rounded corners and cast no shadow. Menus, popups and
+  tooltips cast one faint shadow.
+- Modal dialogs (settings, prompts, unsaved changes) keep a header with only
+  a title and a close cross.
 
 ## Toolbar
 
@@ -37,8 +62,8 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Channel rack
 
-- Header, left to right: arrow, title, display filter, the pattern's name,
-  swing, steps, Graph, close.
+- Header, left to right: window menu, display filter, the pattern's name,
+  swing, steps, Graph, the title, then the window buttons.
 - Step buttons are taller than they are wide (14 × 24 points). Alternate beats
   of the pattern's signature are shaded clearly differently, so steps read in
   groups.
@@ -50,7 +75,9 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Mixer
 
-- Header: arrow, title (`Mixer — <track>`), "+ Insert", the hint, close.
+- Header: window menu, "+ Insert", then the title (`Mixer — <track>`) at
+  the right end before the window buttons. How to use the strips is a hint
+  (hint bar), not text in the header.
 - Strips are 40 points wide, so twice as many inserts fit as before. Each
   strip shows, top to bottom: number, name written vertically, the ON
   (enable) switch, the pan knob, the peak meter beside the fader, the stereo
@@ -68,5 +95,9 @@ stay our own. The full target look, window by window, is the style guide in
   browser's narrow column, tall step buttons grouped by beat, and narrow
   mixer strips with vertical names and the pan knob above the fader. No
   colours were sampled and nothing was traced; sizes are our own choices.
-- Own design: exact sizes, the header's order, the collapse behaviour, and the
-  drawing of the arrow and close cross.
+- Own design: exact sizes, the collapse behaviour, the "more" fold, the
+  focused-window emphasis, and the drawing of every header glyph.
+- Interface style guide (`docs/spec/style/main-window.md`, "The header row,
+  left to right"): the header's slot order, maximize and restore, and the
+  common window-menu items, following the owner's 2026-10-21 decision to
+  follow the manual's layout.

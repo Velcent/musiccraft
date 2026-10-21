@@ -27,58 +27,63 @@ pub fn show(
     let project = frame.project;
     let area = state.workspace;
     state.step_layout.clear();
+    // The step under the playhead, while the current pattern plays.
+    let playing = crate::piano_roll::pattern_position(project, frame.engine.position_ticks)
+        .filter(|_| frame.engine.playing)
+        .map(|tick| (tick / TICKS_PER_STEP) as usize);
     let id = egui::Id::new("channel-rack");
-    let folded = crate::chrome::collapsed(ctx, id);
+    let default = egui::Rect::from_min_size(
+        area.left_top() + egui::vec2(4.0, 4.0),
+        egui::vec2((area.width() - 200.0).clamp(420.0, 560.0), 0.0),
+    );
     let window = open
         .then(|| {
-            egui::Window::new("Channel rack")
-                .id(id)
-                .title_bar(false)
-                .resizable(!folded)
-                .default_pos(area.left_top() + egui::vec2(150.0, 40.0))
-                .default_width((area.width() - 200.0).clamp(420.0, 560.0))
-                .constrain_to(area)
-                .show(ctx, |ui| {
-                    let folded = crate::chrome::header(ui, id, "Channel rack", &mut open, |ui| {
-                        header(ui, state, project, actions);
+            crate::chrome::window(ctx, id, "Channel rack", area, default, true).show(ctx, |ui| {
+                let folded = crate::chrome::Header::new(id, "Channel rack").show(
+                    ui,
+                    &mut open,
+                    &mut (&mut *state, &mut *actions),
+                    |_, _| {},
+                    |ui, (state, actions)| header(ui, state, project, actions),
+                );
+                if folded {
+                    return;
+                }
+                ui.separator();
+                egui::ScrollArea::both()
+                    .id_salt("rack-scroll")
+                    .auto_shrink([false, true])
+                    .max_height(420.0)
+                    .show(ui, |ui| {
+                        for (index, channel) in project.channels.iter().enumerate() {
+                            let shown = state
+                                .rack_group
+                                .as_ref()
+                                .is_none_or(|group| *group == channel.group);
+                            if shown {
+                                row(ui, state, project, (index, playing), channel, actions);
+                            }
+                        }
+                        if project.channels.is_empty() {
+                            ui.label(
+                                RichText::new(
+                                    "No channels yet. Add a sound from the browser or below.",
+                                )
+                                .color(theme::TEXT_DIM),
+                            );
+                        }
                     });
-                    if folded {
-                        return;
-                    }
+                if state.graph.is_some() {
                     ui.separator();
-                    egui::ScrollArea::both()
-                        .id_salt("rack-scroll")
-                        .auto_shrink([false, true])
-                        .max_height(420.0)
-                        .show(ui, |ui| {
-                            for (index, channel) in project.channels.iter().enumerate() {
-                                let shown = state
-                                    .rack_group
-                                    .as_ref()
-                                    .is_none_or(|group| *group == channel.group);
-                                if shown {
-                                    row(ui, state, project, index, channel, actions);
-                                }
-                            }
-                            if project.channels.is_empty() {
-                                ui.label(
-                                    RichText::new(
-                                        "No channels yet. Add a sound from the browser or below.",
-                                    )
-                                    .color(theme::TEXT_DIM),
-                                );
-                            }
-                        });
-                    if state.graph.is_some() {
-                        ui.separator();
-                        graph_editor(ui, state, project, actions);
-                    }
-                    ui.separator();
-                    add_menu(ui, frame.plugins, actions);
-                })
+                    graph_editor(ui, state, project, actions);
+                }
+                ui.separator();
+                add_menu(ui, frame.plugins, actions);
+            })
         })
         .flatten();
     state.windows.channel_rack = open;
+    crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
     // A stroke whose row was not drawn when the button was let go is dropped.
     if !ctx.input(|i| i.pointer.any_down()) {
         state.step_paint = None;
@@ -195,14 +200,16 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
     });
 }
 
+/// One channel's row; `at` is the channel's index and the playing step.
 fn row(
     ui: &mut egui::Ui,
     state: &mut UiState,
     project: &Project,
-    index: usize,
+    at: (usize, Option<usize>),
     channel: &Channel,
     actions: &mut Vec<Action>,
 ) {
+    let (index, playing) = at;
     let number = (index + 1).to_string();
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
@@ -334,7 +341,7 @@ fn row(
         }
         response.context_menu(|ui| context_menu(ui, state, project, index, channel, actions));
 
-        steps(ui, state, project, index, channel, actions);
+        steps(ui, state, project, (index, playing), channel, actions);
         // The selection switch at the end of the row, set apart from the steps.
         ui.add_space(4.0);
         let (rect, switch) = ui.allocate_exact_size(vec2(8.0, STEP_SIZE.y), egui::Sense::click());
@@ -355,7 +362,7 @@ fn row(
     });
 }
 
-fn context_menu(
+pub(crate) fn context_menu(
     ui: &mut egui::Ui,
     state: &mut UiState,
     project: &Project,
@@ -460,10 +467,11 @@ fn steps(
     ui: &mut egui::Ui,
     state: &mut UiState,
     project: &Project,
-    index: usize,
+    at: (usize, Option<usize>),
     channel: &Channel,
     actions: &mut Vec<Action>,
 ) {
+    let (index, playing) = at;
     let pattern = project.current_pattern();
     let count = pattern.length_ticks().div_ceil(TICKS_PER_STEP);
     // Alternate beats of the pattern's signature are shaded.
@@ -552,13 +560,18 @@ fn steps(
         } else {
             theme::STEP_B
         };
-        let fill = if shown { theme::palette(index) } else { base };
-        let fill = if response.hovered() && !shown {
-            theme::RAISED
+        // Hover lifts an off step one tone, never darker than its group.
+        let fill = if shown {
+            theme::palette(index)
+        } else if response.hovered() {
+            theme::STEP_HOVER
         } else {
-            fill
+            base
         };
         ui.painter().rect_filled(rect.shrink(1.0), 3.0, fill);
+        if playing == Some(step) {
+            ui.painter().rect_filled(rect, 2.0, theme::STEP_PLAYING);
+        }
     }
 }
 

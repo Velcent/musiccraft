@@ -530,8 +530,7 @@ Ordered by visual impact. The spec changes (`docs/spec/playlist.md`, `docs/spec/
 11. **Tools.** There is no Slip tool, and S is taken globally by `ui.toggle_slide` (`crates/musiccraft-ui/keymap/default.keymap`), so Slip needs the window-local Shift+S (proposed, `keymap.md` first). The Play tool reuses `Icon::Play`, the same as the transport. Right-drag delete, Mute-tool drag, the Slice drag line, the Zoom-tool range drag, Alt to ignore snap and Shift to copy are missing. Clips can be resized only from the right edge. Files: `crates/musiccraft-ui/src/playlist.rs` (`tool_stroke`, `edit`), `crates/musiccraft-ui/src/icons.rs`.
 12. **No corner block.** There are no kind switches, no "Colours" option for pattern clips, no fade or gain handles on audio clips, and no in-place automation points. Files: `crates/musiccraft-ui/src/playlist.rs`, `crates/musiccraft-ui/src/automation.rs` (the curve editing exists only in the editor window).
 13. **Missing window-local keys.** Page Up / Page Down, Shift+1 to Shift+5, Shift+arrows, Ctrl+Up / Ctrl+Down, Alt+P and Shift+C are all unbound. `keymap.md` needs an "Over the playlist" table first, like "Over the channel rack".
-14. **Inline colour literals.** These should become tokens: `UNCOLOURED_CLIP`, the marquee and loop `from_rgba_unmultiplied` fills, the automation-clip body fill and the black-alpha strips and edges. File: `crates/musiccraft-ui/src/playlist.rs`.
-15. **Double-click on an audio clip does nothing.** The target is to open channel settings (proposed). File: `crates/musiccraft-ui/src/playlist.rs` (`edit`, the double-click block).
+14. **Double-click on an audio clip does nothing.** The target is to open channel settings (proposed). File: `crates/musiccraft-ui/src/playlist.rs` (`edit`, the double-click block).
 
 ## Sources
 

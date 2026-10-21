@@ -420,10 +420,8 @@ Ordered by visual impact. Per `CLAUDE.md`, update the specs (`docs/spec/window-l
 16. **No toolbar context menu or customising.** There are no dividers toggle, layouts, hide (Ctrl+F11) or narrow-width reflow beyond the one-band/two-band switch. Files: `crates/musiccraft-ui/src/toolbar.rs`, `docs/spec/window-layout.md`.
 17. **Colour roles are inconsistent.**
     - Option toggles light in different roles: metronome in `theme::HIGHLIGHT`, typing keyboard in `theme::ACCENT`.
-    - Off buttons draw their glyph in the accent colour instead of `theme::TEXT`.
     - The one-band layout fills the band with `theme::PANEL_DARK`, darker than window headers. The two-band fallback uses two tones: the menu band takes the default panel fill and the transport band `theme::PANEL_DARK`. The target is one `theme::PANEL` band in both layouts. The main-window draft still names `theme::PANEL_DARK` for the band and must be brought in line with this section and the design-language section.
-    - The LCD digits borrow `theme::PLAYHEAD`.
-    - Files: `crates/musiccraft-ui/src/icons.rs` (`button`, `lcd`), `crates/musiccraft-ui/src/toolbar.rs` (`one_band`, `two_bands`), `crates/musiccraft-editors/src/theme.rs` (needs `LCD_TEXT` and `SEPARATOR`).
+    - Files: `crates/musiccraft-ui/src/icons.rs` (`button`, `lcd`), `crates/musiccraft-ui/src/toolbar.rs` (`one_band`, `two_bands`), `crates/musiccraft-editors/src/theme.rs`.
 18. **Keymap gaps.** The default keymap has no F1, F2, F8, F11, Shift+F4, Ctrl+F11, F12, Alt+F12, Ctrl+F12, Shift+F12, Ctrl+Shift+H, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+F or Alt+1…Alt+0. All are proposed new bindings; none clashes with an existing one. Files: `crates/musiccraft-ui/keymap/default.keymap`, `docs/spec/keymap.md`.
 19. **Labels to rename and a shared submenu to agree on.** The menu titles in capitals, `PAT` / `SONG` and `Typing keyboard to piano` are proposed renames (Labels and wording). The main-window draft calls the layout submenu "Arrange windows" with different items; both sections should use this section's *Windows layout* name and item list. Files: `crates/musiccraft-ui/src/toolbar.rs` (`menus`, `transport`, `options_menu`).
 

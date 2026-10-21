@@ -438,7 +438,7 @@ fn miniature(
             sw: 0,
             se: 0,
         },
-        Color32::from_black_alpha(70),
+        theme::shade(70),
     );
     painter.text(
         pos2(title.left() + 4.0, title.center().y),
@@ -468,7 +468,7 @@ fn miniature(
     } else if response.hovered() {
         Stroke::new(1.0, theme::TEXT_DIM)
     } else {
-        Stroke::new(1.0, Color32::from_black_alpha(140))
+        Stroke::new(1.0, theme::shade(140))
     };
     painter.rect_stroke(rect, 4.0, edge, egui::StrokeKind::Inside);
     response
@@ -609,11 +609,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             }
             if let Some((origin, current)) = state.playlist.marquee {
                 let area = Rect::from_two_pos(origin, current);
-                painter.rect_filled(
-                    area,
-                    0.0,
-                    Color32::from_rgba_unmultiplied(0x2e, 0xc4, 0xb6, 24),
-                );
+                painter.rect_filled(area, 0.0, theme::SELECTION_FILL);
                 painter.rect_stroke(
                     area,
                     0.0,
@@ -748,8 +744,8 @@ fn draw_clip(
         200
     };
     let fill = match clip.source {
-        ClipSource::Automation(_) => Color32::from_rgba_unmultiplied(0x2a, 0x2f, 0x3a, alpha),
-        _ => Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha),
+        ClipSource::Automation(_) => theme::at_strength(theme::STEP_B, alpha),
+        _ => theme::at_strength(color, alpha),
     };
     painter.rect_filled(rect, 4.0, fill);
     painter.rect_stroke(
@@ -760,7 +756,7 @@ fn draw_clip(
             if matches!(clip.source, ClipSource::Automation(_)) {
                 color
             } else {
-                Color32::from_black_alpha(140)
+                theme::shade(140)
             },
         ),
         egui::StrokeKind::Inside,
@@ -776,7 +772,7 @@ fn draw_clip(
             sw: 0,
             se: 0,
         },
-        Color32::from_black_alpha(if matches!(clip.source, ClipSource::Automation(_)) {
+        theme::shade(if matches!(clip.source, ClipSource::Automation(_)) {
             0
         } else {
             70
@@ -839,7 +835,7 @@ fn draw_clip(
                             pos2(x, body.center().y - hi / peak * half),
                             pos2(x, body.center().y - lo / peak * half),
                         ],
-                        Stroke::new(1.0, Color32::from_black_alpha(150)),
+                        Stroke::new(1.0, theme::shade(150)),
                     );
                 }
             }
@@ -860,7 +856,7 @@ fn draw_clip(
 const TITLE_HEIGHT: f32 = 11.0;
 
 /// Fill of a clip whose pattern has no colour of its own.
-const UNCOLOURED_CLIP: Color32 = Color32::from_rgb(0x4a, 0x53, 0x63);
+const UNCOLOURED_CLIP: Color32 = theme::CLIP_NEUTRAL;
 
 /// How a preview places a pattern's notes vertically.
 enum NoteRows {
@@ -924,7 +920,7 @@ impl NoteRows {
 /// colour for group "channel".
 fn note_tint(project: &Project, note: &musiccraft_project::Note) -> Color32 {
     if note.props.color > 0 {
-        crate::piano_roll::note_color(note.props.color)
+        theme::note_color(note.props.color)
     } else {
         theme::palette(project.channel_position(note.channel).unwrap_or(0))
     }
@@ -935,7 +931,7 @@ fn note_mark(painter: &egui::Painter, x0: f32, x1: f32, y: f32, tint: Color32) {
     // A dark edge keeps notes readable on a coloured clip.
     painter.line_segment(
         [pos2(x0, y), pos2(x1, y)],
-        Stroke::new(3.0, Color32::from_black_alpha(110)),
+        Stroke::new(3.0, theme::shade(110)),
     );
     painter.line_segment([pos2(x0, y), pos2(x1, y)], Stroke::new(1.5, tint));
 }
@@ -1077,12 +1073,8 @@ fn draw_ruler(
             pos2(grid.x(end as f32), ruler.bottom()),
         );
         if band.width() > 0.0 {
-            painter.rect_filled(
-                band,
-                0.0,
-                Color32::from_rgba_unmultiplied(0xff, 0xb3, 0x47, 60),
-            );
-            let shade = Color32::from_rgba_unmultiplied(0xff, 0xb3, 0x47, 14);
+            painter.rect_filled(band, 0.0, theme::at_strength(theme::HIGHLIGHT, 60));
+            let shade = theme::at_strength(theme::HIGHLIGHT, 14);
             painter.rect_filled(
                 Rect::from_min_max(
                     pos2(band.left(), ruler.bottom()),
@@ -1176,10 +1168,9 @@ fn draw_ruler(
                 );
             }
         }
-        let [r, g, b, _] = color.to_array();
         painter.line_segment(
             [pos2(x, top), pos2(x, clip.bottom())],
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(r, g, b, 70)),
+            Stroke::new(1.0, theme::at_strength(color, 70)),
         );
         painter.text(
             pos2(x + 10.0, top + 1.0),

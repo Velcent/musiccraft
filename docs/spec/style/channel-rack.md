@@ -392,7 +392,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
    - Today the header is: collapse arrow, title, filter, pattern name, the word "swing" with a percent drag box, the word "steps" with a number box, a "Graph" text toggle, then close. All tools are packed left after the title.
    - Our headers put the collapse arrow at the left today. The shared header puts the window menu there and collapse, maximize and close at the right; `docs/spec/window-layout.md` ("Window header" and "Channel rack": "Header, left to right") changes first.
    - The guide wants: window menu, filter, width grip, play triangle and title (with the pattern name) on the left; swing knob, length display, graph toggle and piano-roll view toggle right-aligned before the window buttons.
-   - There is no window menu at all, and no piano-roll view toggle.
+   - The window menu exists (common items only) and the window buttons are at the right, but there is no piano-roll view toggle, and the title still comes after the tools rather than among them.
    - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`), `crates/musiccraft-ui/src/chrome.rs` (`header` puts the fold arrow first), `docs/spec/window-layout.md`.
 3. **Selection switch position and model.**
    - Today the switch sits at the end of the row after the steps. The guide puts it between the name button and the steps; `docs/spec/window-layout.md` ("Channel rack") and `docs/spec/channel-rack.md` ("Row layout") change first.
@@ -405,15 +405,13 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
    - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`graph_editor`), `crates/musiccraft-ui/src/piano_roll.rs` (`LaneMode::ALL`).
 5. **Step look.**
    - All lit steps share one colour, so beat grouping disappears on lit steps.
-   - Velocity is not shown, and there is no playing-step indication.
-   - Hover on an off step uses `theme::RAISED`, which is darker than the lighter step tone `STEP_A`, so hover darkens half the steps.
-   - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`steps`), `crates/musiccraft-editors/src/theme.rs` (no `STEP_HOVER` or `STEP_PLAYING`).
+   - Velocity is not shown. (The playing step is now marked with `STEP_PLAYING`, and hover lifts an off step to `STEP_HOVER`.)
+   - File: `crates/musiccraft-ui/src/channel_rack.rs` (`steps`).
 6. **Scrolling, footer and placement.**
    - `ScrollArea::both` scrolls whole rows sideways, so mute, knobs and names scroll away with the steps. Only the step column should scroll horizontally.
    - The height is hard-capped (`max_height(420.0)`) instead of following a height mode.
    - The plus button is centred under the whole window rather than the name column (`window-layout.md` "Channel rack" says "centred under the rows" and changes first).
    - There is no corner grip, so there is no way to widen the rack to reveal or extend steps.
-   - The rack opens offset from the workspace's top-left corner (`default_pos(area.left_top() + …)` in `show`) rather than flush with it.
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`, `add_menu`).
 7. **Name button content.**
    - No kind glyph, no padlock, no missing-file warning state.

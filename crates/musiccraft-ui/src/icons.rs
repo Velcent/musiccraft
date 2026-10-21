@@ -29,12 +29,28 @@ pub enum Icon {
     Eraser,
     /// Select tool (dashed box).
     Select,
-    /// Mute tool (speaker with a slash).
+    /// Mute tool (speaker with a small cross).
     Mute,
     /// Slice tool (a blade across a bar).
     Slice,
     /// Zoom tool (magnifier).
     Zoom,
+    /// Window menu (three short bars).
+    Menu,
+    /// Collapse to header (an upward chevron over a bar).
+    Fold,
+    /// Expand from the header (a downward chevron over a bar).
+    Unfold,
+    /// Maximize (corner brackets opening outward).
+    Maximize,
+    /// Restore (corner brackets turned inward).
+    Restore,
+    /// Close (two crossing strokes).
+    Close,
+    /// Tools that did not fit (two small right chevrons).
+    More,
+    /// Refresh (three quarters of a ring ending in an arrowhead).
+    Refresh,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -261,6 +277,78 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 );
             }
         }
+        Icon::Menu => {
+            for y in [0.22, 0.5, 0.78] {
+                painter.line_segment([p(r, 0.12, y), p(r, 0.88, y)], stroke);
+            }
+        }
+        Icon::Fold | Icon::Unfold => {
+            let (tip, wing) = if icon == Icon::Fold {
+                (0.15, 0.5)
+            } else {
+                (0.5, 0.15)
+            };
+            painter.add(Shape::line(
+                vec![p(r, 0.2, wing), p(r, 0.5, tip), p(r, 0.8, wing)],
+                stroke,
+            ));
+            painter.line_segment([p(r, 0.15, 0.82), p(r, 0.85, 0.82)], stroke);
+        }
+        Icon::Maximize | Icon::Restore => {
+            // Each bracket is drawn at its corner; restore turns it to face
+            // the centre.
+            let inward = icon == Icon::Restore;
+            for (cx, cy) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
+                let (x, y) = if inward {
+                    (0.5 + (cx - 0.5) * 0.5, 0.5 + (cy - 0.5) * 0.5)
+                } else {
+                    (0.05 + cx * 0.9, 0.05 + cy * 0.9)
+                };
+                let toward = |c: f32| if c < 0.5 { 1.0 } else { -1.0 };
+                let (dx, dy) = if inward {
+                    (-toward(cx) * 0.25, -toward(cy) * 0.25)
+                } else {
+                    (toward(cx) * 0.3, toward(cy) * 0.3)
+                };
+                painter.add(Shape::line(
+                    vec![p(r, x + dx, y), p(r, x, y), p(r, x, y + dy)],
+                    stroke,
+                ));
+            }
+        }
+        Icon::Close => {
+            let s = Stroke::new(1.4, color);
+            painter.line_segment([p(r, 0.1, 0.1), p(r, 0.9, 0.9)], s);
+            painter.line_segment([p(r, 0.9, 0.1), p(r, 0.1, 0.9)], s);
+        }
+        Icon::More => {
+            for x in [0.15, 0.55] {
+                painter.add(Shape::line(
+                    vec![p(r, x, 0.2), p(r, x + 0.25, 0.5), p(r, x, 0.8)],
+                    stroke,
+                ));
+            }
+        }
+        Icon::Refresh => {
+            let c = r.center();
+            let radius = r.width().min(r.height()) * 0.4;
+            let at = |turn: f32| {
+                let a = turn * std::f32::consts::TAU;
+                c + vec2(a.cos(), a.sin()) * radius
+            };
+            let points: Vec<Pos2> = (0..=18).map(|i| at(-0.2 + i as f32 / 24.0)).collect();
+            painter.add(Shape::line(points, stroke));
+            let end = at(0.55);
+            painter.add(Shape::convex_polygon(
+                vec![
+                    end + vec2(-radius * 0.45, -radius * 0.1),
+                    end + vec2(radius * 0.3, -radius * 0.35),
+                    end + vec2(radius * 0.05, radius * 0.4),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+        }
         Icon::Browser => {
             painter.add(Shape::convex_polygon(
                 vec![
@@ -279,11 +367,15 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
 }
 
 /// A square toolbar button showing an icon; `active` lights it in `accent`.
+/// At rest the glyph is plain `TEXT`, except record, which keeps its
+/// `DANGER` glyph so it is always recognisable.
 pub fn button(ui: &mut Ui, icon: Icon, active: bool, accent: Color32, hint: &str) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(24.0, 22.0), Sense::click());
     let hovered = response.hovered();
     let fill = if active {
         accent.gamma_multiply(0.85)
+    } else if response.is_pointer_button_down_on() {
+        theme::ACCENT_DIM
     } else if hovered {
         theme::RAISED_HOVER
     } else {
@@ -292,10 +384,10 @@ pub fn button(ui: &mut Ui, icon: Icon, active: bool, accent: Color32, hint: &str
     ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
     let color = if active {
         theme::BACKGROUND
-    } else if hovered {
-        theme::TEXT
+    } else if icon == Icon::Record {
+        theme::DANGER
     } else {
-        accent
+        theme::TEXT
     };
     paint(ui.painter(), rect, icon, color);
     response.hint(hint)
@@ -328,6 +420,36 @@ pub fn toggle(ui: &mut Ui, icon: Icon, on: bool, hint: &str) -> Response {
     response.hint(hint)
 }
 
+/// A small square header button (window menu, collapse, maximize, close):
+/// no fill and a dim glyph at rest, a raised square and a bright glyph under
+/// the pointer. `pressed` keeps it pressed (its menu is open); `danger`
+/// turns the hovered glyph red (close).
+pub fn header_button(ui: &mut Ui, icon: Icon, pressed: bool, danger: bool, hint: &str) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+    let hovered = response.hovered();
+    if pressed || hovered {
+        let fill = if response.is_pointer_button_down_on() {
+            theme::ACCENT_DIM
+        } else if hovered {
+            theme::RAISED_HOVER
+        } else {
+            theme::RAISED
+        };
+        ui.painter().rect_filled(rect, CornerRadius::same(2), fill);
+    }
+    let color = if hovered && danger {
+        theme::DANGER
+    } else if pressed {
+        theme::ACCENT
+    } else if hovered {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
+    paint(ui.painter(), rect.shrink(1.5), icon, color);
+    response.hint(hint)
+}
+
 /// A dark "LCD" panel showing a large value and a small caption underneath.
 pub fn lcd(ui: &mut Ui, width: f32, main: &str, caption: &str, sense: Sense) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(width, 32.0), sense);
@@ -343,14 +465,14 @@ pub fn lcd(ui: &mut Ui, width: f32, main: &str, caption: &str, sense: Sense) -> 
         pos2(rect.center().x, rect.top() + 13.0),
         egui::Align2::CENTER_CENTER,
         main,
-        egui::FontId::monospace(16.0),
-        theme::PLAYHEAD,
+        egui::FontId::monospace(theme::FONT_DISPLAY),
+        theme::LCD_TEXT,
     );
     painter.text(
         pos2(rect.center().x, rect.bottom() - 6.0),
         egui::Align2::CENTER_CENTER,
         caption,
-        egui::FontId::proportional(8.5),
+        egui::FontId::proportional(theme::FONT_CAPTION),
         theme::TEXT_DIM,
     );
     response

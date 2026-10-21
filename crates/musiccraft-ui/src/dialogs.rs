@@ -314,6 +314,7 @@ pub fn show(
     let mut close = false;
     let mut confirm = false;
     egui::Window::new(dialog.title())
+        .frame(theme::dialog_frame())
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0])
@@ -379,23 +380,43 @@ pub fn show(
 
 pub fn shortcuts(ctx: &egui::Context, state: &mut UiState) {
     let mut open = state.windows.shortcuts;
-    egui::Window::new("Keyboard shortcuts")
-        .open(&mut open)
-        .default_width(320.0)
+    if !open {
+        return;
+    }
+    let id = egui::Id::new("keyboard-shortcuts");
+    let area = state.workspace;
+    let default = egui::Rect::from_min_size(
+        area.left_top() + egui::vec2(80.0, 40.0),
+        egui::vec2(320.0, 0.0),
+    );
+    crate::chrome::window(ctx, id, "Keyboard shortcuts", area, default, true)
+        .default_height((area.height() - 80.0).max(200.0))
         .show(ctx, |ui| {
-            egui::Grid::new("shortcut-grid")
-                .striped(true)
-                .show(ui, |ui| {
-                    for (chord, invocation) in state.keymap.iter() {
-                        ui.label(
-                            RichText::new(chord.to_string())
-                                .monospace()
-                                .color(theme::ACCENT),
-                        );
-                        ui.label(invocation.to_string());
-                        ui.end_row();
-                    }
-                });
+            let folded = crate::chrome::Header::new(id, "Keyboard shortcuts").show(
+                ui,
+                &mut open,
+                &mut (),
+                |_, _| {},
+                |_, _| {},
+            );
+            if folded {
+                return;
+            }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::Grid::new("shortcut-grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (chord, invocation) in state.keymap.iter() {
+                            ui.label(
+                                RichText::new(chord.to_string())
+                                    .monospace()
+                                    .color(theme::ACCENT),
+                            );
+                            ui.label(invocation.to_string());
+                            ui.end_row();
+                        }
+                    });
+            });
         });
     state.windows.shortcuts = open;
 }

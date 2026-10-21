@@ -576,13 +576,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("BROWSER")
-                        .small()
-                        .strong()
+                    RichText::new("Browser")
+                        .size(theme::FONT_TITLE)
                         .color(theme::TEXT_DIM),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("⟳").hint("Refresh folders").clicked() {
+                    let refresh = crate::icons::header_button(
+                        ui,
+                        crate::icons::Icon::Refresh,
+                        false,
+                        false,
+                        "Refresh folders",
+                    );
+                    if refresh.clicked() {
                         state.browser.listings.clear();
                     }
                 });

@@ -166,23 +166,44 @@ pub fn show(
     actions: &mut Vec<Action>,
 ) {
     let mut open = state.windows.channel_settings;
+    if !open {
+        return;
+    }
     let index = state.selected_channel;
     let Some(channel) = frame.project.channels.get(index) else {
         return;
     };
     let area = state.workspace;
-    egui::Window::new(format!("Channel — {}", channel.name))
-        .id(egui::Id::new("channel-settings"))
-        .open(&mut open)
-        .default_pos(area.right_top() + vec2(-470.0, 30.0))
-        .default_width(440.0)
-        .resizable(false)
-        .constrain_to(area)
-        .min_height((area.height() - 60.0).clamp(300.0, 760.0))
-        .max_height((area.height() - 40.0).max(300.0))
-        .show(ctx, |ui| {
-            contents(ui, state, frame, index, channel, actions)
-        });
+    let id = egui::Id::new("channel-settings");
+    let title = format!("Channel — {}", channel.name);
+    let default =
+        egui::Rect::from_min_size(area.right_top() + vec2(-470.0, 30.0), vec2(440.0, 0.0));
+    let mut window = crate::chrome::window(ctx, id, "Channel settings", area, default, false)
+        .max_height((area.height() - 40.0).max(300.0));
+    if !crate::chrome::collapsed(ctx, id) {
+        window = window.min_height((area.height() - 60.0).clamp(300.0, 760.0));
+    }
+    window.show(ctx, |ui| {
+        let folded = crate::chrome::Header::new(id, &title).fixed_size().show(
+            ui,
+            &mut open,
+            &mut (&mut *state, &mut *actions),
+            |ui, (state, actions)| {
+                crate::channel_rack::context_menu(
+                    ui,
+                    state,
+                    frame.project,
+                    index,
+                    channel,
+                    actions,
+                );
+            },
+            |_, _| {},
+        );
+        if !folded {
+            contents(ui, state, frame, index, channel, actions);
+        }
+    });
     state.windows.channel_settings = open;
 }
 
@@ -196,12 +217,6 @@ fn contents(
 ) {
     let number = index + 1;
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(&channel.name)
-                .size(18.0)
-                .strong()
-                .color(theme::palette(index)),
-        );
         ui.label(RichText::new(channel.instrument.label()).color(theme::TEXT_DIM));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let track = channel.mixer_track;

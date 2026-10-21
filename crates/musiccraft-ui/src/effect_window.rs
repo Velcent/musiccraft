@@ -79,20 +79,26 @@ pub(crate) fn show_all(
             continue;
         };
         let track_name = project.mixer.get(track).map_or("", |t| t.name.as_str());
-        let title = format!("{track_name} › {}", effect_title(effect));
+        let title = format!("{} — {track_name}", effect_title(effect));
         let mut keep = true;
-        egui::Window::new(title)
-            .id(egui::Id::new(("effect-window", track, slot)))
-            .open(&mut keep)
-            .resizable(false)
-            .default_pos(
-                state.workspace.left_top()
-                    + vec2(60.0 + 24.0 * index as f32, 60.0 + 24.0 * index as f32),
-            )
-            .constrain_to(state.workspace)
-            .show(ctx, |ui| {
-                contents(ui, state, frame, track, slot, effect, actions)
-            });
+        let id = egui::Id::new(("effect-window", track, slot));
+        let area = state.workspace;
+        let default = egui::Rect::from_min_size(
+            area.left_top() + vec2(60.0 + 24.0 * index as f32, 60.0 + 24.0 * index as f32),
+            vec2(0.0, 0.0),
+        );
+        crate::chrome::window(ctx, id, &title, area, default, false).show(ctx, |ui| {
+            let folded = crate::chrome::Header::new(id, &title).fixed_size().show(
+                ui,
+                &mut keep,
+                &mut (),
+                |_, _| {},
+                |_, _| {},
+            );
+            if !folded {
+                contents(ui, state, frame, track, slot, effect, actions);
+            }
+        });
         if !keep {
             toggle(state, track, slot);
         }
