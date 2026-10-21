@@ -413,12 +413,3 @@ fn more<T>(
             }
         });
 }
-
-/// In a wrapping row, starts a new row unless `width` more points fit. Combo
-/// boxes need this: they lay out in a child row of their own, which egui does
-/// not wrap.
-pub fn fit(ui: &mut egui::Ui, width: f32) {
-    if ui.available_size_before_wrap().x < width {
-        ui.end_row();
-    }
-}

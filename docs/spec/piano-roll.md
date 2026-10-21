@@ -223,7 +223,8 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - Vertical keyboard on the left (drawn as piano keys), time grid snapped to
   steps by default. Notes of other channels in the pattern show faintly in
   their channel colours (ghost notes).
-- **Tools** (toolbar, left): Draw (the default behavior below), Paint (drag to
+- **Tools** (header, in this order: Draw, Paint, Delete, Mute, Slice, Select,
+  Zoom, Play): Draw (the default behavior below), Paint (drag to
   lay notes end to end at the last length; one undo step), Delete (click or
   drag over notes; one undo step) and Select (drag a box without Ctrl; click
   empty space to clear). Starting a Paint drag on a note moves it as Draw would.
@@ -241,7 +242,8 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - Selection: click a note to select it, Shift+click toggles, Ctrl+drag on empty
   grid draws a selection rectangle (Shift adds to the selection). Dragging a
   selected note moves the whole selection; dragging its edge resizes all
-  selected notes by the same amount. Selected notes are outlined.
+  selected notes by the same amount. A selected note's whole body turns to one
+  selection tone (`theme::NOTE_SELECTED`), whatever its colour.
 - Keys while the pointer is over the piano roll: Delete/Backspace remove the
   selection; Ctrl+A selects all; Escape clears; Ctrl+C / Ctrl+X copy / cut;
   Ctrl+V pastes at the pointer; Ctrl+B duplicates the selection right after its
@@ -249,7 +251,17 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   by one snap step, and Ctrl+Up/Down by an octave (plain arrows do not move
   notes). Every operation is one undo step (`edit.batch`),
   with moves ordered so notes of the selection never overwrite each other.
-- Ctrl+scroll zooms horizontally.
+- Ctrl+scroll zooms horizontally. The scroll/zoom row above the ruler holds a
+  left chevron, a rail with a note overview and a thumb, a right chevron and
+  the vertical zoom box. The chevrons scroll by one bar (held: repeat); a
+  click on the bare rail pages one screen; dragging the thumb scrolls, and
+  dragging either end of it zooms horizontally with the other end fixed.
+  Dragging the zoom box up or down changes the key-row height (6 to 30
+  points); double-clicking it resets 14. A vertical scroll bar (chevrons,
+  rail, thumb) runs down the right of the ruler and grid.
+- The corner block above the keyboard shows the colour group of new notes
+  (the channel colour for group 1) with its number. Clicking it opens a 4 × 4
+  grid of the 16 groups. The Porta and Slide toggles sit on its right edge.
 - Notes have a pan, -100 to 100 (`note.set_pan`; `note.add` takes it as an
   optional sixth argument; `note.set_all` rows may carry it as a fifth value).
   It is applied as a balance on top of the channel pan.
@@ -259,9 +271,16 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - The ruler marks the playhead with a triangle whenever it is inside the
   shown pattern (the loop position in pattern mode; in song mode, inside a
   clip of this pattern), and a line runs down the roll while playing.
-- The toolbar starts with an options menu (☰): zoom, quantize, the note
-  tools, transpose an octave up or down, and clear the channel's notes. The
-  toolbar wraps onto a second line in a narrow window.
+- The header is one row: the window menu (☰: new-note velocity, quantize,
+  the note tools, transpose an octave up or down, clear the channel's notes),
+  then three square buttons for the note tools, snap and scale, a chord
+  button, the tools, the title and a chevron that opens the channel list
+  (channels with notes in the pattern are ticked). Snap, scale and chord name
+  their value in the hint and tick it in their list; a dimmed glyph means
+  none is set. In a narrow window the groups fold into the "more" button
+  instead of wrapping.
+- The window opens over the right half of the workspace, about half its
+  width and height.
 - A velocity lane is pinned to the bottom of the view: one stem per note of the
   selected channel. Dragging vertically sets the velocity of the note under the
   pointer (the latest-starting one when notes overlap); one drag is one undo step.
@@ -269,6 +288,10 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 
 ## Sources
 
+- The header's icon pickers, the corner block, the scroll/zoom row, the
+  vertical zoom box, the tool order and the selection tone: the interface
+  style guide, `docs/spec/style/piano-roll.md` (owner's 2026-10-21 decision
+  to follow the manual's layout). Glyphs, sizes and wording are our own.
 - Piano roll interaction (draw with left click, delete with right click, resize
   from the note edge) follows conventions described in the FL Studio online
   manual, "Piano roll" section, and common to most DAWs. Implementation and

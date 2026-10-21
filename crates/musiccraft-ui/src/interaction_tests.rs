@@ -1499,3 +1499,35 @@ fn the_count_in_toggle_sits_in_the_toolbar() {
     h.settle();
     assert_ne!(h.session.project().record.count_in, before);
 }
+
+#[test]
+fn the_piano_roll_opens_over_the_right_half_with_its_own_bars() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let roll = window_rect(&h, "piano-roll");
+    let area = h.state.workspace;
+    assert!(roll.left() >= area.center().x - 8.0, "{roll:?} in {area:?}");
+    assert!(roll.width() < area.width() * 0.6, "{roll:?} in {area:?}");
+
+    // Dragging the zoom box up makes key rows taller; a double-click resets.
+    let (grid, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let bar = crate::scrollbars::BAR;
+    let zoom = pos2(clip.right() + bar / 2.0, clip.top() - bar / 2.0);
+    h.drag(zoom, zoom - vec2(0.0, 40.0));
+    h.settle();
+    let taller = h.state.roll.last_view.unwrap().0.row_height;
+    assert!(taller > grid.row_height, "{taller} > {}", grid.row_height);
+    h.click(zoom, PointerButton::Primary);
+    h.click(zoom, PointerButton::Primary);
+    h.settle();
+    let reset = h.state.roll.last_view.unwrap().0.row_height;
+    assert!((reset - grid.row_height).abs() < 0.01, "{reset}");
+
+    // The corner block carries the Porta toggle at its top right.
+    assert!(!h.state.roll.porta);
+    let porta = pos2(clip.left() + 52.0 - 6.0, clip.top() - bar + 6.0);
+    h.click(porta, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.roll.porta);
+}

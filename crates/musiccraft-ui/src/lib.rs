@@ -21,6 +21,7 @@ mod playlist;
 mod plugins;
 mod rack_view;
 mod sample_editor;
+mod scrollbars;
 pub mod settings;
 mod signature;
 mod spectrum;

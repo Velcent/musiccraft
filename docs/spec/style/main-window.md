@@ -394,9 +394,8 @@ Ordered by visual impact. Each needs `docs/spec/window-layout.md` (or the spec n
    - Only the channel rack, playlist and browser are open at start; the mixer and piano roll start closed (`Windows::default()` in `crates/musiccraft-ui/src/lib.rs`). The default layout shows all four editors.
    - The screenshots `docs/screenshots/piano-roll.png` and `playlist-mixer.png` show this.
 2. **Scroll bars.**
-   - The editors use the toolkit's default floating scroll bars along the bottom and right (`ScrollArea::both` in `piano_roll.rs`, `playlist.rs`, `channel_rack.rs`).
-   - There is no top-mounted horizontal bar with chevrons, no zoom grips on the thumb, no vertical zoom box, no right-drag two-way scrolling and no thin scroll bar setting.
-   - Playlist zoom is a `−`/`+` button pair in the header (`playlist.rs`).
+   - The piano roll has the shared bars (`crates/musiccraft-ui/src/scrollbars.rs`): the top row with chevrons, a thumb with zoom grips and the vertical zoom box, and the vertical bar. The playlist and channel rack still use the toolkit's default floating scroll bars (`ScrollArea::both` in `playlist.rs`, `channel_rack.rs`).
+   - Nowhere is there right-drag two-way scrolling or a thin scroll bar setting.
 3. **No window snapping.** Windows neither snap to each other nor to the workspace edges, and there is no Alt override (all `egui::Window` uses).
 4. **Maximize has no key.** The header button, a double-click on the header and the window menu maximize and restore, but Enter is not bound (`crates/musiccraft-ui/keymap/default.keymap`; `keymap.md` first).
 5. **Keys follow the pointer, not focus.** The focused (topmost) window now has a lighter header, a bright title and an `ACCENT_DIM` edge, but piano roll and rack keys still follow pointer hover (`piano_roll.rs`: the `hovered` check before `keys`).

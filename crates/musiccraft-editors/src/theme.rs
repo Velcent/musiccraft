@@ -63,6 +63,9 @@ pub const CLIP_NEUTRAL: Color32 = Color32::from_rgb(0x4a, 0x53, 0x63);
 /// The title strip and outline of a selected clip: near `TEXT`, faintly
 /// toward `ACCENT`.
 pub const CLIP_SELECTED: Color32 = Color32::from_rgb(0xd2, 0xec, 0xe8);
+/// The body of a selected note: near-white, a little toward the accent, so a
+/// selection reads on every channel colour.
+pub const NOTE_SELECTED: Color32 = CLIP_SELECTED;
 /// The first bar line of each bar group: one step stronger than `GRID_BAR`.
 pub const GRID_GROUP: Color32 = Color32::from_rgb(0x64, 0x6f, 0x81);
 /// The faint lighter wash over alternate bar groups.

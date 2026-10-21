@@ -99,6 +99,21 @@ pub enum Icon {
     LoopRecord,
     /// Step edit (a note bar and a chevron).
     StepEdit,
+    /// Note tools (a wand with a sparkle at its tip).
+    Wand,
+    /// A scale (a staircase rising to the right).
+    Scale,
+    /// A chord (three stacked, staggered note heads).
+    Chord,
+    /// The piano roll's Play tool (a triangle with a sound arc).
+    PlayNote,
+    /// Small chevrons pointing left and up (scroll bars).
+    ChevronLeft,
+    ChevronUp,
+    /// Portamento (a quarter curve rising to the right).
+    Porta,
+    /// Slide (a right-angled ramp rising to the right).
+    SlideRamp,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -648,6 +663,71 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 stroke,
             ));
         }
+        Icon::Wand => {
+            painter.line_segment([p(r, 0.05, 0.95), p(r, 0.62, 0.38)], stroke);
+            let tip = p(r, 0.78, 0.22);
+            let arm = r.width() * 0.2;
+            painter.line_segment([tip - vec2(arm, 0.0), tip + vec2(arm, 0.0)], stroke);
+            painter.line_segment([tip - vec2(0.0, arm), tip + vec2(0.0, arm)], stroke);
+        }
+        Icon::Scale => {
+            painter.add(Shape::line(
+                vec![
+                    p(r, 0.0, 0.95),
+                    p(r, 0.33, 0.95),
+                    p(r, 0.33, 0.62),
+                    p(r, 0.66, 0.62),
+                    p(r, 0.66, 0.3),
+                    p(r, 1.0, 0.3),
+                ],
+                stroke,
+            ));
+        }
+        Icon::Chord => {
+            for (x, y) in [(0.3, 0.82), (0.5, 0.5), (0.7, 0.18)] {
+                painter.circle_filled(p(r, x, y), r.width() * 0.16, color);
+            }
+        }
+        Icon::PlayNote => {
+            painter.add(Shape::convex_polygon(
+                vec![p(r, 0.0, 0.15), p(r, 0.6, 0.5), p(r, 0.0, 0.85)],
+                color,
+                Stroke::NONE,
+            ));
+            painter.add(Shape::line(
+                vec![p(r, 0.78, 0.2), p(r, 0.95, 0.5), p(r, 0.78, 0.8)],
+                stroke,
+            ));
+        }
+        Icon::ChevronLeft => {
+            painter.add(Shape::line(
+                vec![p(r, 0.65, 0.15), p(r, 0.3, 0.5), p(r, 0.65, 0.85)],
+                stroke,
+            ));
+        }
+        Icon::ChevronUp => {
+            painter.add(Shape::line(
+                vec![p(r, 0.15, 0.65), p(r, 0.5, 0.3), p(r, 0.85, 0.65)],
+                stroke,
+            ));
+        }
+        Icon::Porta => {
+            painter.add(Shape::QuadraticBezier(
+                egui::epaint::QuadraticBezierShape::from_points_stroke(
+                    [p(r, 0.05, 0.95), p(r, 0.05, 0.05), p(r, 0.95, 0.05)],
+                    false,
+                    Color32::TRANSPARENT,
+                    stroke,
+                ),
+            ));
+        }
+        Icon::SlideRamp => {
+            painter.add(Shape::convex_polygon(
+                vec![p(r, 0.0, 0.95), p(r, 0.95, 0.05), p(r, 0.95, 0.95)],
+                color,
+                Stroke::NONE,
+            ));
+        }
         Icon::Pack => {
             painter.rect_stroke(
                 Rect::from_min_max(p(r, 0.05, 0.15), p(r, 0.95, 0.9)),
@@ -677,6 +757,36 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
 /// A square toolbar button showing an icon; `active` lights it in `accent`.
 /// At rest the glyph is plain `TEXT`, except record, which keeps its
 /// `DANGER` glyph so it is always recognisable.
+/// A square button that opens a list: `open` draws it pressed, `unset`
+/// dims its glyph (nothing chosen) and `lit` draws the glyph in the
+/// highlight tone (a choice that changes what clicks do).
+pub fn picker(
+    ui: &mut Ui,
+    icon: Icon,
+    open: bool,
+    (unset, lit): (bool, bool),
+    hint: &str,
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(24.0, 22.0), Sense::click());
+    let fill = if open || response.is_pointer_button_down_on() {
+        theme::ACCENT_DIM
+    } else if response.hovered() {
+        theme::RAISED_HOVER
+    } else {
+        theme::RAISED
+    };
+    ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
+    let color = if lit {
+        theme::HIGHLIGHT
+    } else if unset {
+        theme::TEXT_FAINT
+    } else {
+        theme::TEXT
+    };
+    paint(ui.painter(), rect, icon, color);
+    response.hint(hint)
+}
+
 pub fn button(ui: &mut Ui, icon: Icon, active: bool, accent: Color32, hint: &str) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(24.0, 22.0), Sense::click());
     let hovered = response.hovered();

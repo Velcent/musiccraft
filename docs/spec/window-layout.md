@@ -132,8 +132,22 @@ stay our own. The full target look, window by window, is the style guide in
   fader, the track switches (phase, swap, separation, effect count) and the
   route arrow. The slot panel is 270 points wide.
 
+## Piano roll
+
+- The piano roll opens over the right half of the workspace, half its width
+  and half its height (`piano-roll.md`).
+- Header, left to right: window menu, note tools, snap, scale, chord, the
+  eight tools, the title and its channel chevron, then the window buttons.
+- Under the header: a 14-point scroll/zoom row across the grid, with the
+  corner block (as wide as the 52-point keyboard, spanning the row and the
+  ruler) at its left and the vertical zoom box at its right; the vertical
+  scroll bar is 14 points wide, down the right of the ruler and grid.
+
 ## Sources
 
+- The piano roll's header pickers, scroll/zoom row and corner block: the
+  interface style guide, `docs/spec/style/piano-roll.md`. Glyphs and sizes
+  are our own.
 - The toolbar's two racks, the option toggles, the stacked mode switch, the
   display captions and the menu and hint column: the interface style guide,
   `docs/spec/style/toolbar.md` (owner's 2026-10-21 decision to follow the
