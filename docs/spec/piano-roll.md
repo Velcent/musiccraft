@@ -90,7 +90,8 @@
   normal note too.
 - In the piano roll, the Slide toggle on the toolbar makes new notes slide
   notes, and Tools → Toggle slide flips the selected notes. Slide notes are
-  drawn with a ramp mark.
+  drawn with a ramp mark at their right end (portamento notes: a small
+  curve there).
 
 ## Shaping and generating tools
 
@@ -222,7 +223,7 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 
 - Vertical keyboard on the left (drawn as piano keys), time grid snapped to
   steps by default. Notes of other channels in the pattern show faintly in
-  their channel colours (ghost notes).
+  one neutral tone (ghost notes, `theme::GHOST_NOTE`).
 - **Tools** (header, in this order: Draw, Paint, Delete, Mute, Slice, Select,
   Zoom, Play): Draw (the default behavior below), Paint (drag to
   lay notes end to end at the last length; one undo step), Delete (click or
@@ -271,6 +272,11 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - The ruler marks the playhead with a triangle whenever it is inside the
   shown pattern (the loop position in pattern mode; in song mode, inside a
   clip of this pattern), and a line runs down the roll while playing.
+- Clicking the ruler seeks the playhead to the snapped position (in song
+  mode, the same place inside the first clip of this pattern). Dragging along the ruler makes a time selection: the ruler
+  shows it as a highlighted band, the grid gets a faint wash with two edge
+  lines, and the notes that overlap it are selected. Escape or a click on
+  the ruler clears it.
 - The header is one row: the window menu (☰: new-note velocity, quantize,
   the note tools, transpose an octave up or down, clear the channel's notes),
   then three square buttons for the note tools, snap and scale, a chord

@@ -66,6 +66,10 @@ pub const CLIP_SELECTED: Color32 = Color32::from_rgb(0xd2, 0xec, 0xe8);
 /// The body of a selected note: near-white, a little toward the accent, so a
 /// selection reads on every channel colour.
 pub const NOTE_SELECTED: Color32 = CLIP_SELECTED;
+/// Shading over everything after a pattern's end.
+pub const PAST_END: Color32 = shade(60);
+/// Notes of other channels shown behind the edited one: one neutral tone.
+pub const GHOST_NOTE: Color32 = Color32::from_rgba_unmultiplied_const(0x8a, 0x93, 0xa3, 70);
 /// The first bar line of each bar group: one step stronger than `GRID_BAR`.
 pub const GRID_GROUP: Color32 = Color32::from_rgb(0x64, 0x6f, 0x81);
 /// The faint lighter wash over alternate bar groups.

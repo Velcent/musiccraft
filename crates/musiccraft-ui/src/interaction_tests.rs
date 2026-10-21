@@ -1585,3 +1585,28 @@ fn a_long_channel_rack_gets_the_plain_scroll_bar() {
     h.settle();
     assert!(offset(&h) > 0.0, "the rows scrolled");
 }
+
+#[test]
+fn dragging_the_piano_roll_ruler_selects_a_time_range() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 1 60",
+        "note.add 1 2 1 62",
+        "note.add 1 8 1 64",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    let (grid, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let y = clip.top() + 8.0;
+    let at = |tick: u32| pos2(grid.x(tick as f32), y);
+    let ran = h.drag(at(step / 2), at(4 * step));
+    assert!(ran.is_empty(), "a time selection runs no commands: {ran:?}");
+    assert_eq!(h.state.roll.time_selection, Some((0, 4 * step)));
+    let selected: Vec<_> = h.state.roll.selection.iter().copied().collect();
+    assert_eq!(selected, [(0, 60), (2 * step, 62)]);
+    // A click on the ruler clears the range; Escape clears it too.
+    h.click(at(step), PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.roll.time_selection, None);
+}

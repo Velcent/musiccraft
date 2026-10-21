@@ -128,6 +128,8 @@ pub struct RollState {
     clipboard: Vec<Note>,
     /// Snapped tick under the pointer, used as the paste position.
     hover_tick: Option<u32>,
+    /// Time selection made on the ruler, as (start, end) ticks.
+    pub(crate) time_selection: Option<(u32, u32)>,
     /// Scroll offset of the last frame, in points.
     offset: Vec2,
     /// Scroll offset asked for by the scroll bars, applied next frame.
@@ -162,6 +164,7 @@ impl Default for RollState {
             marquee: None,
             clipboard: Vec::new(),
             hover_tick: None,
+            time_selection: None,
             offset: Vec2::ZERO,
             jump: None,
         }
@@ -792,20 +795,14 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         if let Some((root, scale)) = state.roll.scale {
             draw_scale(&painter, &grid, clip, rect, root, scale);
         }
+        if let Some(range) = state.roll.time_selection {
+            draw_time_wash(&painter, &grid, clip, range);
+        }
 
-        // Ghost notes: other channels' notes, faded in their own colours.
+        // Ghost notes: other channels' notes, in one neutral tone.
         for note in pattern.notes.iter().filter(|n| n.channel != channel.id) {
             let r = grid.span(row_of_key(note.key), note.start, note.length);
-            let ghost = project
-                .channel_position(note.channel)
-                .map_or(theme::TEXT_DIM, theme::palette);
-            painter.rect_filled(r.shrink(1.0), 2.0, ghost.gamma_multiply(0.18));
-            painter.rect_stroke(
-                r.shrink(1.0),
-                2.0,
-                Stroke::new(1.0, ghost.gamma_multiply(0.35)),
-                egui::StrokeKind::Inside,
-            );
+            painter.rect_filled(r.shrink2(vec2(0.5, 1.0)), 2.0, theme::GHOST_NOTE);
         }
         let notes: Vec<&Note> = pattern.notes_of(channel.id).collect();
         let color = theme::palette(channel_index);
@@ -880,9 +877,10 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 theme::at_strength(theme::TEXT, 160)
             };
             if note.props.porta {
-                // A small curve marks a portamento note.
-                let a = pos2(r.left() + 3.0, r.bottom() - 3.0);
-                let b = pos2(r.left() + 3.0 + r.height(), r.top() + 3.0);
+                // A small curve at the right end marks a portamento note.
+                let size = (r.height() - 6.0).min(r.width() - 4.0).max(2.0);
+                let a = pos2(r.right() - 3.0 - size, r.bottom() - 3.0);
+                let b = pos2(r.right() - 3.0, r.top() + 3.0);
                 painter.add(egui::Shape::QuadraticBezier(
                     egui::epaint::QuadraticBezierShape::from_points_stroke(
                         [a, pos2(a.x, b.y), b],
@@ -893,16 +891,16 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 ));
             }
             if note.slide {
-                // A ramp at the start marks a slide note.
+                // A ramp at the right end marks a slide note.
                 let r = grid
                     .span(row_of_key(note.key), note.start, note.length)
                     .shrink2(vec2(1.0, 2.0));
                 let w = r.width().min(r.height() * 1.5);
                 painter.add(egui::Shape::convex_polygon(
                     vec![
-                        r.left_bottom(),
-                        pos2(r.left() + w, r.top()),
-                        pos2(r.left() + w, r.bottom()),
+                        pos2(r.right() - w, r.bottom()),
+                        r.right_top(),
+                        r.right_bottom(),
                     ],
                     mark,
                     Stroke::NONE,
@@ -1002,6 +1000,14 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             actions,
         );
         draw_ruler(&painter, &grid, clip, length, &state.roll.meter);
+        if let Some((a, b)) = state.roll.time_selection {
+            let band = Rect::from_x_y_ranges(
+                grid.x(a as f32)..=grid.x(b as f32),
+                clip.top()..=clip.top() + RULER_HEIGHT,
+            );
+            painter.rect_filled(band, 0.0, theme::at_strength(theme::HIGHLIGHT, 60));
+        }
+        ruler(ui, state, project, &grid, clip, (&notes, actions));
         // The ruler marks the playhead whether or not it is moving.
         if let Some(tick) = playhead {
             let x = grid.x(tick as f32);
@@ -1259,14 +1265,23 @@ fn draw_note(
         Stroke::new(1.0, theme::shade(120)),
         egui::StrokeKind::Inside,
     );
-    if rect.width() > 28.0 {
-        painter.text(
-            rect.left_center() + vec2(4.0, 0.0),
-            Align2::LEFT_CENTER,
+    // The key name, cut short with an ellipsis when the note is narrow.
+    let room = rect.width() - 6.0;
+    if room > 8.0 && rect.height() >= 8.0 {
+        let mut job = egui::text::LayoutJob::simple_singleline(
             key_name(key),
             FontId::proportional(9.5),
             theme::BACKGROUND,
         );
+        job.wrap = egui::text::TextWrapping {
+            max_width: room,
+            max_rows: 1,
+            break_anywhere: true,
+            overflow_character: Some('…'),
+        };
+        let galley = painter.layout_job(job);
+        let at = pos2(rect.left() + 4.0, rect.center().y - galley.size().y / 2.0);
+        painter.galley(at, galley, theme::BACKGROUND);
     }
 }
 
@@ -1310,7 +1325,7 @@ fn draw_background(
     painter.rect_filled(
         Rect::from_min_max(pos2(end, grid.origin.y), rect.right_bottom()),
         0.0,
-        theme::shade(60),
+        theme::PAST_END,
     );
     let first_tick = grid.tick_at(clip.left()) as u32 / TICKS_PER_STEP * TICKS_PER_STEP;
     let last_tick = grid.tick_at(clip.right()) as u32;
@@ -1367,23 +1382,136 @@ fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, length: u32, met
         pos2(clip.right(), clip.top() + RULER_HEIGHT),
     );
     painter.rect_filled(ruler, 0.0, theme::PANEL_DARK);
-    let first_bar = meter.bar(grid.tick_at(clip.left()) as u32).index;
-    let last_bar = meter.bar(grid.tick_at(clip.right()) as u32).index + 1;
+    let first_bar = meter.bar(grid.tick_at(clip.left()).max(0.0) as u32).index;
+    let last_bar = meter.bar(grid.tick_at(clip.right()).max(0.0) as u32).index + 1;
+    // Narrow bars show only every 2nd or 4th number.
+    let bar_width =
+        grid.x(meter.bar_start(first_bar + 1) as f32) - grid.x(meter.bar_start(first_bar) as f32);
+    let every = if bar_width >= 28.0 {
+        1
+    } else if bar_width >= 14.0 {
+        2
+    } else {
+        4
+    };
     for bar in first_bar..=last_bar {
         let start = meter.bar_start(bar);
         let x = grid.x(start as f32);
-        let color = if start < length {
-            theme::TEXT
-        } else {
-            theme::TEXT_DIM
-        };
-        painter.text(
-            pos2(x + 3.0, ruler.center().y),
-            Align2::LEFT_CENTER,
-            (bar + 1).to_string(),
-            FontId::monospace(11.0),
-            color,
+        let past = start >= length;
+        // Short beat ticks rise from the bottom edge.
+        let info = meter.bar(start);
+        let beat = info.sig.beat_ticks().max(1);
+        for at in (start + beat..info.end()).step_by(beat as usize) {
+            let bx = grid.x(at as f32);
+            painter.line_segment(
+                [pos2(bx, ruler.bottom() - 3.0), pos2(bx, ruler.bottom())],
+                Stroke::new(1.0, theme::GRID_BEAT),
+            );
+        }
+        painter.line_segment(
+            [pos2(x, ruler.bottom() - 6.0), pos2(x, ruler.bottom())],
+            Stroke::new(1.0, theme::GRID_BAR),
         );
+        if bar % every == 0 {
+            painter.text(
+                pos2(x + 3.0, ruler.top() + 2.0),
+                Align2::LEFT_TOP,
+                (bar + 1).to_string(),
+                FontId::monospace(theme::FONT_LABEL),
+                if past { theme::TEXT_DIM } else { theme::TEXT },
+            );
+        }
+    }
+}
+
+/// The time selection's faint wash over the grid, with its two edges.
+fn draw_time_wash(painter: &egui::Painter, grid: &Grid, clip: Rect, (a, b): (u32, u32)) {
+    let (x0, x1) = (grid.x(a as f32), grid.x(b as f32));
+    let top = clip.top() + RULER_HEIGHT;
+    let bottom = clip.bottom() - LANE_HEIGHT;
+    painter.rect_filled(
+        Rect::from_x_y_ranges(x0..=x1, top..=bottom),
+        0.0,
+        theme::at_strength(theme::HIGHLIGHT, 16),
+    );
+    for x in [x0, x1] {
+        painter.line_segment(
+            [pos2(x, top), pos2(x, bottom)],
+            Stroke::new(1.0, theme::at_strength(theme::HIGHLIGHT, 160)),
+        );
+    }
+}
+
+/// The ruler's gestures: a click seeks, a drag makes a time selection and
+/// selects the notes that overlap it.
+fn ruler(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    grid: &Grid,
+    clip: Rect,
+    (notes, actions): (&[&Note], &mut Vec<Action>),
+) {
+    let area = Rect::from_min_max(
+        pos2(clip.left() + KEYS_WIDTH, clip.top()),
+        pos2(clip.right(), clip.top() + RULER_HEIGHT),
+    );
+    let response = ui
+        .interact(area, ui.id().with("roll-ruler"), Sense::click_and_drag())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .hint("Click to seek · drag to select time");
+    let snap = state.roll.snap;
+    let meter = state.roll.meter.clone();
+    let tick_at = |x: f32| snap.floor(grid.tick_at(x).max(0.0), &meter);
+    if response.clicked() {
+        state.roll.time_selection = None;
+        if let Some(pos) = response.interact_pointer_pos() {
+            if let Some(at) = song_position(project, tick_at(pos.x)) {
+                actions.push(Action::Seek(at));
+            }
+        }
+    }
+    if response.dragged() {
+        if let (Some(origin), Some(pos)) = (
+            ui.input(|i| i.pointer.press_origin()),
+            response.interact_pointer_pos(),
+        ) {
+            let (a, b) = (
+                tick_at(origin.x),
+                snap.round(grid.tick_at(pos.x).max(0.0), &meter),
+            );
+            let range = (a.min(b), a.max(b));
+            state.roll.time_selection = (range.1 > range.0).then_some(range);
+        }
+    }
+    if response.drag_stopped() {
+        if let Some((a, b)) = state.roll.time_selection {
+            state.roll.selection = notes
+                .iter()
+                .filter(|n| n.start < b && n.start + n.length > a)
+                .map(|n| (n.start, n.key))
+                .collect();
+        }
+    }
+}
+
+/// Where the playhead goes for pattern tick `tick`: the tick itself in
+/// pattern mode; in song mode, the same place inside the clip of this
+/// pattern under the playhead, or else inside its first clip.
+fn song_position(project: &Project, tick: u32) -> Option<f64> {
+    let pattern = project.current_pattern();
+    match project.play_mode {
+        PlayMode::Pattern => Some(f64::from(tick)),
+        PlayMode::Song => {
+            let mut clips = project
+                .playlist
+                .clips
+                .iter()
+                .filter(|c| c.pattern() == Some(pattern.id));
+            let first = clips.next()?;
+            let at = first.start + tick.saturating_sub(first.offset);
+            Some(f64::from(at.min(first.end().saturating_sub(1))))
+        }
     }
 }
 
@@ -2191,6 +2319,7 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     }
     if pressed(Modifiers::NONE, Key::Escape) {
         state.roll.selection.clear();
+        state.roll.time_selection = None;
     }
     if pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace) {
         actions.extend(remove_notes(channel, &selected).map(Action::Run));
