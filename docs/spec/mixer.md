@@ -139,21 +139,40 @@ Ranges and defaults are defined in `musiccraft-params`.
 
 ## Layout
 
-- The mixer window opens across the whole workspace. Each strip is narrow and
-  shows, top to bottom: number, name (written vertically), the ON switch, the
-  pan knob, the peak meter beside the fader, the stereo separation knob, the
-  level readout in dB, the S button, the effect count and the route arrow
-  (sizes in `window-layout.md`).
+- The mixer is an editor window. The first time it opens it sits at the top
+  of the workspace, to the right of the channel rack, reaching the right
+  edge: about two thirds of the width and a little under half the height.
+  Strips fill the height of the window; the fader takes the spare height.
+- Header: window menu, the strip-details switch, the slot-panel switch and
+  the add-insert button (a plus: adds an insert and selects it), then the
+  title (`Mixer — <track>`) at the right end before the window buttons. The
+  window menu holds View (Strip details, Slot panel) and Tracks (Rename…,
+  Delete), then the common items.
+- Each strip is narrow and shows, top to bottom: the number cell (the number,
+  or M for the master, on a cell tinted with the track's colour), the name
+  written vertically beside the peak meter, a round enable light (lit while
+  the track is heard; click mutes), the S (solo) switch as a tiny round light
+  under it (not on the master), the pan knob, the fader, then the track
+  switches: invert phase, swap left and right, the stereo separation knob and
+  the effect count. The strip-details switch hides the track switches. The
+  level in dB is in the fader's hint. The route arrow is at the bottom.
 - **Routing**: the arrow under every strip the selected insert may feed shows
   whether it does and toggles it. The selected strip itself shows where it
   goes (`→ M`, `→ 3`, or `→ M, 3, 5`). With the master selected no arrows
   apply, as the master feeds nothing.
-- The panel beside the strips shows, for the selected track: its **input**
-  (the audio input device, as in Settings → Audio, for recording), the ten
-  effect slots (each with an enable switch, its name and a mix knob), the
-  track EQ (three gain knobs; right-click one to set its frequency), and its
-  **output** (inserts: where they route; the master: the
-  audio output device).
+- The slot panel beside the strips shows, for the selected track (it has no
+  heading; the title names the track): its **input** (the audio input device,
+  as in Settings → Audio, for recording), the ten effect slots, the track EQ
+  (three gain knobs; right-click one to set its frequency), its **output**
+  (inserts: where they route; the master: the audio output device) and, for
+  inserts, To master and the sends.
+- A slot row, left to right: a chevron that opens the slot menu, the name
+  (empty slots show a dim "Slot 3"), the mix knob and a round light at the
+  right edge (click: bypass or restore). Clicking a loaded name opens or
+  closes its window; clicking an empty slot's name or chevron opens the add
+  list (built-in effects, then plugin effects), and the effect goes into the
+  first free slot. A loaded slot's menu has
+  Open window, Bypass (or Enable), Move up, Move down and Remove.
 
 ## Effect rack
 
@@ -233,6 +252,12 @@ Ranges and defaults are defined in `musiccraft-params`.
 - The engine publishes a peak level per track; the UI shows it decaying.
 
 ## Sources
+
+- The mixer's placement, header, strip order (number cell, name beside the
+  meter, enable light, pan, fader, track switches) and the slot rows
+  (chevron, name, mix knob, light): the interface style guide,
+  `docs/spec/style/mixer.md` (owner's 2026-10-21 decision to follow the
+  manual's layout). Glyphs and wording are our own.
 
 - The track EQ, slot mix knobs and the input/output pickers beside the slots
   follow the mixer layout described in the FL Studio online manual, "Mixer"

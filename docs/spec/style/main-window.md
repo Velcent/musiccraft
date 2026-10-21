@@ -390,7 +390,6 @@ Tokens are in `crates/musiccraft-editors/src/theme.rs`. Names marked "new" are p
 Ordered by visual impact. Each needs `docs/spec/window-layout.md` (or the spec named) updated before code.
 
 1. **The default arrangement does not match the guide.**
-   - The mixer spans the whole width along the bottom (`crates/musiccraft-ui/src/mixer.rs`); `mixer.md` changes first.
    - The piano roll opens almost workspace-sized and covers everything (`crates/musiccraft-ui/src/piano_roll.rs`, `default_size`).
    - Only the channel rack, playlist and browser are open at start; the mixer and piano roll start closed (`Windows::default()` in `crates/musiccraft-ui/src/lib.rs`). The default layout shows all four editors.
    - The screenshots `docs/screenshots/piano-roll.png` and `playlist-mixer.png` show this.

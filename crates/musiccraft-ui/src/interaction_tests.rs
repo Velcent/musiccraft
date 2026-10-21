@@ -1455,3 +1455,21 @@ fn the_playlist_is_a_window_in_the_lower_part_of_the_workspace() {
     h.settle();
     assert!(!h.state.windows.playlist);
 }
+
+#[test]
+fn the_mixer_opens_at_the_top_beside_the_channel_rack() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_rack = true;
+    h.state.windows.mixer = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let mixer = window_rect(&h, "mixer-window");
+    let area = h.state.workspace;
+    assert!(mixer.left() >= rack.right(), "{mixer:?} beside {rack:?}");
+    assert!(
+        (mixer.right() - area.right()).abs() < 8.0,
+        "{mixer:?} in {area:?}"
+    );
+    assert!(mixer.top() - area.top() < 8.0, "{mixer:?} in {area:?}");
+    assert!(mixer.bottom() < area.center().y, "{mixer:?} in {area:?}");
+}

@@ -77,6 +77,18 @@ pub enum Icon {
     PlayFrom,
     /// A pattern (three staggered note dashes).
     Pattern,
+    /// Add (a plus).
+    Plus,
+    /// A small right-pointing chevron (slot menus).
+    ChevronRight,
+    /// Strip details (three stacked switch dots).
+    Details,
+    /// The mixer's slot panel (a frame with a column at its right).
+    SidePanel,
+    /// Invert phase (a circle crossed by a slash).
+    Phase,
+    /// Swap left and right (two opposed arrows).
+    Swap,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -499,6 +511,52 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
             for (x0, x1, y) in [(0.0, 0.45, 0.8), (0.3, 0.75, 0.5), (0.55, 1.0, 0.2)] {
                 painter.line_segment([p(r, x0, y), p(r, x1, y)], Stroke::new(2.2, color));
             }
+        }
+        Icon::Plus => {
+            let thick = Stroke::new(2.0, color);
+            painter.line_segment([p(r, 0.5, 0.1), p(r, 0.5, 0.9)], thick);
+            painter.line_segment([p(r, 0.1, 0.5), p(r, 0.9, 0.5)], thick);
+        }
+        Icon::ChevronRight => {
+            painter.add(Shape::line(
+                vec![p(r, 0.35, 0.15), p(r, 0.7, 0.5), p(r, 0.35, 0.85)],
+                stroke,
+            ));
+        }
+        Icon::Details => {
+            for y in [0.15, 0.5, 0.85] {
+                painter.circle_filled(p(r, 0.3, y), r.width() * 0.09, color);
+                painter.line_segment([p(r, 0.5, y), p(r, 0.95, y)], stroke);
+            }
+        }
+        Icon::SidePanel => {
+            painter.rect_stroke(
+                Rect::from_min_max(p(r, 0.0, 0.1), p(r, 1.0, 0.9)),
+                1.0,
+                stroke,
+                egui::StrokeKind::Inside,
+            );
+            painter.rect_filled(
+                Rect::from_min_max(p(r, 0.62, 0.1), p(r, 1.0, 0.9)),
+                1.0,
+                color,
+            );
+        }
+        Icon::Phase => {
+            painter.circle_stroke(p(r, 0.5, 0.5), r.width() * 0.32, stroke);
+            painter.line_segment([p(r, 0.1, 0.9), p(r, 0.9, 0.1)], stroke);
+        }
+        Icon::Swap => {
+            painter.line_segment([p(r, 0.05, 0.3), p(r, 0.95, 0.3)], stroke);
+            painter.add(Shape::line(
+                vec![p(r, 0.75, 0.1), p(r, 0.95, 0.3), p(r, 0.75, 0.5)],
+                stroke,
+            ));
+            painter.line_segment([p(r, 0.05, 0.7), p(r, 0.95, 0.7)], stroke);
+            painter.add(Shape::line(
+                vec![p(r, 0.25, 0.5), p(r, 0.05, 0.7), p(r, 0.25, 0.9)],
+                stroke,
+            ));
         }
         Icon::Pack => {
             painter.rect_stroke(

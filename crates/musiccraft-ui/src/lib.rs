@@ -203,6 +203,11 @@ pub struct UiState {
     pub selected_track: usize,
     /// Effect slot shown in the mixer's effect editor (0-based).
     pub mixer_slot: usize,
+    /// The mixer strips show their track switches (phase, swap, separation,
+    /// effects).
+    pub mixer_details: bool,
+    /// The mixer shows the selected track's slot panel.
+    pub mixer_panel: bool,
     /// Keyboard shortcuts.
     pub keymap: Keymap,
     /// Last command result.
@@ -314,6 +319,8 @@ impl UiState {
             selected_channel: 0,
             selected_track: 0,
             mixer_slot: 0,
+            mixer_details: true,
+            mixer_panel: true,
             keymap,
             status: StatusLine::default(),
             meters: Vec::new(),
@@ -442,10 +449,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
 
     let ctx = ui.ctx().clone();
     playlist::show(&ctx, state, frame, &mut actions);
+    channel_rack::show(&ctx, state, frame, &mut actions);
+    // After the rack, so the mixer can first open beside it.
     if state.windows.mixer {
         mixer::show(&ctx, state, frame, &mut actions);
     }
-    channel_rack::show(&ctx, state, frame, &mut actions);
     piano_roll::show(&ctx, state, frame, &mut actions);
     channel_settings::show(&ctx, state, frame, &mut actions);
     automation::show(&ctx, state, frame, &mut actions);

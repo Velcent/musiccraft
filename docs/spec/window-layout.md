@@ -102,14 +102,16 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Mixer
 
-- Header: window menu, "+ Insert", then the title (`Mixer — <track>`) at
-  the right end before the window buttons. How to use the strips is a hint
-  (hint bar), not text in the header.
-- Strips are 40 points wide, so twice as many inserts fit as before. Each
-  strip shows, top to bottom: number, name written vertically, the ON
-  (enable) switch, the pan knob, the peak meter beside the fader, the stereo
-  separation knob, the level readout (in dB, without the unit), S (solo), the
-  effect count and the route arrow.
+- The mixer opens at the top of the workspace to the right of the channel
+  rack (`mixer.md`, "Layout"). Header: window menu, strip details, slot
+  panel, add insert (a plus), then the title (`Mixer — <track>`) at the right
+  end before the window buttons. How to use the strips is a hint (hint bar),
+  not text in the header.
+- Strips are 40 points wide and fill the window's height. Each strip shows,
+  top to bottom: the tinted number cell, the name written vertically beside
+  the peak meter, the round enable light (S under it), the pan knob, the
+  fader, the track switches (phase, swap, separation, effect count) and the
+  route arrow. The slot panel is 270 points wide.
 
 ## Sources
 

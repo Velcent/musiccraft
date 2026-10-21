@@ -7,20 +7,16 @@ use musiccraft_project::params::{EFFECT_KINDS, MAX_EFFECT_SLOTS};
 use musiccraft_project::{MAX_VOLUME, MixerTrack, Project};
 
 use crate::dialogs::Dialog;
+use crate::icons::{self, Icon};
 use crate::{Action, Frame, UiState, theme, widgets};
 
 const STRIP_WIDTH: f32 = 40.0;
-/// Height of the vertical name on a strip.
-const NAME_HEIGHT: f32 = 68.0;
 
 fn run(actions: &mut Vec<Action>, name: &str, args: impl IntoIterator<Item = String>) {
     actions.push(Action::Run(Invocation::new(name, args)));
 }
 
-/// Draws the mixer docked at the bottom of the window.
-/// Height of the strips area in the mixer window.
-const STRIPS_HEIGHT: f32 = 330.0;
-
+/// The mixer window: the strips, then the selected track's slot panel.
 pub fn show(
     ctx: &egui::Context,
     state: &mut UiState,
@@ -38,39 +34,55 @@ pub fn show(
     if !open {
         return;
     }
-    let default = egui::Rect::from_min_size(
-        area.left_bottom() + egui::vec2(8.0, -(STRIPS_HEIGHT + 60.0)),
-        egui::vec2((area.width() - 16.0).max(500.0), 0.0),
+    // At the top, right of the channel rack, up to the right edge, a little
+    // under half the height.
+    let rack_right = ctx
+        .memory(|m| m.area_rect(egui::Id::new("channel-rack")))
+        .map_or(area.left(), |r| r.right());
+    let left = rack_right.max(area.left() + area.width() / 3.0) + 4.0;
+    let default = egui::Rect::from_min_max(
+        egui::pos2(left.min(area.right() - 500.0), area.top() + 4.0),
+        egui::pos2(area.right() - 4.0, area.top() + area.height() * 0.42 - 4.0),
     );
-    let window = crate::chrome::window(ctx, id, "Mixer", area, default, true)
-        .max_width((area.width() - 8.0).max(500.0))
+    // The rack takes a few frames to reach its width, so the mixer follows
+    // its default slot for its first frames.
+    let settle = egui::Id::new("mixer-settle");
+    let frames = ctx.data(|d| d.get_temp::<u8>(settle)).unwrap_or(0);
+    let mut window = crate::chrome::window(ctx, id, "Mixer", area, default, true);
+    if frames < 4 {
+        ctx.data_mut(|d| d.insert_temp(settle, frames + 1));
+        window = window.current_pos(default.min);
+    }
+    let window = window
+        .default_height(default.height().max(STRIP_MIN_HEIGHT))
+        .min_width(320.0)
         .show(ctx, |ui| {
             let folded = crate::chrome::Header::new(id, &title).title_at_end().show(
                 ui,
                 &mut open,
-                actions,
-                |_, _| {},
-                |ui, actions| {
-                    if ui
-                        .small_button("+ Insert")
-                        .hint("Add an insert track")
-                        .clicked()
-                    {
-                        run(actions, "mixer.add_track", []);
-                    }
-                },
+                &mut (&mut *state, &mut *actions),
+                |ui, (state, actions)| window_menu(ui, state, project, actions),
+                |ui, (state, actions)| header_tools(ui, state, actions),
             );
             if folded {
                 return;
             }
-            let height = STRIPS_HEIGHT;
+            let height = (ui.available_height() - 16.0).max(STRIP_MIN_HEIGHT);
             ui.horizontal_top(|ui| {
+                // The panel, the separator and the gaps around it, so the
+                // row never outgrows the window.
+                let panel = if state.mixer_panel {
+                    EFFECTS_WIDTH + 2.0 * ui.spacing().item_spacing.x + 8.0
+                } else {
+                    0.0
+                };
                 egui::ScrollArea::horizontal()
                     .id_salt("mixer-strips")
-                    .max_width((ui.available_width() - EFFECTS_WIDTH - 12.0).max(160.0))
+                    .max_width((ui.available_width() - panel).max(160.0))
+                    .auto_shrink([!state.mixer_panel, true])
                     .show(ui, |ui| {
                         ui.horizontal_top(|ui| {
-                            ui.spacing_mut().item_spacing.x = 3.0;
+                            ui.spacing_mut().item_spacing.x = 2.0;
                             for (index, track) in project.mixer.iter().enumerate() {
                                 strip(ui, state, project, index, track, height, actions);
                                 if index == 0 {
@@ -79,30 +91,97 @@ pub fn show(
                             }
                         });
                     });
-                ui.separator();
-                effects(ui, state, frame, actions);
+                if state.mixer_panel {
+                    ui.separator();
+                    effects(ui, state, frame, actions);
+                }
             });
         });
     state.windows.mixer = open;
     crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
 }
 
+/// The shortest the strips get; the fader gives up travel first.
+const STRIP_MIN_HEIGHT: f32 = 300.0;
+
+/// The header's tools: strip details, slot panel, add insert.
+fn header_tools(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) {
+    if icons::header_button(
+        ui,
+        Icon::Details,
+        state.mixer_details,
+        false,
+        "Strip details: show or hide phase, swap, separation and effects",
+    )
+    .clicked()
+    {
+        state.mixer_details = !state.mixer_details;
+    }
+    if icons::header_button(
+        ui,
+        Icon::SidePanel,
+        state.mixer_panel,
+        false,
+        "Slot panel: show or hide the selected track's effects",
+    )
+    .clicked()
+    {
+        state.mixer_panel = !state.mixer_panel;
+    }
+    if icons::header_button(ui, Icon::Plus, false, false, "Add an insert track").clicked() {
+        run(actions, "mixer.add_track", []);
+    }
+}
+
+/// The mixer's own window-menu items.
+fn window_menu(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    actions: &mut Vec<Action>,
+) {
+    ui.menu_button("View", |ui| {
+        ui.checkbox(&mut state.mixer_details, "Strip details");
+        ui.checkbox(&mut state.mixer_panel, "Slot panel");
+    });
+    let index = state.selected_track;
+    let Some(track) = project.mixer.get(index) else {
+        return;
+    };
+    ui.menu_button("Tracks", |ui| {
+        if ui.button("Rename…").clicked() {
+            state.open_dialog(Dialog::rename_track(index, &track.name));
+            ui.close();
+        }
+        if index > 0
+            && ui
+                .button(RichText::new("Delete").color(theme::DANGER))
+                .clicked()
+        {
+            run(actions, "mixer.remove_track", [index.to_string()]);
+            ui.close();
+        }
+    });
+}
+
 const EFFECTS_WIDTH: f32 = 270.0;
 
+/// Width of the name beside the meter in a strip's upper block.
+const NAME_WIDTH: f32 = 22.0;
+
 /// A strip's name, written bottom to top so narrow strips fit long names.
-fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool) -> egui::Response {
-    let (rect, response) =
-        ui.allocate_exact_size(vec2(STRIP_WIDTH, NAME_HEIGHT), egui::Sense::click());
+fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool, height: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(NAME_WIDTH, height), egui::Sense::click());
     let mut job = egui::text::LayoutJob::simple_singleline(
         name.to_owned(),
-        egui::FontId::proportional(11.0),
+        egui::FontId::proportional(theme::FONT_LABEL),
         if selected {
             theme::TEXT
         } else {
             theme::TEXT_DIM
         },
     );
-    job.wrap = egui::text::TextWrapping::truncate_at_width(NAME_HEIGHT - 4.0);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(height - 4.0);
     let galley = ui.painter().layout_job(job);
     let pos = egui::pos2(rect.center().x - galley.size().y / 2.0, rect.bottom() - 2.0);
     ui.painter().add(
@@ -112,28 +191,176 @@ fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool) -> egui::Respons
     response
 }
 
-fn led(
+/// A round light of `diameter`: filled in `color` when on, a dim ring when
+/// off.
+fn light(
     ui: &mut egui::Ui,
+    diameter: f32,
     on: bool,
     color: egui::Color32,
-    text: &str,
     hint: &str,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(22.0, 16.0), egui::Sense::click());
-    let fill = if on { color } else { theme::RAISED };
-    ui.painter().rect_filled(rect, 3.0, fill);
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(diameter + 6.0, diameter + 2.0), egui::Sense::click());
+    let center = rect.center();
+    let radius = diameter / 2.0;
+    if on {
+        ui.painter().circle_filled(center, radius, color);
+    } else {
+        ui.painter()
+            .circle_filled(center, radius, theme::PANEL_DARK);
+        ui.painter().circle_stroke(
+            center,
+            radius - 0.5,
+            egui::Stroke::new(
+                1.0,
+                if response.hovered() {
+                    theme::TEXT
+                } else {
+                    theme::TEXT_DIM
+                },
+            ),
+        );
+    }
+    response.hint(hint)
+}
+
+/// A tiny square switch showing `icon`: dim when off, the highlight tone on
+/// a raised square when on.
+fn small_switch(ui: &mut egui::Ui, icon: Icon, on: bool, hint: &str) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(16.0, 14.0), egui::Sense::click());
+    if on || response.hovered() {
+        let fill = if response.hovered() {
+            theme::RAISED_HOVER
+        } else {
+            theme::RAISED
+        };
+        ui.painter().rect_filled(rect, 2.0, fill);
+    }
+    let color = if on {
+        theme::HIGHLIGHT
+    } else {
+        theme::TEXT_DIM
+    };
+    icons::paint(ui.painter(), rect, icon, color);
+    response.hint(hint)
+}
+
+/// The number cell: the number (M for the master) on a cell tinted with the
+/// track's colour.
+fn number_cell(
+    ui: &mut egui::Ui,
+    index: usize,
+    color: egui::Color32,
+    selected: bool,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(STRIP_WIDTH, 16.0), egui::Sense::click());
+    let tint = theme::mix(theme::RAISED, color, if selected { 0.6 } else { 0.35 });
+    ui.painter().rect_filled(rect, 2.0, tint);
+    let label = if index == 0 {
+        "M".to_owned()
+    } else {
+        index.to_string()
+    };
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
-        text,
-        egui::FontId::proportional(10.0),
-        if on {
-            theme::BACKGROUND
-        } else {
-            theme::TEXT_DIM
-        },
+        label,
+        egui::FontId::proportional(theme::FONT_LABEL + 1.0),
+        theme::text_on(tint),
     );
-    response.hint(hint)
+    response
+}
+
+/// The level in dB, as the fader's hint shows it.
+fn level_db(volume: f32) -> String {
+    if volume <= 1e-6 {
+        "-inf dB".to_owned()
+    } else {
+        format!("{:+.1} dB", 20.0 * volume.log10())
+    }
+}
+
+/// The track menu (right-click on the number or name).
+fn track_menu(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    index: usize,
+    track: &MixerTrack,
+    actions: &mut Vec<Action>,
+) {
+    let number = index.to_string();
+    if ui.button("Rename…").clicked() {
+        state.open_dialog(Dialog::rename_track(index, &track.name));
+        ui.close();
+    }
+    ui.horizontal(|ui| {
+        ui.label("Stereo separation");
+        let mut separation = track.separation;
+        let drag = ui.add(
+            egui::DragValue::new(&mut separation)
+                .range(-1.0..=1.0)
+                .speed(0.01),
+        );
+        if drag.drag_started() || drag.gained_focus() {
+            state.begin_gesture();
+        }
+        if drag.changed() {
+            actions.push(Action::Coalesced(
+                Invocation::new(
+                    "mixer.set_separation",
+                    [number.clone(), format!("{separation:.3}")],
+                ),
+                state.gesture(),
+            ));
+        }
+    })
+    .response
+    .on_hover_text("-1 mono, 0 as is, 1 wider");
+    for (label, on, name) in [
+        ("Invert phase", track.phase_invert, "mixer.set_phase_invert"),
+        (
+            "Swap left and right",
+            track.swap_sides,
+            "mixer.set_swap_sides",
+        ),
+    ] {
+        if ui.selectable_label(on, label).clicked() {
+            run(
+                actions,
+                name,
+                [number.clone(), if on { "off" } else { "on" }.to_owned()],
+            );
+            ui.close();
+        }
+    }
+    if index > 0
+        && ui
+            .button(RichText::new("Delete").color(theme::DANGER))
+            .clicked()
+    {
+        run(actions, "mixer.remove_track", [number.clone()]);
+        ui.close();
+    }
+}
+
+/// Runs a knob gesture as one coalesced undo step of `name <number> <value>`.
+fn knob_command(
+    state: &mut UiState,
+    out: &widgets::KnobOutput,
+    name: &str,
+    number: &str,
+    actions: &mut Vec<Action>,
+) {
+    if out.started {
+        state.begin_gesture();
+    }
+    if let Some(value) = out.changed {
+        actions.push(Action::Coalesced(
+            Invocation::new(name, [number.to_owned(), format!("{value:.4}")]),
+            state.gesture(),
+        ));
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -159,179 +386,143 @@ fn strip(
         } else {
             theme::PANEL_DARK
         })
-        .stroke(egui::Stroke::new(
-            1.0,
-            if selected { color } else { theme::PANEL_DARK },
-        ))
-        .corner_radius(4.0)
-        .inner_margin(egui::Margin::symmetric(3, 4));
+        .corner_radius(2.0)
+        .inner_margin(egui::Margin::symmetric(0, 2));
     let response = frame.show(ui, |ui| {
         ui.set_width(STRIP_WIDTH);
-        ui.set_height((height - 10.0).max(200.0));
+        ui.set_height(height - 4.0);
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 3.0;
-            let label = if index == 0 {
-                "M".to_owned()
-            } else {
-                index.to_string()
-            };
-            ui.label(RichText::new(label).strong().size(13.0).color(color));
-            let name = vertical_name(ui, &track.name, selected).hint(format!(
-                "{} — click to select, right-click for options",
-                track.name
-            ));
+            let hint = format!("{} — click to select, right-click for options", track.name);
+            let cell = number_cell(ui, index, color, selected).hint(&hint);
+            let block = (height * 0.22).clamp(56.0, 120.0);
+            let name = ui
+                .horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.add_space(3.0);
+                    let name = vertical_name(ui, &track.name, selected, block).hint(&hint);
+                    let levels = state.meters.get(index).copied().unwrap_or_default();
+                    let meter = widgets::meter(ui, levels, vec2(10.0, block));
+                    if selected {
+                        ui.painter().rect_stroke(
+                            meter.rect.expand(1.0),
+                            2.0,
+                            egui::Stroke::new(1.0, theme::ACCENT),
+                            egui::StrokeKind::Outside,
+                        );
+                    }
+                    name.union(meter.interact(egui::Sense::click()))
+                })
+                .inner
+                .union(cell);
             if name.clicked() {
                 state.selected_track = index;
             }
             if name.double_clicked() {
                 state.open_dialog(Dialog::rename_track(index, &track.name));
             }
-            name.context_menu(|ui| {
-                if ui.button("Rename…").clicked() {
-                    state.open_dialog(Dialog::rename_track(index, &track.name));
-                    ui.close();
-                }
-                ui.horizontal(|ui| {
-                    ui.label("Stereo separation");
-                    let mut separation = track.separation;
-                    let drag = ui.add(
-                        egui::DragValue::new(&mut separation)
-                            .range(-1.0..=1.0)
-                            .speed(0.01),
-                    );
-                    if drag.drag_started() || drag.gained_focus() {
-                        state.begin_gesture();
-                    }
-                    if drag.changed() {
-                        actions.push(Action::Coalesced(
-                            Invocation::new(
-                                "mixer.set_separation",
-                                [number.clone(), format!("{separation:.3}")],
-                            ),
-                            state.gesture(),
-                        ));
-                    }
-                })
-                .response
-                .on_hover_text("-1 mono, 0 as is, 1 wider");
-                for (label, on, name) in [
-                    ("Invert phase", track.phase_invert, "mixer.set_phase_invert"),
-                    (
-                        "Swap left and right",
-                        track.swap_sides,
-                        "mixer.set_swap_sides",
-                    ),
-                ] {
-                    if ui.selectable_label(on, label).clicked() {
-                        run(
-                            actions,
-                            name,
-                            [number.clone(), if on { "off" } else { "on" }.to_owned()],
-                        );
-                        ui.close();
-                    }
-                }
-                if index > 0
-                    && ui
-                        .button(RichText::new("Delete").color(theme::DANGER))
-                        .clicked()
-                {
-                    run(actions, "mixer.remove_track", [number.clone()]);
-                    ui.close();
-                }
-            });
-            if led(ui, !track.mute, theme::ACCENT, "ON", "Enable / mute").clicked() {
+            name.context_menu(|ui| track_menu(ui, state, index, track, actions));
+            let heard = if track.mute { "muted" } else { "on" };
+            if light(
+                ui,
+                10.0,
+                !track.mute,
+                theme::ACCENT,
+                &format!("Enable ({heard}) · click to mute or unmute"),
+            )
+            .clicked()
+            {
                 run(actions, "mixer.toggle_mute", [number.clone()]);
             }
-            {
-                let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
-                crate::automation::menu(&pan.response, &format!("mixer:{index}:pan"), actions);
-                if pan.started {
-                    state.begin_gesture();
-                }
-                if let Some(value) = pan.changed {
-                    actions.push(Action::Coalesced(
-                        Invocation::new("mixer.set_pan", [number.clone(), format!("{value:.3}")]),
-                        state.gesture(),
-                    ));
-                }
-                pan.response.hint(format!("Pan {:+.0}", track.pan * 100.0));
-            }
-            let fader_height = (ui.available_height() - 100.0).max(80.0);
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                let levels = state.meters.get(index).copied().unwrap_or_default();
-                widgets::meter(ui, levels, vec2(8.0, fader_height));
-                let fader = widgets::fader(
-                    ui,
-                    track.volume,
-                    MAX_VOLUME,
-                    vec2(STRIP_WIDTH - 10.0, fader_height),
-                );
-                crate::automation::menu(&fader.response, &format!("mixer:{index}:volume"), actions);
-                if fader.started {
-                    state.begin_gesture();
-                }
-                if let Some(gain) = fader.changed {
-                    actions.push(Action::Coalesced(
-                        Invocation::new("mixer.set_volume", [number.clone(), format!("{gain:.4}")]),
-                        state.gesture(),
-                    ));
-                }
-            });
-            let sep = widgets::knob(ui, track.separation, -1.0, 1.0, 0.0, true);
-            if sep.started {
-                state.begin_gesture();
-            }
-            if let Some(value) = sep.changed {
-                actions.push(Action::Coalesced(
-                    Invocation::new(
-                        "mixer.set_separation",
-                        [number.clone(), format!("{value:.3}")],
-                    ),
-                    state.gesture(),
-                ));
-            }
-            sep.response.hint(format!(
-                "Stereo separation {:+.0} (left: mono, right: wider)",
-                track.separation * 100.0
-            ));
-            let db = 20.0 * track.volume.max(1e-6).log10();
-            let readout = if track.volume <= 1e-6 {
-                "-inf".to_owned()
-            } else {
-                format!("{db:+.1}")
-            };
-            ui.label(
-                RichText::new(readout)
-                    .monospace()
-                    .size(10.0)
-                    .color(theme::TEXT_DIM),
-            )
-            .hint("Level in dB");
             if index > 0 {
-                if led(ui, track.solo, theme::HIGHLIGHT, "S", "Solo").clicked() {
+                if light(ui, 7.0, track.solo, theme::HIGHLIGHT, "Solo").clicked() {
                     run(actions, "mixer.toggle_solo", [number.clone()]);
                 }
             } else {
-                ui.add_space(16.0);
+                ui.add_space(9.0);
             }
-            let fx = track.effects.iter().filter(|e| e.enabled).count();
-            ui.label(
-                RichText::new(if fx > 0 {
-                    format!("{fx} fx")
-                } else {
-                    " ".to_owned()
-                })
-                .small()
-                .color(theme::ACCENT),
+            let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
+            crate::automation::menu(&pan.response, &format!("mixer:{index}:pan"), actions);
+            knob_command(state, &pan, "mixer.set_pan", &number, actions);
+            pan.response.hint(format!("Pan {:+.0}", track.pan * 100.0));
+            let below = if state.mixer_details { 84.0 } else { 0.0 } + 20.0;
+            let fader_height = (ui.available_height() - below).max(60.0);
+            let fader = widgets::fader(
+                ui,
+                track.volume,
+                MAX_VOLUME,
+                vec2(STRIP_WIDTH - 12.0, fader_height),
             );
+            crate::automation::menu(&fader.response, &format!("mixer:{index}:volume"), actions);
+            knob_command(state, &fader, "mixer.set_volume", &number, actions);
+            fader
+                .response
+                .hint(format!("Level {}", level_db(track.volume)));
+            if state.mixer_details {
+                details(ui, state, &number, track, actions);
+            }
             route_arrow(ui, state, project, index, actions);
         });
     });
     if response.response.interact(egui::Sense::click()).clicked() {
         state.selected_track = index;
     }
+}
+
+/// The track switches: invert phase, swap, separation and the effect count.
+fn details(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: &str,
+    track: &MixerTrack,
+    actions: &mut Vec<Action>,
+) {
+    ui.spacing_mut().item_spacing.y = 1.0;
+    for (icon, on, name, label) in [
+        (
+            Icon::Phase,
+            track.phase_invert,
+            "mixer.set_phase_invert",
+            "Invert phase",
+        ),
+        (
+            Icon::Swap,
+            track.swap_sides,
+            "mixer.set_swap_sides",
+            "Swap left and right",
+        ),
+    ] {
+        let state_word = if on { "on" } else { "off" };
+        if small_switch(ui, icon, on, &format!("{label}: {state_word}")).clicked() {
+            run(
+                actions,
+                name,
+                [number.to_owned(), if on { "off" } else { "on" }.to_owned()],
+            );
+        }
+    }
+    let sep = widgets::knob(ui, track.separation, -1.0, 1.0, 0.0, true);
+    knob_command(state, &sep, "mixer.set_separation", number, actions);
+    sep.response.hint(format!(
+        "Stereo separation {:+.0} (left: mono, right: wider)",
+        track.separation * 100.0
+    ));
+    let fx = track.effects.iter().filter(|e| e.enabled).count();
+    let names: Vec<String> = track.effects.iter().map(|e| e.label()).collect();
+    ui.label(
+        RichText::new(if fx > 0 {
+            format!("{fx} fx")
+        } else {
+            " ".to_owned()
+        })
+        .size(theme::FONT_CAPTION + 0.5)
+        .color(theme::ACCENT),
+    )
+    .hint(if names.is_empty() {
+        "No effects".to_owned()
+    } else {
+        format!("Effects: {}", names.join(", "))
+    });
 }
 
 /// The arrow under a strip shows whether the selected insert sends here;
@@ -581,17 +772,6 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
     let number = index.to_string();
     ui.vertical(|ui| {
         ui.set_width(EFFECTS_WIDTH);
-        let title = if index == 0 {
-            "Master".to_owned()
-        } else {
-            format!("Insert {index}")
-        };
-        let heading = if track.name == title {
-            title
-        } else {
-            format!("{title} — {}", track.name)
-        };
-        ui.label(RichText::new(heading).strong().size(14.0));
         input_row(ui, frame, actions);
         egui::ScrollArea::vertical()
             .id_salt("effect-chain")
@@ -599,11 +779,6 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
                 for slot in 0..MAX_EFFECT_SLOTS {
                     slot_row(ui, state, track, &number, slot, plugins, actions);
                 }
-                ui.label(
-                    RichText::new("Click an effect's name to open its window")
-                        .small()
-                        .color(theme::TEXT_DIM),
-                );
                 ui.separator();
                 eq_row(ui, state, index, track, actions);
                 output_row(ui, frame, index, track, actions);
@@ -618,6 +793,9 @@ fn track_index(number: &str) -> usize {
     number.parse().unwrap_or(0)
 }
 
+/// One effect slot: chevron (slot menu), name, mix knob and a light that
+/// bypasses or restores the effect. An empty slot shows a dim "Slot n" and
+/// opens the add list.
 fn slot_row(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -636,130 +814,202 @@ fn slot_row(
         } else {
             theme::PANEL_DARK
         })
-        .corner_radius(3.0)
-        .inner_margin(egui::Margin::symmetric(4, 1))
+        .corner_radius(2.0)
+        .inner_margin(egui::Margin::symmetric(2, 1))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(&slot_no)
-                        .small()
-                        .monospace()
-                        .color(theme::TEXT_DIM),
-                );
-                match effect {
-                    Some(effect) => {
-                        if led(ui, effect.enabled, theme::ACCENT, "", "Enable / bypass").clicked() {
-                            run(
-                                actions,
-                                "mixer.toggle_effect",
-                                [number.to_owned(), slot_no.clone()],
-                            );
-                        }
-                        let name = RichText::new(effect.label()).color(if effect.enabled {
-                            theme::TEXT
-                        } else {
-                            theme::TEXT_DIM
+                ui.spacing_mut().item_spacing.x = 3.0;
+                let popup = egui::Id::new(("mixer-slot-menu", slot));
+                let open = egui::Popup::is_id_open(ui.ctx(), popup);
+                let (rect, chevron) =
+                    ui.allocate_exact_size(vec2(14.0, 20.0), egui::Sense::click());
+                let glyph = if open || chevron.hovered() {
+                    theme::TEXT
+                } else {
+                    theme::TEXT_DIM
+                };
+                icons::paint(ui.painter(), rect, Icon::ChevronRight, glyph);
+                let Some(effect) = effect else {
+                    let name = ui
+                        .add(
+                            egui::Label::new(
+                                RichText::new(format!("Slot {slot_no}"))
+                                    .italics()
+                                    .color(theme::TEXT_FAINT),
+                            )
+                            .sense(egui::Sense::click()),
+                        )
+                        .hint("Add an effect");
+                    let anchor = chevron.union(name);
+                    let toggle = anchor.clicked().then_some(egui::SetOpenCommand::Toggle);
+                    egui::Popup::menu(&anchor)
+                        .id(popup)
+                        .open_memory(toggle)
+                        .show(|ui| {
+                            add_list(ui, state, number, track.effects.len(), plugins, actions)
                         });
-                        if ui
-                            .add(egui::Label::new(name).sense(egui::Sense::click()))
-                            .hint("Open or close this effect's window")
-                            .clicked()
-                        {
-                            state.mixer_slot = slot;
-                            crate::effect_window::toggle(state, track_index(number), slot);
-                        }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("×").hint("Remove").clicked() {
-                                run(
-                                    actions,
-                                    "mixer.remove_effect",
-                                    [number.to_owned(), slot_no.clone()],
-                                );
-                            }
-                            let mix = widgets::knob(ui, effect.mix, 0.0, 1.0, 1.0, false);
-                            if mix.started {
-                                state.begin_gesture();
-                            }
-                            if let Some(value) = mix.changed {
-                                actions.push(Action::Coalesced(
-                                    Invocation::new(
-                                        "mixer.set_effect_mix",
-                                        [number.to_owned(), slot_no.clone(), format!("{value:.3}")],
-                                    ),
-                                    state.gesture(),
-                                ));
-                            }
-                            mix.response.hint(format!("Mix {:.0}%", effect.mix * 100.0));
-                            if slot + 1 < track.effects.len()
-                                && ui
-                                    .small_button(RichText::new("▼").monospace())
-                                    .hint("Move down")
-                                    .clicked()
-                            {
-                                run(
-                                    actions,
-                                    "mixer.move_effect",
-                                    [number.to_owned(), slot_no.clone(), (slot + 2).to_string()],
-                                );
-                            }
-                            if slot > 0
-                                && ui
-                                    .small_button(RichText::new("▲").monospace())
-                                    .hint("Move up")
-                                    .clicked()
-                            {
-                                run(
-                                    actions,
-                                    "mixer.move_effect",
-                                    [number.to_owned(), slot_no.clone(), slot.to_string()],
-                                );
-                            }
-                        });
-                    }
-                    None if slot == track.effects.len() => {
-                        ui.menu_button(
-                            RichText::new("+ add effect").color(theme::TEXT_DIM),
-                            |ui| {
-                                for kind in EFFECT_KINDS {
-                                    if ui.button(kind.name()).clicked() {
-                                        run(
-                                            actions,
-                                            "mixer.add_effect",
-                                            [number.to_owned(), kind.name().to_owned()],
-                                        );
-                                        state.mixer_slot = slot;
-                                        state.effect_windows.push((track_index(number), slot));
-                                        ui.close();
-                                    }
-                                }
-                                ui.separator();
-                                ui.menu_button("Plugin effect", |ui| {
-                                    let chosen = crate::plugins::add_menu(
-                                        ui,
-                                        plugins,
-                                        false,
-                                        actions,
-                                        |p| {
-                                            Invocation::new(
-                                                "mixer.add_plugin",
-                                                [number.to_owned(), p.id.clone(), p.name.clone()],
-                                            )
-                                        },
-                                    );
-                                    if chosen {
-                                        state.mixer_slot = slot;
-                                    }
-                                });
-                            },
+                    return;
+                };
+                let chevron = chevron.hint("Slot menu");
+                let toggle = chevron.clicked().then_some(egui::SetOpenCommand::Toggle);
+                egui::Popup::menu(&chevron)
+                    .id(popup)
+                    .open_memory(toggle)
+                    .show(|ui| slot_menu(ui, state, track, number, slot, actions));
+                let name = RichText::new(effect.label()).color(if effect.enabled {
+                    theme::TEXT
+                } else {
+                    theme::TEXT_DIM
+                });
+                if ui
+                    .add(
+                        egui::Label::new(name)
+                            .truncate()
+                            .sense(egui::Sense::click()),
+                    )
+                    .hint("Open or close this effect's window")
+                    .clicked()
+                {
+                    state.mixer_slot = slot;
+                    crate::effect_window::toggle(state, track_index(number), slot);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let word = if effect.enabled { "on" } else { "bypassed" };
+                    if light(
+                        ui,
+                        8.0,
+                        effect.enabled,
+                        theme::ACCENT,
+                        &format!("Effect {word} · click to bypass or restore"),
+                    )
+                    .clicked()
+                    {
+                        run(
+                            actions,
+                            "mixer.toggle_effect",
+                            [number.to_owned(), slot_no.clone()],
                         );
                     }
-                    None => {
-                        ui.label(RichText::new("empty").small().color(theme::GRID_BAR));
+                    let mix = widgets::knob(ui, effect.mix, 0.0, 1.0, 1.0, false);
+                    if mix.started {
+                        state.begin_gesture();
                     }
-                }
+                    if let Some(value) = mix.changed {
+                        actions.push(Action::Coalesced(
+                            Invocation::new(
+                                "mixer.set_effect_mix",
+                                [number.to_owned(), slot_no.clone(), format!("{value:.3}")],
+                            ),
+                            state.gesture(),
+                        ));
+                    }
+                    mix.response.hint(format!("Mix {:.0}%", effect.mix * 100.0));
+                });
             });
         });
+}
+
+/// The menu of a loaded slot.
+fn slot_menu(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    track: &MixerTrack,
+    number: &str,
+    slot: usize,
+    actions: &mut Vec<Action>,
+) {
+    let slot_no = (slot + 1).to_string();
+    let enabled = track.effects.get(slot).is_some_and(|e| e.enabled);
+    if ui.button("Open window").clicked() {
+        state.mixer_slot = slot;
+        crate::effect_window::toggle(state, track_index(number), slot);
+        ui.close();
+    }
+    if ui
+        .button(if enabled { "Bypass" } else { "Enable" })
+        .clicked()
+    {
+        run(
+            actions,
+            "mixer.toggle_effect",
+            [number.to_owned(), slot_no.clone()],
+        );
+        ui.close();
+    }
+    if ui
+        .add_enabled(slot > 0, egui::Button::new("Move up"))
+        .clicked()
+    {
+        run(
+            actions,
+            "mixer.move_effect",
+            [number.to_owned(), slot_no.clone(), slot.to_string()],
+        );
+        ui.close();
+    }
+    if ui
+        .add_enabled(
+            slot + 1 < track.effects.len(),
+            egui::Button::new("Move down"),
+        )
+        .clicked()
+    {
+        run(
+            actions,
+            "mixer.move_effect",
+            [number.to_owned(), slot_no.clone(), (slot + 2).to_string()],
+        );
+        ui.close();
+    }
+    ui.separator();
+    if ui
+        .button(RichText::new("Remove").color(theme::DANGER))
+        .clicked()
+    {
+        run(actions, "mixer.remove_effect", [number.to_owned(), slot_no]);
+        ui.close();
+    }
+}
+
+/// The built-in effects, then the plugin effects; the choice goes into
+/// `slot`, the first free one.
+fn add_list(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: &str,
+    slot: usize,
+    plugins: &crate::Plugins,
+    actions: &mut Vec<Action>,
+) {
+    if slot >= MAX_EFFECT_SLOTS {
+        ui.label(RichText::new("Every slot is in use").color(theme::TEXT_DIM));
+        return;
+    }
+    for kind in EFFECT_KINDS {
+        if ui.button(kind.name()).clicked() {
+            run(
+                actions,
+                "mixer.add_effect",
+                [number.to_owned(), kind.name().to_owned()],
+            );
+            state.mixer_slot = slot;
+            state.effect_windows.push((track_index(number), slot));
+            ui.close();
+        }
+    }
+    ui.separator();
+    ui.menu_button("Plugin effects", |ui| {
+        let chosen = crate::plugins::add_menu(ui, plugins, false, actions, |p| {
+            Invocation::new(
+                "mixer.add_plugin",
+                [number.to_owned(), p.id.clone(), p.name.clone()],
+            )
+        });
+        if chosen {
+            state.mixer_slot = slot;
+        }
+    });
 }
 
 fn routing(
