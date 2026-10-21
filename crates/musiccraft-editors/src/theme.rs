@@ -60,6 +60,13 @@ pub const KEY_BLACK: Color32 = Color32::from_rgb(0x1e, 0x22, 0x29);
 pub const KEY_SEAM: Color32 = Color32::from_rgb(0x9a, 0xa0, 0xab);
 /// Clips with no colour of their own.
 pub const CLIP_NEUTRAL: Color32 = Color32::from_rgb(0x4a, 0x53, 0x63);
+/// The title strip and outline of a selected clip: near `TEXT`, faintly
+/// toward `ACCENT`.
+pub const CLIP_SELECTED: Color32 = Color32::from_rgb(0xd2, 0xec, 0xe8);
+/// The first bar line of each bar group: one step stronger than `GRID_BAR`.
+pub const GRID_GROUP: Color32 = Color32::from_rgb(0x64, 0x6f, 0x81);
+/// The faint lighter wash over alternate bar groups.
+pub const BAR_GROUP: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xff, 0xff, 5);
 /// The faint product name in the empty workspace.
 pub const WATERMARK: Color32 = Color32::from_rgba_unmultiplied_const(0xd8, 0xde, 0xe9, 14);
 
@@ -109,6 +116,40 @@ pub const fn shade(alpha: u8) -> Color32 {
 pub fn at_strength(color: Color32, alpha: u8) -> Color32 {
     let [r, g, b, _] = color.to_array();
     Color32::from_rgba_unmultiplied(r, g, b, alpha)
+}
+
+/// `a` moved toward `b` by `t` (0 is `a`, 1 is `b`), opaque.
+#[must_use]
+pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let channel = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
+    Color32::from_rgb(
+        channel(a.r(), b.r()),
+        channel(a.g(), b.g()),
+        channel(a.b(), b.b()),
+    )
+}
+
+/// A clip's body: its colour moved most of the way toward `LANE`, slightly
+/// see-through so grid lines show.
+#[must_use]
+pub fn clip_body(color: Color32) -> Color32 {
+    at_strength(mix(LANE, color, 0.22), 225)
+}
+
+/// A clip's content (waveform): its colour moved toward `TEXT`, the brightest
+/// tone in the clip.
+#[must_use]
+pub fn clip_content(color: Color32) -> Color32 {
+    mix(color, TEXT, 0.45)
+}
+
+/// Text that reads on `fill`: `TEXT` on dark fills, `BACKGROUND` on light ones.
+#[must_use]
+pub fn text_on(fill: Color32) -> Color32 {
+    let luma =
+        0.299 * f32::from(fill.r()) + 0.587 * f32::from(fill.g()) + 0.114 * f32::from(fill.b());
+    if luma > 150.0 { BACKGROUND } else { TEXT }
 }
 
 /// Colour for item `index`.
@@ -248,5 +289,18 @@ mod tests {
         assert!(lum(STEP_HOVER) > lum(STEP_A));
         assert!(lum(STEP_A) > lum(STEP_B));
         assert!(lum(HEADER_ACTIVE) > lum(HEADER) && lum(HEADER_ACTIVE) < lum(RAISED));
+    }
+
+    #[test]
+    fn clip_content_is_brighter_than_the_body_and_names_stay_readable() {
+        let luma = |c: Color32| u32::from(c.r()) + u32::from(c.g()) + u32::from(c.b());
+        for color in PALETTE.into_iter().chain([CLIP_NEUTRAL, AUTOMATION]) {
+            assert!(luma(clip_content(color)) > luma(clip_body(color)));
+            assert!(luma(clip_body(color)) < luma(color));
+        }
+        assert_eq!(text_on(KEY_WHITE), BACKGROUND);
+        assert_eq!(text_on(KEY_BLACK), TEXT);
+        assert_eq!(mix(BACKGROUND, TEXT, 0.0), BACKGROUND);
+        assert_eq!(mix(BACKGROUND, TEXT, 1.0), TEXT);
     }
 }

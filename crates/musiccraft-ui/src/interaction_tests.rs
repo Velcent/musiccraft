@@ -1430,3 +1430,28 @@ fn a_narrow_header_folds_its_tools_instead_of_wrapping() {
     let rect = window_rect(&h, "piano-roll");
     assert!(rect.height() < 40.0, "{rect:?}");
 }
+
+#[test]
+fn the_playlist_is_a_window_in_the_lower_part_of_the_workspace() {
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let rect = window_rect(&h, "playlist-window");
+    let area = h.state.workspace;
+    assert!(
+        rect.top() > area.center().y - area.height() * 0.2,
+        "{rect:?} in {area:?}"
+    );
+    assert!(
+        (rect.bottom() - area.bottom()).abs() < 8.0,
+        "{rect:?} in {area:?}"
+    );
+    assert!(rect.width() > area.width() - 16.0, "{rect:?} in {area:?}");
+    // Its header closes it like any other window.
+    h.click(
+        header_button(&h, "playlist-window", 0.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(!h.state.windows.playlist);
+}

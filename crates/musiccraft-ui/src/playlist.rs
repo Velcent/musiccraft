@@ -122,87 +122,260 @@ fn finish(drag: &ClipDrag) -> Option<Invocation> {
     }
 }
 
-/// Draws the playlist as the main workspace.
-pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+/// The playlist tools, in header order, with their hints.
+const TOOLS: [(Tool, Icon, &str); 8] = [
+    (
+        Tool::Draw,
+        Icon::Pencil,
+        "Draw (P): click places the selected item, drag moves, edge resizes",
+    ),
+    (
+        Tool::Paint,
+        Icon::Brush,
+        "Paint (B): drag to lay the selected item end to end",
+    ),
+    (
+        Tool::Delete,
+        Icon::Eraser,
+        "Delete (D): click or drag over clips to delete them",
+    ),
+    (
+        Tool::Mute,
+        Icon::Mute,
+        "Mute (T): click a clip to mute or unmute it",
+    ),
+    (
+        Tool::Slice,
+        Icon::Slice,
+        "Slice (C): click a clip to cut it in two there",
+    ),
+    (
+        Tool::Select,
+        Icon::Select,
+        "Select (E): drag a box around clips; click empty space to clear",
+    ),
+    (
+        Tool::Zoom,
+        Icon::Zoom,
+        "Zoom (Z): click to zoom in, Shift+click to zoom out",
+    ),
+    (
+        Tool::Play,
+        Icon::PlayFrom,
+        "Play from here (Y): click to play from there",
+    ),
+];
+
+/// The playlist window: arrange patterns, audio and automation as clips.
+pub fn show(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    actions: &mut Vec<Action>,
+) {
+    let mut open = state.windows.playlist;
+    if !open {
+        return;
+    }
     state.playlist.meter = frame.project.song_meter();
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Playlist").strong().size(15.0));
-        ui.label(RichText::new("Arrangement").color(theme::TEXT_DIM));
-        ui.separator();
-        ui.spacing_mut().item_spacing.x = 2.0;
-        for (tool, icon, hint) in [
-            (
-                Tool::Draw,
-                Icon::Pencil,
-                "Draw (P): click places the selected pattern, drag moves, edge resizes",
-            ),
-            (
-                Tool::Paint,
-                Icon::Brush,
-                "Paint (B): drag to lay the selected pattern end to end",
-            ),
-            (
-                Tool::Delete,
-                Icon::Eraser,
-                "Delete (D): click or drag over clips to delete them",
-            ),
-            (
-                Tool::Select,
-                Icon::Select,
-                "Select (E): drag a box around clips; click empty space to clear",
-            ),
-            (
-                Tool::Mute,
-                Icon::Mute,
-                "Mute (T): click a clip to mute or unmute it",
-            ),
-            (
-                Tool::Slice,
-                Icon::Slice,
-                "Slice (C): click a clip to cut it in two there",
-            ),
-            (Tool::Play, Icon::Play, "Play (Y): click to play from there"),
-            (
-                Tool::Zoom,
-                Icon::Zoom,
-                "Zoom (Z): click to zoom in, Shift+click to zoom out",
-            ),
-        ] {
-            if icons::button(ui, icon, state.playlist.tool == tool, theme::ACCENT, hint).clicked() {
-                state.playlist.tool = tool;
+    let area = state.workspace;
+    let id = egui::Id::new("playlist-window");
+    // Across the whole lower part of the workspace, a little over half its
+    // height.
+    let top = area.top() + area.height() * 0.42;
+    let default = Rect::from_min_max(
+        pos2(area.left() + 4.0, top),
+        pos2(area.right() - 4.0, area.bottom() - 4.0),
+    );
+    let window = crate::chrome::window(ctx, id, "Playlist", area, default, true)
+        .default_height(default.height())
+        .min_width(360.0)
+        .min_height(140.0)
+        .show(ctx, |ui| {
+            let mut data = (&mut *state, &mut *actions);
+            let folded = crate::chrome::Header::new(id, "Playlist — Arrangement").show(
+                ui,
+                &mut open,
+                &mut data,
+                |ui, (state, actions)| window_menu(ui, state, frame, actions),
+                |ui, (state, _)| tools(ui, state),
+            );
+            if folded {
+                return;
             }
-        }
-        ui.spacing_mut().item_spacing.x = 8.0;
-        ui.separator();
-        ui.label("Snap");
-        egui::ComboBox::from_id_salt("playlist-snap")
-            .width(70.0)
-            .selected_text(state.playlist.snap.label())
-            .show_ui(ui, |ui| {
-                for snap in [Snap::Step, Snap::Beat, Snap::Bar] {
-                    ui.selectable_value(&mut state.playlist.snap, snap, snap.label());
-                }
+            ui.horizontal_top(|ui| {
+                pattern_list(ui, state, frame.project, actions);
+                canvas(ui, state, frame, actions);
             });
+        });
+    crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
+    state.windows.playlist = open;
+}
+
+/// The header's tools: the snap button, then the editing tools.
+fn tools(ui: &mut egui::Ui, state: &mut UiState) {
+    snap_button(ui, state);
+    ui.add_space(6.0);
+    for (tool, icon, hint) in TOOLS {
+        if icons::button(ui, icon, state.playlist.tool == tool, theme::ACCENT, hint).clicked() {
+            state.playlist.tool = tool;
+        }
+    }
+}
+
+/// The snap glyph and its current value; a click lists the values.
+fn snap_button(ui: &mut egui::Ui, state: &mut UiState) {
+    let popup = egui::Id::new("playlist-snap");
+    let open = egui::Popup::is_id_open(ui.ctx(), popup);
+    let hint = format!("Snap: {} · click to choose", state.playlist.snap.label());
+    let response = ui
+        .horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 1.0;
+            let glyph = icons::button(ui, Icon::Snap, open, theme::ACCENT, &hint);
+            let value = ui.add(
+                egui::Label::new(
+                    RichText::new(state.playlist.snap.label())
+                        .size(theme::FONT_LABEL)
+                        .color(theme::TEXT_DIM),
+                )
+                .sense(Sense::click()),
+            );
+            glyph.union(value)
+        })
+        .inner;
+    let toggle = response.clicked().then_some(egui::SetOpenCommand::Toggle);
+    egui::Popup::menu(&response)
+        .id(popup)
+        .open_memory(toggle)
+        .show(|ui| snap_list(ui, state));
+}
+
+/// The snap values, the current one ticked.
+fn snap_list(ui: &mut egui::Ui, state: &mut UiState) {
+    for snap in Snap::ALL {
         if ui
-            .small_button("−")
-            .hint("Zoom out (Ctrl+scroll)")
+            .selectable_label(state.playlist.snap == snap, snap.label())
             .clicked()
         {
-            state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(16.0);
+            state.playlist.snap = snap;
+            ui.close();
         }
-        if ui.small_button("+").hint("Zoom in (Ctrl+scroll)").clicked() {
-            state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
+    }
+}
+
+/// The playlist's own window-menu items.
+fn window_menu(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    actions: &mut Vec<Action>,
+) {
+    let project = frame.project;
+    let selected = selected_clips(state, project);
+    ui.menu_button("Edit", |ui| {
+        menu_item(
+            ui,
+            actions,
+            "Duplicate (Ctrl+B)",
+            "Copy the selected clips right after their end",
+            duplication(project, &selected),
+        );
+        let removal = removal(&selected);
+        if removal.is_some() && ui.button("Delete (Del)").clicked() {
+            actions.extend(removal.map(Action::Run));
+            state.playlist.selection.clear();
+            ui.close();
         }
         ui.separator();
-        ui.menu_button("Clip", |ui| clip_menu(ui, state, frame, actions))
-            .response
-            .on_hover_text("Edit the selected clips");
+        time_items(ui, project, actions);
     });
-    ui.add_space(2.0);
-    ui.horizontal_top(|ui| {
-        pattern_list(ui, state, frame.project, actions);
-        canvas(ui, state, frame, actions);
+    ui.menu_button("Clip", |ui| clip_menu(ui, state, frame, actions));
+    ui.menu_button("Select", |ui| {
+        if ui.button("All (Ctrl+A)").clicked() {
+            state.playlist.selection = project
+                .playlist
+                .clips
+                .iter()
+                .map(|c| (c.track, c.start))
+                .collect();
+            ui.close();
+        }
+        if ui.button("None (Esc)").clicked() {
+            state.playlist.selection.clear();
+            ui.close();
+        }
     });
+    ui.menu_button("Snap", |ui| snap_list(ui, state));
+    ui.menu_button("Zoom", |ui| {
+        if ui.button("Zoom in").hint("Ctrl+wheel also zooms").clicked() {
+            state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(400.0);
+        }
+        if ui.button("Zoom out").clicked() {
+            state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(16.0);
+        }
+        if ui.button("Fit the song").clicked() {
+            if let Some((_, view)) = state.playlist.last_view {
+                let bars = project
+                    .song_meter()
+                    .bar(project.playlist.length_ticks())
+                    .index
+                    .max(1);
+                let width = view.width() - HEADER_WIDTH - 12.0;
+                state.playlist.px_per_bar = (width / bars as f32).clamp(16.0, 400.0);
+            }
+            ui.close();
+        }
+    });
+    ui.menu_button("Markers", |ui| {
+        if ui.button("Add marker at the playhead (Alt+T)").clicked() {
+            actions.push(Action::Run(Invocation::bare("ui.add_marker")));
+            ui.close();
+        }
+    });
+}
+
+/// The clips in the playlist selection.
+fn selected_clips(state: &UiState, project: &Project) -> Vec<Clip> {
+    project
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| state.playlist.selection.contains(&(c.track, c.start)))
+        .copied()
+        .collect()
+}
+
+/// Removes `selected` as one undo step.
+fn removal(selected: &[Clip]) -> Option<Invocation> {
+    batch(
+        selected
+            .iter()
+            .map(|c| {
+                Invocation::new(
+                    "playlist.remove_clip",
+                    [(c.track + 1).to_string(), format!("{}t", c.start)],
+                )
+            })
+            .collect(),
+    )
+}
+
+/// How far a duplicate of `selected` moves: from its first start to its end.
+fn duplicate_span(selected: &[Clip]) -> u32 {
+    let first = selected.iter().map(|c| c.start).min().unwrap_or(0);
+    let end = selected.iter().map(Clip::end).max().unwrap_or(first);
+    end - first
+}
+
+/// Copies `selected` right after its end, as one undo step.
+fn duplication(project: &Project, selected: &[Clip]) -> Option<Invocation> {
+    let span = duplicate_span(selected);
+    batch(
+        selected
+            .iter()
+            .map(|c| add_clip_invocation(project, c, c.track, c.start + span))
+            .collect(),
+    )
 }
 
 fn pattern_list(
@@ -560,31 +733,22 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 let is_moving = moving.contains(clip_item);
                 let erasing = state.playlist.erased.contains(clip_item);
                 if !is_moving && !erasing {
+                    let selected = state
+                        .playlist
+                        .selection
+                        .contains(&(clip_item.track, clip_item.start));
                     draw_clip(
                         &painter,
                         &grid,
                         frame,
                         clip_item,
-                        clip_item.track,
-                        clip_item.start,
-                        clip_item.length,
-                        false,
+                        (clip_item.track, clip_item.start, clip_item.length),
+                        if selected {
+                            Look::Selected
+                        } else {
+                            Look::Normal
+                        },
                     );
-                    if state
-                        .playlist
-                        .selection
-                        .contains(&(clip_item.track, clip_item.start))
-                    {
-                        let r = grid
-                            .span(clip_item.track, clip_item.start, clip_item.length)
-                            .shrink2(vec2(0.5, 1.5));
-                        painter.rect_stroke(
-                            r,
-                            4.0,
-                            Stroke::new(1.5, theme::TEXT),
-                            egui::StrokeKind::Inside,
-                        );
-                    }
                 }
             }
             // Clips being painted, drawn as the current pattern.
@@ -599,13 +763,25 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     muted: false,
                 };
                 draw_clip(
-                    &painter, &grid, frame, &preview, *track, *start, *length, true,
+                    &painter,
+                    &grid,
+                    frame,
+                    &preview,
+                    (*track, *start, *length),
+                    Look::Ghost,
                 );
             }
             for c in &moving {
                 let (track, start) = shifted(c, dt, dtrack);
                 let length = u32::try_from((i64::from(c.length) + dl).max(1)).unwrap_or(1);
-                draw_clip(&painter, &grid, frame, c, track, start, length, true);
+                draw_clip(
+                    &painter,
+                    &grid,
+                    frame,
+                    c,
+                    (track, start, length),
+                    Look::Ghost,
+                );
             }
             if let Some((origin, current)) = state.playlist.marquee {
                 let area = Rect::from_two_pos(origin, current);
@@ -659,56 +835,166 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         });
 }
 
+/// Bars in one bar group: the unit of the shading and the strongest lines.
+const BAR_GROUP: u32 = 4;
+
+/// One lane tone with track separators, alternate bar groups washed a
+/// little lighter, and step, beat, bar and group lines getting stronger in
+/// that order.
 fn draw_grid(painter: &egui::Painter, grid: &Grid, (clip, rect): (Rect, Rect), meter: &Meter) {
-    let first = grid.row_at(clip.top().max(grid.origin.y)).unwrap_or(0);
-    let last = grid
-        .row_at(clip.bottom() - 1.0)
-        .unwrap_or(PLAYLIST_TRACKS - 1);
-    for row in first..=last {
-        let y = grid.y(row);
-        let fill = if row % 2 == 0 {
-            theme::WHITE_KEY_ROW
-        } else {
-            theme::BLACK_KEY_ROW
-        };
+    let lanes = Rect::from_min_max(grid.origin, rect.max);
+    painter.rect_filled(lanes, 0.0, theme::LANE);
+    let first = grid.tick_at(clip.left().max(grid.origin.x)).max(0.0) as u32;
+    let last = grid.tick_at(clip.right()) as u32 + 1;
+    let (top, bottom) = (grid.origin.y, rect.bottom());
+    let first_bar = meter.bar(first).index;
+    let last_bar = meter.bar(last).index;
+    for bar in (first_bar..=last_bar).filter(|b| (b / BAR_GROUP) % 2 == 1 && b % BAR_GROUP == 0) {
+        let x0 = grid.x(meter.bar_start(bar) as f32);
+        let x1 = grid.x(meter.bar_start(bar + BAR_GROUP) as f32);
         painter.rect_filled(
-            Rect::from_min_max(
-                pos2(grid.origin.x, y),
-                pos2(rect.right(), y + grid.row_height),
-            ),
+            Rect::from_min_max(pos2(x0, top), pos2(x1, bottom)),
             0.0,
-            fill,
+            theme::BAR_GROUP,
         );
     }
-    let first = grid.tick_at(clip.left()) as u32;
-    let last = grid.tick_at(clip.right()) as u32 + 1;
+    let step = PPQ / 4;
+    if grid.px_per_tick * step as f32 >= 6.0 {
+        let mut tick = first - first % step;
+        while tick <= last {
+            let x = grid.x(tick as f32);
+            painter.line_segment(
+                [pos2(x, top), pos2(x, bottom)],
+                Stroke::new(1.0, theme::GRID_LINE),
+            );
+            tick += step;
+        }
+    }
+    let beat_px = grid.px_per_tick * PPQ as f32;
     for beat in meter.beats(first, last) {
-        let color = if beat.downbeat {
-            theme::GRID_BAR
+        let color = if !beat.downbeat {
+            if beat_px < 5.0 {
+                continue;
+            }
+            theme::GRID_BEAT
+        } else if beat.bar % BAR_GROUP == 0 {
+            theme::GRID_GROUP
         } else {
-            theme::GRID_LINE
+            theme::GRID_BAR
         };
         let x = grid.x(beat.tick as f32);
+        painter.line_segment([pos2(x, top), pos2(x, bottom)], Stroke::new(1.0, color));
+    }
+    let first_row = grid.row_at(clip.top().max(top)).unwrap_or(0);
+    let last_row = grid
+        .row_at(clip.bottom() - 1.0)
+        .unwrap_or(PLAYLIST_TRACKS - 1);
+    for row in first_row..=last_row {
+        let y = grid.y(row) + grid.row_height - 0.5;
         painter.line_segment(
-            [pos2(x, grid.origin.y), pos2(x, rect.bottom())],
-            Stroke::new(1.0, color),
+            [pos2(grid.origin.x, y), pos2(rect.right(), y)],
+            Stroke::new(1.0, theme::GRID_LINE),
         );
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// How a clip is drawn.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Look {
+    Normal,
+    Selected,
+    /// Being moved or painted.
+    Ghost,
+}
+
+/// A clip at `(track, start, length)`: a title strip in its colour with the
+/// kind glyph and name, over a dark body tinted toward that colour that
+/// holds the content.
 fn draw_clip(
     painter: &egui::Painter,
     grid: &Grid,
     frame: &Frame<'_>,
     clip: &Clip,
-    track: u32,
-    start: u32,
-    length: u32,
-    ghost: bool,
+    (track, start, length): (u32, u32, u32),
+    look: Look,
 ) {
     let project = frame.project;
-    let (color, name) = match clip.source {
+    let (color, name, glyph) = clip_identity(project, clip);
+    let rect = grid.span(track, start, length).shrink2(vec2(0.5, 1.0));
+    let muted = clip.muted || !project.playlist.track_audible(track);
+    let strength = match look {
+        Look::Ghost => 0.55,
+        _ if muted => 0.3,
+        _ => 1.0,
+    };
+    let faded = |c: Color32| theme::at_strength(c, (f32::from(c.a()) * strength) as u8);
+    let selected = look == Look::Selected;
+    let body_fill = theme::clip_body(color);
+    let title_h = TITLE_HEIGHT.min(rect.height());
+    let title = Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + title_h));
+    let has_body = rect.height() >= title_h + 6.0;
+    if has_body {
+        painter.rect_filled(rect, CLIP_RADIUS, faded(body_fill));
+    }
+    let strip = if selected {
+        theme::CLIP_SELECTED
+    } else {
+        color
+    };
+    let strip_radius = if has_body {
+        egui::CornerRadius {
+            nw: CLIP_RADIUS as u8,
+            ne: CLIP_RADIUS as u8,
+            sw: 0,
+            se: 0,
+        }
+    } else {
+        egui::CornerRadius::same(CLIP_RADIUS as u8)
+    };
+    painter.rect_filled(title, strip_radius, faded(strip));
+    let edge = if selected {
+        theme::CLIP_SELECTED
+    } else {
+        theme::mix(theme::mix(theme::LANE, color, 0.22), theme::BACKGROUND, 0.5)
+    };
+    painter.rect_stroke(
+        rect,
+        CLIP_RADIUS,
+        Stroke::new(1.0, faded(edge)),
+        egui::StrokeKind::Inside,
+    );
+    if has_body {
+        let body = Rect::from_min_max(
+            pos2(rect.left() + 2.0, title.bottom() + 1.0),
+            pos2(rect.right() - 2.0, rect.bottom() - 2.0),
+        );
+        clip_content(
+            painter,
+            grid,
+            frame,
+            clip,
+            (start, length),
+            body,
+            &faded,
+            color,
+        );
+    }
+    let text = faded(theme::text_on(strip));
+    let strip_painter = painter.with_clip_rect(title.intersect(painter.clip_rect()));
+    let glyph_rect = Rect::from_min_size(title.min + vec2(1.0, 0.0), vec2(title_h, title_h));
+    icons::paint(&strip_painter, glyph_rect, glyph, text);
+    strip_painter.text(
+        pos2(glyph_rect.right() + 1.0, title.center().y),
+        Align2::LEFT_CENTER,
+        name,
+        FontId::proportional(theme::FONT_CAPTION + 0.5),
+        text,
+    );
+}
+
+/// A clip's colour, name and kind glyph.
+fn clip_identity<'a>(project: &'a Project, clip: &Clip) -> (Color32, &'a str, Icon) {
+    match clip.source {
         ClipSource::Pattern(id) => {
             let pattern = project
                 .pattern_position(id)
@@ -718,6 +1004,7 @@ fn draw_clip(
                     .and_then(crate::pattern_color)
                     .unwrap_or(UNCOLOURED_CLIP),
                 pattern.map_or("", |p| p.name.as_str()),
+                Icon::Pattern,
             )
         }
         ClipSource::Automation(id) => (
@@ -725,63 +1012,33 @@ fn draw_clip(
             project
                 .automation_position(id)
                 .map_or("", |i| project.automations[i].name.as_str()),
+            Icon::Automation,
         ),
         ClipSource::Audio(id) => {
             let index = project.channel_position(id).unwrap_or(0);
             (
                 theme::palette(index),
                 project.channels.get(index).map_or("", |c| c.name.as_str()),
+                Icon::Wave,
             )
         }
-    };
-    let rect = grid.span(track, start, length).shrink2(vec2(0.5, 1.5));
-    let muted = clip.muted || !project.playlist.track_audible(track);
-    let alpha = if ghost {
-        120
-    } else if muted {
-        60
-    } else {
-        200
-    };
-    let fill = match clip.source {
-        ClipSource::Automation(_) => theme::at_strength(theme::STEP_B, alpha),
-        _ => theme::at_strength(color, alpha),
-    };
-    painter.rect_filled(rect, 4.0, fill);
-    painter.rect_stroke(
-        rect,
-        4.0,
-        Stroke::new(
-            1.0,
-            if matches!(clip.source, ClipSource::Automation(_)) {
-                color
-            } else {
-                theme::shade(140)
-            },
-        ),
-        egui::StrokeKind::Inside,
-    );
-    // A title strip with the name; the preview fills the rest.
-    let title_h = TITLE_HEIGHT.min(rect.height() / 2.0);
-    let title = Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + title_h));
-    painter.rect_filled(
-        title,
-        egui::CornerRadius {
-            nw: 4,
-            ne: 4,
-            sw: 0,
-            se: 0,
-        },
-        theme::shade(if matches!(clip.source, ClipSource::Automation(_)) {
-            0
-        } else {
-            70
-        }),
-    );
-    let body = Rect::from_min_max(
-        pos2(rect.left() + 2.0, title.bottom() + 1.0),
-        pos2(rect.right() - 2.0, rect.bottom() - 2.0),
-    );
+    }
+}
+
+/// The content in a clip's body: notes, the automation curve with a faint
+/// fill under it, or the waveform in a light tint of the clip colour.
+#[allow(clippy::too_many_arguments)]
+fn clip_content(
+    painter: &egui::Painter,
+    grid: &Grid,
+    frame: &Frame<'_>,
+    clip: &Clip,
+    (start, length): (u32, u32),
+    body: Rect,
+    faded: &dyn Fn(Color32) -> Color32,
+    color: Color32,
+) {
+    let project = frame.project;
     match clip.source {
         ClipSource::Pattern(id) => {
             if let Some(pattern) = project
@@ -792,68 +1049,76 @@ fn draw_clip(
             }
         }
         ClipSource::Automation(id) => {
-            if let Some(automation) = project
+            let Some(automation) = project
                 .automation_position(id)
                 .map(|i| &project.automations[i])
-            {
-                let steps = (rect.width() / 3.0).clamp(2.0, 400.0) as usize;
-                let points: Vec<Pos2> = (0..=steps)
-                    .map(|i| {
-                        let t = i as f32 / steps as f32;
-                        let tick = t * length as f32;
-                        let value = automation.value_at(f64::from(tick)).unwrap_or(0.0);
-                        pos2(
-                            grid.x(start as f32 + tick),
-                            body.bottom() - value * body.height(),
-                        )
-                    })
-                    .collect();
-                painter.add(egui::Shape::line(points, Stroke::new(1.5, color)));
+            else {
+                return;
+            };
+            let steps = (body.width() / 3.0).clamp(2.0, 400.0) as usize;
+            let points: Vec<Pos2> = (0..=steps)
+                .map(|i| {
+                    let tick = i as f32 / steps as f32 * length as f32;
+                    let value = automation.value_at(f64::from(tick)).unwrap_or(0.0);
+                    pos2(
+                        grid.x(start as f32 + tick),
+                        body.bottom() - value * body.height(),
+                    )
+                })
+                .collect();
+            let fill = faded(theme::at_strength(theme::AUTOMATION, 72));
+            for pair in points.windows(2) {
+                let [a, b] = [pair[0], pair[1]];
+                painter.add(egui::Shape::convex_polygon(
+                    vec![a, b, pos2(b.x, body.bottom()), pos2(a.x, body.bottom())],
+                    fill,
+                    Stroke::NONE,
+                ));
             }
+            painter.add(egui::Shape::line(
+                points,
+                Stroke::new(1.5, faded(theme::AUTOMATION)),
+            ));
         }
         ClipSource::Audio(id) => {
-            if let Some((_, peaks)) = frame.clip_waveforms.iter().find(|(c, _)| *c == id) {
-                let n = peaks.len().max(1);
-                let half = body.height() / 2.0;
-                let peak = peaks
-                    .iter()
-                    .fold(1e-6_f32, |p, (lo, hi)| p.max(lo.abs()).max(hi.abs()));
-                // The waveform is drawn at the sample's real duration.
-                let duration = frame
-                    .clip_durations
-                    .iter()
-                    .find(|(c, _)| *c == id)
-                    .map_or(length, |(_, d)| *d);
-                for (i, (lo, hi)) in peaks.iter().enumerate() {
-                    let tick = i as f32 / n as f32 * duration as f32;
-                    if tick >= length as f32 {
-                        break;
-                    }
-                    let x = grid.x(start as f32 + tick);
-                    painter.line_segment(
-                        [
-                            pos2(x, body.center().y - hi / peak * half),
-                            pos2(x, body.center().y - lo / peak * half),
-                        ],
-                        Stroke::new(1.0, theme::shade(150)),
-                    );
+            let Some((_, peaks)) = frame.clip_waveforms.iter().find(|(c, _)| *c == id) else {
+                return;
+            };
+            let n = peaks.len().max(1);
+            let half = body.height() / 2.0;
+            let peak = peaks
+                .iter()
+                .fold(1e-6_f32, |p, (lo, hi)| p.max(lo.abs()).max(hi.abs()));
+            // The waveform is drawn at the sample's real duration.
+            let duration = frame
+                .clip_durations
+                .iter()
+                .find(|(c, _)| *c == id)
+                .map_or(length, |(_, d)| *d);
+            let stroke = Stroke::new(1.0, faded(theme::clip_content(color)));
+            for (i, (lo, hi)) in peaks.iter().enumerate() {
+                let tick = i as f32 / n as f32 * duration as f32;
+                if tick >= length as f32 {
+                    break;
                 }
+                let x = grid.x(start as f32 + tick);
+                painter.line_segment(
+                    [
+                        pos2(x, body.center().y - hi / peak * half),
+                        pos2(x, body.center().y - lo / peak * half),
+                    ],
+                    stroke,
+                );
             }
         }
     }
-    painter
-        .with_clip_rect(title.intersect(painter.clip_rect()))
-        .text(
-            pos2(title.left() + 4.0, title.center().y),
-            Align2::LEFT_CENTER,
-            name,
-            FontId::proportional(10.0),
-            theme::TEXT,
-        );
 }
 
 /// Height of a clip's title strip.
 const TITLE_HEIGHT: f32 = 11.0;
+
+/// Corner radius of clips: barely rounded.
+const CLIP_RADIUS: f32 = 2.0;
 
 /// Fill of a clip whose pattern has no colour of its own.
 const UNCOLOURED_CLIP: Color32 = theme::CLIP_NEUTRAL;
@@ -1298,12 +1563,13 @@ fn ruler(
             ui.label(format!("Marker \"{}\"", marker.name));
             for action in MarkerAction::ALL {
                 let (label, hint) = match action {
-                    MarkerAction::None => ("No action", "Only a label"),
-                    MarkerAction::Pause => {
-                        ("Pause", "Song playback stops here; press play to continue")
-                    }
+                    MarkerAction::None => ("Label only", "Only a label"),
+                    MarkerAction::Pause => (
+                        "Pause here",
+                        "Song playback stops here; press play to continue",
+                    ),
                     MarkerAction::SongLoop => (
-                        "Song loop",
+                        "Loop the song here",
                         "At the end of the song, playback returns here instead of to the start",
                     ),
                     MarkerAction::TimeSignature(_) => continue,
@@ -1596,13 +1862,7 @@ fn menu_item(
 /// The Clip menu: edits for the selected clips.
 fn clip_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     let project = frame.project;
-    let selected: Vec<Clip> = project
-        .playlist
-        .clips
-        .iter()
-        .filter(|c| state.playlist.selection.contains(&(c.track, c.start)))
-        .copied()
-        .collect();
+    let selected = selected_clips(state, project);
     let audio: Vec<Clip> = selected
         .iter()
         .filter(|c| matches!(c.source, ClipSource::Audio(_)))
@@ -1624,7 +1884,7 @@ fn clip_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     menu_item(
         ui,
         actions,
-        "Make unique",
+        "Make independent copy",
         "Give each selected clip its own copy of its pattern, automation or sample channel",
         per_clip(&selected, "playlist.make_unique", &[]),
     );
@@ -1695,7 +1955,10 @@ fn clip_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             }
         }
     }
-    ui.separator();
+}
+
+/// Insert time and Remove time, over the loop region.
+fn time_items(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
     let space = |name: &str| {
         project.playlist.loop_range.map(|(start, end)| {
             Invocation::new(name, [format!("{start}t"), format!("{}t", end - start)])
@@ -1704,15 +1967,15 @@ fn clip_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     menu_item(
         ui,
         actions,
-        "Insert space (Ctrl+Ins)",
+        "Insert time (Ctrl+Ins)",
         "Insert empty time the size of the loop region at its start (Shift+drag the ruler)",
         space("playlist.insert_space"),
     );
     menu_item(
         ui,
         actions,
-        "Delete space (Ctrl+Del)",
-        "Delete the time of the loop region; later clips and markers move earlier",
+        "Remove time (Ctrl+Del)",
+        "Remove the time of the loop region; later clips and markers move earlier",
         space("playlist.delete_space"),
     );
 }
@@ -2168,11 +2431,7 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         return;
     }
     let clips = &project.playlist.clips;
-    let selected: Vec<Clip> = clips
-        .iter()
-        .filter(|c| state.playlist.selection.contains(&(c.track, c.start)))
-        .copied()
-        .collect();
+    let selected = selected_clips(state, project);
     let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
     if pressed(Modifiers::COMMAND, Key::A) {
         state.playlist.selection = clips.iter().map(|c| (c.track, c.start)).collect();
@@ -2183,27 +2442,12 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     if (pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace))
         && !selected.is_empty()
     {
-        let removes = selected
-            .iter()
-            .map(|c| {
-                Invocation::new(
-                    "playlist.remove_clip",
-                    [(c.track + 1).to_string(), format!("{}t", c.start)],
-                )
-            })
-            .collect();
-        actions.extend(batch(removes).map(Action::Run));
+        actions.extend(removal(&selected).map(Action::Run));
         state.playlist.selection.clear();
     }
     if pressed(Modifiers::COMMAND, Key::B) && !selected.is_empty() {
-        let first = selected.iter().map(|c| c.start).min().unwrap_or(0);
-        let end = selected.iter().map(Clip::end).max().unwrap_or(first);
-        let span = end - first;
-        let adds = selected
-            .iter()
-            .map(|c| add_clip_invocation(project, c, c.track, c.start + span))
-            .collect();
-        actions.extend(batch(adds).map(Action::Run));
+        let span = duplicate_span(&selected);
+        actions.extend(duplication(project, &selected).map(Action::Run));
         state.playlist.selection = selected.iter().map(|c| (c.track, c.start + span)).collect();
     }
 }

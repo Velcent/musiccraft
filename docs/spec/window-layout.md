@@ -10,7 +10,7 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Window header
 
-- Every editor window (channel rack, piano roll, mixer) and every secondary
+- Every editor window (playlist, channel rack, piano roll, mixer) and every secondary
   window (channel settings, effect windows, automation editor, spectrum
   analyzer, keyboard shortcuts) has no separate title bar. Its first row is
   one compact **header**, left to right:
@@ -72,6 +72,33 @@ stay our own. The full target look, window by window, is the style guide in
 - The selection switch at the end of a row stands apart from the steps: an
   outline when the channel is not selected, filled when it is.
 - The button that adds a channel is a "+" centred under the rows.
+
+## Playlist
+
+- The playlist is an editor window, not the workspace background; the
+  background (with its watermark) shows wherever no window covers it. The
+  first time it opens it spans the whole width of the workspace in the lower
+  part, a little more than half the workspace height, and the channel rack
+  sits above it at the top left. F5 shows and hides it.
+- Header, left to right: window menu, the snap button (snap glyph and the
+  current value), the tools (Draw, Paint, Delete, Mute, Slice, Select, Zoom,
+  Play from here), then the title "Playlist — Arrangement" and the window
+  buttons.
+- The window menu holds Edit (Duplicate, Delete, Insert time, Remove time),
+  Clip (the clip edits), Select (All, None), Snap (the snap values), Zoom
+  (Zoom in, Zoom out, Fit the song) and Markers (Add marker at the playhead),
+  then the common items. There are no zoom buttons or text menus in the
+  header; zoom is Ctrl+wheel, the Zoom tool and the window menu.
+- Lanes are all one tone, parted by hairline track separators. Step lines
+  (only when a step is wide enough), beat lines, bar lines and the first bar
+  of every four-bar group get stronger in that order, and alternate four-bar
+  groups get a very faint lighter wash.
+- A clip is a barely rounded box with a title strip in the clip's colour at
+  full strength, holding the kind glyph and the name, over a dark body tinted
+  toward the clip's colour. The content (notes, waveform, curve) is the
+  brightest thing in the body: waveforms are a light tint of the clip colour,
+  and automation curves have a faint fill under them. Selected clips get a
+  light strip edge and outline; muted clips are drawn faint.
 
 ## Mixer
 

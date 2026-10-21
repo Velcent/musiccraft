@@ -435,18 +435,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     }
     let workspace = egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(theme::BACKGROUND).inner_margin(6.0))
-        .show(ui, |ui| {
-            if state.windows.playlist {
-                playlist::show(ui, state, frame, &mut actions);
-            } else {
-                theme::watermark(ui);
-            }
-        })
+        .show(ui, |ui| theme::watermark(ui))
         .response
         .rect;
     state.workspace = workspace;
 
     let ctx = ui.ctx().clone();
+    playlist::show(&ctx, state, frame, &mut actions);
     if state.windows.mixer {
         mixer::show(&ctx, state, frame, &mut actions);
     }

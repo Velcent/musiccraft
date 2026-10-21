@@ -333,10 +333,10 @@ fn canvas(
                 .color(theme::TEXT_DIM),
         );
         for (curve, label) in [
-            (Curve::Single, "Single curve"),
-            (Curve::Double, "Double curve"),
+            (Curve::Single, "Curve"),
+            (Curve::Double, "S-curve"),
             (Curve::Hold, "Hold"),
-            (Curve::Stairs, "Stairs"),
+            (Curve::Stairs, "Steps"),
         ] {
             if ui.radio(start.curve == curve, label).clicked() {
                 actions.push(Action::Run(Invocation::new(

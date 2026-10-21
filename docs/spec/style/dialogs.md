@@ -617,9 +617,8 @@ Ordered by visual impact.
    - no right-click menu.
 10. **Confirmation boxes**: only "Unsaved changes" exists (`crates/musiccraft-app/src/main.rs`, the unsaved-changes window). Its buttons are already named by action ("Save", "Don't save", "Cancel"), which matches. It lacks the glyph, the default-button edge and the Enter/Esc mapping. Destructive actions elsewhere (remove track, delete pattern) run at once and rely on undo, which is acceptable. Only add boxes where undo cannot help.
 11. **No progress display anywhere**. Exports and rescans block silently. The hint bar has no progress line (`crates/musiccraft-editors/src/hint.rs`; the hint bar itself is drawn in `crates/musiccraft-ui/src/toolbar.rs`).
-12. **Shape labels "Single curve" and "Double curve"** in `crates/musiccraft-ui/src/automation.rs` (context menu) are the reference's own terms. Proposed rename to "Curve" and "S-curve" (labels only).
-13. **Prompts and canvases carry hard-coded sizes** (`set_min_width` in `dialogs.rs`, `default_size` in `settings.rs`, the `HEIGHT` constant in `automation.rs`). New sizes should come from `docs/spec/window-layout.md` once its secondary-window entries are written.
-14. **No shared section-box rule yet.** This section, the controls section and the plugin-windows section must draw section and group boxes the same way (darker box, small heading inside its top-left corner). The design-language section settles the one rule; until then nothing in code changes for it.
+12. **Prompts and canvases carry hard-coded sizes** (`set_min_width` in `dialogs.rs`, `default_size` in `settings.rs`, the `HEIGHT` constant in `automation.rs`). New sizes should come from `docs/spec/window-layout.md` once its secondary-window entries are written.
+13. **No shared section-box rule yet.** This section, the controls section and the plugin-windows section must draw section and group boxes the same way (darker box, small heading inside its top-left corner). The design-language section settles the one rule; until then nothing in code changes for it.
 
 ## Sources
 

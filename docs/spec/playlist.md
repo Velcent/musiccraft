@@ -50,7 +50,7 @@
 - Song playback loops by default: at the end of the song it starts again from the
   beginning. Markers change that. `playlist.set_marker_action <bar>
   <none|pause|song_loop>` (undoable) sets what a marker does; UI: right-click a
-  marker → No action / Pause / Song loop, or right-click the ruler → Add pause
+  marker → Label only / Pause here / Loop the song here, or right-click the ruler → Add pause
   marker here (a marker named "Pause", one undo step).
   - `none` (default): only a label, drawn as a flag.
   - `pause`: when song playback reaches the marker it pauses there (transport
@@ -130,10 +130,11 @@
   its second part moves. `playlist.delete_space <start> <length>` removes that
   stretch: clips inside it go, clips across its edges are cut back, and later
   clips and markers move earlier. Both are one undo step.
-- UI: the playlist's Clip menu acts on the selected clips (slice at the
-  playhead, make unique, merge, consolidate, reverse, fades) and inserts or
-  deletes the loop region's time; Ctrl+Insert and Ctrl+Delete do the same
-  (they need a loop region: Shift+drag the ruler).
+- UI: the playlist's window menu → Clip acts on the selected clips (Slice at
+  playhead, Make independent copy, Merge, Consolidate, Reverse, fades), and
+  window menu → Edit → Insert time / Remove time inserts or removes the loop
+  region's time; Ctrl+Insert and Ctrl+Delete do the same (they need a loop
+  region: Shift+drag the ruler).
 
 ## Audio recording
 
@@ -168,7 +169,8 @@
   - `hold`: keeps the point's value until the next point, then jumps.
   - `stairs`: equal steps; tension sets their number (2 at -1, 16 at 1).
   `automation.set_curve <automation> <point time> <single|double|hold|stairs>
-  [tension]` (undoable). Saved as `"curve"` and `"tension"` on a point only
+  [tension]` (undoable). The editor names the four shapes Curve, S-curve,
+  Hold and Steps. Saved as `"curve"` and `"tension"` on a point only
   when not the defaults. The last point's shape is unused. Pattern lanes keep
   straight segments.
 - Playback samples curved segments every 6 ticks (a quarter step) into the
@@ -213,14 +215,24 @@
   faint curves under the notes. A pattern with neither notes nor automation
   says "empty". The pattern being painted is outlined in the accent colour. Click selects it for painting; right-click opens the pattern menu
   (rename, clone, colour, time signature, clear automation, delete).
-- The playlist is the main workspace. Click or drag on the ruler to move the
-  playhead; during song playback the view follows the playhead.
+- The playlist is an editor window like the channel rack, piano roll and
+  mixer (`window-layout.md`, "Playlist"), not the workspace background. Click
+  or drag on the ruler to move the playhead; during song playback the view
+  follows the playhead.
 - Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
   dragging moves or resizes every selected clip; Delete removes; Ctrl+A selects
   all; Ctrl+B duplicates the selection right after its end. One undo step each.
 - Ctrl+scroll zooms horizontally.
 
 ## Sources
+
+- The playlist as a window, its header and window menu, one lane tone with
+  step, beat, bar and bar-group lines, bar-group shading, and clips drawn as a
+  strong title strip over a dark body: the interface style guide,
+  `docs/spec/style/playlist.md` (owner's 2026-10-21 decision to follow the
+  manual's layout). The labels Make independent copy, Insert time, Remove
+  time, Label only, Pause here, Loop the song here, Curve, S-curve, Hold and
+  Steps are our own wording.
 
 - Automation curve types (single curve, double curve, hold, stairs) and
   tension follow the automation clip point modes described in the FL Studio

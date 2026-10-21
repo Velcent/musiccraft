@@ -71,6 +71,12 @@ pub enum Icon {
     Sine,
     /// Sound packs (a box with a lid line).
     Pack,
+    /// Snap to the grid (a dot resting on a grid line between two ticks).
+    Snap,
+    /// Play from here (a start line with a play triangle after it).
+    PlayFrom,
+    /// A pattern (three staggered note dashes).
+    Pattern,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -472,6 +478,27 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 })
                 .collect();
             painter.add(Shape::line(wave, stroke));
+        }
+        Icon::Snap => {
+            painter.line_segment([p(r, 0.0, 0.8), p(r, 1.0, 0.8)], stroke);
+            for x in [0.1, 0.9] {
+                painter.line_segment([p(r, x, 0.55), p(r, x, 1.0)], stroke);
+            }
+            painter.line_segment([p(r, 0.5, 0.05), p(r, 0.5, 0.45)], stroke);
+            painter.circle_filled(p(r, 0.5, 0.62), r.width() * 0.14, color);
+        }
+        Icon::PlayFrom => {
+            painter.line_segment([p(r, 0.08, 0.0), p(r, 0.08, 1.0)], stroke);
+            painter.add(Shape::convex_polygon(
+                vec![p(r, 0.35, 0.15), p(r, 0.95, 0.5), p(r, 0.35, 0.85)],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Pattern => {
+            for (x0, x1, y) in [(0.0, 0.45, 0.8), (0.3, 0.75, 0.5), (0.55, 1.0, 0.2)] {
+                painter.line_segment([p(r, x0, y), p(r, x1, y)], Stroke::new(2.2, color));
+            }
         }
         Icon::Pack => {
             painter.rect_stroke(
