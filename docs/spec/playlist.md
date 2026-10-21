@@ -81,6 +81,11 @@
   the notes are drawn in their own colours, as in the piano roll: a note's
   colour group, or its channel's colour for group "channel". Notes of one
   pattern can therefore show several colours.
+- **Note rows in a preview**: notes sit by key, the lowest at the bottom.
+  When every note of a pattern has the same key (a step-sequenced pattern,
+  such as drums) and more than one channel plays, each channel gets its own
+  row instead, in channel rack order from the top, so the preview reads like
+  a small step sequencer.
 - **Audio clips** (`playlist.add_audio_clip <channel> <track> <start> <length>`)
   play a sampler channel's sample once from the clip start, unpitched (at the
   channel's root key), cut at the clip end. Dropping a sound from the browser on
@@ -198,6 +203,14 @@
 - Left-click on an empty cell places the selected pattern at the snapped bar;
   dragging a clip moves it; dragging its right edge resizes it; right-click
   deletes. The pattern list next to the playlist selects the pattern to paint.
+- **Pattern miniatures**: the picker shows each pattern as a small clip, so
+  patterns are told apart by their content even when they keep their default
+  names. A miniature is the width of the picker and 34 points tall: the name
+  in a title strip, then one pass of the pattern's notes laid out as in a
+  clip preview (above), on the pattern's colour or the neutral fill. An empty
+  pattern says "empty". The pattern being painted is outlined in the accent
+  colour. Click selects it for painting; right-click opens the pattern menu
+  (rename, clone, colour, time signature, clear automation, delete).
 - The playlist is the main workspace. Click or drag on the ruler to move the
   playhead; during song playback the view follows the playhead.
 - Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
@@ -215,6 +228,11 @@
 - Patterns without a colour of their own, with notes shown in their own
   colours inside clips: the project owner's account of how the software
   behaves (2026-10-21); the neutral fill is our own.
+- Pattern miniatures in the picker: the owner's request (2026-10-21), compared
+  with the picker panel in the FL Studio online manual, "Playlist"
+  (`playlist.htm`), under the "layout plus general feel" decision in
+  `docs/clean-room.md`. Sizes, the empty label, the outline and the
+  one-row-per-channel layout for step patterns are our own.
 - Pattern clips arranged on a playlist and a song/pattern mode switch follow the
   workflow described in the FL Studio online manual, "Playlist" section. Row
   count, overlap rule and command names are our own.

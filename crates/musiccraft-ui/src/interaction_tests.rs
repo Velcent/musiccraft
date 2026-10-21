@@ -1279,6 +1279,33 @@ fn alt_dragging_a_segment_bends_it_in_one_step() {
 }
 
 #[test]
+fn pattern_miniatures_in_the_picker_select_the_pattern_to_paint() {
+    let mut h = Harness::new(&[
+        "channel.add_sampler builtin:kick",
+        "step.toggle 1 1",
+        "pattern.add",
+        "pattern.select 1",
+    ]);
+    h.state.windows.playlist = true;
+    h.state.playlist.paint_audio = Some(h.session.project().channels[0].id);
+    h.settle();
+    let items = h.state.playlist.picker_items.clone();
+    assert_eq!(items.len(), 2, "one miniature per pattern: {items:?}");
+    assert!(items[0].height() >= 30.0 && items[1].top() > items[0].bottom());
+    // Clicking the second pattern's miniature selects it and paints patterns
+    // again instead of audio.
+    let commands = h.click(items[1].center(), PointerButton::Primary);
+    assert_eq!(commands, ["pattern.select 2"]);
+    assert_eq!(h.state.playlist.paint_audio, None);
+    // Clicking the selected one again changes nothing in the project.
+    let items = h.state.playlist.picker_items.clone();
+    assert!(
+        h.click(items[1].center(), PointerButton::Primary)
+            .is_empty()
+    );
+}
+
+#[test]
 fn the_picker_paints_audio_clips_at_their_length() {
     let mut h = Harness::new(&[
         "channel.add_sampler builtin:kick",
