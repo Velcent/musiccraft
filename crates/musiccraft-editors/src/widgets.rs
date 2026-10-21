@@ -179,7 +179,25 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
     let travel = rect.shrink2(vec2(0.0, 10.0));
     let mut changed = None;
     let position = gain_to_fader(gain, max);
-    if response.dragged_by(PointerButton::Primary) {
+    let cap_y = travel.bottom() - travel.height() * position;
+    // A press on the rail away from the cap glides the cap toward the
+    // pointer while held, instead of jumping.
+    let on_rail = ui
+        .input(|i| i.pointer.press_origin())
+        .is_some_and(|p| (p.y - cap_y).abs() > 8.0);
+    let mut glide_started = false;
+    let primary = ui.input(|i| i.pointer.primary_down());
+    if on_rail && primary && response.is_pointer_button_down_on() {
+        if let Some(p) = ui.input(|i| i.pointer.latest_pos()) {
+            let target = ((travel.bottom() - p.y) / travel.height()).clamp(0.0, 1.0);
+            let step = (target - position).clamp(-0.02, 0.02);
+            if step.abs() > 1e-4 {
+                changed = Some(fader_to_gain(position + step, max));
+                ui.ctx().request_repaint();
+            }
+            glide_started = ui.input(|i| i.pointer.primary_pressed());
+        }
+    } else if response.dragged_by(PointerButton::Primary) {
         let fine = ui.input(|i| i.modifiers.shift);
         let delta = -response.drag_delta().y / travel.height() * if fine { 0.25 } else { 1.0 };
         if delta != 0.0 {
@@ -233,7 +251,8 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
         ],
         Stroke::new(2.0, theme::ACCENT),
     );
-    let started = response.drag_started_by(PointerButton::Primary)
+    let started = (response.drag_started_by(PointerButton::Primary) && !on_rail)
+        || glide_started
         || wants_reset(&response)
         || (response.hovered()
             && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
@@ -264,6 +283,26 @@ fn meter_position(gain: f32) -> f32 {
     ((db + 60.0) / 66.0).clamp(0.0, 1.0)
 }
 
+/// The peak of one meter channel held for 1.5 s, then falling, and whether
+/// it clipped in the last 3 s.
+fn held_peak(ui: &Ui, id: egui::Id, level: f32) -> (f32, bool) {
+    let now = ui.input(|i| i.time);
+    let (mut peak, mut until, mut clip_until) = ui
+        .data(|d| d.get_temp::<(f32, f64, f64)>(id))
+        .unwrap_or((0.0, 0.0, 0.0));
+    if level >= peak {
+        peak = level;
+        until = now + 1.5;
+    } else if now > until {
+        peak = (peak * 0.9).max(level);
+    }
+    if level >= 1.0 {
+        clip_until = now + 3.0;
+    }
+    ui.data_mut(|d| d.insert_temp(id, (peak, until, clip_until)));
+    (peak, now < clip_until)
+}
+
 /// A vertical stereo peak meter.
 pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
@@ -292,6 +331,20 @@ pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
             theme::ACCENT
         };
         painter.rect_filled(bar, 1.0, color);
+        // The peak holds for a moment as a thin line; a clip leaves a
+        // red mark at the top for a few seconds.
+        let (peak, clip) = held_peak(ui, response.id.with(i), level);
+        if peak > 1e-6 {
+            let y = rect.bottom() - rect.height() * meter_position(peak);
+            painter.line_segment(
+                [pos2(x0, y), pos2(x0 + half - 2.0, y)],
+                Stroke::new(1.0, theme::TEXT),
+            );
+        }
+        if clip {
+            let mark = egui::Rect::from_min_size(pos2(x0, rect.top() + 1.0), vec2(half - 2.0, 3.0));
+            painter.rect_filled(mark, 0.0, theme::DANGER);
+        }
     }
     // 0 dB tick.
     let zero = rect.bottom() - rect.height() * meter_position(1.0);
@@ -397,6 +450,32 @@ mod tests {
             fader(ui, 0.2, 1.25, vec2(30.0, 120.0))
         });
         assert_eq!(fader_run, [(1.0, true)]);
+    }
+
+    #[test]
+    fn holding_the_fader_rail_glides_the_cap_toward_the_pointer() {
+        // The cap of a 120-point fader at unity sits near y = 37; hold the
+        // button down near the bottom of the rail.
+        let at = pos2(15.0, 100.0);
+        let mut frames = vec![
+            vec![],
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::PointerButton {
+                    pos: at,
+                    button: PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        ];
+        frames.extend(std::iter::repeat_n(vec![], 5));
+        let run = drive(frames, |ui| fader(ui, 1.0, 1.25, vec2(30.0, 120.0)));
+        assert!(run.len() >= 3, "{run:?}");
+        assert!(run.first().is_some_and(|(_, started)| *started));
+        // Each frame moves a small step down, never a jump.
+        let first = run.first().map_or(1.0, |(g, _)| *g);
+        assert!(first < 1.0 && first > 0.8, "{run:?}");
     }
 
     #[test]

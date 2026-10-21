@@ -1,7 +1,7 @@
 //! The mixer: one strip per track plus the selected track's effect chain.
 
 use crate::hint::Hint;
-use egui::{RichText, vec2};
+use egui::{Color32, RichText, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::params::{EFFECT_KINDS, MAX_EFFECT_SLOTS};
 use musiccraft_project::{MAX_VOLUME, MixerTrack, Project};
@@ -544,19 +544,32 @@ fn route_arrow(
     let Some(from) = project.mixer.get(source) else {
         return;
     };
+    let c = rect.center();
+    let down = vec![
+        c + vec2(-6.0, -4.0),
+        c + vec2(6.0, -4.0),
+        c + vec2(0.0, 4.0),
+    ];
     if target == source && source > 0 {
-        // The selected insert shows where it goes.
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            route_summary(from),
-            egui::FontId::monospace(10.0),
+        // The selected insert shows a source arrow; its hint says where it goes.
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![c + vec2(-6.0, 4.0), c + vec2(6.0, 4.0), c + vec2(0.0, -4.0)],
             theme::HIGHLIGHT,
-        );
+            egui::Stroke::NONE,
+        ));
+        response.hint(format!("This insert goes to {}", route_summary(from)));
         return;
     }
     let possible = source > 0 && (target == 0 || target > source);
     if !possible {
+        // Inert: a faint outline where no route can go.
+        if source > 0 {
+            ui.painter().add(egui::Shape::convex_polygon(
+                down,
+                Color32::TRANSPARENT,
+                egui::Stroke::new(1.0, theme::RAISED_HOVER),
+            ));
+        }
         return;
     }
     let routed = if target == 0 {
@@ -564,22 +577,19 @@ fn route_arrow(
     } else {
         from.sends.iter().any(|s| s.target == target)
     };
-    let c = rect.center();
-    let color = if routed {
-        theme::HIGHLIGHT
+    // Routed: filled in the highlight tone. Possible: an outline that
+    // brightens on hover.
+    let (fill, edge) = if routed {
+        (theme::HIGHLIGHT, theme::HIGHLIGHT)
     } else if response.hovered() {
-        theme::TEXT_DIM
+        (Color32::TRANSPARENT, theme::TEXT)
     } else {
-        theme::RAISED_HOVER
+        (Color32::TRANSPARENT, theme::TEXT_DIM)
     };
     ui.painter().add(egui::Shape::convex_polygon(
-        vec![
-            c + vec2(-7.0, -5.0),
-            c + vec2(7.0, -5.0),
-            c + vec2(0.0, 5.0),
-        ],
-        color,
-        egui::Stroke::NONE,
+        down,
+        fill,
+        egui::Stroke::new(1.0, edge),
     ));
     let hint = if routed {
         "Routed here — click to remove"
@@ -655,7 +665,7 @@ fn device_picker(
 fn input_row(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
         ui.label(RichText::new("In").small().color(theme::TEXT_DIM))
-            .hint("Audio input recorded from (Settings → Audio)");
+            .hint("Audio input recorded from: the one input device for every track (Settings → Audio)");
         let settings = frame.settings;
         let inputs = &frame.settings_info.inputs;
         if let Some(choice) =

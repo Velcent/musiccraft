@@ -157,9 +157,11 @@ Ranges and defaults are defined in `musiccraft-params`.
   the effect count. The strip-details switch hides the track switches. The
   level in dB is in the fader's hint. The route arrow is at the bottom.
 - **Routing**: the arrow under every strip the selected insert may feed shows
-  whether it does and toggles it. The selected strip itself shows where it
-  goes (`→ M`, `→ 3`, or `→ M, 3, 5`). With the master selected no arrows
-  apply, as the master feeds nothing.
+  whether it does (filled in the highlight tone) or not (an outline) and
+  toggles it. Strips it may not feed show a faint, inert outline. The
+  selected strip itself shows an upward source arrow whose hint says where
+  it goes (`→ M`, `→ 3`, or `→ M, 3, 5`). With the master selected no
+  arrows apply, as the master feeds nothing.
 - The slot panel beside the strips shows, for the selected track (it has no
   heading; the title names the track): its **input** (the audio input device,
   as in Settings → Audio, for recording), the ten effect slots, the track EQ
