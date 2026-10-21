@@ -93,7 +93,8 @@ stay our own. The full target look, window by window, is the style guide in
 - The button that adds a channel is a "+" centred under the rows.
 - When the rows overflow, the rack shows the simplified scroll bars (rail,
   thumb and chevrons, no zoom grips): a vertical bar at the right and a
-  horizontal bar underneath, each only while needed.
+  horizontal bar underneath, each only while needed. The mixer's strips and
+  slot panel and the browser's list use the same simplified bars.
 
 ## Playlist
 

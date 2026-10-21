@@ -1349,45 +1349,46 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 .inner_margin(egui::Margin::symmetric(0, 2));
             well.show(ui, |ui| {
                 ui.set_min_height((ui.available_height() - footer - 6.0).max(40.0));
-                egui::ScrollArea::vertical()
+                let area = egui::ScrollArea::vertical()
                     .id_salt("browser-scroll")
                     .auto_shrink([false, false])
-                    .max_height((ui.available_height() - footer - 6.0).max(40.0))
-                    .show(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        let before = ui.next_widget_position();
-                        let tab = state.browser.tab;
-                        if tab.shows(Tab::Project) {
-                            this_project(ui, state, frame, actions);
-                        }
-                        if tab.shows(Tab::Plugins) {
-                            instruments_and_effects(ui, state, frame, actions);
-                        }
-                        if tab.shows(Tab::Presets) {
-                            presets(ui, state, actions);
-                        }
-                        if tab == Tab::All {
-                            sound_packs(ui, state, actions);
-                            for dir in frame.settings.browser_folders.clone() {
-                                let label = dir.file_name().map_or_else(
-                                    || dir.display().to_string(),
-                                    |n| n.to_string_lossy().into_owned(),
-                                );
-                                folder(ui, state, &dir, &label, 0, actions);
-                            }
-                        }
-                        if ui.next_widget_position() == before {
-                            dim_line(
-                                ui,
-                                0,
-                                if state.browser.search.is_empty() {
-                                    "Nothing here yet"
-                                } else {
-                                    "No matches"
-                                },
+                    .max_height((ui.available_height() - footer - 6.0).max(40.0));
+                let bars = (egui::Id::new("browser-bars"), 20.0);
+                crate::scrollbars::plain_area(ui, area, bars, |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    let before = ui.next_widget_position();
+                    let tab = state.browser.tab;
+                    if tab.shows(Tab::Project) {
+                        this_project(ui, state, frame, actions);
+                    }
+                    if tab.shows(Tab::Plugins) {
+                        instruments_and_effects(ui, state, frame, actions);
+                    }
+                    if tab.shows(Tab::Presets) {
+                        presets(ui, state, actions);
+                    }
+                    if tab == Tab::All {
+                        sound_packs(ui, state, actions);
+                        for dir in frame.settings.browser_folders.clone() {
+                            let label = dir.file_name().map_or_else(
+                                || dir.display().to_string(),
+                                |n| n.to_string_lossy().into_owned(),
                             );
+                            folder(ui, state, &dir, &label, 0, actions);
                         }
-                    });
+                    }
+                    if ui.next_widget_position() == before {
+                        dim_line(
+                            ui,
+                            0,
+                            if state.browser.search.is_empty() {
+                                "Nothing here yet"
+                            } else {
+                                "No matches"
+                            },
+                        );
+                    }
+                });
             });
             ui.add_space(4.0);
             ui.add(

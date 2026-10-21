@@ -76,11 +76,15 @@ pub fn show(
                 } else {
                     0.0
                 };
-                egui::ScrollArea::horizontal()
+                let area = egui::ScrollArea::horizontal()
                     .id_salt("mixer-strips")
                     .max_width((ui.available_width() - panel).max(160.0))
-                    .auto_shrink([!state.mixer_panel, true])
-                    .show(ui, |ui| {
+                    .auto_shrink([!state.mixer_panel, true]);
+                // The strips' bar sits under them, inside the 16 points the
+                // strip height leaves free.
+                ui.vertical(|ui| {
+                    let bars = (egui::Id::new("mixer-strip-bars"), 42.0);
+                    crate::scrollbars::plain_area(ui, area, bars, |ui| {
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             for (index, track) in project.mixer.iter().enumerate() {
@@ -91,6 +95,7 @@ pub fn show(
                             }
                         });
                     });
+                });
                 if state.mixer_panel {
                     ui.separator();
                     effects(ui, state, frame, actions);
@@ -773,19 +778,19 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
     ui.vertical(|ui| {
         ui.set_width(EFFECTS_WIDTH);
         input_row(ui, frame, actions);
-        egui::ScrollArea::vertical()
-            .id_salt("effect-chain")
-            .show(ui, |ui| {
-                for slot in 0..MAX_EFFECT_SLOTS {
-                    slot_row(ui, state, track, &number, slot, plugins, actions);
-                }
-                ui.separator();
-                eq_row(ui, state, index, track, actions);
-                output_row(ui, frame, index, track, actions);
-                if index > 0 {
-                    routing(ui, state, project, index, track, actions);
-                }
-            });
+        let area = egui::ScrollArea::vertical().id_salt("effect-chain");
+        let bars = (egui::Id::new("mixer-slot-bars"), 25.0);
+        crate::scrollbars::plain_area(ui, area, bars, |ui| {
+            for slot in 0..MAX_EFFECT_SLOTS {
+                slot_row(ui, state, track, &number, slot, plugins, actions);
+            }
+            ui.separator();
+            eq_row(ui, state, index, track, actions);
+            output_row(ui, frame, index, track, actions);
+            if index > 0 {
+                routing(ui, state, project, index, track, actions);
+            }
+        });
     });
 }
 
