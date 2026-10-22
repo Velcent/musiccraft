@@ -682,6 +682,114 @@ fn upper_rack(
         frame.engine.audio,
         frame.engine.midi
     ));
+    divider(ui);
+    utilities(ui, state, frame, actions);
+}
+
+/// The utility shortcuts: undo, sample editor, record audio, help, save and
+/// export. None of them latches.
+fn utilities(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    group(ui, |ui| {
+        let undo = frame.history.undo.as_ref().map_or_else(
+            || "Undo (nothing to undo)".to_owned(),
+            |l| format!("Undo {l} (Ctrl+Z)"),
+        );
+        let button = crate::widgets::enabled_ui(ui, frame.history.undo.is_some(), |ui| {
+            icons::button(ui, Icon::Undo, false, theme::ACCENT, &undo)
+        });
+        if button.clicked() {
+            run(actions, "edit.undo");
+        }
+        button.context_menu(|ui| {
+            if crate::widgets::add_enabled(
+                ui,
+                frame.history.can_redo,
+                egui::Button::new("Redo (Ctrl+Y)"),
+            )
+            .clicked()
+            {
+                run(actions, "edit.redo");
+                ui.close();
+            }
+        });
+        if icons::button(
+            ui,
+            Icon::Wave,
+            false,
+            theme::ACCENT,
+            "Sample editor: the selected channel's window",
+        )
+        .clicked()
+        {
+            state.windows.channel_settings = true;
+            state.channel_tab = crate::channel_settings::ChannelTab::Sound;
+        }
+        let recording = frame.project.is_armed();
+        if icons::button(
+            ui,
+            Icon::RecordAudio,
+            recording && state.record_audio,
+            theme::DANGER,
+            "Record audio: capture the audio input into the playlist",
+        )
+        .clicked()
+        {
+            state.record_audio = true;
+            run(actions, "record.toggle");
+        }
+        let help = icons::button(
+            ui,
+            Icon::Help,
+            false,
+            theme::ACCENT,
+            "Help: keyboard shortcuts (F1)",
+        );
+        if help.clicked() {
+            state.windows.shortcuts = !state.windows.shortcuts;
+        }
+        let save = icons::button(
+            ui,
+            Icon::Save,
+            false,
+            theme::ACCENT,
+            "Save (Ctrl+S) · right-click: save as, save new version",
+        );
+        if save.clicked() {
+            run(actions, "ui.save");
+        }
+        save.context_menu(|ui| {
+            for (label, invocation) in [
+                ("Save as… (Ctrl+Shift+S)", "ui.save_as"),
+                ("Save new version (Ctrl+N)", "ui.save_new_version"),
+            ] {
+                if ui.button(label).clicked() {
+                    run(actions, invocation);
+                    ui.close();
+                }
+            }
+        });
+        let export = icons::button(
+            ui,
+            Icon::Export,
+            false,
+            theme::ACCENT,
+            "Export audio (Ctrl+R) · right-click: stems, MIDI",
+        );
+        if export.clicked() {
+            run(actions, "ui.export");
+        }
+        export.context_menu(|ui| {
+            for (label, invocation) in [
+                ("Export stems…", "ui.export_stems"),
+                ("Export MIDI… (Ctrl+Shift+M)", "ui.export_midi"),
+            ] {
+                if ui.button(label).clicked() {
+                    run(actions, invocation);
+                    ui.close();
+                }
+            }
+        });
+    });
 }
 
 /// The song position: bar.beat.step (last field smaller) or minutes and

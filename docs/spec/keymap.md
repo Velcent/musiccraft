@@ -41,6 +41,7 @@
 | F12 / Alt+F12 / Ctrl+F12 | Close every window / only effect windows / every window but the focused one |
 | Alt+T | Add a playlist marker at the playhead |
 | F10 | Settings |
+| F1 | Show or hide the keyboard shortcut list (help) |
 | F4 | Next empty pattern (adds one if none), then name it |
 | Plus / Minus | Next / previous pattern |
 | 1–9 | Select pattern 1–9 (over the channel rack: mute channels instead) |

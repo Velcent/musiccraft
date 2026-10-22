@@ -106,8 +106,13 @@ stay our own. The full target look, window by window, is the style guide in
     Count-in, Blend recording, Loop recording, Computer keyboard as piano,
     Step edit), the time display, the output monitor (a scope beside two
     horizontal peak bars, each holding its peak as a thin line and showing a
-    clip mark for 3 s after full scale) and the performance panel (CPU and
-    voices);
+    clip mark for 3 s after full scale), the performance panel (CPU and
+    voices) and the utility shortcuts, none of which latch: Undo (right-click:
+    Redo; greyed out with nothing to undo), Sample editor (opens the selected
+    channel's window on its Sound page), Record audio (turns on audio-input
+    capture and starts recording; lit while armed for audio), Help (the
+    keyboard shortcut list, F1), Save (right-click: Save as…, Save new
+    version) and Export audio (right-click: Export stems…, Export MIDI…);
   - **lower rack**: the master volume knob, the mode switch (Pattern over
     Song, one button wide; right-click a half to open the channel rack or the
     playlist), play (a pause glyph while playing), stop, record, the tempo

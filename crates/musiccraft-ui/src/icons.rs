@@ -126,6 +126,16 @@ pub enum Icon {
     Envelope,
     /// Functions page (three small squares climbing).
     Steps,
+    /// Undo (a half-circle arc ending in an arrowhead pointing left).
+    Undo,
+    /// Record audio (three waveform bars and a small filled circle).
+    RecordAudio,
+    /// Help (a circle outline with a question mark inside).
+    Help,
+    /// Save (a downward arrow above an open tray).
+    Save,
+    /// Export audio (three waveform bars and an arrow to the right).
+    Export,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -592,6 +602,75 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
             painter.line_segment([p(r, 0.05, 0.7), p(r, 0.95, 0.7)], stroke);
             painter.add(Shape::line(
                 vec![p(r, 0.25, 0.5), p(r, 0.05, 0.7), p(r, 0.25, 0.9)],
+                stroke,
+            ));
+        }
+        Icon::Undo => {
+            // The upper half of a circle, open at the bottom, its left end
+            // turned into an arrowhead pointing left.
+            let c = p(r, 0.55, 0.65);
+            let radius = r.width() * 0.38;
+            let points: Vec<Pos2> = (0..=12)
+                .map(|i| {
+                    let a = std::f32::consts::PI * (1.0 + i as f32 / 12.0);
+                    c + egui::vec2(a.cos(), a.sin()) * radius
+                })
+                .collect();
+            let tip = points[0];
+            painter.add(Shape::line(points, stroke));
+            painter.add(Shape::convex_polygon(
+                vec![
+                    tip + egui::vec2(-r.width() * 0.16, -r.height() * 0.02),
+                    tip + egui::vec2(r.width() * 0.12, -r.height() * 0.16),
+                    tip + egui::vec2(r.width() * 0.1, r.height() * 0.14),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::RecordAudio => {
+            for (x, h) in [(0.1, 0.22), (0.3, 0.4), (0.5, 0.28)] {
+                painter.line_segment([p(r, x, 0.45 - h), p(r, x, 0.45 + h)], stroke);
+            }
+            painter.circle_filled(p(r, 0.8, 0.78), r.width() * 0.17, color);
+        }
+        Icon::Help => {
+            let radius = r.width().min(r.height()) * 0.48;
+            painter.circle_stroke(r.center(), radius, stroke);
+            let hook: Vec<Pos2> = (0..=8)
+                .map(|i| {
+                    let a = std::f32::consts::PI * (1.0 + 1.25 * i as f32 / 8.0);
+                    p(r, 0.5, 0.38) + egui::vec2(a.cos(), a.sin()) * radius * 0.38
+                })
+                .collect();
+            let end = hook[hook.len() - 1];
+            painter.add(Shape::line(hook, stroke));
+            painter.line_segment([end, p(r, 0.5, 0.62)], stroke);
+            painter.circle_filled(p(r, 0.5, 0.78), 1.2, color);
+        }
+        Icon::Save => {
+            painter.line_segment([p(r, 0.5, 0.0), p(r, 0.5, 0.58)], stroke);
+            painter.add(Shape::line(
+                vec![p(r, 0.28, 0.38), p(r, 0.5, 0.6), p(r, 0.72, 0.38)],
+                stroke,
+            ));
+            painter.add(Shape::line(
+                vec![
+                    p(r, 0.05, 0.6),
+                    p(r, 0.05, 0.95),
+                    p(r, 0.95, 0.95),
+                    p(r, 0.95, 0.6),
+                ],
+                stroke,
+            ));
+        }
+        Icon::Export => {
+            for (x, h) in [(0.08, 0.2), (0.24, 0.38), (0.4, 0.26)] {
+                painter.line_segment([p(r, x, 0.5 - h), p(r, x, 0.5 + h)], stroke);
+            }
+            painter.line_segment([p(r, 0.55, 0.5), p(r, 0.98, 0.5)], stroke);
+            painter.add(Shape::line(
+                vec![p(r, 0.8, 0.32), p(r, 0.98, 0.5), p(r, 0.8, 0.68)],
                 stroke,
             ));
         }

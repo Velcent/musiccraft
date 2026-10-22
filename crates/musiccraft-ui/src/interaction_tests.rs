@@ -2963,3 +2963,30 @@ fn alt_clicking_a_channel_name_opens_another_channel_window() {
     h.modifiers = Modifiers::NONE;
     assert_eq!(h.state.kept_channels.len(), 1);
 }
+
+#[test]
+fn the_toolbar_utilities_open_help_and_the_sample_editor() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let find = |h: &mut Harness, prefix: &str| {
+        [14.0, 38.0, 60.0]
+            .into_iter()
+            .flat_map(|y| (0..170).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|hint| hint.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("no toolbar button hinted {prefix:?}"))
+    };
+    let help = find(&mut h, "Help: keyboard shortcuts");
+    h.click(help, PointerButton::Primary);
+    assert!(h.state.windows.shortcuts);
+    h.frame(vec![Event::PointerMoved(pos2(700.0, 500.0))]);
+    let sample = find(&mut h, "Sample editor");
+    h.click(sample, PointerButton::Primary);
+    assert!(h.state.windows.channel_settings);
+}

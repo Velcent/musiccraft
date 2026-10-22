@@ -48,6 +48,7 @@ F12          = view.hide_all
 Alt+F12      = view.hide_effects
 Ctrl+F12     = view.hide_others
 F10          = ui.settings
+F1           = view.toggle shortcuts
 
 # Patterns
 F4           = ui.next_empty_pattern
