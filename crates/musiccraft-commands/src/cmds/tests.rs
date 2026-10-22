@@ -1901,3 +1901,30 @@ fn patterns_have_no_colour_until_one_is_set() {
     fails(&mut s, "pattern.set_color 1 17");
     fails(&mut s, "pattern.set_color 9 1");
 }
+
+#[test]
+fn control_set_and_reset_move_a_control_and_undo_restores_it() {
+    let mut s = session();
+    run(&mut s, "control.set mixer:0:pan 1");
+    assert!((s.project().mixer[0].pan - 1.0).abs() < 1e-6);
+    run(&mut s, "control.reset mixer:0:pan");
+    assert!(s.project().mixer[0].pan.abs() < 1e-6);
+    run(&mut s, "edit.undo");
+    assert!((s.project().mixer[0].pan - 1.0).abs() < 1e-6);
+    run(&mut s, "edit.undo");
+    assert!(s.project().mixer[0].pan.abs() < 1e-6);
+    fails(&mut s, "control.set mixer:0:volume 1.5");
+}
+
+#[test]
+fn control_reset_returns_a_channel_volume_to_its_default() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.set_volume 1 0.2");
+    run(&mut s, "control.reset channel:1:volume");
+    let volume = s.project().channels[0].volume;
+    assert!(
+        (volume - musiccraft_project::DEFAULT_CHANNEL_VOLUME).abs() < 1e-4,
+        "{volume}"
+    );
+}

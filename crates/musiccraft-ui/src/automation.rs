@@ -58,41 +58,59 @@ fn target_name(project: &Project, target: &AutomationTarget) -> Option<String> {
     })
 }
 
-/// What drives each control this frame, by target name: the text the hint
-/// bar appends, such as " · automated (clip 'Master fade')".
+/// What drives one control.
 #[derive(Clone, Default)]
-struct Driven(Arc<HashMap<String, String>>);
+struct Source {
+    /// Text the hint appends, such as " · automated (clip 'Master fade')".
+    hint: String,
+    /// The automation for it (1-based), if any.
+    automation: Option<usize>,
+    /// The controllers driving it (1-based).
+    controllers: Vec<usize>,
+}
 
-fn driven_id() -> egui::Id {
-    egui::Id::new("driven-controls")
+/// What every control menu needs to know this frame: the driven controls by
+/// target name, and the copied control position.
+#[derive(Clone, Default)]
+struct Published {
+    driven: Arc<HashMap<String, Source>>,
+    copied: Option<f32>,
+}
+
+fn published_id() -> egui::Id {
+    egui::Id::new("control-menus")
 }
 
 /// Records which controls automation clips and controllers drive, so their
-/// menus can mark them (style guide, controls M). Call once per frame.
-pub(crate) fn publish(ctx: &egui::Context, project: &Project) {
-    let mut driven = HashMap::new();
-    for automation in &project.automations {
+/// menus can mark them (style guide, controls M), and the copied value
+/// their Paste item uses. Call once per frame.
+pub(crate) fn publish(ctx: &egui::Context, project: &Project, copied: Option<f32>) {
+    let mut driven: HashMap<String, Source> = HashMap::new();
+    for (i, automation) in project.automations.iter().enumerate() {
         if let Some(name) = target_name(project, &automation.target) {
-            driven.insert(name, format!(" · automated (clip '{}')", automation.name));
+            let source = driven.entry(name).or_default();
+            source.automation = Some(i + 1);
+            source.hint = format!(" · automated (clip '{}')", automation.name);
         }
     }
-    for controller in &project.controllers {
+    for (i, controller) in project.controllers.iter().enumerate() {
         if let Some(name) = target_name(project, &controller.target) {
-            driven
-                .entry(name)
-                .or_insert_with(|| format!(" · driven by {}", controller.name));
+            let source = driven.entry(name).or_default();
+            source.controllers.push(i + 1);
+            if source.hint.is_empty() {
+                source.hint = format!(" · driven by {}", controller.name);
+            }
         }
     }
-    ctx.data_mut(|d| d.insert_temp(driven_id(), Driven(Arc::new(driven))));
+    let published = Published {
+        driven: Arc::new(driven),
+        copied,
+    };
+    ctx.data_mut(|d| d.insert_temp(published_id(), published));
 }
 
 /// Draws the status dot on a driven control and adds its source to the hint.
-fn mark(response: &egui::Response, target: &str) {
-    let driven = response
-        .ctx
-        .data(|d| d.get_temp::<Driven>(driven_id()))
-        .unwrap_or_default();
-    let source = driven.0.get(target).cloned();
+fn mark(response: &egui::Response, source: Option<&Source>) {
     if source.is_some() {
         let painter = response
             .ctx
@@ -100,22 +118,53 @@ fn mark(response: &egui::Response, target: &str) {
             .with_clip_rect(response.interact_rect.expand(6.0));
         widgets::status_dot(&painter, widgets::status_anchor(response));
     }
-    musiccraft_editors::hint::set_suffix(&response.ctx, response.id, source);
+    let hint = source.map(|s| s.hint.clone());
+    musiccraft_editors::hint::set_suffix(&response.ctx, response.id, hint);
 }
 
-/// Adds a right-click menu that automates `target` (command syntax such as
+/// A dim heading row inside a menu.
+fn heading(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(2.0);
+    ui.label(
+        RichText::new(text)
+            .size(theme::FONT_LABEL)
+            .color(theme::TEXT_DIM),
+    );
+}
+
+/// Adds the control menu to `target` (command syntax such as
 /// `mixer:0:volume`), and marks the control when something drives it. The UI
-/// resolves the request with the current project.
+/// resolves `ui.*` requests with the current project.
 pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Action>) {
-    mark(response, target);
+    let published = response
+        .ctx
+        .data(|d| d.get_temp::<Published>(published_id()))
+        .unwrap_or_default();
+    let source = published.driven.get(target);
+    mark(response, source);
+    let run = |actions: &mut Vec<Action>, name: &str, args: Vec<String>| {
+        actions.push(Action::Run(Invocation::new(name, args)));
+    };
+    let target_arg = || vec![target.to_owned()];
     response.context_menu(|ui| {
         if ui.button("Create automation clip").clicked() {
-            actions.push(Action::Run(Invocation::new(
-                "ui.automate",
-                [target.to_owned()],
-            )));
+            run(actions, "ui.automate", target_arg());
             ui.close();
         }
+        let automation = source.and_then(|s| s.automation);
+        if ui
+            .add_enabled(
+                automation.is_some(),
+                egui::Button::new("Open its automation…"),
+            )
+            .clicked()
+            && let Some(number) = automation
+        {
+            run(actions, "ui.open_automation", vec![number.to_string()]);
+            ui.close();
+        }
+        ui.separator();
+        heading(ui, "Control from");
         ui.menu_button("Add controller", |ui| {
             for (label, kind) in [
                 ("LFO", "lfo"),
@@ -126,14 +175,47 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
                 ("Formula", "formula"),
             ] {
                 if ui.button(label).clicked() {
-                    actions.push(Action::Run(Invocation::new(
+                    run(
+                        actions,
                         "controller.add",
-                        [kind.to_owned(), target.to_owned()],
-                    )));
+                        vec![kind.to_owned(), target.to_owned()],
+                    );
                     ui.close();
                 }
             }
         });
+        let controllers = source.map(|s| s.controllers.as_slice()).unwrap_or_default();
+        if !controllers.is_empty() && ui.button("Remove controller").clicked() {
+            // Highest first, so the numbers stay valid.
+            let removals = controllers
+                .iter()
+                .rev()
+                .map(|n| Invocation::new("controller.remove", [n.to_string()]).to_string());
+            run(actions, BATCH, removals.collect());
+            ui.close();
+        }
+        ui.separator();
+        heading(ui, "Value");
+        if ui.button("Copy").clicked() {
+            run(actions, "ui.copy_control", target_arg());
+            ui.close();
+        }
+        if ui
+            .add_enabled(published.copied.is_some(), egui::Button::new("Paste"))
+            .clicked()
+            && let Some(position) = published.copied
+        {
+            run(
+                actions,
+                "control.set",
+                vec![target.to_owned(), format!("{position}")],
+            );
+            ui.close();
+        }
+        if ui.button("Reset to default").clicked() {
+            run(actions, "control.reset", target_arg());
+            ui.close();
+        }
     });
 }
 const HEIGHT: f32 = 180.0;

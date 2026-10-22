@@ -433,6 +433,8 @@ pub struct UiState {
     pub workspace: egui::Rect,
     /// Letter keys play notes on the selected channel.
     pub typing_keyboard: bool,
+    /// The control position the control menu's Copy took.
+    pub(crate) copied_control: Option<f32>,
     /// A window arrangement asked for by a key, applied next frame.
     pub arrange: Option<Arrange>,
     /// The focused (topmost) workspace window as of the last frame.
@@ -539,6 +541,7 @@ impl UiState {
             automation_view: None,
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
+            copied_control: None,
             arrange: None,
             focused_window: None,
             taps: Vec::new(),
@@ -645,7 +648,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     }
 
     state.hint = hint::begin_frame(ui.ctx(), frame.settings.show_hints);
-    automation::publish(ui.ctx(), frame.project);
+    automation::publish(ui.ctx(), frame.project, state.copied_control);
     toolbar::show(ui, state, frame, &mut actions);
     if state.windows.browser {
         browser::show(ui, state, frame, &mut actions);
@@ -925,6 +928,24 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             "ui.export_midi" => state.dialog = Some(dialogs::Dialog::export_midi(frame.project)),
             "ui.quit" => out.push(Action::Quit),
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
+            "ui.copy_control" => {
+                if let Some(target) = invocation.args.first() {
+                    state.copied_control =
+                        musiccraft_commands::control_positions(frame.project, target)
+                            .map(|(now, _)| now);
+                }
+            }
+            "ui.open_automation" => {
+                let automation = invocation
+                    .args
+                    .first()
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .and_then(|n| frame.project.automations.get(n.checked_sub(1)?));
+                if let Some(automation) = automation {
+                    state.automation_editor = Some(automation.id);
+                    state.arrange = Some(Arrange::Raise("automation-editor"));
+                }
+            }
             "ui.automate" => {
                 if let Some(target) = invocation.args.first() {
                     out.push(Action::Run(automation::create_invocation(
@@ -1076,5 +1097,44 @@ mod tests {
         assert_eq!(state.meters, [(1.0, 0.5)]);
         state.update_meters(&[(0.0, 0.0)], 1.0);
         assert!(state.meters[0].0 < 0.07 && state.meters[0].0 > 0.05);
+    }
+
+    #[test]
+    fn control_menu_copy_and_open_automation_are_resolved_by_the_ui() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        session.run_line("control.set mixer:0:pan 0.75").unwrap();
+        session
+            .run_line("automation.create mixer:0:volume")
+            .unwrap();
+        let project = session.project().clone();
+        let (engine, history) = frame_for(&project);
+        let frame = Frame {
+            project: &project,
+            engine: &engine,
+            history: &history,
+            waveform: None,
+            waveform_seconds: None,
+            clip_waveforms: &[],
+            clip_durations: &[],
+            plugins: &Plugins::default(),
+            settings: &Settings::default(),
+            settings_info: &SettingsInfo::default(),
+        };
+        let mut state = UiState::default();
+        let out = resolve_ui_actions(
+            &mut state,
+            &frame,
+            vec![
+                Action::Run(Invocation::parse("ui.copy_control mixer:0:pan").unwrap()),
+                Action::Run(Invocation::parse("ui.open_automation 1").unwrap()),
+            ],
+        );
+        assert!(out.is_empty());
+        assert!((state.copied_control.unwrap() - 0.75).abs() < 1e-6);
+        assert_eq!(state.automation_editor, Some(project.automations[0].id));
+        assert_eq!(state.arrange, Some(Arrange::Raise("automation-editor")));
     }
 }

@@ -37,6 +37,23 @@ source, for example "Level 0.0 dB · automated (clip 'Master fade')" or
 "Pan Centre · driven by LFO 1". A clip wins over a controller when both
 drive the same control.
 
+## Control menu
+
+Right-clicking any automatable knob or fader opens the same menu:
+
+- "Create automation clip", then "Open its automation…" (disabled until an
+  automation exists for the control; it opens the automation editor).
+- Under a dim "Control from" heading: "Add controller" with its kinds, and
+  "Remove controller" while one drives the control.
+- Under a dim "Value" heading: "Copy", "Paste" (disabled until something is
+  copied) and "Reset to default".
+
+Paste and Reset run `control.set <target> <position 0-1>` and
+`control.reset <target>`, each one undo step. Targets are named as for
+`automation.create` (`channel:2:pan`, `mixer:0:volume`, `mixer:3:1:mix`).
+Copy keeps the control's position along its range, so a value copied from
+one control pastes to the same share of another's range.
+
 ## Sources
 
 - Own design. Middle-click and double-click to reset are common conventions
