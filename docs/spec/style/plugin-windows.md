@@ -423,23 +423,21 @@ Colour is given only as tokens from `crates/musiccraft-editors/src/theme.rs`, pl
 
 Ordered by visual impact.
 
-1. **Effect windows have no strip, and the preset row sits in the body.** `crates/musiccraft-ui/src/effect_window.rs` (`show_all`) now uses the shared header ("Effect — Track") but has no strip under it. `crates/musiccraft-editors/src/effect.rs` (`preset_bar`) draws a bypass dot, ◀, a preset drop-down and ▶ as the first body row. The window has no Mix knob: it is only on the slot, in `crates/musiccraft-ui/src/mixer.rs` (`slot_row`). The guide moves presets into the header and puts the On light and Mix knob in a slim strip (D).
-2. **Pages stack full-width sections instead of tiling boxes.** `crates/musiccraft-editors/src/instrument.rs` (`section`, `envelope`) still gives the Envelope page and the instruments' Sound pages full-width sections, one under another. The guide tiles two to four boxes per row (C). The Functions page now tiles (`functions_with`): VOICES | TIMING, then ARPEGGIATOR across the full width, then CHOKE | ECHO. The sampler page in `channel_settings.rs` (`sampler`) has the waveform in the middle of its section, not full width at the bottom (C2).
-3. **Instrument preset bars live in the page body.** The "PRESET ◀ … ▶" row in `instrument.rs` (`preset_bar`) and Antiserum's ◀ / list / ▶ / "Save…" / "Open…" row in `crates/musiccraft-editors/src/antiserum.rs` (`preset_bar`) should become the header's preset box and chevrons. Save and Open would move to the window menu, with the search kept inside the preset list. The arrows are font glyphs (◀ ▶), not vector chevrons. There is no way to show presets in the browser and no draggable save item.
-4. **Effect windows have an empty window menu.** The channel window's menu now carries the rack row's channel items (`channel_rack::context_menu`); effect windows offer only the common window items.
-5. **The hosted-plugin page repeats chrome and nests scrolling.** In `crates/musiccraft-ui/src/plugins.rs` (`panel`):
+1. **Pages stack full-width sections instead of tiling boxes.** `crates/musiccraft-editors/src/instrument.rs` (`section`, `envelope`) still gives the Envelope page and the instruments' Sound pages full-width sections, one under another. The guide tiles two to four boxes per row (C). The Functions page now tiles (`functions_with`): VOICES | TIMING, then ARPEGGIATOR across the full width, then CHOKE | ECHO. The sampler page in `channel_settings.rs` (`sampler`) has the waveform in the middle of its section, not full width at the bottom (C2).
+2. **Instrument preset bars live in the page body.** The "PRESET ◀ … ▶" row in `instrument.rs` (`preset_bar`) and Antiserum's ◀ / list / ▶ / "Save…" / "Open…" row in `crates/musiccraft-editors/src/antiserum.rs` (`preset_bar`) should become the header's preset box and chevrons. Save and Open would move to the window menu, with the search kept inside the preset list. The arrows are font glyphs (◀ ▶), not vector chevrons. There is no way to show presets in the browser and no draggable save item.
+3. **The hosted-plugin page repeats chrome and nests scrolling.** In `crates/musiccraft-ui/src/plugins.rs` (`panel`):
    - The plugin's name (accent) and id are drawn again in the body.
    - "Open plugin window" is a text button.
    - The parameter grid is a scroll area with a fixed maximum height inside the page's own scroll area.
    - There are no module headings and no parameter count.
    - The plugin's own window is titled with the plugin name only (`crates/musiccraft-app/src/plugins.rs`, `set_editor`).
-6. **There is no Plugin (details) tab** for hosted plugins (C4). Format, maker, file and the rescan/reload buttons are not shown in the channel window. There is no editor-scale choice for hosted editors and no processing options; `docs/spec/plugins.md` says nothing about either.
-7. **The envelope graph is display-only and squeezed.** `instrument.rs` (`envelope_graph`) is a short hover-only strip beside the four knobs. The guide puts a taller graph with draggable handles above the knobs (C5).
-8. **There is no keyboard strip** (root key, preview, key range) at the bottom of the Envelope and Functions pages (C7). The root key is only reachable on some instruments' own pages.
-9. **Only one channel window can exist.** `crates/musiccraft-ui/src/lib.rs` holds a single `windows.channel_settings` flag plus `selected_channel`. There is no Alt+click to open more, and no "Keep instrument windows open" setting.
-10. **The window width jumps between channels.** `channel_settings.rs` sets a default width, while Antiserum's page sets its own larger maximum (`antiserum.rs`, `MAX_WIDTH`). The window grows when an Antiserum channel is shown and does not follow the width rule in "Placement and proportions".
-11. **The MIDI output and channel stack windows have no strip.** `channel_settings.rs` (`contents`) returns early for MIDI output and shows only the MIDI page, with its own Mute checkbox.
-12. **There is no detaching** to a desktop window (future item, main-window section).
+4. **There is no Plugin (details) tab** for hosted plugins (C4). Format, maker, file and the rescan/reload buttons are not shown in the channel window. There is no editor-scale choice for hosted editors and no processing options; `docs/spec/plugins.md` says nothing about either.
+5. **The envelope graph is display-only and squeezed.** `instrument.rs` (`envelope_graph`) is a short hover-only strip beside the four knobs. The guide puts a taller graph with draggable handles above the knobs (C5).
+6. **There is no keyboard strip** (root key, preview, key range) at the bottom of the Envelope and Functions pages (C7). The root key is only reachable on some instruments' own pages.
+7. **Only one channel window can exist.** `crates/musiccraft-ui/src/lib.rs` holds a single `windows.channel_settings` flag plus `selected_channel`. There is no Alt+click to open more, and no "Keep instrument windows open" setting.
+8. **The window width jumps between channels.** `channel_settings.rs` sets a default width, while Antiserum's page sets its own larger maximum (`antiserum.rs`, `MAX_WIDTH`). The window grows when an Antiserum channel is shown and does not follow the width rule in "Placement and proportions".
+9. **The MIDI output and channel stack windows have no strip.** `channel_settings.rs` (`contents`) returns early for MIDI output and shows only the MIDI page, with its own Mute checkbox.
+10. **There is no detaching** to a desktop window (future item, main-window section).
 
 ## Sources
 

@@ -235,8 +235,14 @@ Ranges and defaults are defined in `musiccraft-params`.
 
 - Clicking an effect's name in a slot opens its window (again closes it).
   Windows of removed slots close.
-- Each built-in effect window has a bypass button, a preset bar (previous,
-  list, next; "(custom)" when no preset matches) and a graph:
+- Every effect window's header holds the window menu (the slot's own items:
+  Bypass or Enable, Move up, Move down, Remove), and for built-in effects the
+  presets: previous, list, next; "(custom)" when no preset matches. Under the
+  header a slim strip shows, flush right, the On light (bypass,
+  `mixer.toggle_effect`) and the Mix knob (`mixer.set_effect_mix`, the same
+  value as the slot's knob). (The plugin editors keep a bypass dot and the
+  presets in their first row, as they have no header.)
+- Each built-in effect window then has a graph:
   - filter and EQ: the frequency response; drag the filter's point for cutoff
     (across) and resonance (up), drag an EQ band's point for its frequency and
     gain, scroll on the middle band for its width;

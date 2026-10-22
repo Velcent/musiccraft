@@ -963,7 +963,7 @@ fn slot_row(
                 egui::Popup::menu(&chevron)
                     .id(popup)
                     .open_memory(toggle)
-                    .show(|ui| slot_menu(ui, state, track, number, slot, actions));
+                    .show(|ui| slot_menu(ui, state, track, number, slot, true, actions));
                 let name = RichText::new(effect.label()).color(if effect.enabled {
                     theme::TEXT
                 } else {
@@ -1017,18 +1017,20 @@ fn slot_row(
         });
 }
 
-/// The menu of a loaded slot.
-fn slot_menu(
+/// The menu of a loaded slot, also the effect window's menu (`with_open`:
+/// whether to offer "Open window").
+pub(crate) fn slot_menu(
     ui: &mut egui::Ui,
     state: &mut UiState,
     track: &MixerTrack,
     number: &str,
     slot: usize,
+    with_open: bool,
     actions: &mut Vec<Action>,
 ) {
     let slot_no = (slot + 1).to_string();
     let enabled = track.effects.get(slot).is_some_and(|e| e.enabled);
-    if ui.button("Open window").clicked() {
+    if with_open && ui.button("Open window").clicked() {
         state.mixer_slot = slot;
         crate::effect_window::toggle(state, track_index(number), slot);
         ui.close();

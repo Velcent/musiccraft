@@ -2196,3 +2196,39 @@ fn the_channel_strip_switches_pages_mutes_and_routes_to_a_free_track() {
     h.settle();
     assert_ne!(h.session.project().channels[0].mixer_track, before);
 }
+
+#[test]
+fn the_effect_window_strip_bypasses_and_its_header_steps_presets() {
+    let mut h = Harness::new(&["mixer.add_effect 1 delay"]);
+    h.state.effect_windows.push((1, 0));
+    h.settle();
+    let window = h
+        .ctx
+        .memory(|m| m.area_rect(egui::Id::new(("effect-window", 1usize, 0usize))))
+        .expect("effect window drawn");
+    let find = |h: &mut Harness, prefix: &str| -> Pos2 {
+        (0..12)
+            .flat_map(|j| (0..80).map(move |i| (i, j)))
+            .map(|(i, j)| window.left_top() + vec2(4.0 + 5.0 * i as f32, 8.0 + 5.0 * j as f32))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("nothing hinted {prefix:?}"))
+    };
+    let light = find(&mut h, "Effect on");
+    h.click(light, PointerButton::Primary);
+    h.settle();
+    assert!(!h.session.project().mixer[1].effects[0].enabled);
+    let before = h.session.project().mixer[1].effects[0].values;
+    // The default delay also matches its second preset, so step backwards
+    // (to the last one) to see a change.
+    let previous = find(&mut h, "Previous preset");
+    h.click(previous, PointerButton::Primary);
+    h.settle();
+    assert_ne!(h.session.project().mixer[1].effects[0].values, before);
+}

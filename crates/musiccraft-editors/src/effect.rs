@@ -97,9 +97,6 @@ pub fn is_routing(kind: EffectKind, index: usize) -> bool {
 
 /// The bypass switch and the effect's factory presets.
 pub fn preset_bar(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits: &mut Vec<Edit>) {
-    let list = presets::effect(effect.kind);
-    let specs = effect.kind.params();
-    let current = list.iter().position(|p| p.matches(specs, &effect.values));
     ui.horizontal(|ui| {
         let on = effect.enabled;
         if widgets::dot(ui, on, theme::ACCENT)
@@ -112,49 +109,59 @@ pub fn preset_bar(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits: &
         {
             edits.push(Edit::ToggleBypass);
         }
-        let step = |delta: isize| {
-            let n = list.len() as isize;
-            let from = current.map_or(if delta > 0 { -1 } else { 0 }, |c| c as isize);
-            ((from + delta).rem_euclid(n.max(1))) as usize
-        };
-        let mut chosen = None;
-        if crate::widgets::chevron_button(ui, true)
-            .hint("Previous preset")
-            .clicked()
-        {
-            chosen = Some(step(-1));
-        }
-        let name = current.map_or("(custom)", |i| list[i].name);
-        egui::ComboBox::from_id_salt(id.with("preset"))
-            .width(170.0)
-            .selected_text(name)
-            .show_ui(ui, |ui| {
-                for (i, preset) in list.iter().enumerate() {
-                    if ui
-                        .selectable_label(current == Some(i), preset.name)
-                        .clicked()
-                    {
-                        chosen = Some(i);
-                    }
-                }
-            });
-        if crate::widgets::chevron_button(ui, false)
-            .hint("Next preset")
-            .clicked()
-        {
-            chosen = Some(step(1));
-        }
-        if let Some(preset) = chosen.and_then(|i| list.get(i)) {
-            let changes: Vec<_> = preset
-                .resolve(specs)
-                .into_iter()
-                .filter(|(name, value)| (effect.value(name) - value).abs() > 1e-6)
-                .collect();
-            if !changes.is_empty() {
-                edits.push(Edit::Set(changes));
-            }
-        }
+        preset_picker(ui, id, effect, edits);
     });
+}
+
+/// The previous chevron, the preset drop-down ("(custom)" when no preset
+/// matches) and the next chevron, laid out in the caller's row (the app puts
+/// them in the effect window's header).
+pub fn preset_picker(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits: &mut Vec<Edit>) {
+    let list = presets::effect(effect.kind);
+    let specs = effect.kind.params();
+    let current = list.iter().position(|p| p.matches(specs, &effect.values));
+    let step = |delta: isize| {
+        let n = list.len() as isize;
+        let from = current.map_or(if delta > 0 { -1 } else { 0 }, |c| c as isize);
+        ((from + delta).rem_euclid(n.max(1))) as usize
+    };
+    let mut chosen = None;
+    if crate::widgets::chevron_button(ui, true)
+        .hint("Previous preset")
+        .clicked()
+    {
+        chosen = Some(step(-1));
+    }
+    let name = current.map_or("(custom)", |i| list[i].name);
+    egui::ComboBox::from_id_salt(id.with("preset"))
+        .width(170.0)
+        .selected_text(name)
+        .show_ui(ui, |ui| {
+            for (i, preset) in list.iter().enumerate() {
+                if ui
+                    .selectable_label(current == Some(i), preset.name)
+                    .clicked()
+                {
+                    chosen = Some(i);
+                }
+            }
+        });
+    if crate::widgets::chevron_button(ui, false)
+        .hint("Next preset")
+        .clicked()
+    {
+        chosen = Some(step(1));
+    }
+    if let Some(preset) = chosen.and_then(|i| list.get(i)) {
+        let changes: Vec<_> = preset
+            .resolve(specs)
+            .into_iter()
+            .filter(|(name, value)| (effect.value(name) - value).abs() > 1e-6)
+            .collect();
+        if !changes.is_empty() {
+            edits.push(Edit::Set(changes));
+        }
+    }
 }
 
 /// Whether parameter `index` of `kind` has a knob. The rest are edited in the
