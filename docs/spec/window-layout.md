@@ -135,9 +135,12 @@ stay our own. The full target look, window by window, is the style guide in
 - Tempo display: dragging up or down on the whole digits steps 1 BPM every
   6 points (0.1 BPM with Shift); on the decimals it moves 0.01 BPM a point
   (0.001 with Shift). Each scroll notch steps 1 BPM (0.01 with Shift).
-  Double-click opens a type-in field (Enter applies, Esc cancels). Right-click
-  offers "Enter a tempo…", round tempos (60, 90, 120, 140, 174), "Copy" and
-  "Reset to 130". The whole gesture is one undo step.
+  Double-click opens a type-in field (Enter applies, Esc cancels). A pair of
+  small chevrons right of the display steps the tempo 1 BPM up or down per
+  click, or 0.001 BPM when the decimals were the part last dragged. Right-click
+  offers "Enter a tempo…", round tempos (60, 90, 120, 140, 174), "Copy",
+  "Paste" (the tempo last copied there; disabled until one is) and "Reset to
+  130". The whole gesture, and each chevron click, is one undo step.
 - Record pulses while a take is running.
 - When the window is narrower than 1000 points it falls back to two bands:
   menus, hint field and window buttons, then the two racks without the

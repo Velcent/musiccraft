@@ -1068,6 +1068,26 @@ fn tempo(
     if lcd.double_clicked() {
         ui.data_mut(|d| d.insert_temp(id.with("typing"), format!("{tempo:.3}")));
     }
+    // The chevrons step 1 BPM, or 0.001 when the decimals were dragged last.
+    let on_whole = ui
+        .data(|d| d.get_temp::<(f64, bool)>(id.with("drag")))
+        .is_none_or(|(_, whole)| whole);
+    let step = if on_whole { 1.0 } else { 0.001 };
+    let (rect, chevrons) = ui.allocate_exact_size(vec2(10.0, 22.0), Sense::click());
+    let chevrons = chevrons.hint(format!("Tempo up or down {step} BPM"));
+    let (up, down) = step_arrows(ui.painter(), rect);
+    let pointer = chevrons.interact_pointer_pos();
+    let sign = match pointer {
+        Some(p) if chevrons.clicked() && up.contains(p) => 1.0,
+        Some(p) if chevrons.clicked() && down.contains(p) => -1.0,
+        _ => 0.0,
+    };
+    if sign != 0.0 {
+        state.begin_gesture();
+        let value = ((tempo + sign * step) * 1000.0).round() / 1000.0;
+        set(actions, state, value.clamp(MIN_TEMPO_BPM, MAX_TEMPO_BPM));
+    }
+    let copied = ui.data(|d| d.get_temp::<f64>(id.with("copied")));
     lcd.context_menu(|ui| {
         if ui.button("Enter a tempo…").clicked() {
             ui.data_mut(|d| d.insert_temp(id.with("typing"), format!("{tempo:.3}")));
@@ -1084,6 +1104,15 @@ fn tempo(
         ui.separator();
         if ui.button("Copy").clicked() {
             ui.ctx().copy_text(format!("{tempo:.3}"));
+            ui.data_mut(|d| d.insert_temp(id.with("copied"), tempo));
+            ui.close();
+        }
+        let paste = egui::Button::new("Paste");
+        if crate::widgets::add_enabled(ui, copied.is_some(), paste).clicked() {
+            if let Some(value) = copied {
+                state.begin_gesture();
+                set(actions, state, value);
+            }
             ui.close();
         }
         let reset = musiccraft_project::DEFAULT_TEMPO_BPM;
@@ -1138,6 +1167,28 @@ fn tempo_entry(
     }
 }
 
+/// Draws a pair of small up and down chevrons stacked in `rect` and returns
+/// the upper and lower halves.
+fn step_arrows(painter: &egui::Painter, rect: Rect) -> (Rect, Rect) {
+    let (up, down) = (
+        Rect::from_min_max(rect.min, pos2(rect.right(), rect.center().y)),
+        Rect::from_min_max(pos2(rect.left(), rect.center().y), rect.max),
+    );
+    for (half, tip) in [(up, -1.0), (down, 1.0)] {
+        let c = half.center();
+        let stroke = egui::Stroke::new(1.0, theme::TEXT_DIM);
+        painter.line_segment(
+            [pos2(c.x - 3.0, c.y - tip * 1.5), pos2(c.x, c.y + tip * 1.5)],
+            stroke,
+        );
+        painter.line_segment(
+            [pos2(c.x, c.y + tip * 1.5), pos2(c.x + 3.0, c.y - tip * 1.5)],
+            stroke,
+        );
+    }
+    (up, down)
+}
+
 /// The pattern list and the plus that adds the next empty pattern.
 fn pattern_panel(
     ui: &mut egui::Ui,
@@ -1172,22 +1223,7 @@ fn pattern_panel(
         egui::FontId::proportional(theme::FONT_LABEL),
         crate::pattern_text(project.current_pattern()),
     );
-    let (up, down) = (
-        Rect::from_min_max(arrows.min, pos2(arrows.right(), arrows.center().y)),
-        Rect::from_min_max(pos2(arrows.left(), arrows.center().y), arrows.max),
-    );
-    for (half, tip) in [(up, -1.0), (down, 1.0)] {
-        let c = half.center();
-        let stroke = egui::Stroke::new(1.0, theme::TEXT_DIM);
-        painter.line_segment(
-            [pos2(c.x - 3.0, c.y - tip * 1.5), pos2(c.x, c.y + tip * 1.5)],
-            stroke,
-        );
-        painter.line_segment(
-            [pos2(c.x, c.y + tip * 1.5), pos2(c.x + 3.0, c.y - tip * 1.5)],
-            stroke,
-        );
-    }
+    let (up, down) = step_arrows(painter, arrows);
     let pointer = field.interact_pointer_pos();
     let on = |r: Rect| pointer.is_some_and(|p| r.contains(p));
     let ctrl = ui.input(|i| i.modifiers.command);

@@ -3308,3 +3308,52 @@ fn the_mixer_slot_panel_can_sit_left_of_the_strips() {
         "the panel now comes first: {right} → {left}"
     );
 }
+
+#[test]
+fn the_tempo_chevrons_step_it_one_bpm_a_click() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let hint_at = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    let x = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..340).map(move |i| pos2(8.0 + 4.0 * i as f32, y)))
+        .find(|&p| hint_at(&mut h, p).starts_with("Tempo up or down"))
+        .expect("the tempo chevrons")
+        .x;
+    let ys: Vec<f32> = (0..40)
+        .map(|j| 2.0 * j as f32)
+        .filter(|&y| hint_at(&mut h, pos2(x, y)).starts_with("Tempo up or down"))
+        .collect();
+    let mid = (ys[0] + ys[ys.len() - 1]) / 2.0;
+    let xs: Vec<f32> = (-8..8)
+        .map(|i| x + i as f32)
+        .filter(|&x| hint_at(&mut h, pos2(x, mid)).starts_with("Tempo up or down"))
+        .collect();
+    let x = (xs[0] + xs[xs.len() - 1]) / 2.0;
+    let (top, bottom) = (mid - 7.0, mid + 7.0);
+    let tempo = |h: &Harness| h.session.project().tempo_bpm();
+    let start = tempo(&h);
+    h.click(pos2(x, top), PointerButton::Primary);
+    assert!(
+        (tempo(&h) - start - 1.0).abs() < 1e-6,
+        "{start} → {}",
+        tempo(&h)
+    );
+    h.click(pos2(x, bottom), PointerButton::Primary);
+    h.frame(vec![]);
+    h.click(pos2(x, bottom), PointerButton::Primary);
+    assert!(
+        (tempo(&h) - start + 1.0).abs() < 1e-6,
+        "{start} → {}",
+        tempo(&h)
+    );
+    h.session.undo().unwrap();
+    assert!(
+        (tempo(&h) - start).abs() < 1e-6,
+        "each click is its own undo step"
+    );
+}
