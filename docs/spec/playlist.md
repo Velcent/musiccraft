@@ -24,7 +24,10 @@
   solo silences it. Right-click the plate to rename it or pick a colour, or
   double-click it to rename it in place. Track and pattern menus share one
   Colour submenu: two rows of eight swatches with the current one outlined,
-  then "No colour". Silenced rows show their name dimmed.
+  a row of up to eight smaller swatches for the colours picked most recently
+  (newest first, for this session), then "No colour" and a dice
+  button that picks a colour that is neither the current one nor a recent
+  one. Silenced rows show their name dimmed.
 - **Track selection.** One track is selected (view state, not saved): its
   plate is one step lighter and the narrow selector strip between the plate
   and the lane is lit in the accent. Clicking or right-clicking a header

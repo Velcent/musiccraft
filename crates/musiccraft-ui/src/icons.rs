@@ -136,6 +136,8 @@ pub enum Icon {
     Save,
     /// Export audio (three waveform bars and an arrow to the right).
     Export,
+    /// A random choice (a rounded square with three dots on its diagonal).
+    Dice,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -673,6 +675,12 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 vec![p(r, 0.8, 0.32), p(r, 0.98, 0.5), p(r, 0.8, 0.68)],
                 stroke,
             ));
+        }
+        Icon::Dice => {
+            painter.rect_stroke(r, 2.5, stroke, egui::StrokeKind::Inside);
+            for t in [0.27, 0.5, 0.73] {
+                painter.circle_filled(p(r, t, t), r.width() * 0.08, color);
+            }
         }
         Icon::Pause => {
             for x in [0.18, 0.62] {
