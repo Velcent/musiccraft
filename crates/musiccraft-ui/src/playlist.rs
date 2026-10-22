@@ -1209,6 +1209,9 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             scales,
         };
         state.playlist.last_view = Some((grid, clip));
+        if let Some(offset) = crate::scrollbars::middle_pan(ui, clip, clip.min - rect.min) {
+            state.playlist.jump = Some(offset);
+        }
         let painter = ui.painter_at(clip);
         draw_grid(&painter, &grid, (clip, rect), (&meter, state.playlist.view));
 

@@ -293,6 +293,8 @@
   bar is its own group for the shading and the strongest lines.
 - The window menu's Tracks submenu unmutes every muted track and clears
   every track solo, each as one undo step.
+- Dragging with the middle button anywhere in the view pans it both ways,
+  with the grabbing hand as the pointer; it edits nothing.
 - The window menu's View submenu hides the clip list (Alt+P), moves it to
   the right side, sets its width (Narrow 100, Normal 130 or Wide 180
   points) and turns off the bar-group shading, the track separators and

@@ -1117,6 +1117,9 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             scales: None,
         };
         state.roll.last_view = Some((grid, clip));
+        if let Some(offset) = crate::scrollbars::middle_pan(ui, clip, clip.min - rect.min) {
+            state.roll.jump = Some(offset);
+        }
         let painter = ui.painter_at(clip);
         draw_background(
             &painter,

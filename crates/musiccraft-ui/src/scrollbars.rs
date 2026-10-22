@@ -500,6 +500,26 @@ pub struct Outcome {
     pub row: Option<f32>,
 }
 
+/// Middle-drag pans a view both ways: while the middle button, pressed
+/// inside `view`, is held, the content follows the pointer. Returns the new
+/// scroll offset (from `offset`, this frame's: the view's top-left minus the
+/// content's) when it moved. It reads the
+/// pointer rather than a response, so it works over notes and clips too.
+pub fn middle_pan(ui: &Ui, view: Rect, offset: egui::Vec2) -> Option<egui::Vec2> {
+    let (down, origin, delta) = ui.input(|i| {
+        (
+            i.pointer.button_down(egui::PointerButton::Middle),
+            i.pointer.press_origin(),
+            i.pointer.delta(),
+        )
+    });
+    if !down || !origin.is_some_and(|o| view.contains(o)) {
+        return None;
+    }
+    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    (delta != egui::Vec2::ZERO).then(|| (offset - delta).max(egui::Vec2::ZERO))
+}
+
 /// The view's rect inside `body`: everything but the scroll/zoom row along
 /// the top and the vertical bar down the right.
 pub fn view_rect(body: Rect) -> Rect {

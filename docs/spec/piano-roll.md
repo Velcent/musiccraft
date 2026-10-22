@@ -279,6 +279,8 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   Dragging the zoom box up or down changes the key-row height (6 to 30
   points); double-clicking it resets 14. A vertical scroll bar (chevrons,
   rail, thumb) runs down the right of the ruler and grid.
+- Dragging with the middle button anywhere in the view pans it both ways,
+  with the grabbing hand as the pointer; it edits nothing.
 - The corner block above the keyboard shows the colour group of new notes
   (the channel colour for group 1) with its number. Clicking it opens a 4 × 4
   grid of the 16 groups. The Porta and Slide toggles sit on its right edge.

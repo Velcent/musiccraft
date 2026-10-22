@@ -3154,3 +3154,36 @@ fn the_playlist_clip_list_can_sit_on_the_right_and_change_width() {
         });
     assert!(hint.is_some(), "the kind switches sit right of the lanes");
 }
+
+#[test]
+fn middle_dragging_pans_the_piano_roll_and_the_playlist() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0t 24t 60 100"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let origin = |h: &Harness| h.state.roll.last_view.expect("piano roll drawn").0.origin;
+    let before = origin(&h);
+    let from = h.roll_point(48, 60);
+    h.drag_with(from, from - vec2(0.0, 120.0), PointerButton::Middle);
+    h.settle();
+    assert!(
+        origin(&h).y < before.y - 60.0,
+        "{before:?} → {:?}",
+        origin(&h)
+    );
+    assert_eq!(h.roll_notes(), [(0, 60)], "panning leaves the notes alone");
+
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let origin = |h: &Harness| h.state.playlist.last_view.expect("playlist drawn").0.origin;
+    let before = origin(&h);
+    let from = h.playlist_point(TICKS_PER_BAR, 3);
+    let ran = h.drag_with(from, from - vec2(0.0, 80.0), PointerButton::Middle);
+    h.settle();
+    assert!(ran.is_empty(), "{ran:?}");
+    assert!(
+        origin(&h).y < before.y - 40.0,
+        "{before:?} → {:?}",
+        origin(&h)
+    );
+}

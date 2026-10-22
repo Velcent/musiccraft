@@ -202,7 +202,8 @@ All items except the existing ones are **proposed (needs `playlist.md` updated f
 - **Bar-group shading** (View option, on by default): alternate groups of bars get a very faint lighter wash. A group is four bars of the time signature, or one bar when a bar is very wide. Long songs then read in phrases.
 - Past the end of the song (the last clip's end rounded up to a bar), the lanes carry on in the same tone. Only the ruler marks the song end (G1, own).
 - Empty lane, click with Draw: places the current item (A6) at the snapped position (existing). Ctrl+drag on an empty lane draws a selection box with any tool (existing).
-- **Proposed (needs `playlist.md` updated first):** middle-drag scrolls both ways (main-window section, F). Ctrl+right-click on an empty lane zooms to fit the whole song; doing it again returns to the previous zoom and position.
+- Middle-drag scrolls both ways (main-window section, F).
+- **Proposed (needs `playlist.md` updated first):** Ctrl+right-click on an empty lane zooms to fit the whole song; doing it again returns to the previous zoom and position.
 
 **E2. Clip shape (every kind)**
 
