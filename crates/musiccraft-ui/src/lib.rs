@@ -26,6 +26,7 @@ pub mod settings;
 mod signature;
 mod spectrum;
 mod swatches;
+mod tap_tempo;
 mod toolbar;
 mod type_in;
 mod zone_editor;
@@ -171,6 +172,8 @@ pub struct Windows {
     pub channel_settings: bool,
     /// Spectrum analyser of the master output.
     pub spectrum: bool,
+    /// Tap tempo pad.
+    pub tap_tempo: bool,
 }
 
 /// The windows a saved layout covers: name, flag, and floating window id
@@ -181,7 +184,7 @@ type LayoutWindow = (
     Option<&'static str>,
 );
 
-const LAYOUT_WINDOWS: [LayoutWindow; 8] = [
+const LAYOUT_WINDOWS: [LayoutWindow; 9] = [
     (
         "channel_rack",
         |w| &mut w.channel_rack,
@@ -202,6 +205,7 @@ const LAYOUT_WINDOWS: [LayoutWindow; 8] = [
         Some("channel-settings"),
     ),
     ("spectrum", |w| &mut w.spectrum, Some("spectrum-analyzer")),
+    ("tap_tempo", |w| &mut w.tap_tempo, Some("tap-tempo")),
 ];
 
 /// The window arrangement now, to save when the app closes.
@@ -263,6 +267,7 @@ impl Default for Windows {
             shortcuts: false,
             channel_settings: false,
             spectrum: false,
+            tap_tempo: false,
         }
     }
 }
@@ -322,6 +327,7 @@ fn toggle_window(state: &mut UiState, which: &str) {
         "browser" => &mut windows.browser,
         "shortcuts" => &mut windows.shortcuts,
         "spectrum" => &mut windows.spectrum,
+        "tap_tempo" => &mut windows.tap_tempo,
         _ => return,
     };
     *flag = !*flag;
@@ -360,6 +366,7 @@ enum Slot {
     ChannelSettings,
     Automation,
     Spectrum,
+    TapTempo,
     Shortcuts,
     Effect(usize, usize),
 }
@@ -375,6 +382,7 @@ impl Slot {
             Self::ChannelSettings => egui::Id::new("channel-settings"),
             Self::Automation => egui::Id::new("automation-editor"),
             Self::Spectrum => egui::Id::new("spectrum-analyzer"),
+            Self::TapTempo => egui::Id::new("tap-tempo"),
             Self::Shortcuts => egui::Id::new("keyboard-shortcuts"),
             Self::Effect(track, slot) => egui::Id::new(("effect-window", track, slot)),
         }
@@ -392,6 +400,7 @@ fn open_slots(state: &UiState) -> Vec<Slot> {
         (w.channel_settings, Slot::ChannelSettings),
         (state.automation_editor.is_some(), Slot::Automation),
         (w.spectrum, Slot::Spectrum),
+        (w.tap_tempo, Slot::TapTempo),
         (w.shortcuts, Slot::Shortcuts),
     ]
     .into_iter()
@@ -416,6 +425,7 @@ fn close_slot(state: &mut UiState, slot: Slot) {
         Slot::ChannelSettings => w.channel_settings = false,
         Slot::Automation => state.automation_editor = None,
         Slot::Spectrum => w.spectrum = false,
+        Slot::TapTempo => w.tap_tempo = false,
         Slot::Shortcuts => w.shortcuts = false,
         Slot::Effect(track, index) => state.effect_windows.retain(|&e| e != (track, index)),
     }
@@ -811,6 +821,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     dialogs::shortcuts(&ctx, state);
     effect_window::show_all(&ctx, state, frame, &mut actions);
     spectrum::show(&ctx, state, frame);
+    tap_tempo::show(&ctx, state, frame.project.tempo_bpm(), &mut actions);
     settings::show(&ctx, state, frame, &mut actions);
     type_in::show(&ctx, state, &mut actions);
     dialogs::show_in_place(&ctx, state, &mut actions);

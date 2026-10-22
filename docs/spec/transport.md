@@ -39,6 +39,12 @@
   tempo from the average interval of the last eight taps (clamped to the
   range); a pause over two seconds starts a new count. One run of taps is one
   undo step. The rule lives in `musiccraft_commands::tap_tempo`.
+  The **Tap tempo window** (View › Tap tempo, Tap tempo on the tempo
+  display's right-click menu, or a right-click on TAP) uses the same rule
+  and the same taps: a large pad that taps on each press, a bar under it
+  that fills as the run reaches eight taps, and a line with the measured
+  tempo and the tap count (or what to do, before the first tap). It is part
+  of the saved window layout.
 - **Master pitch** (`project.set_master_pitch <cents>`, -1200…1200, or
   `project.set_a4 <hz>`, 392–494 Hz, which sets the equivalent cents;
   undoable, saved as `"master_pitch"`; Settings → Project) transposes every

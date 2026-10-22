@@ -44,6 +44,7 @@ fn window_toggle(ui: &mut egui::Ui, state: &mut UiState, label: &str, which: &st
         "mixer" => &mut state.windows.mixer,
         "browser" => &mut state.windows.browser,
         "spectrum" => &mut state.windows.spectrum,
+        "tap_tempo" => &mut state.windows.tap_tempo,
         _ => &mut state.windows.shortcuts,
     };
     ui.checkbox(open, label);
@@ -224,6 +225,7 @@ fn view_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     window_toggle(ui, state, "Browser (Alt+F8)", "browser");
     window_toggle(ui, state, "Mixer (F9)", "mixer");
     window_toggle(ui, state, "Spectrum analyser", "spectrum");
+    window_toggle(ui, state, "Tap tempo", "tap_tempo");
     ui.separator();
     let mut hints = frame.settings.show_hints;
     if ui.checkbox(&mut hints, "Show hint bar").changed() {
@@ -936,21 +938,14 @@ fn lower_rack(
     tempo(ui, state, project, actions);
     group(ui, |ui| {
         ui.add_space(2.0);
-        if ui
-            .small_button("TAP")
-            .hint("Tap the beat a few times to set the tempo")
-            .clicked()
-        {
-            let now = ui.input(|i| i.time);
-            if state.taps.is_empty() || state.taps.last().is_some_and(|t| now - t > 2.0) {
-                state.begin_gesture();
-            }
-            if let Some(bpm) = musiccraft_commands::tap_tempo::tap(&mut state.taps, now) {
-                actions.push(Action::Coalesced(
-                    Invocation::new("project.set_tempo", [format!("{bpm:.2}")]),
-                    state.gesture(),
-                ));
-            }
+        let tap = ui.small_button("TAP").hint(
+            "Tap the beat a few times to set the tempo · right-click for the tap tempo window",
+        );
+        if tap.clicked() {
+            crate::tap_tempo::tap(ui, state, actions);
+        }
+        if tap.secondary_clicked() {
+            state.windows.tap_tempo = true;
         }
         let sig = project.time_signature;
         ui.menu_button(RichText::new(sig.to_string()).monospace(), |ui| {
@@ -1091,6 +1086,10 @@ fn tempo(
     lcd.context_menu(|ui| {
         if ui.button("Enter a tempo…").clicked() {
             ui.data_mut(|d| d.insert_temp(id.with("typing"), format!("{tempo:.3}")));
+            ui.close();
+        }
+        if ui.button("Tap tempo").clicked() {
+            state.windows.tap_tempo = true;
             ui.close();
         }
         ui.separator();

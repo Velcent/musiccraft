@@ -3533,3 +3533,31 @@ fn ctrl_pressing_a_channel_name_previews_it_and_shift_wheel_moves_it() {
     h.modifiers = Modifiers::NONE;
     assert_eq!(at(&h, &first), Some(before + 1), "moved down a row");
 }
+
+#[test]
+fn the_tap_tempo_pad_sets_the_tempo_in_one_undo_step() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.tap_tempo = true;
+    h.settle();
+    let window = window_rect(&h, "tap-tempo");
+    let pad = (0..60)
+        .map(|j| window.left_top() + vec2(window.width() / 2.0, 4.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Tap the beat here"))
+        })
+        .expect("the tap pad");
+    let before = h.session.project().tempo_bpm();
+    for _ in 0..3 {
+        h.press(pad, PointerButton::Primary);
+        h.release(pad, PointerButton::Primary);
+        h.time += 0.5 - 2.0 / 60.0;
+    }
+    assert!((h.session.project().tempo_bpm() - 120.0).abs() < 0.5);
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.session.project().tempo_bpm(), before);
+}
