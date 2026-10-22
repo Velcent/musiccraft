@@ -2349,3 +2349,56 @@ fn right_clicking_the_keyboard_strip_sets_the_root_key() {
         .get(musiccraft_project::params::inst::ROOT_KEY) as u8;
     assert_eq!(musiccraft_editors::instrument::key_name(root), key);
 }
+
+#[test]
+fn dragging_an_effect_slot_reorders_the_chain() {
+    let mut h = Harness::new(&["mixer.add_effect 1 delay", "mixer.add_effect 1 reverb"]);
+    h.state.windows.mixer = true;
+    h.state.selected_track = 1;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    // Find the slot panel's column first, then walk down it.
+    let hint = "Open or close this effect's window · drag to reorder";
+    let x = (0..120)
+        .map(|i| window.right() - 8.0 - 4.0 * i as f32)
+        .find(|x| {
+            (0..40).any(|j| {
+                let p = pos2(*x, window.top() + 30.0 + 4.0 * j as f32);
+                h.frame(vec![Event::PointerMoved(p)]);
+                h.frame(vec![]);
+                h.state.hint.as_deref() == Some(hint)
+            })
+        })
+        .expect("the slot panel");
+    // Each run of hinted points down the column is one slot's name.
+    let mut names: Vec<Pos2> = Vec::new();
+    let mut inside = false;
+    for j in 0..120 {
+        let y = window.top() + 30.0 + 2.0 * j as f32;
+        // Names differ in length: try a few points from the column leftwards.
+        let hit = (0..12).map(|i| pos2(x - 6.0 * i as f32, y)).find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some(hint)
+        });
+        if let Some(p) = hit.filter(|_| !inside) {
+            names.push(p + vec2(0.0, 3.0));
+        }
+        inside = hit.is_some();
+    }
+    assert!(names.len() >= 2, "found {names:?}");
+    h.drag(names[0], names[1]);
+    h.settle();
+    let kinds: Vec<_> = h.session.project().mixer[1]
+        .effects
+        .iter()
+        .map(|e| e.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            musiccraft_project::params::EffectKind::Reverb,
+            musiccraft_project::params::EffectKind::Delay
+        ]
+    );
+}

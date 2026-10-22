@@ -755,8 +755,9 @@ fn device_picker(
 /// The selected track's input: the audio input device recorded from.
 fn input_row(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new("In").small().color(theme::TEXT_DIM))
-            .hint("Audio input recorded from: the one input device for every track (Settings → Audio)");
+        icons::glyph(ui, Icon::In, 12.0, theme::TEXT_DIM).hint(
+            "Audio input recorded from: the one input device for every track (Settings → Audio)",
+        );
         let settings = frame.settings;
         let inputs = &frame.settings_info.inputs;
         if let Some(choice) =
@@ -780,13 +781,14 @@ fn output_row(
     actions: &mut Vec<Action>,
 ) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Out").small().color(theme::TEXT_DIM));
         if index > 0 {
             icons::glyph(ui, Icon::Out, 12.0, theme::TEXT_DIM);
             ui.label(RichText::new(route_summary(track)).monospace())
                 .hint("Set with the arrows under the strips, or To master / Send below");
             return;
         }
+        icons::glyph(ui, Icon::Out, 12.0, theme::TEXT_DIM)
+            .hint("Audio output device the master plays through");
         let settings = frame.settings;
         let outputs = &frame.settings_info.outputs;
         if let Some(choice) =
@@ -883,9 +885,11 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
         let area = egui::ScrollArea::vertical().id_salt("effect-chain");
         let bars = (egui::Id::new("mixer-slot-bars"), 25.0);
         crate::scrollbars::plain_area(ui, area, bars, |ui| {
+            let mut rows = Vec::with_capacity(MAX_EFFECT_SLOTS);
             for slot in 0..MAX_EFFECT_SLOTS {
-                slot_row(ui, state, track, &number, slot, plugins, actions);
+                rows.push(slot_row(ui, state, track, &number, slot, plugins, actions));
             }
+            ui.ctx().data_mut(|d| d.insert_temp(slot_rows_id(), rows));
             ui.separator();
             eq_row(ui, state, index, track, actions);
             output_row(ui, frame, index, track, actions);
@@ -903,6 +907,20 @@ fn track_index(number: &str) -> usize {
 /// One effect slot: chevron (slot menu), name, mix knob and a light that
 /// bypasses or restores the effect. An empty slot shows a dim "Slot n" and
 /// opens the add list.
+/// Where last frame's slot rows were, for dropping a dragged effect.
+fn slot_rows_id() -> egui::Id {
+    egui::Id::new("mixer-slot-rows")
+}
+
+/// The loaded slot under `pos` in last frame's rows.
+fn slot_at(ui: &egui::Ui, pos: egui::Pos2, loaded: usize) -> Option<usize> {
+    let rows: Vec<egui::Rect> = ui.ctx().data(|d| d.get_temp(slot_rows_id()))?;
+    rows.iter()
+        .position(|r| r.y_range().contains(pos.y))
+        .map(|slot| slot.min(loaded.saturating_sub(1)))
+}
+
+/// One slot row; returns its rectangle.
 fn slot_row(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -911,10 +929,11 @@ fn slot_row(
     slot: usize,
     plugins: &crate::Plugins,
     actions: &mut Vec<Action>,
-) {
+) -> egui::Rect {
     let slot_no = (slot + 1).to_string();
     let selected = state.mixer_slot == slot;
     let effect = track.effects.get(slot);
+    let loaded = track.effects.len();
     egui::Frame::new()
         .fill(if selected && effect.is_some() {
             theme::RAISED
@@ -969,18 +988,18 @@ fn slot_row(
                 } else {
                     theme::TEXT_DIM
                 });
-                if ui
+                let name = ui
                     .add(
                         egui::Label::new(name)
                             .truncate()
-                            .sense(egui::Sense::click()),
+                            .sense(egui::Sense::click_and_drag()),
                     )
-                    .hint("Open or close this effect's window")
-                    .clicked()
-                {
+                    .hint("Open or close this effect's window · drag to reorder");
+                if name.clicked() {
                     state.mixer_slot = slot;
                     crate::effect_window::toggle(state, track_index(number), slot);
                 }
+                drag_to_reorder(ui, &name, number, slot, loaded, actions);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let word = if effect.enabled { "on" } else { "bypassed" };
                     if light(
@@ -1014,7 +1033,50 @@ fn slot_row(
                     mix.response.hint(format!("Mix {:.0}%", effect.mix * 100.0));
                 });
             });
-        });
+        })
+        .response
+        .rect
+}
+
+/// Dragging a loaded slot's name moves its effect to the slot it is dropped
+/// on (`mixer.move_effect`); a line marks where it will land.
+fn drag_to_reorder(
+    ui: &egui::Ui,
+    name: &egui::Response,
+    number: &str,
+    slot: usize,
+    loaded: usize,
+    actions: &mut Vec<Action>,
+) {
+    let Some(pos) = ui.ctx().pointer_interact_pos() else {
+        return;
+    };
+    let target = slot_at(ui, pos, loaded).filter(|t| *t != slot);
+    if name.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        let rows: Option<Vec<egui::Rect>> = ui.ctx().data(|d| d.get_temp(slot_rows_id()));
+        if let Some(rect) = target.and_then(|t| rows?.get(t).copied()) {
+            let y = if target > Some(slot) {
+                rect.bottom()
+            } else {
+                rect.top()
+            };
+            ui.ctx()
+                .layer_painter(egui::LayerId::new(egui::Order::Tooltip, name.id))
+                .hline(rect.x_range(), y, egui::Stroke::new(2.0, theme::ACCENT));
+        }
+    }
+    if let Some(target) = target.filter(|_| name.drag_stopped()) {
+        run(
+            actions,
+            "mixer.move_effect",
+            [
+                number.to_owned(),
+                (slot + 1).to_string(),
+                (target + 1).to_string(),
+            ],
+        );
+    }
 }
 
 /// The menu of a loaded slot, also the effect window's menu (`with_open`:

@@ -184,7 +184,12 @@ Ranges and defaults are defined in `musiccraft-params`.
   closes its window; clicking an empty slot's name or chevron opens the add
   list (built-in effects, then plugin effects), and the effect goes into the
   first free slot. A loaded slot's menu has
-  Open window, Bypass (or Enable), Move up, Move down and Remove.
+  Open window, Bypass (or Enable), Move up, Move down and Remove. Dragging a
+  loaded slot's name onto another loaded slot moves the effect there
+  (`mixer.move_effect`, one undo step); an accent line shows where it will
+  land.
+- The input and output rows start with small glyphs (a circle with an arrow
+  entering it; one leaving it) instead of the words "In" and "Out".
 - The mouse wheel over a strip's name moves the strips one whole strip per
   notch. Elsewhere over the strips the wheel is left to the knobs and faders.
 

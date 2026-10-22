@@ -118,6 +118,8 @@ pub enum Icon {
     Check,
     /// Output (a small circle with a short arrow leaving to the right).
     Out,
+    /// Input (a short arrow entering a small circle from the left).
+    In,
     /// Envelope page (a filled rise, fall, shelf and fall).
     Envelope,
     /// Functions page (three small squares climbing).
@@ -741,6 +743,15 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
             painter.line_segment([p(r, 0.42, 0.5), p(r, 0.95, 0.5)], stroke);
             painter.add(Shape::line(
                 vec![p(r, 0.72, 0.28), p(r, 0.95, 0.5), p(r, 0.72, 0.72)],
+                stroke,
+            ));
+        }
+        Icon::In => {
+            let stroke = Stroke::new(1.3, color);
+            painter.circle_stroke(p(r, 0.78, 0.5), r.width() * 0.2, stroke);
+            painter.line_segment([p(r, 0.05, 0.5), p(r, 0.56, 0.5)], stroke);
+            painter.add(Shape::line(
+                vec![p(r, 0.34, 0.28), p(r, 0.56, 0.5), p(r, 0.34, 0.72)],
                 stroke,
             ));
         }
