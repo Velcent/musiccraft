@@ -59,6 +59,54 @@ pub fn status_dot(painter: &egui::Painter, pos: Pos2) {
     painter.circle_filled(pos, 2.0, theme::AUTOMATION);
 }
 
+/// Pixels of vertical drag for a knob's whole range, and with Shift held.
+const KNOB_DRAG: f32 = 150.0;
+const KNOB_DRAG_FINE: f32 = 600.0;
+/// Wheel points for a knob's whole range.
+const KNOB_WHEEL: f32 = 600.0;
+
+/// The one knob rule for every size, over a 0..1 position: vertical drag
+/// (finer with Shift), the wheel, and reset to `default`.
+fn knob_input(ui: &Ui, response: &Response, t: f32, default: f32) -> Option<f32> {
+    let mut changed = None;
+    if response.dragged_by(PointerButton::Primary) {
+        let fine = ui.input(|i| i.modifiers.shift);
+        let delta = -response.drag_delta().y / if fine { KNOB_DRAG_FINE } else { KNOB_DRAG };
+        if delta != 0.0 {
+            changed = Some((t + delta).clamp(0.0, 1.0));
+        }
+    }
+    if response.hovered() {
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        if scroll != 0.0 {
+            changed = Some((t + scroll / KNOB_WHEEL).clamp(0.0, 1.0));
+        }
+    }
+    if wants_reset(response) {
+        changed = Some(default);
+    }
+    changed
+}
+
+/// Whether a knob gesture began this frame: a drag, a reset or a wheel turn.
+/// Each is its own undo step.
+fn knob_started(ui: &Ui, response: &Response) -> bool {
+    response.drag_started_by(PointerButton::Primary)
+        || wants_reset(response)
+        || (response.hovered()
+            && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
+            && !response.dragged())
+}
+
+/// The knob body: lighter while hovered or dragged.
+fn knob_body(response: &Response) -> Color32 {
+    if response.hovered() || response.dragged() {
+        theme::RAISED_HOVER
+    } else {
+        theme::RAISED
+    }
+}
+
 /// A rotary knob. Drag vertically to change; middle-click or double-click
 /// resets to `default`.
 pub fn knob(
@@ -72,49 +120,46 @@ pub fn knob(
     let size = 22.0;
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
     let range = (max - min).max(1e-6);
-    let mut changed = None;
-    if response.dragged_by(PointerButton::Primary) {
-        let fine = ui.input(|i| i.modifiers.shift);
-        let speed = if fine { 1_000.0 } else { 160.0 };
-        let delta = -response.drag_delta().y / speed * range;
-        if delta != 0.0 {
-            changed = Some((value + delta).clamp(min, max));
-        }
-    }
-    if wants_reset(&response) {
-        changed = Some(default);
-    }
+    let to_t = |v: f32| ((v - min) / range).clamp(0.0, 1.0);
+    let changed = knob_input(ui, &response, to_t(value), to_t(default)).map(|t| min + t * range);
     let shown = changed.unwrap_or(value);
     let painter = ui.painter_at(rect.expand(2.0));
     let center = rect.center();
     let radius = size / 2.0 - 2.0;
-    painter.circle_filled(center, radius, theme::RAISED);
+    painter.circle_filled(center, radius, knob_body(&response));
     // A thin ring keeps a centred knob visible on dark wells.
     painter.circle_stroke(center, radius, Stroke::new(1.0, theme::GRID_BAR));
     let t = ((shown - min) / range).clamp(0.0, 1.0);
     let start = PI * 0.75;
     let sweep = PI * 1.5;
     let angle_of = |t: f32| start + sweep * t;
+    let arc = |from: f32, to: f32| -> Vec<Pos2> {
+        (0..=16)
+            .map(|i| {
+                let a = angle_of(from + (to - from) * i as f32 / 16.0);
+                center + vec2(a.cos(), a.sin()) * (radius + 1.0)
+            })
+            .collect()
+    };
+    // The unlit track, so a knob at its minimum still reads as a knob.
+    painter.add(egui::Shape::line(
+        arc(0.0, 1.0),
+        Stroke::new(2.0, theme::PANEL),
+    ));
     let from = if bipolar { 0.5 } else { 0.0 };
-    let arc: Vec<Pos2> = (0..=16)
-        .map(|i| {
-            let k = from + (t - from) * i as f32 / 16.0;
-            let a = angle_of(k);
-            center + vec2(a.cos(), a.sin()) * (radius + 1.0)
-        })
-        .collect();
-    painter.add(egui::Shape::line(arc, Stroke::new(2.0, theme::ACCENT)));
+    painter.add(egui::Shape::line(
+        arc(from, t),
+        Stroke::new(2.0, theme::ACCENT),
+    ));
     let a = angle_of(t);
     painter.line_segment(
         [center, center + vec2(a.cos(), a.sin()) * (radius - 2.0)],
         Stroke::new(2.0, theme::TEXT),
     );
     set_status_anchor(&response, clock(center, radius + 3.0, ONE_OCLOCK));
-    // A reset is its own undo step.
-    let started = response.drag_started_by(PointerButton::Primary) || wants_reset(&response);
     KnobOutput {
         changed,
-        started,
+        started: knob_started(ui, &response),
         response,
     }
 }
@@ -132,29 +177,13 @@ pub fn labeled_knob(
 ) -> KnobOutput {
     let size = vec2(52.0, 60.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-    let mut changed = None;
-    if response.dragged_by(PointerButton::Primary) {
-        let fine = ui.input(|i| i.modifiers.shift);
-        let delta = -response.drag_delta().y / if fine { 600.0 } else { 150.0 };
-        if delta != 0.0 {
-            changed = Some((t + delta).clamp(0.0, 1.0));
-        }
-    }
-    if response.hovered() {
-        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-        if scroll != 0.0 {
-            changed = Some((t + scroll / 600.0).clamp(0.0, 1.0));
-        }
-    }
-    if wants_reset(&response) {
-        changed = Some(default);
-    }
+    let changed = knob_input(ui, &response, t, default);
     let shown = changed.unwrap_or(t);
     let painter = ui.painter_at(rect);
     let center = pos2(rect.center().x, rect.top() + 22.0);
     let radius = 15.0;
     painter.circle_filled(center, radius + 3.0, theme::PANEL_DARK);
-    painter.circle_filled(center, radius - 2.0, theme::RAISED);
+    painter.circle_filled(center, radius - 2.0, knob_body(&response));
     let start = PI * 0.75;
     let sweep = PI * 1.5;
     let angle = |k: f32| start + sweep * k;
@@ -196,14 +225,9 @@ pub fn labeled_knob(
             theme::TEXT_DIM
         },
     );
-    // A reset is its own undo step.
-    let started = response.drag_started_by(PointerButton::Primary) || wants_reset(&response);
     KnobOutput {
         changed,
-        started: started
-            || (response.hovered()
-                && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
-                && !response.dragged()),
+        started: knob_started(ui, &response),
         response,
     }
 }
@@ -560,6 +584,22 @@ mod tests {
             fader(ui, 0.2, 1.25, vec2(30.0, 120.0))
         });
         assert_eq!(fader_run, [(1.0, true)]);
+    }
+
+    #[test]
+    fn tiny_and_medium_knobs_follow_one_drag_rule() {
+        // Every widget sits at the top left of the panel; aim inside it.
+        let at = pos2(10.0, 12.0);
+        let up = drag(at, at - vec2(0.0, 30.0), PointerButton::Primary);
+        let tiny = drive(up.clone(), |ui| knob(ui, 0.0, 0.0, 1.0, 0.0, false));
+        let medium = drive(up, |ui| labeled_knob(ui, "Cutoff", 0.0, 0.0, false, ""));
+        // Each frame reports its own step from the value passed in.
+        let total = |run: &[(f32, bool)]| run.iter().map(|(v, _)| v).sum::<f32>();
+        assert!((total(&tiny) - 30.0 / KNOB_DRAG).abs() < 1e-3, "{tiny:?}");
+        assert!(
+            (total(&tiny) - total(&medium)).abs() < 1e-4,
+            "{tiny:?} {medium:?}"
+        );
     }
 
     #[test]

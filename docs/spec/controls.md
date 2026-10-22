@@ -8,13 +8,14 @@ everywhere.
 ## Behaviour
 
 - **Left-drag** up or down changes the value; hold Shift for fine steps.
+  Every knob, tiny or medium, crosses its whole range in 150 points of drag
+  (600 with Shift) and 600 points of wheel, and lightens while hovered.
 - **Scroll** over a knob or fader nudges it.
 - **Middle-click** resets the control to its default: a fader to unity
   (0 dB), a channel volume to the default channel level, a pan to centre, an
   effect or synth parameter to its table default, a mixer send to unity.
   **Double-click** does the same.
-- **Right-click** opens the control's menu (create automation, add
-  controller, reset). Right or middle dragging never moves the value, so
+- **Right-click** opens the control's menu (see "Control menu"). Right or middle dragging never moves the value, so
   opening the menu or resetting cannot nudge it by accident.
 - A reset is one undo step, like any other change.
 
