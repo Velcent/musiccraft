@@ -2402,3 +2402,40 @@ fn dragging_an_effect_slot_reorders_the_chain() {
         ]
     );
 }
+
+#[test]
+fn an_effect_dropped_on_a_mixer_strip_goes_into_that_track() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    let name = h.session.project().mixer[2].name.clone();
+    let strip = (0..40)
+        .flat_map(|j| (0..120).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 5.0 * i as f32, 24.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with(&format!("{name} — click")))
+        })
+        .expect("track 2's number cell");
+    egui::DragAndDrop::set_payload(
+        &h.ctx,
+        crate::browser::Dragged::Effect {
+            label: "Delay".to_owned(),
+            command: "mixer.add_effect".to_owned(),
+            args: vec!["delay".to_owned()],
+        },
+    );
+    h.frame(vec![Event::PointerMoved(strip)]);
+    let ran = h.frame(vec![Event::PointerButton {
+        pos: strip,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(ran, ["mixer.add_effect 2 delay"]);
+}

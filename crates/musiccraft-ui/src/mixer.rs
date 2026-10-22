@@ -522,6 +522,41 @@ fn strip(
     if clicked_here && ui.is_rect_visible(response.response.rect) {
         state.selected_track = index;
     }
+    effect_drop(ui, index, response.response.rect, actions);
+}
+
+/// An effect dragged from the browser over a strip outlines it, and dropping
+/// it there adds it to that track's first free slot.
+fn effect_drop(ui: &egui::Ui, index: usize, rect: egui::Rect, actions: &mut Vec<Action>) {
+    let Some(dragged) = egui::DragAndDrop::payload::<crate::browser::Dragged>(ui.ctx()) else {
+        return;
+    };
+    let Some(add) = dragged.add_effect(index) else {
+        return;
+    };
+    let over = ui
+        .ctx()
+        .pointer_hover_pos()
+        .is_some_and(|p| rect.contains(p) && ui.clip_rect().contains(p));
+    if !over {
+        return;
+    }
+    ui.ctx()
+        .layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("mixer-drop"),
+        ))
+        .rect_stroke(
+            rect,
+            2.0,
+            egui::Stroke::new(2.0, theme::ACCENT),
+            egui::StrokeKind::Inside,
+        );
+    if ui.input(|i| i.pointer.any_released())
+        && egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ui.ctx()).is_some()
+    {
+        actions.push(Action::Run(add));
+    }
 }
 
 /// The track switches: invert phase, swap, separation and the effect count.
@@ -888,6 +923,10 @@ fn effects(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
             let mut rows = Vec::with_capacity(MAX_EFFECT_SLOTS);
             for slot in 0..MAX_EFFECT_SLOTS {
                 rows.push(slot_row(ui, state, track, &number, slot, plugins, actions));
+            }
+            if let (Some(first), Some(last)) = (rows.first(), rows.last()) {
+                // An effect dropped on the slots goes to the selected track.
+                effect_drop(ui, index, first.union(*last), actions);
             }
             ui.ctx().data_mut(|d| d.insert_temp(slot_rows_id(), rows));
             ui.separator();

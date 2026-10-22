@@ -101,7 +101,9 @@ pub fn show(
         if open && focused && !state.typing_keyboard && !ctx.egui_wants_keyboard_input() {
             keys(ctx, state, project, actions);
         }
-        if over && egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ctx) {
+        let channel_payload = egui::DragAndDrop::payload::<crate::browser::Dragged>(ctx)
+            .is_some_and(|d| d.add_channel().is_some());
+        if over && channel_payload {
             drop_target(ctx, state, project, window.response.rect, actions);
         }
     }
@@ -154,12 +156,13 @@ fn drop_target(
         return;
     };
     let invocation = match (sampler_row, sample) {
-        (Some((index, _)), Some(sample)) => {
-            Invocation::new("channel.set_sample", [(index + 1).to_string(), sample])
-        }
+        (Some((index, _)), Some(sample)) => Some(Invocation::new(
+            "channel.set_sample",
+            [(index + 1).to_string(), sample],
+        )),
         _ => dragged.add_channel(),
     };
-    actions.push(Action::Run(invocation));
+    actions.extend(invocation.map(Action::Run));
 }
 
 fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {

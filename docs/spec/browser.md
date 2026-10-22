@@ -68,6 +68,10 @@ their category.
 - Generators, effects and presets: click selects; double-click adds a
   generator or preset as a new channel, or an effect to the selected mixer
   track. Generators and presets can be dragged onto the channel rack.
+  Effects (built-in and installed) can be dragged onto a mixer strip, which
+  is outlined while one hovers, or onto the slot panel (the selected
+  track); the effect goes into that track's first free slot. Effects
+  dropped elsewhere do nothing.
 
 ## Search
 

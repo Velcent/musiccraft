@@ -30,6 +30,15 @@ pub enum Dragged {
         /// The command that adds it as a channel.
         add: Invocation,
     },
+    /// An effect (built-in or plugin) that goes into a mixer track.
+    Effect {
+        /// Its name in the browser.
+        label: String,
+        /// The command that adds it, without the track argument.
+        command: String,
+        /// The command's arguments after the track.
+        args: Vec<String>,
+    },
 }
 
 impl Dragged {
@@ -38,17 +47,28 @@ impl Dragged {
     pub fn sample(&self) -> Option<&str> {
         match self {
             Self::Sample(sample) => Some(sample),
-            Self::Generator { .. } => None,
+            Self::Generator { .. } | Self::Effect { .. } => None,
         }
     }
 
-    /// The command that adds this item as a channel.
+    /// The command that adds this item as a channel (effects become none).
     #[must_use]
-    pub fn add_channel(&self) -> Invocation {
+    pub fn add_channel(&self) -> Option<Invocation> {
         match self {
-            Self::Sample(sample) => Invocation::new("channel.add_sampler", [sample.clone()]),
-            Self::Generator { add, .. } => add.clone(),
+            Self::Sample(sample) => Some(Invocation::new("channel.add_sampler", [sample.clone()])),
+            Self::Generator { add, .. } => Some(add.clone()),
+            Self::Effect { .. } => None,
         }
+    }
+
+    /// The command that adds this effect to mixer track `track`.
+    #[must_use]
+    pub fn add_effect(&self, track: usize) -> Option<Invocation> {
+        let Self::Effect { command, args, .. } = self else {
+            return None;
+        };
+        let args = std::iter::once(track.to_string()).chain(args.iter().cloned());
+        Some(Invocation::new(command.as_str(), args))
     }
 
     /// Short label for the drag ghost.
@@ -64,7 +84,7 @@ impl Dragged {
                         .map(|n| n.to_string_lossy().into_owned())
                 })
                 .unwrap_or_else(|| sample.clone()),
-            Self::Generator { label, .. } => label.clone(),
+            Self::Generator { label, .. } | Self::Effect { label, .. } => label.clone(),
         }
     }
 }
@@ -412,7 +432,7 @@ fn item(ui: &mut egui::Ui, depth: usize, label: &str, dragged: Dragged, actions:
     }
     response.context_menu(|ui| {
         if ui.button("Add as sampler").clicked() {
-            actions.push(Action::Run(dragged.add_channel()));
+            actions.extend(dragged.add_channel().map(Action::Run));
             ui.close();
         }
         if ui.button("Add as granular instrument").clicked() {
@@ -431,7 +451,7 @@ fn item(ui: &mut egui::Ui, depth: usize, label: &str, dragged: Dragged, actions:
         }
     });
     if response.double_clicked() {
-        actions.push(Action::Run(dragged.add_channel()));
+        actions.extend(dragged.add_channel().map(Action::Run));
     } else if response.clicked() {
         actions.push(Action::PreviewSample(sample));
     }
@@ -660,7 +680,11 @@ fn instruments_and_effects(
                                 "mixer.add_effect",
                                 [track.clone(), kind.name().to_owned()],
                             ),
-                            None,
+                            Some(Dragged::Effect {
+                                label: effect_title(**kind).to_owned(),
+                                command: "mixer.add_effect".to_owned(),
+                                args: vec![kind.name().to_owned()],
+                            }),
                             actions,
                         );
                     }
@@ -721,7 +745,11 @@ fn instruments_and_effects(
                                         "mixer.add_plugin",
                                         [track.clone(), entry.id.clone(), entry.name.clone()],
                                     ),
-                                    None,
+                                    Some(Dragged::Effect {
+                                        label: entry.name.clone(),
+                                        command: "mixer.add_plugin".to_owned(),
+                                        args: vec![entry.id.clone(), entry.name.clone()],
+                                    }),
                                     actions,
                                 );
                             }
@@ -1431,13 +1459,13 @@ mod tests {
     fn dragged_items_add_the_right_channel() {
         let kick = Dragged::Sample("builtin:kick".into());
         assert_eq!(
-            kick.add_channel().to_string(),
+            kick.add_channel().unwrap().to_string(),
             "channel.add_sampler builtin:kick"
         );
         assert_eq!(kick.label(), "kick");
         let file = Dragged::Sample("/x/My Loop.wav".into());
         assert_eq!(
-            file.add_channel().to_string(),
+            file.add_channel().unwrap().to_string(),
             "channel.add_sampler \"/x/My Loop.wav\""
         );
         assert_eq!(file.label(), "My Loop.wav");
@@ -1445,7 +1473,20 @@ mod tests {
             label: "Synth".into(),
             add: Invocation::bare("channel.add_synth"),
         };
-        assert_eq!(synth.add_channel().to_string(), "channel.add_synth");
+        assert_eq!(
+            synth.add_channel().unwrap().to_string(),
+            "channel.add_synth"
+        );
+        let delay = Dragged::Effect {
+            label: "Delay".into(),
+            command: "mixer.add_effect".into(),
+            args: vec!["delay".into()],
+        };
+        assert!(delay.add_channel().is_none());
+        assert_eq!(
+            delay.add_effect(3).unwrap().to_string(),
+            "mixer.add_effect 3 delay"
+        );
         assert_eq!(synth.sample(), None);
     }
 
