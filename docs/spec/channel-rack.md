@@ -53,6 +53,10 @@
   Melodic rows show a miniature roll whose alternate bars are shaded; a click
   on it opens the piano roll on that channel, or closes it when it already
   shows that channel.
+- Right-clicking a channel's name opens its menu in two columns. First: Open
+  in piano roll, Channel settings; Rename…, Change sample… (samplers), Group…;
+  Clone, Delete. Second: Clear notes in pattern; Turn on every 2nd / 4th / 8th
+  step; Shift left, Shift right; Solo, Move up, Move down.
 - Shift+wheel over the rack's header row steps to the next or previous
   pattern (`pattern.next`, `pattern.prev`).
 - The mute light: a click mutes or unmutes, Ctrl+click solos the channel

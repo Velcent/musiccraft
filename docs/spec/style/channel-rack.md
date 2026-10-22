@@ -422,8 +422,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
     - There is no all-rows piano-roll view.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`mini_roll`).
 10. **Channel context menu.**
-    - It is a flat list ordered Group…, Channel settings, Open in piano roll, Rename…, Change sample…, Solo, Steps ▸, Clone, Move up/down, Clear notes in pattern, Delete.
-    - "Steps ▸ Clear" duplicates "Clear notes in pattern".
+    - It has the two columns in the guide's order, without the duplicate clear item.
     - Missing: colour and icon items, insert and replace, cut, copy and paste steps, choke itself, MIDI items, graph editor entry.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`context_menu`).
 11. **Mute light.** Ctrl+click solos and right-click offers Mute and Solo, but there is no Shift+click lock.

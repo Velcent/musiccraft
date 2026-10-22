@@ -405,8 +405,26 @@ pub(crate) fn context_menu(
     actions: &mut Vec<Action>,
 ) {
     let number = (index + 1).to_string();
-    if ui.button("Group…").clicked() {
-        state.open_dialog(crate::dialogs::Dialog::channel_group(index, &channel.group));
+    // Two columns: the channel itself, then its steps and order.
+    ui.horizontal_top(|ui| {
+        ui.vertical(|ui| channel_items(ui, state, index, channel, actions));
+        ui.separator();
+        ui.vertical(|ui| step_items(ui, project, index, &number, actions));
+    });
+}
+
+/// The channel menu's first column: open, look, sound, clone and delete.
+fn channel_items(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    index: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    let number = (index + 1).to_string();
+    if ui.button("Open in piano roll").clicked() {
+        state.selected_channel = index;
+        state.windows.piano_roll = true;
         ui.close();
     }
     if ui.button("Channel settings").clicked() {
@@ -414,11 +432,7 @@ pub(crate) fn context_menu(
         state.windows.channel_settings = true;
         ui.close();
     }
-    if ui.button("Open in piano roll").clicked() {
-        state.selected_channel = index;
-        state.windows.piano_roll = true;
-        ui.close();
-    }
+    ui.separator();
     if ui.button("Rename…").clicked() {
         state.open_dialog(Dialog::rename_channel(index, &channel.name));
         ui.close();
@@ -429,32 +443,56 @@ pub(crate) fn context_menu(
             ui.close();
         }
     }
-    if ui.button("Solo").clicked() {
-        run(actions, "channel.solo", [number.clone()]);
+    if ui.button("Group…").clicked() {
+        state.open_dialog(crate::dialogs::Dialog::channel_group(index, &channel.group));
         ui.close();
     }
-    ui.menu_button("Steps", |ui| {
-        for (every, nth) in [(2, "2nd"), (4, "4th"), (8, "8th")] {
-            if ui.button(format!("Turn on every {nth} step")).clicked() {
-                run(actions, "step.fill", [number.clone(), every.to_string()]);
-                ui.close();
-            }
-        }
-        if ui.button("Shift left").clicked() {
-            run(actions, "step.shift", [number.clone(), "-1".to_owned()]);
-            ui.close();
-        }
-        if ui.button("Shift right").clicked() {
-            run(actions, "step.shift", [number.clone(), "1".to_owned()]);
-            ui.close();
-        }
-        if ui.button("Clear").clicked() {
-            run(actions, "note.clear", [number.clone()]);
-            ui.close();
-        }
-    });
+    ui.separator();
     if ui.button("Clone").clicked() {
         run(actions, "channel.clone", [number.clone()]);
+        ui.close();
+    }
+    if ui
+        .button(RichText::new("Delete").color(theme::DANGER))
+        .clicked()
+    {
+        run(actions, "channel.remove", [number]);
+        ui.close();
+    }
+}
+
+/// The channel menu's second column: steps, solo and order.
+fn step_items(
+    ui: &mut egui::Ui,
+    project: &Project,
+    index: usize,
+    number: &str,
+    actions: &mut Vec<Action>,
+) {
+    let number = number.to_owned();
+    if ui.button("Clear notes in pattern").clicked() {
+        run(actions, "note.clear", [number.clone()]);
+        ui.close();
+    }
+    ui.separator();
+    for (every, nth) in [(2, "2nd"), (4, "4th"), (8, "8th")] {
+        if ui.button(format!("Turn on every {nth} step")).clicked() {
+            run(actions, "step.fill", [number.clone(), every.to_string()]);
+            ui.close();
+        }
+    }
+    ui.separator();
+    if ui.button("Shift left").clicked() {
+        run(actions, "step.shift", [number.clone(), "-1".to_owned()]);
+        ui.close();
+    }
+    if ui.button("Shift right").clicked() {
+        run(actions, "step.shift", [number.clone(), "1".to_owned()]);
+        ui.close();
+    }
+    ui.separator();
+    if ui.button("Solo").clicked() {
+        run(actions, "channel.solo", [number.clone()]);
         ui.close();
     }
     ui.add_enabled_ui(index > 0, |ui| {
@@ -473,18 +511,6 @@ pub(crate) fn context_menu(
             ui.close();
         }
     });
-    if ui.button("Clear notes in pattern").clicked() {
-        run(actions, "note.clear", [number.clone()]);
-        ui.close();
-    }
-    ui.separator();
-    if ui
-        .button(RichText::new("Delete").color(theme::DANGER))
-        .clicked()
-    {
-        run(actions, "channel.remove", [number]);
-        ui.close();
-    }
 }
 
 /// Whether a channel's notes are all plain steps (key C5, one step long, on
