@@ -2791,3 +2791,44 @@ fn dragging_a_track_divider_resizes_that_track_alone() {
     assert_eq!(ran, ["playlist.set_track_height 1 reset"]);
     assert!(h.session.project().playlist.track_heights.is_empty());
 }
+
+#[test]
+fn track_headers_select_a_track_and_take_dropped_sounds() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.unwrap();
+    let header = |row: u32| pos2(clip.left() + 30.0, grid.y(row) + 8.0);
+    h.click(header(2), PointerButton::Primary);
+    assert_eq!(h.state.playlist.track, 2);
+    h.key(egui::Key::ArrowDown, Modifiers::COMMAND);
+    assert_eq!(h.state.playlist.track, 3);
+    h.key(egui::Key::ArrowUp, Modifiers::COMMAND);
+    h.key(egui::Key::ArrowUp, Modifiers::COMMAND);
+    assert_eq!(h.state.playlist.track, 1);
+    // A sound dropped on a header lands at the start of the view on that
+    // track, which takes the sound's name.
+    egui::DragAndDrop::set_payload(
+        &h.ctx,
+        crate::browser::Dragged::Sample("builtin:clap".to_owned()),
+    );
+    let at = header(1);
+    h.frame(vec![Event::PointerMoved(at)]);
+    let ran = h.frame(vec![Event::PointerButton {
+        pos: at,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert!(
+        h.other.iter().any(|a| matches!(
+            a,
+            Action::DropAudio { track: 1, start: 0, sample } if sample == "builtin:clap"
+        )),
+        "the sound goes to track 2 at the view's start"
+    );
+    assert!(
+        ran.contains(&"playlist.rename_track 2 clap".to_owned()),
+        "{ran:?}"
+    );
+}

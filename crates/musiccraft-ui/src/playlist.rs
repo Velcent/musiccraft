@@ -56,6 +56,8 @@ pub struct PlaylistState {
     /// A track divider being dragged: the track and its height so far, in
     /// percent of `row_height`. Drawn at once, run as one command on release.
     resize: Option<(u32, u16)>,
+    /// The selected track (0-based): its selector strip is lit.
+    pub(crate) track: u32,
     /// Scroll offset of the last frame, in points.
     pub(crate) offset: Vec2,
     /// Scroll offset asked for by the scroll bars, applied next frame.
@@ -125,6 +127,7 @@ impl Default for PlaylistState {
             px_per_bar: 72.0,
             row_height: TRACK_HEIGHT,
             resize: None,
+            track: 0,
             offset: Vec2::ZERO,
             jump: None,
             snap: Snap::Bar,
@@ -2236,12 +2239,21 @@ fn headers(
         );
         let playlist = &project.playlist;
         let hovered = ui.rect_contains_pointer(r);
-        let plate = Rect::from_min_max(r.min, r.max - vec2(1.0, 1.0));
+        let selected = state.playlist.track == row;
+        // The selector strip sits between the plate and the lane.
+        let plate = Rect::from_min_max(r.min, r.max - vec2(SELECTOR_WIDTH + 1.0, 1.0));
         painter.rect_filled(
             plate,
             2.0,
-            plate_fill(playlist.track_colors.get(&row), hovered),
+            plate_fill(playlist.track_colors.get(&row), hovered || selected),
         );
+        if selected {
+            let strip = Rect::from_min_max(
+                pos2(r.right() - SELECTOR_WIDTH, r.top()),
+                r.max - vec2(0.0, 1.0),
+            );
+            painter.rect_filled(strip, 1.0, theme::ACCENT);
+        }
         let text = if playlist.track_audible(row) {
             theme::TEXT
         } else {
@@ -2262,6 +2274,9 @@ fn headers(
         let number = (row + 1).to_string();
         // Right-click the header: rename or colour the row.
         let header = ui.interact(r, ui.id().with(("track-header", row)), Sense::click());
+        if header.clicked() || header.secondary_clicked() {
+            state.playlist.track = row;
+        }
         if header.double_clicked() {
             state.rename_in_place(
                 crate::dialogs::Dialog::rename_playlist_track(row, &playlist.track_name(row)),
@@ -2304,9 +2319,9 @@ fn headers(
 }
 
 /// A track header plate's fill: raised, tinted well down by the track's
-/// colour, one step lighter under the pointer.
-fn plate_fill(color: Option<&u8>, hovered: bool) -> egui::Color32 {
-    let base = if hovered {
+/// colour, one step lighter when selected or under the pointer.
+fn plate_fill(color: Option<&u8>, lifted: bool) -> egui::Color32 {
+    let base = if lifted {
         theme::RAISED_HOVER
     } else {
         theme::RAISED
@@ -2324,6 +2339,9 @@ struct HeaderLayout {
     solo: Rect,
     light: Rect,
 }
+
+/// Width of the track selector strip at a header's right edge.
+const SELECTOR_WIDTH: f32 = 5.0;
 
 /// The shortest plate that gets two lines.
 const TWO_LINE_HEADER: f32 = 34.0;
@@ -2965,8 +2983,36 @@ fn tool_stroke(
     }
 }
 
-/// While a sound from the browser hovers a lane: a ghost clip one bar long
-/// at the snapped spot and an accent outline on that track's header.
+/// Where a sound dropped at `pos` goes: (track, start tick, over a header).
+/// Over a lane it lands at the snapped spot; over a track header, at the
+/// start of the visible range on that track.
+fn drop_target(
+    grid: &Grid,
+    clip: Rect,
+    (snap, meter): (&Snap, &Meter),
+    pos: Pos2,
+) -> Option<(u32, u32, bool)> {
+    if pos.y <= clip.top() + RULER_HEIGHT || !clip.contains(pos) {
+        return None;
+    }
+    let row = grid.row_at(pos.y)?;
+    let header = pos.x <= clip.left() + HEADER_WIDTH;
+    let x = if header {
+        clip.left() + HEADER_WIDTH
+    } else {
+        pos.x
+    };
+    let mut start = snap.floor(grid.tick_at(x), meter);
+    if header && grid.x(start as f32) < x - 0.5 {
+        // The visible range starts part-way into a snap step: take the next.
+        start += snap.ticks_at(start, meter);
+    }
+    Some((row, start, header))
+}
+
+/// While a sound from the browser hovers a lane or a track header: a ghost
+/// clip one bar long where it would land and an accent outline on that
+/// track's header.
 fn drop_ghost(
     ui: &egui::Ui,
     grid: &Grid,
@@ -2981,13 +3027,15 @@ fn drop_ghost(
         pos2(clip.left() + HEADER_WIDTH, clip.top() + RULER_HEIGHT),
         clip.max,
     );
-    let Some(pos) = response.hover_pos().filter(|p| lanes.contains(*p)) else {
+    let Some((row, start, _)) = response
+        .hover_pos()
+        .and_then(|pos| drop_target(grid, clip, (snap, meter), pos))
+    else {
         return;
     };
-    let (Some(row), Some(name)) = (grid.row_at(pos.y), dragged.sample()) else {
+    let Some(name) = dragged.sample() else {
         return;
     };
-    let start = snap.floor(grid.tick_at(pos.x), meter);
     let bar = meter.bar(start);
     let length = bar.len.max(1);
     let rect = grid.span(row, start, length).shrink2(vec2(0.0, 1.0));
@@ -3232,22 +3280,35 @@ fn edit(
     drop_ghost(ui, grid, clip, (&snap, &meter), response);
     // Sounds dropped from the browser become audio clips where they land.
     if response.contains_pointer() && ui.input(|i| i.pointer.any_released()) {
-        if let Some(pos) = ui.ctx().pointer_hover_pos().filter(|p| editable(*p)) {
-            if let (Some(row), true) = (
-                grid.row_at(pos.y),
-                egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ui.ctx()),
-            ) {
-                if let Some(dragged) =
-                    egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ui.ctx())
-                {
-                    if let Some(sample) = dragged.sample().map(str::to_owned) {
-                        actions.push(Action::DropAudio {
-                            sample,
-                            track: row,
-                            start: snap.floor(grid.tick_at(pos.x), &meter),
-                        });
-                    }
-                }
+        let target = ui
+            .ctx()
+            .pointer_hover_pos()
+            .and_then(|pos| drop_target(grid, clip, (&snap, &meter), pos));
+        if let (Some((track, start, header)), true) = (
+            target,
+            egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ui.ctx()),
+        ) && let Some(dragged) =
+            egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ui.ctx())
+            && let Some(sample) = dragged.sample().map(str::to_owned)
+        {
+            // A track dropped on by its header takes the sound's name if it
+            // still has its default one.
+            let named = project.playlist.track_names.contains_key(&track);
+            let name = sample.rsplit(['/', '\\', ':']).next().unwrap_or(&sample);
+            let name = name
+                .rsplit_once('.')
+                .map_or(name, |(stem, _)| stem)
+                .to_owned();
+            actions.push(Action::DropAudio {
+                sample,
+                track,
+                start,
+            });
+            if header && !named {
+                actions.push(Action::Run(Invocation::new(
+                    "playlist.rename_track",
+                    [(track + 1).to_string(), name],
+                )));
             }
         }
     }
@@ -3323,6 +3384,12 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     for (key, nudge) in nudges {
         if pressed(Modifiers::SHIFT, key) {
             nudge_selection(state, project, nudge, actions);
+        }
+    }
+    for (key, step) in [(Key::ArrowUp, -1), (Key::ArrowDown, 1)] {
+        if pressed(Modifiers::COMMAND, key) {
+            let track = state.playlist.track.saturating_add_signed(step);
+            state.playlist.track = track.min(PLAYLIST_TRACKS - 1);
         }
     }
     if pressed(Modifiers::SHIFT, Key::C) {

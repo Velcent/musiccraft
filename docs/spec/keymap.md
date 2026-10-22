@@ -118,6 +118,7 @@ take precedence over the global keys.
 | Delete / Backspace | Delete the selection |
 | Shift+Left / Right | Nudge the selection one snap step |
 | Shift+Up / Down | Move the selection up / down one track |
+| Ctrl+Up / Ctrl+Down | Select the track above / below |
 | Shift+C | Show the current pattern in the playlist (its first clip) |
 | Page Up / Page Down | Zoom in / out around the playhead |
 | Shift+1, Shift+2, Shift+3 | Zoom presets (32, 96 and 240 points per bar) |

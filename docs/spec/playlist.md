@@ -25,6 +25,10 @@
   double-click it to rename it in place. Track and pattern menus share one
   Colour submenu: two rows of eight swatches with the current one outlined,
   then "No colour". Silenced rows show their name dimmed.
+- **Track selection.** One track is selected (view state, not saved): its
+  plate is one step lighter and the narrow selector strip between the plate
+  and the lane is lit in the accent. Clicking or right-clicking a header
+  selects its track; Ctrl+Up and Ctrl+Down move the selection.
 - **Track heights.** Each row can have its own height, a percentage of the
   global track height (25–400%, default 100%; saved, undoable):
   `playlist.set_track_height <track> <percent|reset>` and
@@ -118,8 +122,10 @@
   the playlist adds a sampler channel with one-shot off and an audio clip as long
   as the sample. While the sound hovers a lane, a ghost clip one bar long
   marks the snapped spot (the sample's length is known only once it loads) and
-  the track's header gets an accent outline. Removing the channel removes its
-  audio clips (undo restores).
+  the track's header gets an accent outline. Dropped on a track header instead,
+  the sound lands at the start of the visible range (the first snap line in
+  view) on that track, and a track that still has its default name takes the
+  sound's name. Removing the channel removes its audio clips (undo restores).
 - **Automation clips** (`playlist.add_automation_clip <automation> <track>
   <start> [length]`) move one parameter during song playback (see below).
 - `playlist.remove_clip`, `move_clip`, `resize_clip` and selection editing work
