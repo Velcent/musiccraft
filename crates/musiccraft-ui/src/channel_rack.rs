@@ -349,8 +349,7 @@ fn row(
                 .filter(|(_, c)| c.mute)
                 .map(|(i, _)| format!("channel.set_mute {} off", i + 1))
                 .collect();
-            if ui
-                .add_enabled(!muted.is_empty(), egui::Button::new("Unmute all"))
+            if crate::widgets::add_enabled(ui, !muted.is_empty(), egui::Button::new("Unmute all"))
                 .clicked()
             {
                 actions.push(Action::Run(Invocation::new(
@@ -640,13 +639,13 @@ fn step_items(
         run(actions, "channel.solo", [number.clone()]);
         ui.close();
     }
-    ui.add_enabled_ui(index > 0, |ui| {
+    crate::widgets::enabled_ui(ui, index > 0, |ui| {
         if ui.button("Move up").clicked() {
             run(actions, "channel.move", [number.clone(), index.to_string()]);
             ui.close();
         }
     });
-    ui.add_enabled_ui(index + 1 < project.channels.len(), |ui| {
+    crate::widgets::enabled_ui(ui, index + 1 < project.channels.len(), |ui| {
         if ui.button("Move down").clicked() {
             run(
                 actions,

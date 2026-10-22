@@ -253,7 +253,7 @@ fn param_row(
     let slider = egui::Slider::new(&mut value, param.min..=param.max.max(param.min))
         .show_value(false)
         .step_by(if param.stepped { 1.0 } else { 0.0 });
-    let response = ui.add_enabled(!param.read_only, slider);
+    let response = crate::widgets::add_enabled(ui, !param.read_only, slider);
     state.plugin_layout.1.push((param.id, response.rect));
     // A slider jumps on press, before egui reports a drag; the gesture starts
     // with the press.

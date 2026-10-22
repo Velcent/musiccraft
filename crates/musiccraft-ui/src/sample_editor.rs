@@ -158,8 +158,7 @@ pub(crate) fn show(
                     let needs_range = !matches!(op, "reverse");
                     let enabled = !needs_range || !span.is_empty();
                     let enabled = enabled && (op != "trim" && op != "cut" || !range.is_empty());
-                    if ui
-                        .add_enabled(enabled, egui::Button::new(label))
+                    if crate::widgets::add_enabled(ui, enabled, egui::Button::new(label))
                         .hint(hint)
                         .clicked()
                     {

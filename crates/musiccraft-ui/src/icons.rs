@@ -887,7 +887,9 @@ pub fn button(ui: &mut Ui, icon: Icon, active: bool, accent: Color32, hint: &str
         theme::RAISED
     };
     ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
-    let color = if active {
+    let color = if !ui.is_enabled() {
+        theme::TEXT_FAINT
+    } else if active {
         theme::BACKGROUND
     } else if icon == Icon::Record {
         theme::DANGER
@@ -913,7 +915,13 @@ pub fn toggle(ui: &mut Ui, icon: Icon, on: bool, hint: &str) -> Response {
             },
         );
     }
-    let color = if on { theme::ACCENT } else { theme::TEXT_DIM };
+    let color = if !ui.is_enabled() {
+        theme::TEXT_FAINT
+    } else if on {
+        theme::ACCENT
+    } else {
+        theme::TEXT_DIM
+    };
     paint(ui.painter(), rect.shrink(1.0), icon, color);
     if on {
         let y = rect.bottom() - 1.5;
@@ -942,7 +950,9 @@ pub fn header_button(ui: &mut Ui, icon: Icon, pressed: bool, danger: bool, hint:
         };
         ui.painter().rect_filled(rect, CornerRadius::same(2), fill);
     }
-    let color = if hovered && danger {
+    let color = if !ui.is_enabled() {
+        theme::TEXT_FAINT
+    } else if hovered && danger {
         theme::DANGER
     } else if pressed {
         theme::ACCENT

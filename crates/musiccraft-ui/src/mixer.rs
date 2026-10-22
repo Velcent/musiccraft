@@ -1200,10 +1200,7 @@ pub(crate) fn slot_menu(
         );
         ui.close();
     }
-    if ui
-        .add_enabled(slot > 0, egui::Button::new("Move up"))
-        .clicked()
-    {
+    if crate::widgets::add_enabled(ui, slot > 0, egui::Button::new("Move up")).clicked() {
         run(
             actions,
             "mixer.move_effect",
@@ -1211,12 +1208,12 @@ pub(crate) fn slot_menu(
         );
         ui.close();
     }
-    if ui
-        .add_enabled(
-            slot + 1 < track.effects.len(),
-            egui::Button::new("Move down"),
-        )
-        .clicked()
+    if crate::widgets::add_enabled(
+        ui,
+        slot + 1 < track.effects.len(),
+        egui::Button::new("Move down"),
+    )
+    .clicked()
     {
         run(
             actions,

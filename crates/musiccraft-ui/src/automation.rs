@@ -152,12 +152,12 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
             ui.close();
         }
         let automation = source.and_then(|s| s.automation);
-        if ui
-            .add_enabled(
-                automation.is_some(),
-                egui::Button::new("Open its automation…"),
-            )
-            .clicked()
+        if crate::widgets::add_enabled(
+            ui,
+            automation.is_some(),
+            egui::Button::new("Open its automation…"),
+        )
+        .clicked()
             && let Some(number) = automation
         {
             run(actions, "ui.open_automation", vec![number.to_string()]);
@@ -200,8 +200,7 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
             run(actions, "ui.copy_control", target_arg());
             ui.close();
         }
-        if ui
-            .add_enabled(published.copied.is_some(), egui::Button::new("Paste"))
+        if crate::widgets::add_enabled(ui, published.copied.is_some(), egui::Button::new("Paste"))
             .clicked()
             && let Some(position) = published.copied
         {

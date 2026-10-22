@@ -195,6 +195,8 @@ pub fn knob(
     // A thin ring keeps a centred knob visible on dark wells.
     painter.circle_stroke(center, radius, Stroke::new(1.0, theme::GRID_BAR));
     let t = ((shown - min) / range).clamp(0.0, 1.0);
+    // A disabled knob keeps its body; only its marks turn faint.
+    let enabled = ui.is_enabled();
     let start = PI * 0.75;
     let sweep = PI * 1.5;
     let angle_of = |t: f32| start + sweep * t;
@@ -224,7 +226,14 @@ pub fn knob(
     let a = angle_of(t);
     painter.line_segment(
         [center, center + vec2(a.cos(), a.sin()) * (radius - 2.0)],
-        Stroke::new(2.0, theme::TEXT),
+        Stroke::new(
+            2.0,
+            if enabled {
+                theme::TEXT
+            } else {
+                theme::TEXT_FAINT
+            },
+        ),
     );
     set_status_anchor(&response, clock(center, radius + 3.0, ONE_OCLOCK));
     KnobOutput {
@@ -418,6 +427,40 @@ pub fn dot(ui: &mut Ui, on: bool, color: Color32) -> Response {
     response
 }
 
+/// Runs `add_contents` with its widgets disabled when `enabled` is false.
+/// Unlike egui's own fade, a disabled control keeps its fill: only its text
+/// and glyphs turn `TEXT_FAINT`, and it never reacts to hover.
+pub fn enabled_ui<R>(ui: &mut Ui, enabled: bool, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.scope(|ui| {
+        if !enabled {
+            disable(ui);
+        }
+        add_contents(ui)
+    })
+    .inner
+}
+
+/// Adds `widget`, disabled when `enabled` is false (see [`enabled_ui`]).
+pub fn add_enabled(ui: &mut Ui, enabled: bool, widget: impl egui::Widget) -> Response {
+    enabled_ui(ui, enabled, |ui| ui.add(widget))
+}
+
+/// Disables the rest of `ui` in our style: no opacity fade, faint text.
+fn disable(ui: &mut Ui) {
+    let opacity = ui.opacity();
+    ui.disable();
+    ui.set_opacity(opacity);
+    let visuals = &mut ui.style_mut().visuals;
+    visuals.override_text_color = Some(theme::TEXT_FAINT);
+    for widget in [
+        &mut visuals.widgets.noninteractive,
+        &mut visuals.widgets.inactive,
+        &mut visuals.widgets.hovered,
+        &mut visuals.widgets.active,
+    ] {
+        widget.fg_stroke.color = theme::TEXT_FAINT;
+    }
+}
 /// An LED switch: a round light with its label to the right. Clicking the
 /// light or the label toggles `on`; the response reports `changed()`.
 pub fn led_switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) -> Response {
@@ -599,6 +642,34 @@ pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabled_widgets_keep_their_opacity_and_turn_their_text_faint() {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            enabled_ui(ui, true, |ui| assert!(ui.is_enabled()));
+            let opacity = ui.opacity();
+            enabled_ui(ui, false, |ui| {
+                assert!(!ui.is_enabled());
+                assert!((ui.opacity() - opacity).abs() < f32::EPSILON);
+                let visuals = ui.visuals();
+                assert_eq!(visuals.override_text_color, Some(theme::TEXT_FAINT));
+                assert_eq!(visuals.widgets.inactive.fg_stroke.color, theme::TEXT_FAINT);
+                assert_eq!(
+                    visuals.widgets.inactive.weak_bg_fill,
+                    ui.ctx()
+                        .global_style()
+                        .visuals
+                        .widgets
+                        .inactive
+                        .weak_bg_fill,
+                    "fills stay"
+                );
+            });
+            assert!(ui.is_enabled(), "only the inner scope is disabled");
+        });
+        output.textures_delta.clear();
+    }
 
     #[test]
     fn fader_curve_round_trips_and_puts_unity_at_three_quarters() {

@@ -665,7 +665,7 @@ fn scale_list(ui: &mut egui::Ui, state: &mut UiState) {
     });
     ui.separator();
     let mut fit = state.roll.fit_scale;
-    ui.add_enabled_ui(state.roll.scale.is_some(), |ui| {
+    crate::widgets::enabled_ui(ui, state.roll.scale.is_some(), |ui| {
         if ui
             .checkbox(&mut fit, "Fit edited notes to the scale")
             .changed()
@@ -759,7 +759,7 @@ fn options_menu(
     ui.menu_button("Edit", |ui| {
         let any = !state.roll.selection.is_empty();
         let item = |ui: &mut egui::Ui, enabled: bool, label: &str, keys: &str| {
-            ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(keys))
+            crate::widgets::add_enabled(ui, enabled, egui::Button::new(label).shortcut_text(keys))
                 .clicked()
         };
         let ops = [
@@ -1879,13 +1879,12 @@ fn tools_menu(
                 );
             }
             None => {
-                ui.add_enabled(false, egui::Button::new("Snap to scale"))
+                crate::widgets::add_enabled(ui, false, egui::Button::new("Snap to scale"))
                     .hint("Highlight a scale first");
             }
         }
         let enabled = toggle_slide.is_some();
-        if ui
-            .add_enabled(enabled, egui::Button::new("Toggle slide"))
+        if crate::widgets::add_enabled(ui, enabled, egui::Button::new("Toggle slide"))
             .hint("Make the selected notes slide notes, or normal again")
             .clicked()
         {

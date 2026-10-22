@@ -194,7 +194,7 @@ fn patterns_menu(
         ));
         ui.close();
     }
-    ui.add_enabled_ui(project.patterns.len() > 1, |ui| {
+    crate::widgets::enabled_ui(ui, project.patterns.len() > 1, |ui| {
         if ui.button("Delete pattern").clicked() {
             run(actions, &format!("pattern.remove {number}"));
             ui.close();
@@ -267,7 +267,8 @@ fn tools_menu(ui: &mut egui::Ui, frame: &Frame<'_>, state: &UiState, actions: &m
         ui.close();
     }
     let channel = state.selected_channel + 1;
-    ui.add_enabled_ui(
+    crate::widgets::enabled_ui(
+        ui,
         state.selected_channel < frame.project.channels.len(),
         |ui| {
             if ui
@@ -454,10 +455,10 @@ fn menus(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mu
             Some(label) => format!("Undo {label}"),
             None => "Undo".to_owned(),
         };
-        ui.add_enabled_ui(frame.history.undo.is_some(), |ui| {
+        crate::widgets::enabled_ui(ui, frame.history.undo.is_some(), |ui| {
             menu_item(ui, state, &undo, "edit.undo", actions);
         });
-        ui.add_enabled_ui(frame.history.can_redo, |ui| {
+        crate::widgets::enabled_ui(ui, frame.history.can_redo, |ui| {
             menu_item(ui, state, "Redo", "edit.redo", actions);
         });
     });

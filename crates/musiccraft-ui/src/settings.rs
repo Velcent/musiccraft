@@ -689,7 +689,7 @@ fn foreign_paths(
                 .desired_width(170.0),
         );
         let ready = !from.trim().is_empty() && !to.trim().is_empty();
-        if ui.add_enabled(ready, egui::Button::new("Add")).clicked() {
+        if crate::widgets::add_enabled(ui, ready, egui::Button::new("Add")).clicked() {
             let mut next = settings.clone();
             next.drive_map
                 .push((from.trim().to_owned(), PathBuf::from(to.trim())));

@@ -297,8 +297,7 @@ fn keyboard_strip(ui: &mut egui::Ui, index: usize, channel: &Channel, actions: &
         ui.horizontal(|ui| {
             ui.label(RichText::new(format!("Root {}", key_name(root))).color(theme::TEXT));
             let default = spec(inst::ROOT_KEY).default as u8;
-            if ui
-                .add_enabled(root != default, egui::Button::new("Reset").small())
+            if crate::widgets::add_enabled(ui, root != default, egui::Button::new("Reset").small())
                 .hint("Set the root key back to C5")
                 .clicked()
             {
@@ -501,7 +500,7 @@ fn strip(
                 }
                 pan_knob(ui, state, number, channel, actions);
                 volume_knob(ui, state, number, channel, actions);
-                ui.add_enabled_ui(channel.instrument.plugin().is_none(), |ui| {
+                crate::widgets::enabled_ui(ui, channel.instrument.plugin().is_none(), |ui| {
                     param_knob(ui, state, number, channel, inst::PITCH, "Pitch", actions);
                 });
                 ui.add_space(24.0);

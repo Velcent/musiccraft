@@ -89,7 +89,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 
 ### 4. Disabled and dim
 
-- A disabled control keeps its shape and place. Its text and glyph are drawn in the proposed `theme::TEXT_FAINT` (`TEXT_DIM` moved toward `PANEL`), with no hover change. Its fill stays `RAISED`. It is never hidden, so layouts do not jump. (A window button that cannot apply, such as maximize on a fixed-size window, is left out rather than greyed; main-window section.)
+- A disabled control keeps its shape and place. Its text and glyph are drawn in `theme::TEXT_FAINT` (`TEXT_DIM` moved toward `PANEL`), with no hover change. Its fill stays `RAISED`; nothing is faded. Code disables controls through `widgets::enabled_ui` and `widgets::add_enabled`, never egui's own fade. It is never hidden, so layouts do not jump. (A window button that cannot apply, such as maximize on a fixed-size window, is left out rather than greyed; main-window section.)
 - "Dim" content (a muted track's name, an inaudible row, an empty slot's "empty") uses `TEXT_DIM`. "Off" content (a muted note or clip) uses its own colour at low strength. Never grey content out to `TEXT_DIM`: it would lose its identity.
 
 ### 5. Typography
@@ -403,7 +403,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 | Record, armed, errors, delete items | `theme::DANGER` | Armed dots and the record fill pulse while recording |
 | Current pattern name, STEP badge, save reminder | `theme::HIGHLIGHT` | Save reminder pulses slowly |
 | Track / pattern / channel colour picker | 16 swatches of `theme::track_color(0..16)` in two rows of eight, "No colour" below | Hover swatch: `TEXT` one-point ring; current: `ACCENT` ring |
-| Disabled text and glyphs | proposed `theme::TEXT_FAINT` (`TEXT_DIM` toward `PANEL`) | No hover change |
+| Disabled text and glyphs | `theme::TEXT_FAINT` (`TEXT_DIM` toward `PANEL`) | No hover change |
 | Scroll bars | proposed `theme::SCROLL_RAIL` (`PANEL_DARK`), `theme::SCROLL_THUMB` (`RAISED`) | Hover `RAISED_HOVER`; drag `ACCENT_DIM` |
 | Past the song end | proposed `theme::PAST_END` (lane darkened) | — |
 
@@ -458,9 +458,8 @@ Ordered by visual impact. Where a gap changes layout or behaviour fixed in a spe
 
 1. **Many icon slots do not exist.** `Icon` now has the header glyphs (menu, fold, unfold, maximize, restore, close, more) and refresh. Chevrons, zoom box, pause, snap, loop, gear, star, lock, warning, plus and the rest listed above are still missing.
 2. **Toolbar band tone.** The one-band toolbar fills its band with `PANEL_DARK`, darker than window headers, and the two-band fallback uses two tones. Target: one `PANEL` band in both layouts, with only the menu/hint field and the display wells recessed (toolbar section).
-3. **Disabled controls fade the egui way.** `TEXT_FAINT` exists in `theme` but disabled widgets still rely on egui's default fading; draw their text and glyphs in `TEXT_FAINT` and keep fills unchanged.
-4. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
-5. **No theme adjustment.** The theme is fixed in `theme.rs`. A future Settings → Theme page (own design) would shift token groups as a whole.
+3. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
+4. **No theme adjustment.** The theme is fixed in `theme.rs`. A future Settings → Theme page (own design) would shift token groups as a whole.
 
 ## Sources
 

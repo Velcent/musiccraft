@@ -328,7 +328,7 @@ fn window_menu(
             ),
         ];
         for (enabled, label, op) in ops {
-            if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+            if crate::widgets::add_enabled(ui, enabled, egui::Button::new(label)).clicked() {
                 clipboard_op(ui.ctx(), state, project, op, actions);
                 ui.close();
             }
@@ -353,8 +353,7 @@ fn window_menu(
             ("Move down a track (Shift+Down)", Nudge::Down),
         ];
         for (label, nudge) in nudges {
-            if ui
-                .add_enabled(!selected.is_empty(), egui::Button::new(label))
+            if crate::widgets::add_enabled(ui, !selected.is_empty(), egui::Button::new(label))
                 .clicked()
             {
                 nudge_selection(state, project, nudge, actions);
@@ -383,7 +382,7 @@ fn window_menu(
             ),
         ];
         for (label, pick, enabled) in items {
-            if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+            if crate::widgets::add_enabled(ui, enabled, egui::Button::new(label)).clicked() {
                 state.playlist.selection = picked(state, project, pick, &sources);
                 ui.close();
             }
@@ -593,7 +592,7 @@ fn zoom_items(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
         ("Fit the song", Zoom::Song, true),
     ];
     for (label, op, enabled) in items {
-        if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+        if crate::widgets::add_enabled(ui, enabled, egui::Button::new(label)).clicked() {
             zoom(state, project, op);
         }
     }
@@ -898,11 +897,15 @@ fn pattern_section(
                                 )));
                                 ui.close();
                             }
-                            ui.add_enabled_ui(project.patterns.len() > 1, |ui| {
-                                if ui
-                                    .button(RichText::new("Delete").color(theme::DANGER))
-                                    .clicked()
-                                {
+                            let deletable = project.patterns.len() > 1;
+                            crate::widgets::enabled_ui(ui, deletable, |ui| {
+                                let label = RichText::new("Delete");
+                                let label = if deletable {
+                                    label.color(theme::DANGER)
+                                } else {
+                                    label
+                                };
+                                if ui.button(label).clicked() {
                                     actions.push(Action::Run(Invocation::new(
                                         "pattern.remove",
                                         [(i + 1).to_string()],
@@ -2393,8 +2396,7 @@ fn menu_item(
     hint: &str,
     invocation: Option<Invocation>,
 ) {
-    if ui
-        .add_enabled(invocation.is_some(), egui::Button::new(label))
+    if crate::widgets::add_enabled(ui, invocation.is_some(), egui::Button::new(label))
         .on_hover_text(hint)
         .clicked()
     {
