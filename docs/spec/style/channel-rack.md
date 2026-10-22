@@ -421,7 +421,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`mini_roll`).
 8. **Channel context menu.**
     - It has the two columns in the guide's order, without the duplicate clear item.
-    - Missing: colour and icon items, insert and replace, cut, copy and paste steps, choke itself, MIDI items, graph editor entry.
+    - Colour, cut, copy and paste steps and the graph editor entry are in. Missing: the icon item, insert and replace, choke itself, MIDI items.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`context_menu`).
 9. **Mute light.** Ctrl+click solos and right-click offers Mute and Solo, but there is no Shift+click lock.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).

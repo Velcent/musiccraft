@@ -72,9 +72,12 @@
   on it opens the piano roll on that channel, or closes it when it already
   shows that channel.
 - Right-clicking a channel's name opens its menu in two columns. First: Open
-  in piano roll, Channel settings; Rename…, Change sample… (samplers), Group…;
-  Clone, Delete. Second: Clear notes in pattern; Turn on every 2nd / 4th / 8th
-  step; Shift left, Shift right; Solo, Move up, Move down.
+  in piano roll, Channel settings; Rename…, Change sample… (samplers),
+  Colour ▸, Group…; Clone, Delete. Second: Cut steps, Copy steps, Paste
+  steps (the same as Ctrl+X / C / V over the rack, for this channel), Clear
+  notes in pattern; Turn on every 2nd / 4th / 8th step; Shift left, Shift
+  right; Graph editor (selects the channel and opens the graph), Solo, Move
+  up, Move down.
 - Shift+wheel over the rack's header row steps to the next or previous
   pattern (`pattern.next`, `pattern.prev`).
 - The mute light: a click mutes or unmutes, Ctrl+click solos the channel

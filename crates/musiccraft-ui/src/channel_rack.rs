@@ -564,7 +564,7 @@ pub(crate) fn context_menu(
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| channel_items(ui, state, index, channel, actions));
         ui.separator();
-        ui.vertical(|ui| step_items(ui, project, index, &number, actions));
+        ui.vertical(|ui| step_items(ui, state, project, index, &number, actions));
     });
 }
 
@@ -629,12 +629,26 @@ fn channel_items(
 /// The channel menu's second column: steps, solo and order.
 fn step_items(
     ui: &mut egui::Ui,
+    state: &mut UiState,
     project: &Project,
     index: usize,
     number: &str,
     actions: &mut Vec<Action>,
 ) {
+    use crate::ClipboardKey;
     let number = number.to_owned();
+    let pasting = state.rack_clipboard.is_some();
+    for (label, keys, op, enabled) in [
+        ("Cut steps", "Ctrl+X", ClipboardKey::Cut, true),
+        ("Copy steps", "Ctrl+C", ClipboardKey::Copy, true),
+        ("Paste steps", "Ctrl+V", ClipboardKey::Paste, pasting),
+    ] {
+        let item = egui::Button::new(label).shortcut_text(keys);
+        if crate::widgets::add_enabled(ui, enabled, item).clicked() {
+            step_clipboard(ui.ctx(), state, project, (index, op), actions);
+            ui.close();
+        }
+    }
     if ui.button("Clear notes in pattern").clicked() {
         run(actions, "note.clear", [number.clone()]);
         ui.close();
@@ -656,6 +670,12 @@ fn step_items(
         ui.close();
     }
     ui.separator();
+    let graph = egui::Button::new("Graph editor").shortcut_text("Ctrl+K");
+    if ui.add(graph).clicked() {
+        state.selected_channel = index;
+        state.graph = Some(state.graph.unwrap_or(crate::piano_roll::LaneMode::Velocity));
+        ui.close();
+    }
     if ui.button("Solo").clicked() {
         run(actions, "channel.solo", [number.clone()]);
         ui.close();
@@ -1066,25 +1086,46 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
             state.rack_group = step_group(project, state.rack_group.as_ref(), forward);
         }
     }
+    use crate::ClipboardKey;
+    for op in [ClipboardKey::Copy, ClipboardKey::Cut, ClipboardKey::Paste] {
+        if crate::clipboard_key(ctx, op) {
+            step_clipboard(ctx, state, project, (selected, op), actions);
+        }
+    }
+}
+
+/// Copies, cuts or pastes the notes of channel `index` in the current
+/// pattern; a paste replaces them with the copied ones (one undo step).
+fn step_clipboard(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    project: &Project,
+    (index, op): (usize, crate::ClipboardKey),
+    actions: &mut Vec<Action>,
+) {
+    use crate::ClipboardKey;
+    let Some(channel) = project.channels.get(index) else {
+        return;
+    };
     let notes: Vec<musiccraft_project::Note> = project
         .current_pattern()
-        .notes_of(project.channels[selected].id)
+        .notes_of(channel.id)
         .copied()
         .collect();
-    use crate::ClipboardKey;
-    if crate::clipboard_key(ctx, ClipboardKey::Copy) {
-        state.rack_clipboard = Some(notes.clone());
-        crate::copied(ctx, "steps");
-    }
-    if crate::clipboard_key(ctx, ClipboardKey::Cut) {
-        actions.extend(crate::piano_roll::replace_notes(selected, &notes, &[]).map(Action::Run));
-        state.rack_clipboard = Some(notes.clone());
-        crate::copied(ctx, "steps");
-    }
-    if crate::clipboard_key(ctx, ClipboardKey::Paste) {
-        if let Some(copied) = &state.rack_clipboard {
-            let paste = crate::piano_roll::replace_notes(selected, &notes, copied);
-            actions.extend(paste.map(Action::Run));
+    match op {
+        ClipboardKey::Copy | ClipboardKey::Cut => {
+            if op == ClipboardKey::Cut {
+                let cut = crate::piano_roll::replace_notes(index, &notes, &[]);
+                actions.extend(cut.map(Action::Run));
+            }
+            state.rack_clipboard = Some(notes);
+            crate::copied(ctx, "steps");
+        }
+        ClipboardKey::Paste => {
+            if let Some(copied) = &state.rack_clipboard {
+                let paste = crate::piano_roll::replace_notes(index, &notes, copied);
+                actions.extend(paste.map(Action::Run));
+            }
         }
     }
 }
@@ -1267,5 +1308,72 @@ mod tests {
         let mut added = vec![Action::Run(Invocation::bare("channel.add_synth"))];
         join_shown_group(&state, session.project(), &mut added);
         assert_eq!(added, [Action::Run(Invocation::bare("channel.add_synth"))]);
+    }
+
+    #[test]
+    fn the_menu_copies_one_channels_steps_onto_another() {
+        use crate::ClipboardKey;
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        session.run_line("channel.add_synth").unwrap();
+        session.run_line("channel.add_synth").unwrap();
+        let n = session.project().channels.len();
+        for line in [
+            format!("step.toggle {} 1", n - 1),
+            format!("step.toggle {} 5", n - 1),
+            format!("step.toggle {n} 3"),
+        ] {
+            session.run_line(&line).unwrap();
+        }
+        let ctx = egui::Context::default();
+        let mut state = UiState::default();
+        let mut actions = Vec::new();
+        let starts = |s: &musiccraft_commands::Session, i: usize| -> Vec<u32> {
+            let p = s.project();
+            p.current_pattern()
+                .notes_of(p.channels[i].id)
+                .map(|n| n.start)
+                .collect()
+        };
+        let project = session.project().clone();
+        let channel = project.channels.len() - 2;
+        step_clipboard(
+            &ctx,
+            &mut state,
+            &project,
+            (channel, ClipboardKey::Copy),
+            &mut actions,
+        );
+        assert!(actions.is_empty() && state.rack_clipboard.is_some());
+        step_clipboard(
+            &ctx,
+            &mut state,
+            &project,
+            (channel + 1, ClipboardKey::Paste),
+            &mut actions,
+        );
+        for action in actions.drain(..) {
+            if let Action::Run(i) = action {
+                session.run(&i).unwrap();
+            }
+        }
+        assert_eq!(starts(&session, channel).len(), 2);
+        assert_eq!(starts(&session, channel + 1), starts(&session, channel));
+        let project = session.project().clone();
+        step_clipboard(
+            &ctx,
+            &mut state,
+            &project,
+            (channel, ClipboardKey::Cut),
+            &mut actions,
+        );
+        for action in actions.drain(..) {
+            if let Action::Run(i) = action {
+                session.run(&i).unwrap();
+            }
+        }
+        assert!(starts(&session, channel).is_empty());
     }
 }
