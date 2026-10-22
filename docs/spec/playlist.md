@@ -27,8 +27,10 @@
 - In song mode the song length is the end of the last clip rounded up to whole
   bars. Removing a pattern removes its clips (undo restores them).
 
-- **Picker** (UI): the list beside the playlist has tabs All, Pat(terns),
-  Aud(io) and Aut(omation). Clicking an entry chooses what a click on the
+- **Picker** (UI): the list beside the playlist has three kind switches at
+  the top (pattern, audio and automation glyphs). A lit switch shows only that
+  kind; clicking it again shows all kinds, with no switch lit. The list has no
+  group headings. Clicking an entry chooses what a click on the
   playlist places: the selected pattern, an audio clip of that channel (as
   long as its other audio clips), or that automation. Clips show their name in
   a title strip with the preview (notes, waveform or curve) below it.

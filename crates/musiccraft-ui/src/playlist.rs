@@ -399,20 +399,31 @@ fn pattern_list(
     state.playlist.picker_items.clear();
     ui.vertical(|ui| {
         ui.set_width(LIST_WIDTH);
-        ui.horizontal_wrapped(|ui| {
+        // Kind switches: one lit shows only that kind; none lit shows all.
+        ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            for (picker, label, hint) in [
-                (Picker::All, "All", "Patterns, audio and automation clips"),
-                (Picker::Patterns, "Pat", "Patterns"),
-                (Picker::Audio, "Aud", "Audio clips"),
-                (Picker::Automation, "Aut", "Automation clips"),
+            ui.add_space(((LIST_WIDTH - 3.0 * 28.0 - 4.0) / 2.0).max(0.0));
+            for (picker, icon, hint) in [
+                (
+                    Picker::Patterns,
+                    Icon::Pattern,
+                    "Patterns: show only patterns · click again for all",
+                ),
+                (
+                    Picker::Audio,
+                    Icon::Wave,
+                    "Audio: show only audio clips · click again for all",
+                ),
+                (
+                    Picker::Automation,
+                    Icon::Automation,
+                    "Automation: show only automation · click again for all",
+                ),
             ] {
-                ui.selectable_value(
-                    &mut state.playlist.picker,
-                    picker,
-                    RichText::new(label).small(),
-                )
-                .hint(hint);
+                let lit = state.playlist.picker == picker;
+                if icons::toggle(ui, icon, lit, hint).clicked() {
+                    state.playlist.picker = if lit { Picker::All } else { picker };
+                }
             }
         });
         let picker = state.playlist.picker;
@@ -447,14 +458,8 @@ fn audio_section(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
             }
         }
     }
-    ui.add_space(8.0);
-    ui.label(
-        RichText::new("AUDIO")
-            .small()
-            .strong()
-            .color(theme::TEXT_DIM),
-    );
-    if sources.is_empty() {
+    ui.add_space(6.0);
+    if sources.is_empty() && state.playlist.picker == Picker::Audio {
         ui.label(
             RichText::new("Drop a sound on the playlist")
                 .small()
@@ -485,12 +490,6 @@ fn pattern_section(
     actions: &mut Vec<Action>,
 ) {
     {
-        ui.label(
-            RichText::new("PATTERNS")
-                .small()
-                .strong()
-                .color(theme::TEXT_DIM),
-        );
         // A solid scroll bar takes its own strip: a floating one would lie
         // over the right edge of the miniatures and catch their clicks.
         ui.scope(|ui| {
@@ -667,13 +666,7 @@ fn automation_section(
 ) {
     {
         if !project.automations.is_empty() {
-            ui.add_space(8.0);
-            ui.label(
-                RichText::new("AUTOMATION")
-                    .small()
-                    .strong()
-                    .color(theme::TEXT_DIM),
-            );
+            ui.add_space(6.0);
             for (i, automation) in project.automations.iter().enumerate() {
                 let selected = state.playlist.paint_automation == Some(automation.id);
                 let text = RichText::new(format!("~ {}", automation.name)).color(theme::AUTOMATION);
