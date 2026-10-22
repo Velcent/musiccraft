@@ -418,7 +418,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
 8. **Solo is stored as mutes.** `channel.solo` mutes every other channel, so "silenced by solo" cannot be told apart from "muted", and there is no soloed state to ring. The solo light roles need solo kept as its own state.
    - Files: `docs/spec/channel-rack.md` (`channel.solo`), `crates/musiccraft-project/src/model.rs`.
 9. **Note preview.**
-    - Left-click only opens the piano roll (does not toggle), and right-click "open at this point" is missing.
+    - Left-click toggles the piano roll for that channel, but right-click "open at this point" is missing.
     - There is no all-rows piano-roll view.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`mini_roll`).
 10. **Channel context menu.**
@@ -426,7 +426,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
     - "Steps ▸ Clear" duplicates "Clear notes in pattern".
     - Missing: colour and icon items, insert and replace, cut, copy and paste steps, choke itself, MIDI items, graph editor entry.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`context_menu`).
-11. **Mute light.** No right-click solo menu, no Ctrl+click solo on the light (keyboard only), no Shift+click lock.
+11. **Mute light.** Ctrl+click solos and right-click offers Mute and Solo, but there is no Shift+click lock.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
 12. **Mixer-track box.**
     - Layer and MIDI-out channels still show an editable number although they make no sound of their own.

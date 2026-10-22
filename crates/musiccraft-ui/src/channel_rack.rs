@@ -219,12 +219,28 @@ fn row(
     let number = (index + 1).to_string();
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        if widgets::dot(ui, !channel.mute, theme::ACCENT)
-            .hint("Mute")
-            .clicked()
-        {
-            run(actions, "channel.toggle_mute", [number.clone()]);
+        let light = widgets::dot(ui, !channel.mute, theme::ACCENT)
+            .hint("Mute · Ctrl+click: solo · right-click for options");
+        if light.clicked() {
+            let solo = ui.input(|i| i.modifiers.command);
+            let command = if solo {
+                "channel.solo"
+            } else {
+                "channel.toggle_mute"
+            };
+            run(actions, command, [number.clone()]);
         }
+        light.context_menu(|ui| {
+            let mute = if channel.mute { "Unmute" } else { "Mute" };
+            if ui.button(mute).clicked() {
+                run(actions, "channel.toggle_mute", [number.clone()]);
+                ui.close();
+            }
+            if ui.button("Solo").clicked() {
+                run(actions, "channel.solo", [number.clone()]);
+                ui.close();
+            }
+        });
         let pan = widgets::knob(ui, channel.pan, -1.0, 1.0, 0.0, true);
         crate::automation::menu(&pan.response, &format!("channel:{number}:pan"), actions);
         if pan.started {
@@ -672,11 +688,12 @@ fn mini_roll(
         );
     }
     if response
-        .hint("Melodic pattern: click to open the piano roll")
+        .hint("Melodic pattern: click to open or close the piano roll")
         .clicked()
     {
+        let showing = state.windows.piano_roll && state.selected_channel == index;
         state.selected_channel = index;
-        state.windows.piano_roll = true;
+        state.windows.piano_roll = !showing;
     }
 }
 

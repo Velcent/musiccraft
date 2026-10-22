@@ -50,7 +50,11 @@
   A lit step is filled with the channel colour, one step darker in odd beat
   groups so the grouping survives, and dimmer for a lower velocity (with a
   readable minimum); lit steps under the playhead light one step brighter.
-  Melodic rows show a miniature roll whose alternate bars are shaded.
+  Melodic rows show a miniature roll whose alternate bars are shaded; a click
+  on it opens the piano roll on that channel, or closes it when it already
+  shows that channel.
+- The mute light: a click mutes or unmutes, Ctrl+click solos the channel
+  (`channel.solo`), and right-click offers Mute or Unmute and Solo.
   The pattern length box takes 1 to 1024 steps.
 - **Row layout** (UI), left to right: mute dot, pan knob, volume knob, the
   mixer track box, the name button, the steps (or a miniature roll), and a

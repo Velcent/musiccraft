@@ -1903,3 +1903,27 @@ fn mixer_strips_step_by_whole_strips() {
         offset(&h)
     );
 }
+
+#[test]
+fn ctrl_clicking_a_mute_light_solos_the_channel() {
+    let mut h = Harness::new(&["channel.add_synth", "channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let light = (0..40)
+        .flat_map(|j| (0..40).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 3.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Mute · Ctrl+click"))
+        })
+        .expect("a mute light");
+    h.modifiers = Modifiers::COMMAND;
+    let out = h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["channel.solo 1"]);
+}
