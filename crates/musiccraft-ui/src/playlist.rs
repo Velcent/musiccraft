@@ -50,7 +50,7 @@ const TRACK_HEIGHT_RANGE: (f32, f32) = (18.0, 96.0);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaylistState {
-    px_per_bar: f32,
+    pub(crate) px_per_bar: f32,
     row_height: f32,
     /// Scroll offset of the last frame, in points.
     offset: Vec2,
@@ -84,6 +84,10 @@ pub struct PlaylistState {
     erased: Vec<Clip>,
     /// The song's bars and beats, refreshed every frame.
     pub(crate) meter: Meter,
+    /// The playhead in ticks, refreshed every frame (keys zoom around it).
+    playhead: f32,
+    /// The zoom to return to after Shift+4 zoomed all the way out.
+    zoom_back: Option<f32>,
 }
 
 impl Default for PlaylistState {
@@ -107,6 +111,8 @@ impl Default for PlaylistState {
             painted: Vec::new(),
             erased: Vec::new(),
             meter: Meter::default(),
+            playhead: 0.0,
+            zoom_back: None,
         }
     }
 }
@@ -297,6 +303,20 @@ fn window_menu(
             state.playlist.selection.clear();
             ui.close();
         }
+        let nudges = [
+            ("Nudge left (Shift+Left)", Nudge::Left),
+            ("Nudge right (Shift+Right)", Nudge::Right),
+            ("Move up a track (Shift+Up)", Nudge::Up),
+            ("Move down a track (Shift+Down)", Nudge::Down),
+        ];
+        for (label, nudge) in nudges {
+            if ui
+                .add_enabled(!selected.is_empty(), egui::Button::new(label))
+                .clicked()
+            {
+                nudge_selection(state, project, nudge, actions);
+            }
+        }
         ui.separator();
         time_items(ui, project, actions);
     });
@@ -317,33 +337,115 @@ fn window_menu(
         }
     });
     ui.menu_button("Snap", |ui| snap_list(ui, state));
-    ui.menu_button("Zoom", |ui| {
-        if ui.button("Zoom in").hint("Ctrl+wheel also zooms").clicked() {
-            state.playlist.px_per_bar = (state.playlist.px_per_bar * 1.25).min(BAR_WIDTH_RANGE.1);
-        }
-        if ui.button("Zoom out").clicked() {
-            state.playlist.px_per_bar = (state.playlist.px_per_bar / 1.25).max(BAR_WIDTH_RANGE.0);
-        }
-        if ui.button("Fit the song").clicked() {
-            if let Some((_, view)) = state.playlist.last_view {
-                let bars = project
-                    .song_meter()
-                    .bar(project.playlist.length_ticks())
-                    .index
-                    .max(1);
-                let width = view.width() - HEADER_WIDTH - 12.0;
-                state.playlist.px_per_bar =
-                    (width / bars as f32).clamp(BAR_WIDTH_RANGE.0, BAR_WIDTH_RANGE.1);
-            }
-            ui.close();
-        }
-    });
+    ui.menu_button("Zoom", |ui| zoom_items(ui, state, project));
     ui.menu_button("Markers", |ui| {
         if ui.button("Add marker at the playhead (Alt+T)").clicked() {
             actions.push(Action::Run(Invocation::bare("ui.add_marker")));
             ui.close();
         }
     });
+}
+
+/// A change of the playlist's horizontal zoom.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Zoom {
+    /// Multiply the bar width, keeping the playhead where it is on screen.
+    By(f32),
+    /// A fixed bar width (Shift+1–3).
+    Level(f32),
+    /// All the way out, or back to the zoom before that (Shift+4).
+    OutAndBack,
+    /// The loop region in the window (Shift+5).
+    Loop,
+    /// The whole song in the window.
+    Song,
+}
+
+/// The zoom presets of Shift+1, Shift+2 and Shift+3, in points per 4/4 bar.
+const ZOOM_LEVELS: [f32; 3] = [32.0, 96.0, 240.0];
+
+/// The Zoom submenu of the window menu.
+fn zoom_items(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
+    let items = [
+        ("Zoom in (Page Up)", Zoom::By(1.5), true),
+        ("Zoom out (Page Down)", Zoom::By(1.0 / 1.5), true),
+        ("Zoom preset 1 (Shift+1)", Zoom::Level(ZOOM_LEVELS[0]), true),
+        ("Zoom preset 2 (Shift+2)", Zoom::Level(ZOOM_LEVELS[1]), true),
+        ("Zoom preset 3 (Shift+3)", Zoom::Level(ZOOM_LEVELS[2]), true),
+        (
+            "Zoom all the way out and back (Shift+4)",
+            Zoom::OutAndBack,
+            true,
+        ),
+        (
+            "Zoom to the loop region (Shift+5)",
+            Zoom::Loop,
+            project.playlist.loop_range.is_some(),
+        ),
+        ("Fit the song", Zoom::Song, true),
+    ];
+    for (label, op, enabled) in items {
+        if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+            zoom(state, project, op);
+        }
+    }
+}
+
+fn zoom(state: &mut UiState, project: &Project, op: Zoom) {
+    let list = &mut state.playlist;
+    let clamp = |px: f32| px.clamp(BAR_WIDTH_RANGE.0, BAR_WIDTH_RANGE.1);
+    let range = match op {
+        Zoom::By(factor) => {
+            let old = list.px_per_bar;
+            list.px_per_bar = clamp(old * factor);
+            // Keep the playhead at the same spot in the view.
+            let tick = list.playhead / ZOOM_TICKS as f32;
+            let x = (list.offset.x + tick * (list.px_per_bar - old)).max(0.0);
+            list.jump = Some(vec2(x, list.offset.y));
+            return;
+        }
+        Zoom::Level(px) => {
+            list.px_per_bar = clamp(px);
+            return;
+        }
+        Zoom::OutAndBack => {
+            match list.zoom_back.take() {
+                Some(px) => list.px_per_bar = px,
+                None => {
+                    list.zoom_back = Some(list.px_per_bar);
+                    list.px_per_bar = BAR_WIDTH_RANGE.0;
+                }
+            }
+            return;
+        }
+        Zoom::Loop => project.playlist.loop_range,
+        Zoom::Song => {
+            let end = project.song_meter().bar(project.playlist.length_ticks());
+            Some((0, project.song_meter().bar_start(end.index.max(1))))
+        }
+    };
+    let (Some((from, to)), Some((_, view))) = (range, list.last_view) else {
+        return;
+    };
+    let bars = to.saturating_sub(from).max(1) as f32 / ZOOM_TICKS as f32;
+    list.px_per_bar = clamp((view.width() - HEADER_WIDTH - 12.0) / bars);
+    let x = from as f32 / ZOOM_TICKS as f32 * list.px_per_bar;
+    list.jump = Some(vec2(x, list.offset.y));
+}
+
+/// Scrolls the playlist to the first clip of `source` (Show in playlist).
+fn show_source(state: &mut UiState, project: &Project, source: ClipSource) {
+    let list = &mut state.playlist;
+    let first = project
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| c.source == source)
+        .min_by_key(|c| (c.start, c.track));
+    if let Some(c) = first {
+        let x = c.start as f32 / ZOOM_TICKS as f32 * list.px_per_bar;
+        list.jump = Some(vec2(x, c.track as f32 * list.row_height));
+    }
 }
 
 /// The clips in the playlist selection.
@@ -523,6 +625,10 @@ fn pattern_section(
                         response.context_menu(|ui| {
                             if ui.button("Rename…").clicked() {
                                 state.open_dialog(Dialog::rename_pattern(i, &pattern.name));
+                                ui.close();
+                            }
+                            if ui.button("Show in playlist (Shift+C)").clicked() {
+                                show_source(state, project, ClipSource::Pattern(pattern.id));
                                 ui.close();
                             }
                             if ui.button("Clone").clicked() {
@@ -743,6 +849,7 @@ fn automation_section(
 
 fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     let project = frame.project;
+    state.playlist.playhead = frame.engine.position_ticks.max(0.0) as f32;
     let px_per_tick = state.playlist.px_per_bar / ZOOM_TICKS as f32;
     let row_h = state.playlist.row_height;
     let meter = state.playlist.meter.clone();
@@ -2714,6 +2821,84 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         let span = duplicate_span(&selected);
         actions.extend(duplication(project, &selected).map(Action::Run));
         state.playlist.selection = selected.iter().map(|c| (c.track, c.start + span)).collect();
+    }
+    let nudges = [
+        (Key::ArrowLeft, Nudge::Left),
+        (Key::ArrowRight, Nudge::Right),
+        (Key::ArrowUp, Nudge::Up),
+        (Key::ArrowDown, Nudge::Down),
+    ];
+    for (key, nudge) in nudges {
+        if pressed(Modifiers::SHIFT, key) {
+            nudge_selection(state, project, nudge, actions);
+        }
+    }
+    if pressed(Modifiers::SHIFT, Key::C) {
+        show_source(
+            state,
+            project,
+            ClipSource::Pattern(project.current_pattern().id),
+        );
+    }
+    let zooms = [
+        (Modifiers::NONE, Key::PageUp, Zoom::By(1.5)),
+        (Modifiers::NONE, Key::PageDown, Zoom::By(1.0 / 1.5)),
+        (Modifiers::SHIFT, Key::Num1, Zoom::Level(ZOOM_LEVELS[0])),
+        (Modifiers::SHIFT, Key::Num2, Zoom::Level(ZOOM_LEVELS[1])),
+        (Modifiers::SHIFT, Key::Num3, Zoom::Level(ZOOM_LEVELS[2])),
+        (Modifiers::SHIFT, Key::Num4, Zoom::OutAndBack),
+        (Modifiers::SHIFT, Key::Num5, Zoom::Loop),
+    ];
+    for (modifiers, key, op) in zooms {
+        if pressed(modifiers, key) {
+            zoom(state, project, op);
+        }
+    }
+}
+
+/// A one-step move of the selected clips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Nudge {
+    /// One snap step earlier.
+    Left,
+    /// One snap step later.
+    Right,
+    /// One track up.
+    Up,
+    /// One track down.
+    Down,
+}
+
+/// Moves the selected clips one snap step or one track, as one undo step;
+/// nothing moves when a clip would leave the playlist.
+fn nudge_selection(
+    state: &mut UiState,
+    project: &Project,
+    nudge: Nudge,
+    actions: &mut Vec<Action>,
+) {
+    let selected = selected_clips(state, project);
+    let Some(first) = selected.iter().min_by_key(|c| c.start) else {
+        return;
+    };
+    let list = &state.playlist;
+    let step = |tick: u32| i64::from(list.snap.ticks_at(tick, &list.meter));
+    let (dt, dtrack) = match nudge {
+        Nudge::Left => (-step(first.start.saturating_sub(1)), 0),
+        Nudge::Right => (step(first.start), 0),
+        Nudge::Up => (0, -1),
+        Nudge::Down => (0, 1),
+    };
+    let fits = selected.iter().all(|c| {
+        let track = i64::from(c.track) + dtrack;
+        i64::from(c.start) + dt >= 0 && (0..i64::from(PLAYLIST_TRACKS)).contains(&track)
+    });
+    if !fits {
+        return;
+    }
+    if let Some(moved) = move_clips(&selected, dt, dtrack) {
+        actions.push(Action::Run(moved));
+        state.playlist.selection = selected.iter().map(|c| shifted(c, dt, dtrack)).collect();
     }
 }
 

@@ -86,6 +86,24 @@ the typing keyboard is off); they take precedence over the global keys.
 | Shift+1, Shift+2, Shift+3 | Fixed zoom levels (12, 24 and 48 points per step) |
 | Shift+4 / Shift+5 | Fit the pattern / zoom to the time selection (or the selected notes) |
 
+### Over the playlist
+
+Window-local keys, active while the playlist is the focused window; they
+take precedence over the global keys.
+
+| Chord | Action |
+| --- | --- |
+| Ctrl+A / Esc | Select all clips / clear the selection |
+| Ctrl+B | Duplicate the selection after itself |
+| Delete / Backspace | Delete the selection |
+| Shift+Left / Right | Nudge the selection one snap step |
+| Shift+Up / Down | Move the selection up / down one track |
+| Shift+C | Show the current pattern in the playlist (its first clip) |
+| Page Up / Page Down | Zoom in / out around the playhead |
+| Shift+1, Shift+2, Shift+3 | Zoom presets (32, 96 and 240 points per bar) |
+| Shift+4 | Zoom all the way out; again to go back |
+| Shift+5 | Zoom to the loop region |
+
 ## Sources
 
 - Space, L, Ctrl+M, F4, F5, F6, F7, F9, Alt+F8, Alt+T, numeric-keypad plus/minus,
@@ -109,3 +127,8 @@ the typing keyboard is off); they take precedence over the global keys.
   (close the focused window) and F12 / Alt+F12 / Ctrl+F12 (hide windows)
   follow the FL Studio online manual, "Keyboard shortcuts", "Window
   Navigation". What the default layout restores is our own design.
+- The piano roll's and the playlist's window-local keys (Page Up / Page
+  Down and Shift+1–5 zoom, Shift+arrow moves, Shift+C) follow the interface
+  style guide (`docs/spec/style/piano-roll.md` and `playlist.md`, window
+  menus), which follows the FL Studio online manual's window menus. The zoom
+  preset widths are our own.

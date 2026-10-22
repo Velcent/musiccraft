@@ -527,7 +527,7 @@ Ordered by visual impact. The spec changes (`docs/spec/playlist.md`, `docs/spec/
 8. **Drag-and-drop feedback.** A sound dragged from the browser shows a one-bar ghost clip at the snapped spot and outlines the track header, but the ghost is not yet as long as the sound, and dropping on a track header does nothing. File: `crates/musiccraft-ui/src/playlist.rs` (`drop_ghost`, the browser-drop block).
 9. **Tools.** There is no Slip tool, and S is taken globally by `ui.toggle_slide` (`crates/musiccraft-ui/keymap/default.keymap`), so Slip needs the window-local Shift+S (proposed, `keymap.md` first). Right-drag delete, Mute-tool drag, the Slice drag line, the Zoom-tool range drag, Alt to ignore snap and Shift to copy are missing. Clips can be resized only from the right edge. Files: `crates/musiccraft-ui/src/playlist.rs` (`tool_stroke`, `edit`), `crates/musiccraft-ui/src/icons.rs`.
 10. **No corner block.** There are no kind switches, no "Colours" option for pattern clips, no fade or gain handles on audio clips, and no in-place automation points. Files: `crates/musiccraft-ui/src/playlist.rs`, `crates/musiccraft-ui/src/automation.rs` (the curve editing exists only in the editor window).
-11. **Missing window-local keys.** Page Up / Page Down, Shift+1 to Shift+5, Shift+arrows, Ctrl+Up / Ctrl+Down, Alt+P and Shift+C are all unbound. `keymap.md` needs an "Over the playlist" table first, like "Over the channel rack".
+11. **Missing window-local keys.** Ctrl+Up / Ctrl+Down (there is no track selection yet) and Alt+P (the clip list cannot be hidden yet) are unbound. The other keys are in `keymap.md`, "Over the playlist".
 
 ## Sources
 

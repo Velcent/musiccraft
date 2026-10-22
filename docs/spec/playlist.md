@@ -224,15 +224,22 @@
   colour or the neutral fill. Automation recorded into the pattern shows as
   faint curves under the notes. A pattern with neither notes nor automation
   says "empty". The pattern being painted is outlined in the accent colour. Click selects it for painting; right-click opens the pattern menu
-  (rename, clone, colour, time signature, clear automation, delete).
+  (rename, show in playlist, clone, colour, time signature, clear
+  automation, delete). Show in playlist scrolls to the pattern's first clip.
 - The playlist is an editor window like the channel rack, piano roll and
   mixer (`window-layout.md`, "Playlist"), not the workspace background. Click
   or drag on the ruler to move the playhead; during song playback the view
   follows the playhead.
 - Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
   dragging moves or resizes every selected clip; Delete removes; Ctrl+A selects
-  all; Ctrl+B duplicates the selection right after its end. One undo step each.
-- Ctrl+scroll zooms horizontally. The shared scroll/zoom row runs above the
+  all; Ctrl+B duplicates the selection right after its end; Shift+Left and
+  Shift+Right nudge it one snap step, Shift+Up and Shift+Down move it one
+  track (nothing moves if a clip would leave the playlist). One undo step
+  each. The window-local keys are listed in `keymap.md`, "Over the playlist".
+- Ctrl+scroll zooms horizontally, and so do Page Up and Page Down, which
+  keep the playhead where it is in the view. Shift+1 to Shift+3 pick fixed
+  zooms (32, 96 and 240 points per bar), Shift+4 zooms all the way out and
+  pressed again goes back, Shift+5 fits the loop region. The shared scroll/zoom row runs above the
   ruler (as in the piano roll): chevrons that scroll a bar and repeat when
   held, a rail that pages and shows a miniature of the clips, a thumb that
   scrolls and whose ends zoom, and the vertical zoom box, which sets the

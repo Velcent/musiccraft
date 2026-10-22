@@ -2475,3 +2475,43 @@ fn piano_roll_zoom_keys_step_and_fit() {
     let fit = ((clip.width() - crate::piano_roll::KEYS_WIDTH) / steps).clamp(low, high);
     assert!((h.state.roll.px_per_step - fit).abs() < 1e-3);
 }
+
+#[test]
+fn playlist_keys_zoom_nudge_and_move_tracks() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    let clip = |h: &Harness| {
+        let c = h.session.project().playlist.clips[0];
+        (c.track, c.start)
+    };
+    h.click(h.playlist_point(bar + 40, 0), PointerButton::Primary);
+    assert_eq!(h.state.playlist.selection.len(), 1);
+
+    // Shift+arrows nudge one snap step (a bar) and move one track, keeping
+    // the selection on the clip.
+    h.key(egui::Key::ArrowRight, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (0, 2 * bar));
+    h.key(egui::Key::ArrowDown, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (1, 2 * bar));
+    h.key(egui::Key::ArrowLeft, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (1, bar));
+    h.key(egui::Key::ArrowUp, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (0, bar));
+    h.key(egui::Key::ArrowUp, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (0, bar), "the top track stops the move");
+    assert_eq!(h.state.playlist.selection, BTreeSet::from([(0, bar)]));
+
+    // Page Up zooms in; Shift+1 picks a preset; Shift+4 goes all the way out
+    // and back.
+    let before = h.state.playlist.px_per_bar;
+    h.key(egui::Key::PageUp, Modifiers::NONE);
+    assert!((h.state.playlist.px_per_bar - before * 1.5).abs() < 1e-3);
+    h.key(egui::Key::Num1, Modifiers::SHIFT);
+    assert!((h.state.playlist.px_per_bar - 32.0).abs() < 1e-3);
+    h.key(egui::Key::Num4, Modifiers::SHIFT);
+    assert!((h.state.playlist.px_per_bar - 16.0).abs() < 1e-3);
+    h.key(egui::Key::Num4, Modifiers::SHIFT);
+    assert!((h.state.playlist.px_per_bar - 32.0).abs() < 1e-3);
+}
