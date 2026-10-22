@@ -443,7 +443,7 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 11. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
 12. **No tall-row property view.** Note labels are cut with an ellipsis, but the label size is fixed. `draw_note()`.
 13. **Window menu is flat**: new-note velocity, Quantize, Tools, transpose an octave, clear. It has no File / Edit / Select / View / Snap / Zoom / Markers submenus. `options_menu()` lines 558–622.
-14. **Clicking a note does not make its length and velocity the new defaults.** `last_length` changes only after a drag (lines 1661–1663). Velocity comes from the window menu. Snap has no right-click.
+14. **Snap has no right-click.** Pressing a note with Draw or Paint now makes its length and velocity the new-note defaults; the snap picker still has no right-click menu.
 15. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
 16. **Wording**:
     - The Shape item "Claw every 2nd" (line 1243) and its command `note.claw` (`crates/musiccraft-commands/src/cmds/note_gen.rs`, the `articulate_and_claw` test in `crates/musiccraft-commands/src/cmds/tests.rs`, and `docs/spec/piano-roll.md`) borrow a word from a coined tool name. Rename the label to "Keep every 2nd" and the command to, for example, `note.keep_every`, with its spec and test; the spec changes first.

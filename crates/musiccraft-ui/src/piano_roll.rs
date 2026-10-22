@@ -102,8 +102,8 @@ pub struct RollState {
     px_per_step: f32,
     key_height: f32,
     pub(crate) snap: Snap,
-    last_length: u32,
-    velocity: u8,
+    pub(crate) last_length: u32,
+    pub(crate) velocity: u8,
     drag: Option<NoteDrag>,
     pub(crate) preview: Option<(usize, u8)>,
     /// Channel the view was last centred for.
@@ -2057,6 +2057,22 @@ fn edit(
 
     right_erase(state, response, notes, boxes, channel, actions);
     let tool = state.roll.tool;
+    // Pressing a note makes its length and velocity the new-note defaults.
+    if matches!(tool, Tool::Draw | Tool::Paint) && response.is_pointer_button_down_on() {
+        let pressed = ui.input(|i| {
+            i.pointer
+                .primary_pressed()
+                .then(|| i.pointer.press_origin())
+        });
+        if let Some(origin) = pressed.flatten().filter(|p| editable(*p)) {
+            if let Hit::Body(i) | Hit::Edge(i) = hit_test(boxes.iter().copied(), origin) {
+                if let Some(n) = notes.get(i) {
+                    state.roll.last_length = n.length;
+                    state.roll.velocity = n.velocity;
+                }
+            }
+        }
+    }
     if tool_stroke(ui, state, response, notes, boxes, channel, &at, actions) {
         return;
     }

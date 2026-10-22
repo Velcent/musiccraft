@@ -59,6 +59,8 @@
   The piano roll's Mute tool toggles muting on the notes it clicks or sweeps.
 - The bottom lane edits velocity, pan, release, fine pitch, Mod A or Mod B
   (the note properties `mod_x` and `mod_y`).
+- Pressing a note with the Draw or Paint tool makes its length and velocity
+  the ones the next new notes take.
 - New notes take the toolbar's colour and Portamento setting. Fine pitch,
   release velocity and Mod A/B apply to the built-in instruments; plugins get
   the note's key and velocity.

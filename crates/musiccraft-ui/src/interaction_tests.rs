@@ -1812,3 +1812,17 @@ fn right_clicking_the_empty_workspace_opens_the_window_menu() {
     h.settle();
     assert!(egui::Popup::is_any_open(&h.ctx));
 }
+
+#[test]
+fn pressing_a_note_makes_its_length_and_velocity_the_defaults() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 8 C5 64"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let note = *h.session.project().current_pattern().notes.first().unwrap();
+    assert_ne!(h.state.roll.last_length, note.length);
+    let p = h.roll_point(note.start + 10, note.key);
+    h.click(p, PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.roll.last_length, note.length);
+    assert_eq!(h.state.roll.velocity, 64);
+}
