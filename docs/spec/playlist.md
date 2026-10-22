@@ -251,6 +251,9 @@
   playing). A clip's glyph and name stay in view when the clip starts left
   of the visible lanes. Zoomed far in (a bar wider than 240 points), each
   bar is its own group for the shading and the strongest lines.
+- The window menu's View submenu turns off the bar-group shading, the track
+  separators and following the playhead (all on by default; not saved with
+  the project).
 - Double-clicking a pattern clip opens it in the piano roll; an automation
   clip opens the automation editor; an audio clip opens its channel's
   settings.

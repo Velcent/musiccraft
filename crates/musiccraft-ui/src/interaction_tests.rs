@@ -30,6 +30,8 @@ struct Harness {
     other: Vec<Action>,
     /// The pointer shape the last frame asked for.
     cursor: egui::CursorIcon,
+    /// What the engine reports to the views.
+    engine: EngineStatus,
 }
 
 impl Harness {
@@ -53,6 +55,7 @@ impl Harness {
             plugins: Plugins::default(),
             other: Vec::new(),
             cursor: egui::CursorIcon::Default,
+            engine: EngineStatus::default(),
         }
     }
 
@@ -67,7 +70,6 @@ impl Harness {
             ..Default::default()
         };
         self.time += 1.0 / 60.0;
-        let engine = EngineStatus::default();
         let history = History::default();
         let mut actions = Vec::new();
         {
@@ -76,11 +78,12 @@ impl Harness {
                 state,
                 session,
                 plugins,
+                engine,
                 ..
             } = self;
             let frame = Frame {
                 project: session.project(),
-                engine: &engine,
+                engine,
                 history: &history,
                 waveform: None,
                 waveform_seconds: None,
@@ -2621,4 +2624,22 @@ fn right_clicking_the_piano_roll_button_opens_it_maximized() {
         &h.ctx,
         egui::Id::new("piano-roll")
     ));
+}
+
+#[test]
+fn the_playlist_follows_the_playhead_unless_turned_off() {
+    let mut h = Harness::new(&["transport.toggle_mode"]);
+    assert_eq!(
+        h.session.project().play_mode,
+        musiccraft_project::PlayMode::Song
+    );
+    h.state.windows.playlist = true;
+    h.state.playlist.view.follow = false;
+    h.engine.playing = true;
+    h.engine.position_ticks = f64::from(40 * TICKS_PER_BAR);
+    h.settle();
+    assert_eq!(h.state.playlist.offset.x, 0.0, "stays put");
+    h.state.playlist.view.follow = true;
+    h.settle();
+    assert!(h.state.playlist.offset.x > 0.0, "pages to the playhead");
 }

@@ -88,6 +88,29 @@ pub struct PlaylistState {
     playhead: f32,
     /// The zoom to return to after Shift+4 zoomed all the way out.
     zoom_back: Option<f32>,
+    /// The window menu's View options.
+    pub(crate) view: ViewOptions,
+}
+
+/// What the playlist draws, and whether it follows the playhead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ViewOptions {
+    /// Every other bar group shaded.
+    pub(crate) shading: bool,
+    /// A line under each track.
+    pub(crate) separators: bool,
+    /// During song playback the view pages along with the playhead.
+    pub(crate) follow: bool,
+}
+
+impl Default for ViewOptions {
+    fn default() -> Self {
+        Self {
+            shading: true,
+            separators: true,
+            follow: true,
+        }
+    }
 }
 
 impl Default for PlaylistState {
@@ -113,6 +136,7 @@ impl Default for PlaylistState {
             meter: Meter::default(),
             playhead: 0.0,
             zoom_back: None,
+            view: ViewOptions::default(),
         }
     }
 }
@@ -338,6 +362,12 @@ fn window_menu(
     });
     ui.menu_button("Snap", |ui| snap_list(ui, state));
     ui.menu_button("Zoom", |ui| zoom_items(ui, state, project));
+    ui.menu_button("View", |ui| {
+        let view = &mut state.playlist.view;
+        ui.checkbox(&mut view.shading, "Bar-group shading");
+        ui.checkbox(&mut view.separators, "Track separators");
+        ui.checkbox(&mut view.follow, "Follow the playhead");
+    });
     ui.menu_button("Markers", |ui| {
         if ui.button("Add marker at the playhead (Alt+T)").clicked() {
             actions.push(Action::Run(Invocation::bare("ui.add_marker")));
@@ -891,7 +921,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         };
         state.playlist.last_view = Some((grid, clip));
         let painter = ui.painter_at(clip);
-        draw_grid(&painter, &grid, (clip, rect), &meter);
+        draw_grid(&painter, &grid, (clip, rect), (&meter, state.playlist.view));
 
         let clips = &project.playlist.clips;
         let moving = moving_clips(state, clips);
@@ -971,7 +1001,11 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             }
             // While playing, follow the playhead when it leaves the view.
             let visible = clip.left() + HEADER_WIDTH..clip.right() - 40.0;
-            if frame.engine.playing && !visible.contains(&x) && state.playlist.drag.is_none() {
+            if frame.engine.playing
+                && state.playlist.view.follow
+                && !visible.contains(&x)
+                && state.playlist.drag.is_none()
+            {
                 let target = Rect::from_min_size(
                     pos2(x - HEADER_WIDTH - 20.0, clip.top()),
                     vec2(clip.width() - 60.0, 1.0),
@@ -1112,7 +1146,12 @@ const WIDE_BAR: f32 = 240.0;
 /// One lane tone with track separators, alternate bar groups washed a
 /// little lighter, and step, beat, bar and group lines getting stronger in
 /// that order.
-fn draw_grid(painter: &egui::Painter, grid: &Grid, (clip, rect): (Rect, Rect), meter: &Meter) {
+fn draw_grid(
+    painter: &egui::Painter,
+    grid: &Grid,
+    (clip, rect): (Rect, Rect),
+    (meter, view): (&Meter, ViewOptions),
+) {
     let lanes = Rect::from_min_max(grid.origin, rect.max);
     painter.rect_filled(lanes, 0.0, theme::LANE);
     let first = grid.tick_at(clip.left().max(grid.origin.x)).max(0.0) as u32;
@@ -1123,7 +1162,9 @@ fn draw_grid(painter: &egui::Painter, grid: &Grid, (clip, rect): (Rect, Rect), m
     // Zoomed far in, each bar is its own group.
     let bar_px = grid.px_per_tick * meter.bar(first).len as f32;
     let group = if bar_px > WIDE_BAR { 1 } else { BAR_GROUP };
-    for bar in (first_bar..=last_bar).filter(|b| (b / group) % 2 == 1 && b % group == 0) {
+    let shaded =
+        (first_bar..=last_bar).filter(|b| view.shading && (b / group) % 2 == 1 && b % group == 0);
+    for bar in shaded {
         let x0 = grid.x(meter.bar_start(bar) as f32);
         let x1 = grid.x(meter.bar_start(bar + group) as f32);
         painter.rect_filled(
@@ -1163,7 +1204,7 @@ fn draw_grid(painter: &egui::Painter, grid: &Grid, (clip, rect): (Rect, Rect), m
     let last_row = grid
         .row_at(clip.bottom() - 1.0)
         .unwrap_or(PLAYLIST_TRACKS - 1);
-    for row in first_row..=last_row {
+    for row in (first_row..=last_row).filter(|_| view.separators) {
         let y = grid.y(row) + grid.row_height - 0.5;
         painter.line_segment(
             [pos2(grid.origin.x, y), pos2(rect.right(), y)],
