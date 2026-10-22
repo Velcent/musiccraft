@@ -260,6 +260,8 @@
   playing). A clip's glyph and name stay in view when the clip starts left
   of the visible lanes. Zoomed far in (a bar wider than 240 points), each
   bar is its own group for the shading and the strongest lines.
+- The window menu's Tracks submenu unmutes every muted track and clears
+  every track solo, each as one undo step.
 - The window menu's View submenu turns off the bar-group shading, the track
   separators and following the playhead (all on by default; not saved with
   the project).

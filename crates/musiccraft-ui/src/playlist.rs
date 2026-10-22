@@ -391,6 +391,23 @@ fn window_menu(
     });
     ui.menu_button("Snap", |ui| snap_list(ui, state));
     ui.menu_button("Zoom", |ui| zoom_items(ui, state, project));
+    ui.menu_button("Tracks", |ui| {
+        let list = &project.playlist;
+        menu_item(
+            ui,
+            actions,
+            "Unmute all tracks",
+            "Every muted playlist track plays again",
+            per_track(&list.muted_tracks, "playlist.toggle_track_mute"),
+        );
+        menu_item(
+            ui,
+            actions,
+            "Clear solo",
+            "No playlist track is soloed",
+            per_track(&list.soloed_tracks, "playlist.toggle_track_solo"),
+        );
+    });
     ui.menu_button("View", |ui| {
         let view = &mut state.playlist.view;
         ui.checkbox(&mut view.shading, "Bar-group shading");
@@ -480,6 +497,16 @@ fn remove_markers(project: &Project) -> Option<Invocation> {
             .iter()
             .filter(|m| !matches!(m.action, MarkerAction::TimeSignature(_)))
             .map(|m| Invocation::new("playlist.remove_marker", [format!("{}t", m.tick)]))
+            .collect(),
+    )
+}
+
+/// `name <track>` for each of `tracks` (0-based), as one undo step.
+fn per_track(tracks: &BTreeSet<u32>, name: &str) -> Option<Invocation> {
+    batch(
+        tracks
+            .iter()
+            .map(|t| Invocation::new(name, [(t + 1).to_string()]))
             .collect(),
     )
 }
@@ -3226,6 +3253,29 @@ mod tests {
                 .all(|m| matches!(m.action, MarkerAction::TimeSignature(_)))
         );
         assert_eq!(s.project().playlist.markers.len(), 1);
+    }
+
+    #[test]
+    fn unmute_all_and_clear_solo_toggle_only_the_tracks_that_need_it() {
+        let mut s = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "playlist.toggle_track_mute 2",
+            "playlist.toggle_track_mute 5",
+            "playlist.toggle_track_solo 3",
+        ] {
+            s.run_line(line).unwrap();
+        }
+        let list = &s.project().playlist;
+        let unmute = per_track(&list.muted_tracks, "playlist.toggle_track_mute").unwrap();
+        let unsolo = per_track(&list.soloed_tracks, "playlist.toggle_track_solo").unwrap();
+        s.run(&unmute).unwrap();
+        s.run(&unsolo).unwrap();
+        assert!(s.project().playlist.muted_tracks.is_empty());
+        assert!(s.project().playlist.soloed_tracks.is_empty());
+        assert!(per_track(&BTreeSet::new(), "playlist.toggle_track_mute").is_none());
     }
 
     #[test]
