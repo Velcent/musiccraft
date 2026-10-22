@@ -1979,3 +1979,43 @@ fn automated_controls_name_their_source_in_the_hint() {
         .expect("the volume knob's hint");
     assert!(!volume.contains("automated"), "{volume}");
 }
+
+#[test]
+fn the_type_in_box_sets_a_control_and_esc_cancels() {
+    let key = |key: egui::Key, modifiers: Modifiers| Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    let release = |key: egui::Key| Event::Key {
+        key,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let mut h = Harness::new(&[]);
+    let open = |h: &mut Harness| {
+        crate::type_in::open(
+            &mut h.state,
+            h.session.project(),
+            "mixer:0:pan",
+            egui::pos2(200.0, 200.0),
+        );
+        h.settle();
+    };
+    open(&mut h);
+    assert!(h.state.type_in.is_some());
+    h.frame(vec![key(egui::Key::A, Modifiers::COMMAND)]);
+    h.frame(vec![Event::Text("25".to_owned())]);
+    let out = h.frame(vec![key(egui::Key::Enter, Modifiers::NONE)]);
+    assert_eq!(out, ["control.set mixer:0:pan 0.25"]);
+    assert!(h.state.type_in.is_none());
+    h.frame(vec![release(egui::Key::Enter)]);
+    open(&mut h);
+    let out = h.frame(vec![key(egui::Key::Escape, Modifiers::NONE)]);
+    assert!(out.is_empty(), "{out:?}");
+    assert!(h.state.type_in.is_none());
+}

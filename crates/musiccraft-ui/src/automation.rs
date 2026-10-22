@@ -212,6 +212,15 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
             );
             ui.close();
         }
+        if ui.button("Enter exact value…").clicked() {
+            let at = response.rect.left_bottom();
+            run(
+                actions,
+                "ui.type_in",
+                vec![target.to_owned(), format!("{}", at.x), format!("{}", at.y)],
+            );
+            ui.close();
+        }
         if ui.button("Reset to default").clicked() {
             run(actions, "control.reset", target_arg());
             ui.close();

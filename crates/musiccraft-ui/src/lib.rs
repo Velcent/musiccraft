@@ -26,6 +26,7 @@ pub mod settings;
 mod signature;
 mod spectrum;
 mod toolbar;
+mod type_in;
 mod zone_editor;
 
 pub use musiccraft_editors::hint;
@@ -435,6 +436,8 @@ pub struct UiState {
     pub typing_keyboard: bool,
     /// The control position the control menu's Copy took.
     pub(crate) copied_control: Option<f32>,
+    /// The open type-in value box.
+    pub(crate) type_in: Option<type_in::TypeIn>,
     /// A window arrangement asked for by a key, applied next frame.
     pub arrange: Option<Arrange>,
     /// The focused (topmost) workspace window as of the last frame.
@@ -542,6 +545,7 @@ impl UiState {
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             copied_control: None,
+            type_in: None,
             arrange: None,
             focused_window: None,
             taps: Vec::new(),
@@ -665,8 +669,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
 
     let ctx = ui.ctx().clone();
     // A dialog, a menu or a drag open at the start of the frame takes Esc.
-    let escape_taken =
-        state.dialog.is_some() || egui::Popup::is_any_open(&ctx) || ctx.dragged_id().is_some();
+    let escape_taken = state.dialog.is_some()
+        || state.type_in.is_some()
+        || egui::Popup::is_any_open(&ctx)
+        || ctx.dragged_id().is_some();
     arrange(&ctx, state);
     playlist::show(&ctx, state, frame, &mut actions);
     channel_rack::show(&ctx, state, frame, &mut actions);
@@ -682,6 +688,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     effect_window::show_all(&ctx, state, frame, &mut actions);
     spectrum::show(&ctx, state, frame);
     settings::show(&ctx, state, frame, &mut actions);
+    type_in::show(&ctx, state, &mut actions);
 
     if let Some(dragged) = egui::DragAndDrop::payload::<browser::Dragged>(&ctx) {
         if let Some(pos) = ctx.pointer_hover_pos() {
@@ -930,9 +937,16 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
             "ui.copy_control" => {
                 if let Some(target) = invocation.args.first() {
-                    state.copied_control =
-                        musiccraft_commands::control_positions(frame.project, target)
-                            .map(|(now, _)| now);
+                    state.copied_control = musiccraft_commands::control_info(frame.project, target)
+                        .map(|info| info.position);
+                }
+            }
+            "ui.type_in" => {
+                let number = |i: usize| invocation.args.get(i).and_then(|v| v.parse::<f32>().ok());
+                if let (Some(target), Some(x), Some(y)) =
+                    (invocation.args.first(), number(1), number(2))
+                {
+                    type_in::open(state, frame.project, target, egui::pos2(x, y));
                 }
             }
             "ui.open_automation" => {

@@ -46,13 +46,23 @@ Right-clicking any automatable knob or fader opens the same menu:
 - Under a dim "Control from" heading: "Add controller" with its kinds, and
   "Remove controller" while one drives the control.
 - Under a dim "Value" heading: "Copy", "Paste" (disabled until something is
-  copied) and "Reset to default".
+  copied), "Enter exact value…" and "Reset to default".
 
 Paste and Reset run `control.set <target> <position 0-1>` and
 `control.reset <target>`, each one undo step. Targets are named as for
 `automation.create` (`channel:2:pan`, `mixer:0:volume`, `mixer:3:1:mix`).
 Copy keeps the control's position along its range, so a value copied from
 one control pastes to the same share of another's range.
+
+## Type-in value box
+
+"Enter exact value…" opens a small box just under the control: a value line
+in percent of the control's range with the text ready to replace, a fine
+slider bound to the same value, then a tick, a cross and the control's name.
+Enter, the tick or a click outside the box applies the value with
+`control.set` as one undo step; values outside 0–100 % are clamped and text
+that is not a number changes nothing. Esc or the cross closes it unchanged.
+Values are typed in percent for now; the control's own units come later.
 
 ## Sources
 

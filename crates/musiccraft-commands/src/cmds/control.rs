@@ -123,15 +123,28 @@ fn reset(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
     apply(project, args, args.str(0)?, default_position)
 }
 
-/// A control's current and default positions (0..1) by target name, for the
-/// control menu's Copy and its "Reset to default" item.
+/// What the control menu shows about one control.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ControlInfo {
+    /// Its position along its range, 0..1.
+    pub position: f32,
+    /// Its default position.
+    pub default: f32,
+    /// A readable name, such as "Master volume".
+    pub label: String,
+}
+
+/// A control's current and default positions by target name, for the
+/// control menu's Copy and type-in box.
 #[must_use]
-pub fn positions(project: &Project, name: &str) -> Option<(f32, f32)> {
+pub fn info(project: &Project, name: &str) -> Option<ControlInfo> {
     let items = [name.to_owned()];
     let args = Args::new("control.set", "control.set <target> <position 0-1>", &items);
     let target = parse_target(project, &args, name).ok()?;
-    Some((
-        current(project, &target)?.0,
-        default_position(project, &target)?,
-    ))
+    let (position, label) = current(project, &target)?;
+    Some(ControlInfo {
+        position,
+        default: default_position(project, &target)?,
+        label,
+    })
 }

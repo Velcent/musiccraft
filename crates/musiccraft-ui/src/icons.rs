@@ -114,6 +114,8 @@ pub enum Icon {
     Porta,
     /// Slide (a right-angled ramp rising to the right).
     SlideRamp,
+    /// Confirm (a tick).
+    Check,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -719,6 +721,12 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                     Color32::TRANSPARENT,
                     stroke,
                 ),
+            ));
+        }
+        Icon::Check => {
+            painter.add(Shape::line(
+                vec![p(r, 0.1, 0.55), p(r, 0.4, 0.85), p(r, 0.9, 0.15)],
+                Stroke::new(1.6, color),
             ));
         }
         Icon::SlideRamp => {
