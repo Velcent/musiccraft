@@ -2957,6 +2957,43 @@ fn shift_down_in_the_browser_sends_the_next_sound_to_the_selected_sampler() {
 }
 
 #[test]
+fn backspace_in_the_browser_goes_back_and_forward_through_opened_folders() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.browser = true;
+    h.settle();
+    h.frame(vec![Event::PointerMoved(pos2(60.0, 300.0))]);
+    let selected = |h: &Harness| {
+        h.ctx
+            .data(|d| d.get_temp::<String>(egui::Id::new("browser-selected-row")))
+            .unwrap_or_default()
+    };
+    // Open two folders with Right.
+    let mut opened = Vec::new();
+    h.key(egui::Key::ArrowDown, Modifiers::NONE);
+    for _ in 0..40 {
+        let key = selected(&h);
+        h.key(egui::Key::ArrowRight, Modifiers::NONE);
+        if h.state.browser.open.get(&key) == Some(&true) && !opened.contains(&key) {
+            opened.push(key);
+            if opened.len() == 2 {
+                break;
+            }
+        } else {
+            h.key(egui::Key::ArrowDown, Modifiers::NONE);
+        }
+    }
+    assert_eq!(opened.len(), 2, "{opened:?}");
+    h.key(egui::Key::Backspace, Modifiers::NONE);
+    assert_eq!(selected(&h), opened[1]);
+    assert_eq!(h.state.browser.open.get(&opened[1]), Some(&false));
+    h.key(egui::Key::Backspace, Modifiers::NONE);
+    assert_eq!(selected(&h), opened[0]);
+    h.key(egui::Key::Backspace, Modifiers::SHIFT);
+    assert_eq!(selected(&h), opened[0]);
+    assert_eq!(h.state.browser.open.get(&opened[0]), Some(&true));
+}
+
+#[test]
 fn the_browser_walks_its_tree_with_the_arrow_keys_and_enter_adds_an_effect() {
     let mut h = Harness::new(&[]);
     h.state.windows.browser = true;

@@ -138,6 +138,10 @@ pub struct BrowserState {
     folded: bool,
     /// The column is rolled up to its header.
     collapsed: bool,
+    /// Folders opened by hand, oldest first, for Backspace (back).
+    back: Vec<String>,
+    /// Folders Backspace closed, latest last, for Shift+Backspace.
+    forward: Vec<String>,
     listings: BTreeMap<PathBuf, Vec<(String, PathBuf, bool)>>,
 }
 
@@ -208,6 +212,33 @@ impl BrowserState {
                 .get(key)
                 .copied()
                 .unwrap_or(default_open && !self.folded)
+    }
+
+    /// Opens or closes the branch `key` by hand; opening one starts a new
+    /// line of the back history.
+    fn set_open(&mut self, key: &str, open: bool) {
+        self.open.insert(key.to_owned(), open);
+        if open {
+            self.back.retain(|k| k != key);
+            self.back.push(key.to_owned());
+            self.forward.clear();
+        }
+    }
+
+    /// Backspace: closes the folder opened last and returns it, to select.
+    fn go_back(&mut self) -> Option<String> {
+        let key = self.back.pop()?;
+        self.open.insert(key.clone(), false);
+        self.forward.push(key.clone());
+        Some(key)
+    }
+
+    /// Shift+Backspace: reopens the folder Backspace closed last.
+    fn go_forward(&mut self) -> Option<String> {
+        let key = self.forward.pop()?;
+        self.open.insert(key.clone(), true);
+        self.back.push(key.clone());
+        Some(key)
     }
 
     fn fold_all(&mut self) {
@@ -311,7 +342,8 @@ fn activated(ui: &egui::Ui, key: &str) -> bool {
 /// selected row, Shift+Up and Shift+Down move within the folder and return a
 /// sound moved onto (to send), Right opens a folder or steps into it, Left
 /// closes it or steps out, Enter toggles a folder or acts as a double-click,
-/// Ctrl+Up folds all, Ctrl+F goes to the search and Esc clears it.
+/// Backspace and Shift+Backspace go back and forward through the folders
+/// opened, Ctrl+Up folds all, Ctrl+F goes to the search and Esc clears it.
 fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) -> Option<String> {
     use egui::{Key, Modifiers};
     let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
@@ -336,6 +368,21 @@ fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) -> Option<Stri
             });
         }
     };
+    // Shift first: the plain keys would also take the shifted ones.
+    let moved = if pressed(Modifiers::SHIFT, Key::Backspace) {
+        state.browser.go_forward()
+    } else if pressed(Modifiers::NONE, Key::Backspace) {
+        state.browser.go_back()
+    } else {
+        None
+    };
+    if let Some(key) = moved {
+        ctx.data_mut(|d| {
+            d.insert_temp(selected_id(), key.clone());
+            d.insert_temp(reveal_id(), key);
+        });
+        return None;
+    }
     // Before the plain arrows, which would also take these.
     for (key, down) in [(Key::ArrowDown, true), (Key::ArrowUp, false)] {
         if let Some(i) = at
@@ -356,7 +403,7 @@ fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) -> Option<Stri
     if pressed(Modifiers::NONE, Key::ArrowRight) {
         match row.open {
             Some(false) => {
-                state.browser.open.insert(row.key.clone(), true);
+                state.browser.set_open(&row.key, true);
             }
             Some(true) => select(i + 1),
             None => {}
@@ -364,7 +411,7 @@ fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) -> Option<Stri
     }
     if pressed(Modifiers::NONE, Key::ArrowLeft) {
         if row.open == Some(true) {
-            state.browser.open.insert(row.key.clone(), false);
+            state.browser.set_open(&row.key, false);
         } else if let Some(parent) = rows[..i].iter().rposition(|r| r.depth < row.depth) {
             select(parent);
         }
@@ -372,7 +419,7 @@ fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) -> Option<Stri
     if pressed(Modifiers::NONE, Key::Enter) {
         match row.open {
             Some(open) => {
-                state.browser.open.insert(row.key.clone(), !open);
+                state.browser.set_open(&row.key, !open);
             }
             None => ctx.data_mut(|d| {
                 d.insert_temp(activate_id(), row.key.clone());
@@ -592,7 +639,7 @@ fn branch(
     shown.open = Some(open);
     let response = row(ui, &shown, Sense::click());
     if response.clicked() && state.browser.search.is_empty() {
-        state.browser.open.insert(key.to_owned(), !open);
+        state.browser.set_open(key, !open);
     }
     if open {
         body(ui, state);
