@@ -514,6 +514,12 @@ fn pattern_section(
                                 )));
                             }
                         }
+                        if response.double_clicked() {
+                            state.rename_in_place(
+                                Dialog::rename_pattern(i, &pattern.name),
+                                response.rect,
+                            );
+                        }
                         response.context_menu(|ui| {
                             if ui.button("Rename…").clicked() {
                                 state.open_dialog(Dialog::rename_pattern(i, &pattern.name));
@@ -1853,6 +1859,12 @@ fn headers(
         let number = (row + 1).to_string();
         // Right-click the header: rename or colour the row.
         let header = ui.interact(r, ui.id().with(("track-header", row)), Sense::click());
+        if header.double_clicked() {
+            state.rename_in_place(
+                crate::dialogs::Dialog::rename_playlist_track(row, &playlist.track_name(row)),
+                name_area,
+            );
+        }
         header.context_menu(|ui| {
             if ui.button("Rename…").clicked() {
                 state.open_dialog(crate::dialogs::Dialog::rename_playlist_track(

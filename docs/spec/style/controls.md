@@ -453,8 +453,7 @@ Ordered by visual impact.
 12. **No default detent, keyboard focus, pointer hiding or Alt-click reset** on knobs and faders (all proposals above). File: `crates/musiccraft-editors/src/widgets.rs`.
 13. **Knob track tones.** Knob value text now uses `theme::LCD_TEXT`. The knob track uses `PANEL` in `labeled_knob` and is absent in `knob`. Files: `crates/musiccraft-editors/src/widgets.rs`, `crates/musiccraft-editors/src/theme.rs`.
 14. **Group boxes have no fold chevron or bypass light.** `instrument::section` already draws the darker rounded box with its title inside, as S asks. Files: `crates/musiccraft-editors/src/instrument.rs`, `effect.rs`.
-15. **No rename in place.** Names change through dialogs only. File: `crates/musiccraft-ui/src/dialogs.rs`.
-16. **File dialogs are the system's own**, so there is no favourite-folders control of ours; nothing is planned here (dialogs section).
+15. **File dialogs are the system's own**, so there is no favourite-folders control of ours; nothing is planned here (dialogs section).
 
 ## Sources
 

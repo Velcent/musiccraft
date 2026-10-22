@@ -64,6 +64,16 @@ Enter, the tick or a click outside the box applies the value with
 that is not a number changes nothing. Esc or the cross closes it unchanged.
 Values are typed in percent for now; the control's own units come later.
 
+## Rename in place
+
+Double-clicking a channel's name in the channel rack, a mixer track's name,
+a playlist track header or a pattern in the playlist's clip list turns the
+name into a text field where it is drawn (on a mixer strip, a row at the top
+of the upright name), with the whole name selected. Enter or a click
+elsewhere renames it as one undo step; Esc, or an empty name, leaves it as
+it was. The "Rename…" menu items keep their dialog. The first click on a
+channel name still selects it and opens its settings, which stay open.
+
 ## Sources
 
 - Own design. Middle-click and double-click to reset are common conventions

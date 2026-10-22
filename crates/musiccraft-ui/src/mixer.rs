@@ -434,7 +434,9 @@ fn strip(
                 state.selected_track = index;
             }
             if name.double_clicked() {
-                state.open_dialog(Dialog::rename_track(index, &track.name));
+                // The name reads upward; the field is a plain row at its top.
+                let field = egui::Rect::from_min_size(name.rect.left_top(), vec2(120.0, 20.0));
+                state.rename_in_place(Dialog::rename_track(index, &track.name), field);
             }
             name.context_menu(|ui| track_menu(ui, state, index, track, actions));
             let heard = if track.mute { "muted" } else { "on" };

@@ -367,7 +367,11 @@ fn row(
                         format!("MIDI Out: external gear on MIDI channel {midi_channel}")
                     }
                 });
-        if response.clicked() {
+        if response.double_clicked() {
+            // The first click opened the settings; keep them open.
+            state.windows.channel_settings = true;
+            state.rename_in_place(Dialog::rename_channel(index, &channel.name), response.rect);
+        } else if response.clicked() {
             // Clicking the selected channel again closes its settings.
             let reopen = state.selected_channel != index || !state.windows.channel_settings;
             state.selected_channel = index;

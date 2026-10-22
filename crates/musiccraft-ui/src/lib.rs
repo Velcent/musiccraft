@@ -494,6 +494,8 @@ pub struct UiState {
     roll: piano_roll::RollState,
     playlist: playlist::PlaylistState,
     dialog: Option<dialogs::Dialog>,
+    /// A name being renamed where it is drawn.
+    renaming: Option<dialogs::InPlace>,
     antiserum: antiserum::AntiserumUi,
 }
 
@@ -546,6 +548,7 @@ impl UiState {
             typing_keyboard: false,
             copied_control: None,
             type_in: None,
+            renaming: None,
             arrange: None,
             focused_window: None,
             taps: Vec::new(),
@@ -671,6 +674,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     // A dialog, a menu or a drag open at the start of the frame takes Esc.
     let escape_taken = state.dialog.is_some()
         || state.type_in.is_some()
+        || state.renaming.is_some()
         || egui::Popup::is_any_open(&ctx)
         || ctx.dragged_id().is_some();
     arrange(&ctx, state);
@@ -689,6 +693,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     spectrum::show(&ctx, state, frame);
     settings::show(&ctx, state, frame, &mut actions);
     type_in::show(&ctx, state, &mut actions);
+    dialogs::show_in_place(&ctx, state, &mut actions);
 
     if let Some(dragged) = egui::DragAndDrop::payload::<browser::Dragged>(&ctx) {
         if let Some(pos) = ctx.pointer_hover_pos() {

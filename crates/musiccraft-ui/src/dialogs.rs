@@ -300,6 +300,83 @@ impl UiState {
     pub(crate) fn open_dialog(&mut self, dialog: Dialog) {
         self.dialog = Some(dialog);
     }
+
+    /// Turns the name drawn in `rect` into a text field there, for a rename
+    /// that `dialog` describes (`docs/spec/controls.md`, "Rename in place").
+    pub(crate) fn rename_in_place(&mut self, dialog: Dialog, rect: egui::Rect) {
+        self.renaming = Some(InPlace {
+            dialog,
+            rect,
+            opened: false,
+        });
+    }
+}
+
+/// A name being edited where it is drawn.
+#[derive(Debug, Clone)]
+pub(crate) struct InPlace {
+    dialog: Dialog,
+    rect: egui::Rect,
+    /// Whether the field has been shown once (its text is then selected).
+    opened: bool,
+}
+
+/// Draws the in-place rename field. Enter or a click elsewhere renames as
+/// one undo step; Esc, or an empty name, leaves the name as it was.
+pub(crate) fn show_in_place(ctx: &egui::Context, state: &mut UiState, actions: &mut Vec<Action>) {
+    let Some(mut open) = state.renaming.take() else {
+        return;
+    };
+    let id = egui::Id::new("rename-in-place");
+    let field_id = id.with("field");
+    let area = egui::Area::new(id)
+        .order(egui::Order::Foreground)
+        .fixed_pos(open.rect.min)
+        .show(ctx, |ui| {
+            let field = ui.add_sized(
+                open.rect.size(),
+                egui::TextEdit::singleline(&mut open.dialog.text)
+                    .id(field_id)
+                    .font(egui::FontId::proportional(theme::FONT_LABEL))
+                    .margin(egui::vec2(4.0, 2.0)),
+            );
+            if !open.opened {
+                field.request_focus();
+                let all = egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(open.dialog.text.chars().count()),
+                );
+                let mut text_state =
+                    egui::TextEdit::load_state(ui.ctx(), field_id).unwrap_or_default();
+                text_state.cursor.set_char_range(Some(all));
+                text_state.store(ui.ctx(), field_id);
+                open.opened = true;
+            }
+            field
+        });
+    let (enter, escape) = ctx.input_mut(|i| {
+        (
+            i.consume_key(egui::Modifiers::NONE, Key::Enter),
+            i.consume_key(egui::Modifiers::NONE, Key::Escape),
+        )
+    });
+    let field = area.inner;
+    let clicked_outside = ctx.input(|i| {
+        i.pointer.any_pressed()
+            && i.pointer
+                .interact_pos()
+                .is_some_and(|p| !area.response.rect.contains(p))
+    });
+    if escape {
+        return;
+    }
+    if enter || clicked_outside || field.lost_focus() {
+        if !open.dialog.text.trim().is_empty() {
+            actions.push(Action::Run(open.dialog.invocation()));
+        }
+        return;
+    }
+    state.renaming = Some(open);
 }
 
 pub fn show(

@@ -2019,3 +2019,35 @@ fn the_type_in_box_sets_a_control_and_esc_cancels() {
     assert!(out.is_empty(), "{out:?}");
     assert!(h.state.type_in.is_none());
 }
+
+#[test]
+fn double_clicking_a_channel_name_renames_it_in_place() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let name = (0..40)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some("Synth")
+        })
+        .expect("the channel's name");
+    h.click(name, PointerButton::Primary);
+    h.click(name, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.renaming.is_some(), "a double-click opens the field");
+    assert!(h.state.windows.channel_settings, "the settings stay open");
+    h.frame(vec![Event::Text("Lead".to_owned())]);
+    let out = h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(out, ["channel.rename 1 Lead"]);
+    assert!(h.state.renaming.is_none());
+}
