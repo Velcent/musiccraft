@@ -3030,7 +3030,7 @@ fn ctrl_shift_clicks_select_several_mixer_tracks_and_their_faders_move_together(
         .iter()
         .map(|t| t.name.clone())
         .collect();
-    let mut hint_at = |h: &mut Harness, p: Pos2| {
+    let hint_at = |h: &mut Harness, p: Pos2| {
         h.frame(vec![Event::PointerMoved(p)]);
         h.frame(vec![]);
         h.state.hint.clone().unwrap_or_default()
@@ -3053,7 +3053,7 @@ fn ctrl_shift_clicks_select_several_mixer_tracks_and_their_faders_move_together(
     let (one, two) = (column(&mut h, 1), column(&mut h, 2));
     // Rest the pointer, so the scan's motion does not fling the strips
     // sideways when the button is released.
-    let mut rest = |h: &mut Harness, p: Pos2| {
+    let rest = |h: &mut Harness, p: Pos2| {
         h.frame(vec![Event::PointerMoved(p)]);
         for _ in 0..30 {
             h.frame(vec![]);
