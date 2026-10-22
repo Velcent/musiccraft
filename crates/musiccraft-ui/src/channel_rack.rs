@@ -979,6 +979,75 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     if pressed(shift_ctrl, Key::ArrowRight) {
         run(actions, "step.shift", [number, "1".to_owned()]);
     }
+    if pressed(Modifiers::COMMAND, Key::K) {
+        state.graph = match state.graph {
+            Some(_) => None,
+            None => Some(crate::piano_roll::LaneMode::Velocity),
+        };
+    }
+    if pressed(Modifiers::NONE, Key::F2) {
+        let name = &project.channels[selected].name;
+        state.open_dialog(Dialog::rename_channel(selected, name));
+    }
+    for (key, forward) in [(Key::PageDown, true), (Key::PageUp, false)] {
+        if pressed(Modifiers::NONE, key) {
+            state.rack_group = step_group(project, state.rack_group.as_ref(), forward);
+        }
+    }
+    let notes: Vec<musiccraft_project::Note> = project
+        .current_pattern()
+        .notes_of(project.channels[selected].id)
+        .copied()
+        .collect();
+    use crate::ClipboardKey;
+    if crate::clipboard_key(ctx, ClipboardKey::Copy) {
+        state.rack_clipboard = Some(notes.clone());
+        crate::copied(ctx, "steps");
+    }
+    if crate::clipboard_key(ctx, ClipboardKey::Cut) {
+        actions.extend(crate::piano_roll::replace_notes(selected, &notes, &[]).map(Action::Run));
+        state.rack_clipboard = Some(notes.clone());
+        crate::copied(ctx, "steps");
+    }
+    if crate::clipboard_key(ctx, ClipboardKey::Paste) {
+        if let Some(copied) = &state.rack_clipboard {
+            let paste = crate::piano_roll::replace_notes(selected, &notes, copied);
+            actions.extend(paste.map(Action::Run));
+        }
+    }
+}
+
+/// The group filter's choices in order: All, each group alphabetically,
+/// then No group.
+fn group_choices(project: &Project) -> Vec<Option<String>> {
+    let mut groups: Vec<&str> = project
+        .channels
+        .iter()
+        .map(|c| c.group.as_str())
+        .filter(|g| !g.is_empty())
+        .collect();
+    groups.sort_unstable();
+    groups.dedup();
+    std::iter::once(None)
+        .chain(groups.into_iter().map(|g| Some(g.to_owned())))
+        .chain(std::iter::once(Some(String::new())))
+        .collect()
+}
+
+/// The group filter after `current`, or before it, wrapping at the ends.
+fn step_group(project: &Project, current: Option<&String>, forward: bool) -> Option<String> {
+    let choices = group_choices(project);
+    let n = choices.len();
+    let at = choices
+        .iter()
+        .position(|c| c.as_ref() == current)
+        .unwrap_or(0);
+    let next = if forward {
+        (at + 1) % n
+    } else {
+        (at + n - 1) % n
+    };
+    choices.into_iter().nth(next).flatten()
 }
 
 /// The step graph editor: one bar per step of the selected channel, showing

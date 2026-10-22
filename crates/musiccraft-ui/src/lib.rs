@@ -472,6 +472,8 @@ pub struct UiState {
     /// The channel rack's step graph editor: open, what it edits, and the
     /// step being dragged.
     pub(crate) graph: Option<piano_roll::LaneMode>,
+    /// A channel's steps cut or copied in the channel rack.
+    pub(crate) rack_clipboard: Option<Vec<musiccraft_project::Note>>,
     pub(crate) graph_drag: Option<musiccraft_project::Note>,
     /// Where the graph strip was last drawn and its step count (for tests).
     pub(crate) graph_view: Option<(egui::Rect, u32)>,
@@ -573,6 +575,7 @@ impl UiState {
             path_drafts: Default::default(),
             rack_group: None,
             graph: None,
+            rack_clipboard: None,
             graph_drag: None,
             graph_view: None,
             step_paint: None,

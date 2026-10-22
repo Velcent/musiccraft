@@ -68,6 +68,10 @@ one, which a click anywhere in it makes; and the typing keyboard is off); they t
 | Alt+Up / Alt+Down | Move the selected channel up / down |
 | Ctrl+L | Route the selected channel to a free mixer track (`channel.route_free`) |
 | Shift+Ctrl+Left / Right | Shift the selected channel's steps |
+| Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut the selected channel's notes in the current pattern; paste replaces the selected channel's notes with them (one undo step) |
+| Ctrl+K | Show or hide the graph editor |
+| F2 | Rename the selected channel |
+| Page Down / Page Up | Next / previous group in the group filter (All, each group, No group; wraps) |
 
 ### Over the piano roll
 

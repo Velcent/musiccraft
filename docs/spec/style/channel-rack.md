@@ -431,14 +431,14 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
     - There is no option to hide the column. (Channel stacks and MIDI outputs now show a dim dash.)
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
 13. **Group filter.**
-    - No right-click new, rename or delete; no Page Up/Down cycling.
+    - No right-click new, rename or delete (Page Up/Down cycling is in).
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`header`, `add_menu`).
 14. **Pattern length.** The length box takes 1–1024 steps and offers whole-bar lengths on right-click, but there is no "auto" length.
     - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`).
 15. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
     - File: `crates/musiccraft-ui/src/channel_rack.rs`.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`).
-16. **Keymap.** Ctrl+K, Alt+M, Alt+G, Alt+Z, Alt+U, Page Up/Down, Ctrl+C/X/V and F2 over the rack are new window-local bindings for `docs/spec/keymap.md` ("Over the channel rack") and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today; F2 over the rack takes precedence over the toolbar's proposed global F2 for pattern rename while the pointer is over the rack.
+16. **Keymap.** Ctrl+K, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M, Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
 17. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
 
 ## Sources

@@ -2671,3 +2671,54 @@ fn playlist_copy_and_paste_use_the_desktop_clipboard_events() {
     h.frame(vec![Event::Cut]);
     assert_eq!(h.session.project().playlist.clips.len(), 1);
 }
+
+#[test]
+fn rack_keys_copy_steps_toggle_the_graph_and_step_groups() {
+    let mut h = Harness::new(&[
+        "channel.add_sampler builtin:kick",
+        "channel.add_sampler builtin:hat",
+        "step.toggle 1 1",
+        "step.toggle 1 5",
+        "step.toggle 2 3",
+        "channel.set_group 2 Drums",
+    ]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    h.frame(vec![Event::PointerMoved(rack.center())]);
+    let steps = |h: &Harness, channel: usize| -> Vec<u32> {
+        let project = h.session.project();
+        let id = project.channels[channel].id;
+        project
+            .current_pattern()
+            .notes_of(id)
+            .map(|n| n.start / TICKS_PER_STEP)
+            .collect()
+    };
+    // Copy channel 1's steps onto channel 2 (as the desktop sends Ctrl+C/V).
+    h.state.selected_channel = 0;
+    h.frame(vec![Event::Copy]);
+    h.state.selected_channel = 1;
+    let pasted = h.frame(vec![Event::Paste("MusicCraft: steps".to_owned())]);
+    assert_eq!(pasted.len(), 1, "one undo step: {pasted:?}");
+    assert_eq!(steps(&h, 1), steps(&h, 0));
+    assert_eq!(steps(&h, 1).len(), 2);
+    h.frame(vec![Event::Cut]);
+    assert!(steps(&h, 1).is_empty());
+
+    h.key(egui::Key::K, Modifiers::COMMAND);
+    assert!(h.state.graph.is_some());
+    h.key(egui::Key::K, Modifiers::COMMAND);
+    assert!(h.state.graph.is_none());
+
+    // Page Down steps All → Drums → No group → All.
+    h.key(egui::Key::PageDown, Modifiers::NONE);
+    assert_eq!(h.state.rack_group.as_deref(), Some("Drums"));
+    h.key(egui::Key::PageUp, Modifiers::NONE);
+    assert_eq!(h.state.rack_group, None);
+    h.key(egui::Key::PageUp, Modifiers::NONE);
+    assert_eq!(h.state.rack_group.as_deref(), Some(""));
+
+    h.key(egui::Key::F2, Modifiers::NONE);
+    assert!(h.state.dialog.is_some(), "F2 renames the selected channel");
+}

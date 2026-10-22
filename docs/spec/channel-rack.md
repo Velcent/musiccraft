@@ -37,7 +37,8 @@
   group, or No group (channels without one). Right-click a channel → Group…
   sets it. Filtering only hides rows; numbering and keys stay the same. While
   one named group is shown, a channel added from the rack's plus joins it (the
-  add and the `channel.set_group` are one undo step).
+  add and the `channel.set_group` are one undo step). Over the rack, Page
+  Down and Page Up step the filter through All, each group and No group.
 - `channel.solo <n>` mutes every other channel; running it again on an already
   soloed channel unmutes all channels.
 - **Steps** are sixteenth notes. `step.toggle <channel> <step>` (0-based step)

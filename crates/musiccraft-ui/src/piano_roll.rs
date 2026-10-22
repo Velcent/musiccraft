@@ -282,6 +282,22 @@ fn remove_notes(channel: usize, notes: &[Note]) -> Option<Invocation> {
 /// Invocation that finishes a drag gesture.
 /// The command that creates `note` on `channel`: `note.add` for plain
 /// notes, `note.restore` when it carries other properties.
+/// Replaces channel `channel`'s notes `old` with `new`, as one undo step.
+pub(crate) fn replace_notes(channel: usize, old: &[Note], new: &[Note]) -> Option<Invocation> {
+    let ch = (channel + 1).to_string();
+    let removes = old.iter().map(|n| {
+        Invocation::new(
+            "note.remove",
+            [ch.clone(), ticks(n.start), n.key.to_string()],
+        )
+    });
+    batch(
+        removes
+            .chain(new.iter().map(|n| create(channel, n)))
+            .collect(),
+    )
+}
+
 fn create(channel: usize, note: &Note) -> Invocation {
     let ch = (channel + 1).to_string();
     if note.props == musiccraft_project::NoteProps::default() {
