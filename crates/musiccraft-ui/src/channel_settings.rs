@@ -264,11 +264,174 @@ fn contents(
             ChannelTab::Sound => sound(ui, state, frame, index, channel, actions),
             ChannelTab::Envelope => {
                 with_editor(ui, state, index, channel, actions, |ui, e| e.envelope(ui));
+                keyboard_strip(ui, index, channel, actions);
             }
             ChannelTab::Functions => {
                 with_editor(ui, state, index, channel, actions, |ui, e| e.functions(ui));
+                keyboard_strip(ui, index, channel, actions);
             }
         });
+}
+
+/// The keys the keyboard strip shows: C1 to B8.
+const STRIP_KEYS: std::ops::Range<u8> = 24..108;
+
+/// The KEYBOARD box at the bottom of the Envelope and Functions pages: the
+/// root key with a Reset button, then a piano. Left-click a key to hear it,
+/// right-click to make it the root key. Instruments that are not tuned by
+/// the root key (plugins, Antiserum) have no strip.
+fn keyboard_strip(ui: &mut egui::Ui, index: usize, channel: &Channel, actions: &mut Vec<Action>) {
+    if kind_of(&channel.instrument) == Kind::External {
+        return;
+    }
+    let number = index + 1;
+    let root = channel.params.get(inst::ROOT_KEY).round().clamp(0.0, 127.0) as u8;
+    let set_root = |key: u8| {
+        Action::Run(Invocation::new(
+            "channel.set_param",
+            [number.to_string(), "root_key".to_owned(), key.to_string()],
+        ))
+    };
+    ui.add_space(6.0);
+    section(ui, "KEYBOARD", |ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(format!("Root {}", key_name(root))).color(theme::TEXT));
+            let default = spec(inst::ROOT_KEY).default as u8;
+            if ui
+                .add_enabled(root != default, egui::Button::new("Reset").small())
+                .hint("Set the root key back to C5")
+                .clicked()
+            {
+                actions.push(set_root(default));
+            }
+        });
+        ui.add_space(2.0);
+        let (rect, response) = ui.allocate_exact_size(
+            vec2(ui.available_width(), 44.0),
+            egui::Sense::click_and_drag(),
+        );
+        let layout = KeyLayout::new(rect);
+        layout.paint(ui.painter(), root);
+        let held_id = response.id.with("held");
+        let held = ui.ctx().data(|d| d.get_temp::<u8>(held_id));
+        let under = response.hover_pos().and_then(|p| layout.key_at(p));
+        if let Some(key) = under {
+            response.clone().hint(format!(
+                "{} · click to hear it · right-click to make it the root key",
+                key_name(key)
+            ));
+        }
+        if response.secondary_clicked() {
+            if let Some(key) = under.filter(|k| *k != root) {
+                actions.push(set_root(key));
+            }
+        }
+        let pressed =
+            response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down());
+        let now = if pressed { under } else { None };
+        if now != held {
+            if let Some(old) = held {
+                actions.push(Action::Preview {
+                    channel: index,
+                    key: old,
+                    on: false,
+                });
+            }
+            if let Some(new) = now {
+                actions.push(Action::Preview {
+                    channel: index,
+                    key: new,
+                    on: true,
+                });
+            }
+            ui.ctx().data_mut(|d| match now {
+                Some(key) => {
+                    d.insert_temp(held_id, key);
+                }
+                None => d.remove::<u8>(held_id),
+            });
+        }
+    });
+}
+
+/// Where the keyboard strip's keys are: white keys share the width, black
+/// keys sit over their seams in the upper part.
+struct KeyLayout {
+    rect: egui::Rect,
+    white: f32,
+}
+
+impl KeyLayout {
+    fn new(rect: egui::Rect) -> Self {
+        let whites = STRIP_KEYS.filter(|k| !is_black(*k)).count() as f32;
+        Self {
+            rect,
+            white: rect.width() / whites,
+        }
+    }
+
+    /// The rectangle of `key`.
+    fn key_rect(&self, key: u8) -> egui::Rect {
+        let whites_before = (STRIP_KEYS.start..key).filter(|k| !is_black(*k)).count() as f32;
+        let left = self.rect.left() + whites_before * self.white;
+        if is_black(key) {
+            let w = self.white * 0.6;
+            egui::Rect::from_min_size(
+                egui::pos2(left - w / 2.0, self.rect.top()),
+                vec2(w, self.rect.height() * 0.6),
+            )
+        } else {
+            egui::Rect::from_min_size(
+                egui::pos2(left, self.rect.top()),
+                vec2(self.white, self.rect.height()),
+            )
+        }
+    }
+
+    /// The key under `pos`: black keys first, as they lie on top.
+    fn key_at(&self, pos: egui::Pos2) -> Option<u8> {
+        if !self.rect.contains(pos) {
+            return None;
+        }
+        STRIP_KEYS
+            .clone()
+            .filter(|k| is_black(*k))
+            .chain(STRIP_KEYS.clone().filter(|k| !is_black(*k)))
+            .find(|k| self.key_rect(*k).contains(pos))
+    }
+
+    fn paint(&self, painter: &egui::Painter, root: u8) {
+        for key in STRIP_KEYS.clone().filter(|k| !is_black(*k)) {
+            let r = self.key_rect(key);
+            let fill = if key == root {
+                theme::ACCENT
+            } else {
+                theme::KEY_WHITE
+            };
+            painter.rect_filled(r.shrink2(vec2(0.5, 0.0)), 1.0, fill);
+            if key % 12 == 0 && r.width() >= 6.0 {
+                painter.text(
+                    egui::pos2(r.left() + 1.0, r.bottom() - 2.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    key_name(key),
+                    egui::FontId::proportional(theme::FONT_CAPTION - 1.5),
+                    theme::KEY_BLACK,
+                );
+            }
+        }
+        for key in STRIP_KEYS.clone().filter(|k| is_black(*k)) {
+            let fill = if key == root {
+                theme::ACCENT
+            } else {
+                theme::KEY_BLACK
+            };
+            painter.rect_filled(self.key_rect(key), 1.0, fill);
+        }
+    }
+}
+
+fn is_black(key: u8) -> bool {
+    matches!(key % 12, 1 | 3 | 6 | 8 | 10)
 }
 
 /// The fixed strip under the header: the page tabs as glyph cells at the

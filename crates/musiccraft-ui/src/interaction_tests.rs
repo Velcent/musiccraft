@@ -2322,3 +2322,30 @@ fn dragging_the_envelope_peak_sets_the_attack_in_one_step() {
     h.session.run_line("edit.undo").unwrap();
     assert!((attack(&h) - before).abs() < 1e-6);
 }
+
+#[test]
+fn right_clicking_the_keyboard_strip_sets_the_root_key() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_settings = true;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Functions;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let (key, at) = (0..120)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(10.0 + 6.0 * i as f32, 100.0 + 5.0 * j as f32))
+        .find_map(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            let hint = h.state.hint.clone()?;
+            let name =
+                hint.strip_suffix(" · click to hear it · right-click to make it the root key")?;
+            (name != "C5").then(|| (name.to_owned(), p))
+        })
+        .expect("a key on the keyboard strip");
+    h.click(at, PointerButton::Secondary);
+    h.settle();
+    let root = h.session.project().channels[0]
+        .params
+        .get(musiccraft_project::params::inst::ROOT_KEY) as u8;
+    assert_eq!(musiccraft_editors::instrument::key_name(root), key);
+}

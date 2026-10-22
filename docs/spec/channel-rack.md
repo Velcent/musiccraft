@@ -370,6 +370,12 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   (across: decay; up or down: sustain) and the end (across: release). Each
   timed stage has a quarter of the width on a square-root time scale, so a
   drag maps back to the same time. One drag is one undo step.
+- The Envelope and Functions pages end with a **KEYBOARD** box for
+  instruments tuned by the root key (not plugins or Antiserum): "Root C5"
+  with a Reset button (back to C5), then a piano from C1 to B8 with the root
+  key in the accent tone and a label at each C. Left-click a key to hear it
+  while held; right-click a key to make it the root key
+  (`channel.set_param <n> root_key <key>`, undoable).
 - The **page** under the strip is the selected tab's contents: Functions
   tiles its boxes two to a row (VOICES | TIMING with swing, ARPEGGIATOR full
   width, CHOKE | ECHO). Only the page scrolls. The last tab used stays

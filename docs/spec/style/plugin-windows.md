@@ -432,7 +432,7 @@ Ordered by visual impact.
    - There are no module headings and no parameter count.
    - The plugin's own window is titled with the plugin name only (`crates/musiccraft-app/src/plugins.rs`, `set_editor`).
 4. **There is no Plugin (details) tab** for hosted plugins (C4). Format, maker, file and the rescan/reload buttons are not shown in the channel window. There is no editor-scale choice for hosted editors and no processing options; `docs/spec/plugins.md` says nothing about either.
-5. **There is no keyboard strip** (root key, preview, key range) at the bottom of the Envelope and Functions pages (C7). The root key is only reachable on some instruments' own pages.
+5. **The keyboard strip is partial.** The KEYBOARD box (C7) shows the root key, Reset, preview and right-click to set the root, over a fixed C1–B8 range. Still missing: the fine-tune knob, the ruler with a draggable key range (needs a key-range parameter) and the zoom/scroll bar under the keys.
 6. **Only one channel window can exist.** `crates/musiccraft-ui/src/lib.rs` holds a single `windows.channel_settings` flag plus `selected_channel`. There is no Alt+click to open more, and no "Keep instrument windows open" setting.
 7. **There is no detaching** to a desktop window (future item, main-window section).
 
