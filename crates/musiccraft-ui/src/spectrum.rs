@@ -1,4 +1,4 @@
-//! The spectrum analyzer window: the master output's frequency content on a
+//! The spectrum analyser window: the master output's frequency content on a
 //! log-frequency scale, with a slowly falling peak line.
 
 use egui::{Pos2, Rect, Stroke, pos2, vec2};
@@ -23,10 +23,10 @@ pub(crate) fn show(ctx: &egui::Context, state: &mut UiState, frame: &Frame<'_>) 
     };
     let id = egui::Id::new("spectrum-analyzer");
     let default = egui::Rect::from_min_size(pos2(240.0, 120.0), vec2(520.0, 240.0));
-    crate::chrome::window(ctx, id, "Spectrum analyzer", state.workspace, default, true)
+    crate::chrome::window(ctx, id, "Spectrum analyser", state.workspace, default, true)
         .default_height(default.height())
         .show(ctx, |ui| {
-            let folded = crate::chrome::Header::new(id, "Spectrum analyzer").show(
+            let folded = crate::chrome::Header::new(id, "Spectrum analyser").show(
                 ui,
                 &mut open,
                 &mut (),

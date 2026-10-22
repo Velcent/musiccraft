@@ -165,7 +165,7 @@ pub struct Windows {
     pub shortcuts: bool,
     /// Instrument editor of the selected channel.
     pub channel_settings: bool,
-    /// Spectrum analyzer of the master output.
+    /// Spectrum analyser of the master output.
     pub spectrum: bool,
 }
 
@@ -467,7 +467,7 @@ pub struct UiState {
     pub plugin_filter: String,
     /// Hint of the control hovered last frame.
     pub(crate) hint: Option<String>,
-    /// Smoothed spectrum analyzer levels and their falling peaks (dB per bin).
+    /// Smoothed spectrum analyser levels and their falling peaks (dB per bin).
     pub(crate) spectrum: (Vec<f32>, Vec<f32>),
     /// Open effect windows: (mixer track, slot index).
     pub effect_windows: Vec<(usize, usize)>,

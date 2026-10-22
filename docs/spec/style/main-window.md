@@ -35,7 +35,7 @@ There is no status bar along the bottom. Hints and status messages live in the t
 **Window kinds**
 
 1. **Editor windows** (playlist, channel rack, piano roll, mixer). These have the compact header described under Anatomy. Each can move, resize, overlap, collapse to its header, maximize, detach and close. The playlist is a window like the others, not the workspace background.
-2. **Secondary windows** (channel settings, effect windows, automation editor, spectrum analyzer, keyboard shortcuts). They use the same compact header, with fewer tools, and the same window buttons. Fixed-size ones leave out maximize.
+2. **Secondary windows** (channel settings, effect windows, automation editor, spectrum analyser, keyboard shortcuts). They use the same compact header, with fewer tools, and the same window buttons. Fixed-size ones leave out maximize.
 3. **Modal dialogs** (save, export, unsaved changes, settings). These sit centred over the workspace. They have a header with a title and a close cross only, and cannot be detached, collapsed or snapped.
 4. **Hosted plugin windows**. These are the plugin's own view in a window we provide. They get our compact header (window menu, preset arrows if any, title, collapse, close) wherever the platform lets us draw one.
 5. **Floating hint panel** (optional, later). A larger, floating window that shows the current hint in more room than the hint bar, turned on from the View menu's toolbar group. It uses the same compact header and has no tools.
@@ -318,7 +318,7 @@ Tokens are in `crates/musiccraft-editors/src/theme.rs`. Names marked "new" are p
   - `Channel — <channel>`
   - `<track> › <effect>` for effect windows
   - `Automation — <name>`
-  - `Spectrum analyzer`
+  - `Spectrum analyser`
   - `Keyboard shortcuts`
   - `Settings`
 

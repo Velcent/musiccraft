@@ -560,7 +560,7 @@ impl App {
             status.peaks = (0..tracks).map(|t| meters.take_peak(t)).collect();
             status.load = meters.load();
             status.pitches = pitch_readings(self.session.project(), meters);
-            // Enough for the spectrum analyzer; the toolbar scope uses the end.
+            // Enough for the spectrum analyser; the toolbar scope uses the end.
             let mut scope = vec![0.0; 2048];
             meters.scope(&mut scope);
             status.scope = scope;

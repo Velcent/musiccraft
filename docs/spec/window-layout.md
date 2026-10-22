@@ -52,7 +52,7 @@ stay our own. The full target look, window by window, is the style guide in
 
 - Every editor window (playlist, channel rack, piano roll, mixer) and every secondary
   window (channel settings, effect windows, automation editor, spectrum
-  analyzer, keyboard shortcuts) has no separate title bar. Its first row is
+  analyser, keyboard shortcuts) has no separate title bar. Its first row is
   one compact **header**, left to right:
   1. the **window menu** button (three short bars), flush with the top-left
      corner;

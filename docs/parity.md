@@ -111,7 +111,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |
 | Effects | Pitch shifter | `fx:pitch_shift` |
 | Effects | Convolution reverb with impulse files or generated rooms | `fx:convolution` `cmd:mixer.set_effect_file` |
-| Effects | Spectrum analyzer | `done` |
+| Effects | Spectrum analyser | `done` |
 | Effects | Pitch correction and tuner | `fx:pitch_correct` `fx:tuner` `spec:mixer.md` |
 | Generators | Sample editor: trim, cut, fades, gain, normalize, reverse, time-stretch, pitch-shift, tune | `cmd:sample.edit` `spec:sample-editor.md` |
 | Generators | Resynthesis of a sample's harmonics | `cmd:channel.add_resynth` `spec:channel-rack.md` |

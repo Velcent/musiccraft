@@ -114,7 +114,7 @@ a generated room (`ir:room`, `ir:chamber`, `ir:plate`, `ir:hall`,
 unit energy, so swapping rooms keeps the level. The convolution adds 512
 samples of latency to the wet signal. Undoable.
 
-The **spectrum analyzer** (View menu, or click the toolbar oscilloscope) shows
+The **spectrum analyser** (View menu, or click the toolbar oscilloscope) shows
 the master output's last 2048 samples by frequency (Hann window, log frequency
 axis, 0 to −90 dB) with a slowly falling peak line.
 

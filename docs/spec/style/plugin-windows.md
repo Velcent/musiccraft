@@ -69,7 +69,7 @@ The header is the shared row from the main-window section (slots 1–9). Here on
 | 1 | **Window menu button** | The shared menu glyph (main-window section) | Opens the window menu (below) under the button | Same as click | — | — | As main-window: hover lightens it; while the menu is open it looks pressed with the glyph in the accent |
 | 2 | **Strip toggle** (the window's only tool) | Our strip glyph | Hides or shows the channel strip | — | — | — | Lit while the strip is shown |
 | 4a | **Channel colour mark** | A small square in the channel's colour, just before the title (channel windows only) | Same as clicking the title | — | — | — | Dimmed when the channel is muted |
-| 4 | **Title** | Main-window's title format: name, an em dash, then the context. Channel window: the channel's name, then the mixer track it plays to ("Lead — Insert 3"). Effect window: the effect's name, then the track's name ("Equalizer — Lead"). Long names are cut with an ellipsis before anything to their right is squeezed. Not a selector, so no chevron | Focuses the window. Dragging moves it | Opens a small menu with "Rename…" (channel windows) | — | Proposed: collapses or expands (see Placement) | Hint gives the full title and how to move or rename it. Focused: full text tone; unfocused: dimmed |
+| 4 | **Title** | Main-window's title format: name, an em dash, then the context. Channel window: the channel's name, then the mixer track it plays to ("Lead — Insert 3"). Effect window: the effect's name, then the track's name ("Equaliser — Lead"). Long names are cut with an ellipsis before anything to their right is squeezed. Not a selector, so no chevron | Focuses the window. Dragging moves it | Opens a small menu with "Rename…" (channel windows) | — | Proposed: collapses or expands (see Placement) | Hint gives the full title and how to move or rename it. Focused: full text tone; unfocused: dimmed |
 | 5 | **Drag area** | Header background | Raises and focuses; drag to move | Window menu | — | Proposed: collapses or expands | — |
 | 6 | **Keys-to-plugin toggle** *(reserved)* | Our keyboard glyph. Drawn only for a hosted plugin whose editor is embedded in our window (future) **and** that asks to receive typed keys, so it is absent today | Toggles whether typed keys go to the plugin first or to MusicCraft's shortcuts first | — | — | — | Lit when the plugin gets keys first |
 | 6 | **Preset name box** | The current preset's name, or "(custom)" when no preset matches. A small down-chevron sits at its right end. Shown only for instruments and effects that have presets and while "Show preset name in header" is on | Opens the preset list: category headings and, for Antiserum, the search field at the top. Choosing a preset is one undo step | Opens the window menu's PRESETS group | Proposed (own): steps to the previous or next preset | — | Inset like a small display. "(custom)" is dimmer than a real name |
@@ -336,7 +336,7 @@ Colour is given only as tokens from `crates/musiccraft-editors/src/theme.rs`, pl
 **Window names**
 
 - Channel window: "Channel settings" (menus and hints, existing). Its header title is the channel's name, an em dash, and the track's name: "Lead — Insert 3". The master is shown as "Master".
-- Effect window: "Equalizer — Lead". The effect's label comes first and the track's name second, which reverses today's "Lead › Equalizer".
+- Effect window: "Equaliser — Lead". The effect's label comes first and the track's name second, which reverses today's "Lead › Equaliser".
 - Plugin's own window: "Lead — <plugin name>".
 
 **Header**

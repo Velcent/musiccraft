@@ -223,7 +223,7 @@ fn view_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
     window_toggle(ui, state, "Piano roll (F7)", "piano_roll");
     window_toggle(ui, state, "Browser (Alt+F8)", "browser");
     window_toggle(ui, state, "Mixer (F9)", "mixer");
-    window_toggle(ui, state, "Spectrum analyzer", "spectrum");
+    window_toggle(ui, state, "Spectrum analyser", "spectrum");
     ui.separator();
     let mut hints = frame.settings.show_hints;
     if ui.checkbox(&mut hints, "Show hint bar").changed() {
@@ -619,7 +619,7 @@ fn upper_rack(
     let scope = frame.engine.scope.get(recent..).unwrap_or_default();
     let levels = state.meters.first().copied().unwrap_or_default();
     if icons::output_monitor(ui, scope, levels, 124.0)
-        .hint("Master output · click for the spectrum analyzer")
+        .hint("Master output · click for the spectrum analyser")
         .clicked()
     {
         state.windows.spectrum = !state.windows.spectrum;

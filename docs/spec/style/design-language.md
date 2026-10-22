@@ -184,11 +184,11 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 | Effect list beside the strips | slots ("empty", "+ add effect") | `mixer.rs` |
 | File and plugin tree | Browser (proposed title "Browser" in place of today's capitalised caption). Roots today: Current project, Controllers (*n*) and a plugin-tree root. Proposed (browser section): This project, Controllers (*n*), Instruments & effects, Presets, then user folders | `browser.rs`, `controllers.rs` |
 | Channel window | "Channel settings" in menus and hints; title "Channel — *name*" today, proposed "*channel* — *track*" ("Lead — Insert 3") | `channel_settings.rs` |
-| Effect window | title "*track* › *effect*" today, proposed "*effect* — *track*" ("Equalizer — Lead") | `effect_window.rs` |
+| Effect window | title "*track* › *effect*" today, proposed "*effect* — *track*" ("Equaliser — Lead") | `effect_window.rs` |
 | Automation window | Automation — *name* | `automation.rs` |
 | Settings | Settings | `settings.rs` |
 | Shortcut list | Keyboard shortcuts | `dialogs.rs` |
-| Analyser | Spectrum analyzer (spelling to be settled, see Gaps) | `spectrum.rs` |
+| Analyser | Spectrum analyser | `spectrum.rs` |
 | Built-in wavetable synth | Antiserum (owner-chosen name) | `antiserum.rs` |
 | Song/pattern switch | Pattern / Song (proposed, to replace today's PAT / SONG; "Ptn" where too narrow) | `toolbar.rs` |
 | Position display | caption BAR.BEAT.STEP or MIN:SEC | `toolbar.rs` |
@@ -208,7 +208,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 - **An ellipsis (…)** marks an item that opens a dialog or asks for more input.
 - **"+ "** before a label marks an add button ("+ Insert", "+ New pattern").
 - **Hints** (main-window section, following the existing hints in `playlist.rs`): the control's name, then its shortcut in parentheses, then a colon and what click, drag and right-click do, with middle dots between gestures ("Scroll bar: drag to scroll · drag an end to zoom"). Sentence case, one line, no full stop at the end. While dragging, the hint bar shows the live value in place of the description. The idle text is a short readiness line with the two most useful shortcuts.
-- **Window titles:** the window's name, an em dash, then the context ("Piano roll — Lead", "Equalizer — Lead"). The "›" form is retired.
+- **Window titles:** the window's name, an em dash, then the context ("Piano roll — Lead", "Equaliser — Lead"). The "›" form is retired.
 - **Number formats** in displays:
 
 | Display | Format |
@@ -229,7 +229,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 **Names we never use** (kinds, not a list of the names themselves):
 
 1. The original product's name, abbreviation or logo-word, and its maker's name, anywhere in the UI, in file extensions we write, in default project or preset names, or in hints. The only exception is the import format's plain file extension in the import dialog's file filter, which names a file type and is not branding.
-2. The names of its bundled instruments, effects, samplers, tools and preset packs, including near-spellings. Our instruments get plain descriptive names ("Synth", "Drum synth: kick", "Zone sampler", "Equalizer") or owner-chosen dictionary words (Antiserum).
+2. The names of its bundled instruments, effects, samplers, tools and preset packs, including near-spellings. Our instruments get plain descriptive names ("Synth", "Drum synth: kick", "Zone sampler", "Equaliser") or owner-chosen dictionary words (Antiserum).
 3. Its coined labels for interface parts and features: invented compound words, branded names for its hint area, its plugin wrapper, its plugin list, its channel filters, its routing or recording modes, its mode-switch captions and its theme presets. Where a generic DAW term exists we use it (playlist, piano roll, mixer, channel rack, browser, step sequencer, hint bar, pattern, clip, track, insert, send, master, transport, snap, tempo, metronome). Where none exists we describe it plainly ("group filter", "graph editor", "Instruments & effects", "Controller learn").
 4. Its colour names and theme preset names.
 5. Its menu wording copied verbatim. Our menu items are our own phrasing of what the command does.
@@ -412,7 +412,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 - **Group-box titles** in editor pages: small bold capitals in `TEXT_DIM` inside the box's top-left corner (OSCILLATORS, FILTER, LFO, ENVELOPE in the synth; SAMPLE, PLUGIN in channel windows).
 - **Menu headings:** small dim sentence-case text on a heading band ("Control from", "Value").
 - **List headings:** none. Today's PATTERNS / AUDIO / AUTOMATION headings in the playlist's left column are dropped (playlist section).
-- **Window titles**, existing: "Channel rack", "Playlist" (with "Arrangement" in `TEXT_DIM`), "Piano roll — *channel*", "Mixer — *track*", "Channel — *name*", "*track* › *effect*", "Automation — *name*", "Settings", "Keyboard shortcuts", "Spectrum analyzer". Proposed renames: the browser's capitalised caption → "Browser"; channel windows → "*channel* — *track*"; effect windows → "*effect* — *track*"; "Playlist" → "Playlist — *arrangement*" once arrangements exist.
+- **Window titles**, existing: "Channel rack", "Playlist" (with "Arrangement" in `TEXT_DIM`), "Piano roll — *channel*", "Mixer — *track*", "Channel — *name*", "*track* › *effect*", "Automation — *name*", "Settings", "Keyboard shortcuts", "Spectrum analyser". Proposed renames: the browser's capitalised caption → "Browser"; channel windows → "*channel* — *track*"; effect windows → "*effect* — *track*"; "Playlist" → "Playlist — *arrangement*" once arrangements exist.
 - **Display captions:** BAR.BEAT.STEP, MIN:SEC, BPM, CPU.
 - **Switches:** today PAT / SONG, TAP, ON, S, "Graph", "Slide", "Porta", "Clip", "Snap". Proposed renames: PAT / SONG → "Pattern" / "Song" (toolbar section); "Graph" becomes an icon toggle named "Graph editor" in its hint (channel-rack section); ON becomes a round light (mixer section).
 - **Group filter:** "Group filter" in hints, "No group" for the unfiltered choice (channel-rack section). Today's hint uses a coined term (see Gaps).
@@ -428,7 +428,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
   - Shown in the caption or once per strip, never repeated beside every value.
   - Signed values always show their sign (+0.0).
   - Use the en dash for ranges (F5–F9, 1–16) and the true minus sign in prose.
-- **Spelling:** British English in labels ("Colour", "Favourites", "analyser"), matching the existing "Colour" labels. "Spectrum analyzer" and "Equalizer" are to be settled (open question).
+- **Spelling:** British English in labels ("Colour", "Favourites", "analyser"), matching the existing "Colour" labels. The owner settled the two exceptions on 2026-10-22: "Spectrum analyser" and "Equaliser".
 
 ## States and feedback
 
@@ -463,11 +463,9 @@ Ordered by visual impact. Where a gap changes layout or behaviour fixed in a spe
 6. **Mixer selection and solo.** The selected strip is outlined in its own strip colour (amber for the master) (`crates/musiccraft-ui/src/mixer.rs`, around line 160), not `STRIP_SELECTED` with an `ACCENT` edge. Solo is a separate "S" LED lit in `HIGHLIGHT` (around line 316); there is no ring on the light and no silenced-by-solo look. In the channel rack solo is stored as mutes, so "silenced" cannot be told from "muted" (channel-rack section). `mixer.md`, `playlist.md` and `channel-rack.md` change first.
 7. **Font sizes and weight are scattered.** About ten distinct sizes are used across `crates/musiccraft-ui/src/*.rs` and `icons.rs` (`FontId::proportional(…)`, `.size(…)`). The named classes (`FONT_DISPLAY`, `FONT_TITLE`, `FONT_LABEL`, `FONT_CAPTION`, `FONT_VALUE`) now exist in `theme` and the window headers and LCDs use them; the other literals still need moving onto them. Bold is also used beyond the weight rule, for example the playlist and mixer titles (`playlist.rs` around line 129, `mixer.rs` around line 597).
 8. **Number formats.** The tempo shows two decimals in one size (`toolbar.rs`, toolbar section gap list), not whole digits plus three small decimals.
-9. **Capitalisation and spelling drift.**
-    - "Spectrum analyzer" and "Equalizer" use one spelling, "Colour" the other.
-10. **Disabled controls fade the egui way.** `TEXT_FAINT` exists in `theme` but disabled widgets still rely on egui's default fading; draw their text and glyphs in `TEXT_FAINT` and keep fills unchanged.
-11. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
-12. **No theme adjustment.** The theme is fixed in `theme.rs`. A future Settings → Theme page (own design) would shift token groups as a whole.
+9. **Disabled controls fade the egui way.** `TEXT_FAINT` exists in `theme` but disabled widgets still rely on egui's default fading; draw their text and glyphs in `TEXT_FAINT` and keep fills unchanged.
+10. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
+11. **No theme adjustment.** The theme is fixed in `theme.rs`. A future Settings → Theme page (own design) would shift token groups as a whole.
 
 ## Sources
 
