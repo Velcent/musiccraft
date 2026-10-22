@@ -293,9 +293,10 @@
   bar is its own group for the shading and the strongest lines.
 - The window menu's Tracks submenu unmutes every muted track and clears
   every track solo, each as one undo step.
-- The window menu's View submenu turns off the bar-group shading, the track
-  separators and following the playhead (all on by default; not saved with
-  the project).
+- The window menu's View submenu hides the clip list (Alt+P) and turns off
+  the bar-group shading, the track separators and following the playhead
+  (all on by default; not saved with the project). With the clip list
+  hidden the lanes take its width.
 - Double-clicking a pattern clip opens it in the piano roll; an automation
   clip opens the automation editor; an audio clip opens its channel's
   settings.

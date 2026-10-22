@@ -3097,3 +3097,25 @@ fn ctrl_shift_clicks_select_several_mixer_tracks_and_their_faders_move_together(
     h.click(pos2(one, row), PointerButton::Primary);
     assert_eq!(h.state.selected_track, 1);
 }
+
+#[test]
+fn alt_p_hides_the_playlist_clip_list_and_the_lanes_take_its_width() {
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let lanes = |h: &Harness| h.state.playlist.last_view.expect("playlist drawn").1;
+    let shown = lanes(&h);
+    h.click(h.playlist_point(0, 0), PointerButton::Primary);
+    h.key(egui::Key::P, Modifiers::ALT);
+    h.settle();
+    assert!(!h.state.playlist.view.clip_list);
+    let hidden = lanes(&h);
+    assert!(
+        hidden.left() < shown.left() - 100.0,
+        "{shown:?} → {hidden:?}"
+    );
+    h.key(egui::Key::P, Modifiers::ALT);
+    h.settle();
+    assert!(h.state.playlist.view.clip_list);
+    assert_eq!(lanes(&h).left(), shown.left());
+}

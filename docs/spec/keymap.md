@@ -126,6 +126,7 @@ take precedence over the global keys.
 | Shift+1, Shift+2, Shift+3 | Zoom presets (32, 96 and 240 points per bar) |
 | Shift+4 | Zoom all the way out; again to go back |
 | Shift+5 | Zoom to the loop region |
+| Alt+P | Show or hide the clip list |
 
 ### Over the mixer
 

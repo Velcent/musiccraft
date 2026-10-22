@@ -109,6 +109,8 @@ pub(crate) struct ViewOptions {
     pub(crate) separators: bool,
     /// During song playback the view pages along with the playhead.
     pub(crate) follow: bool,
+    /// The clip list column at the left.
+    pub(crate) clip_list: bool,
 }
 
 impl Default for ViewOptions {
@@ -117,6 +119,7 @@ impl Default for ViewOptions {
             shading: true,
             separators: true,
             follow: true,
+            clip_list: true,
         }
     }
 }
@@ -256,7 +259,9 @@ pub fn show(
                 return;
             }
             ui.horizontal_top(|ui| {
-                pattern_list(ui, state, frame.project, actions);
+                if state.playlist.view.clip_list {
+                    pattern_list(ui, state, frame.project, actions);
+                }
                 canvas(ui, state, frame, actions);
             });
         });
@@ -425,6 +430,8 @@ fn window_menu(
     });
     ui.menu_button("View", |ui| {
         let view = &mut state.playlist.view;
+        ui.add(egui::Checkbox::new(&mut view.clip_list, "Clip list"))
+            .hint("Alt+P shows or hides the clip list");
         ui.checkbox(&mut view.shading, "Bar-group shading");
         ui.checkbox(&mut view.separators, "Track separators");
         ui.checkbox(&mut view.follow, "Follow the playhead");
@@ -3483,6 +3490,9 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     {
         actions.extend(removal(&selected).map(Action::Run));
         state.playlist.selection.clear();
+    }
+    if pressed(Modifiers::ALT, Key::P) {
+        state.playlist.view.clip_list = !state.playlist.view.clip_list;
     }
     if pressed(Modifiers::COMMAND, Key::B) && !selected.is_empty() {
         let span = duplicate_span(&selected);
