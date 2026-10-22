@@ -71,7 +71,9 @@
   a title strip with the preview (notes, waveform or curve) below it. A
   pattern clip longer than its pattern marks where each repeat starts with a
   short tick at the top and bottom of its body; an automation clip tall
-  enough to show them marks its points as small dots on the curve.
+  enough to show them marks its points as small dots on the curve. A "+"
+  button centred under the patterns adds a new empty pattern
+  (`pattern.add`) and paints with it.
 
 ## Loop region and markers
 

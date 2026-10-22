@@ -3780,6 +3780,29 @@ fn dragging_a_clips_left_edge_trims_its_start() {
 }
 
 #[test]
+fn the_clip_lists_plus_button_adds_a_pattern() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let window = window_rect(&h, "playlist-window");
+    let plus = (0..120)
+        .flat_map(|j| (0..40).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("New pattern (F4"))
+        })
+        .expect("the + button");
+    let before = h.session.project().patterns.len();
+    assert_eq!(h.click(plus, PointerButton::Primary), ["pattern.add"]);
+    assert_eq!(h.session.project().patterns.len(), before + 1);
+}
+
+#[test]
 fn clicking_a_clips_glyph_selects_it_and_opens_the_clip_menu() {
     let mut h = Harness::new(&[
         "pattern.add",

@@ -993,7 +993,16 @@ fn pattern_section(
                     }
                 });
         });
-        if ui.button("+ New pattern").clicked() {
+        let add = ui.vertical_centered(|ui| {
+            icons::button(
+                ui,
+                Icon::Plus,
+                false,
+                theme::ACCENT,
+                "New pattern (F4 picks the next empty one)",
+            )
+        });
+        if add.inner.clicked() {
             state.playlist.paint_automation = None;
             state.playlist.paint_audio = None;
             actions.push(Action::Run(Invocation::bare("pattern.add")));
