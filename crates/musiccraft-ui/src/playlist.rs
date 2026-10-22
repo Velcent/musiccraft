@@ -533,20 +533,12 @@ fn pattern_section(
                                 ui.close();
                             }
                             ui.menu_button("Colour", |ui| {
-                                let mut pick = |ui: &mut egui::Ui, text: RichText, arg: String| {
-                                    if ui.button(text).clicked() {
-                                        actions.push(Action::Run(Invocation::new(
-                                            "pattern.set_color",
-                                            [(i + 1).to_string(), arg],
-                                        )));
-                                        ui.close();
-                                    }
-                                };
-                                pick(ui, RichText::new("None"), "none".to_owned());
-                                for c in 0..16u8 {
-                                    let text = RichText::new(format!("■ Colour {}", c + 1))
-                                        .color(theme::track_color(c));
-                                    pick(ui, text, (c + 1).to_string());
+                                if let Some(choice) = crate::swatches::grid(ui, pattern.color) {
+                                    actions.push(Action::Run(Invocation::new(
+                                        "pattern.set_color",
+                                        [(i + 1).to_string(), crate::swatches::arg(choice)],
+                                    )));
+                                    ui.close();
                                 }
                             });
                             let sig = pattern.time_signature;
@@ -1873,28 +1865,16 @@ fn headers(
                 ));
                 ui.close();
             }
-            ui.label("Colour");
-            ui.horizontal_wrapped(|ui| {
-                for c in 0..16u8 {
-                    let (swatch, response) =
-                        ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
-                    ui.painter().rect_filled(swatch, 2.0, theme::track_color(c));
-                    if response.clicked() {
-                        actions.push(Action::Run(Invocation::new(
-                            "playlist.set_track_color",
-                            [number.clone(), (c + 1).to_string()],
-                        )));
-                        ui.close();
-                    }
+            ui.menu_button("Colour", |ui| {
+                let current = playlist.track_colors.get(&row).copied();
+                if let Some(choice) = crate::swatches::grid(ui, current) {
+                    actions.push(Action::Run(Invocation::new(
+                        "playlist.set_track_color",
+                        [number.clone(), crate::swatches::arg(choice)],
+                    )));
+                    ui.close();
                 }
             });
-            if ui.button("No colour").clicked() {
-                actions.push(Action::Run(Invocation::new(
-                    "playlist.set_track_color",
-                    [number.clone(), "none".to_owned()],
-                )));
-                ui.close();
-            }
         });
         let dot = Rect::from_center_size(r.right_center() - vec2(12.0, 0.0), vec2(14.0, 14.0));
         if !area.contains_rect(dot) {

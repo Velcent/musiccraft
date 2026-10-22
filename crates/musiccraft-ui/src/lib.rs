@@ -25,6 +25,7 @@ mod scrollbars;
 pub mod settings;
 mod signature;
 mod spectrum;
+mod swatches;
 mod toolbar;
 mod type_in;
 mod zone_editor;

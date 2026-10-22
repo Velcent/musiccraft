@@ -15,7 +15,9 @@
   Silenced rows skip pattern, audio and automation clips alike. The row header
   shows the colour stripe and name on the left, and the arm dot, S (solo)
   button and mute dot on the right; right-click it to
-  rename it or pick a colour. A coloured row shows a stripe of its colour at the
+  rename it or pick a colour, or double-click it to rename it in place. Track
+  and pattern menus share one Colour submenu: two rows of eight swatches with
+  the current one outlined, then "No colour". A coloured row shows a stripe of its colour at the
   left of its header; silenced rows show their name dimmed.
 - Playlist time arguments are in bars from 0 of the song's time signatures
   (`time-signatures.md`); fractions are allowed and `<n>t` gives exact ticks.
