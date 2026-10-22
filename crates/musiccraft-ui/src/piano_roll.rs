@@ -760,6 +760,9 @@ fn options_menu(
         ];
         for (enabled, label, keys, op) in ops {
             if item(ui, enabled, label, keys) {
+                if matches!(op, EditOp::Copy | EditOp::Cut) {
+                    crate::copied(ui.ctx(), "notes");
+                }
                 edit_op(state, project, op, actions);
                 ui.close();
             }
@@ -2569,15 +2572,21 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     if pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace) {
         ops.push(EditOp::Delete);
     }
+    use crate::ClipboardKey;
     for (key, op) in [
-        (Key::C, EditOp::Copy),
-        (Key::X, EditOp::Cut),
-        (Key::V, EditOp::Paste),
-        (Key::B, EditOp::Duplicate),
+        (ClipboardKey::Copy, EditOp::Copy),
+        (ClipboardKey::Cut, EditOp::Cut),
+        (ClipboardKey::Paste, EditOp::Paste),
     ] {
-        if pressed(Modifiers::COMMAND, key) {
+        if crate::clipboard_key(ctx, key) {
             ops.push(op);
         }
+    }
+    if pressed(Modifiers::COMMAND, Key::B) {
+        ops.push(EditOp::Duplicate);
+    }
+    if ops.contains(&EditOp::Copy) || ops.contains(&EditOp::Cut) {
+        crate::copied(ctx, "notes");
     }
     let moves = [
         (Modifiers::SHIFT, Key::ArrowUp, 0, 1),

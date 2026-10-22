@@ -2643,3 +2643,31 @@ fn the_playlist_follows_the_playhead_unless_turned_off() {
     h.settle();
     assert!(h.state.playlist.offset.x > 0.0, "pages to the playhead");
 }
+
+#[test]
+fn playlist_copy_and_paste_use_the_desktop_clipboard_events() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    h.click(h.playlist_point(bar + 40, 0), PointerButton::Primary);
+    // Ctrl+C arrives as a copy event, Ctrl+V as a paste of the system text.
+    h.frame(vec![Event::Copy]);
+    h.engine.position_ticks = f64::from(4 * bar + 100);
+    h.frame(vec![]);
+    let pasted = h.frame(vec![Event::Paste("MusicCraft: clips".to_owned())]);
+    assert_eq!(pasted.len(), 1, "{pasted:?}");
+    let starts: Vec<(u32, u32)> = h
+        .session
+        .project()
+        .playlist
+        .clips
+        .iter()
+        .map(|c| (c.track, c.start))
+        .collect();
+    assert_eq!(starts, [(0, bar), (0, 4 * bar)]);
+    assert_eq!(h.state.playlist.selection, BTreeSet::from([(0, 4 * bar)]));
+    // Cut removes the pasted copy again.
+    h.frame(vec![Event::Cut]);
+    assert_eq!(h.session.project().playlist.clips.len(), 1);
+}

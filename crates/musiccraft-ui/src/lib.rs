@@ -853,6 +853,45 @@ fn handle_keys(ctx: &egui::Context, state: &UiState, frame: &Frame<'_>, actions:
     }
 }
 
+/// Cut, copy or paste in an editor window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClipboardKey {
+    Cut,
+    Copy,
+    Paste,
+}
+
+/// Whether `which` was asked for this frame, and takes it from the input.
+/// On the desktop Ctrl+X, Ctrl+C and Ctrl+V reach egui as cut, copy and
+/// paste events instead of key presses (and paste only when the system
+/// clipboard holds text, see [`copied`]), so both forms count.
+pub(crate) fn clipboard_key(ctx: &egui::Context, which: ClipboardKey) -> bool {
+    use egui::Event;
+    let key = match which {
+        ClipboardKey::Cut => egui::Key::X,
+        ClipboardKey::Copy => egui::Key::C,
+        ClipboardKey::Paste => egui::Key::V,
+    };
+    ctx.input_mut(|i| {
+        let before = i.events.len();
+        i.events.retain(|e| {
+            !matches!(
+                (which, e),
+                (ClipboardKey::Cut, Event::Cut)
+                    | (ClipboardKey::Copy, Event::Copy)
+                    | (ClipboardKey::Paste, Event::Paste(_))
+            )
+        });
+        i.events.len() != before || i.consume_key(egui::Modifiers::COMMAND, key)
+    })
+}
+
+/// After a cut or copy inside an editor: puts a short description on the
+/// system clipboard, so that the next Ctrl+V reaches the app as a paste.
+pub(crate) fn copied(ctx: &egui::Context, what: &str) {
+    ctx.copy_text(format!("MusicCraft: {what}"));
+}
+
 /// Handles `view.*` and `ui.*` invocations here; passes the rest through.
 fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Action>) -> Vec<Action> {
     let mut out = Vec::with_capacity(actions.len());

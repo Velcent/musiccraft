@@ -232,7 +232,9 @@
   follows the playhead.
 - Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
   dragging moves or resizes every selected clip; Delete removes; Ctrl+A selects
-  all; Ctrl+B duplicates the selection right after its end; Shift+Left and
+  all; Ctrl+X, Ctrl+C and Ctrl+V cut, copy and paste (pasted clips land at
+  the playhead, snapped down, on their own tracks, and become the
+  selection); Ctrl+B duplicates the selection right after its end; Shift+Left and
   Shift+Right nudge it one snap step, Shift+Up and Shift+Down move it one
   track (nothing moves if a clip would leave the playlist). One undo step
   each. The window-local keys are listed in `keymap.md`, "Over the playlist".

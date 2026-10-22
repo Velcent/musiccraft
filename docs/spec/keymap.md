@@ -94,6 +94,7 @@ take precedence over the global keys.
 | Chord | Action |
 | --- | --- |
 | Ctrl+A / Esc | Select all clips / clear the selection |
+| Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste (at the playhead, snapped down) |
 | Ctrl+B | Duplicate the selection after itself |
 | Delete / Backspace | Delete the selection |
 | Shift+Left / Right | Nudge the selection one snap step |

@@ -90,6 +90,8 @@ pub struct PlaylistState {
     zoom_back: Option<f32>,
     /// The window menu's View options.
     pub(crate) view: ViewOptions,
+    /// Clips cut or copied, starts relative to the first one.
+    clipboard: Vec<Clip>,
 }
 
 /// What the playlist draws, and whether it follows the playhead.
@@ -137,6 +139,7 @@ impl Default for PlaylistState {
             playhead: 0.0,
             zoom_back: None,
             view: ViewOptions::default(),
+            clipboard: Vec::new(),
         }
     }
 }
@@ -314,6 +317,22 @@ fn window_menu(
     let project = frame.project;
     let selected = selected_clips(state, project);
     ui.menu_button("Edit", |ui| {
+        let any = !selected.is_empty();
+        let ops = [
+            (any, "Cut (Ctrl+X)", ClipOp::Cut),
+            (any, "Copy (Ctrl+C)", ClipOp::Copy),
+            (
+                !state.playlist.clipboard.is_empty(),
+                "Paste at the playhead (Ctrl+V)",
+                ClipOp::Paste,
+            ),
+        ];
+        for (enabled, label, op) in ops {
+            if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                clipboard_op(ui.ctx(), state, project, op, actions);
+                ui.close();
+            }
+        }
         menu_item(
             ui,
             actions,
@@ -2925,6 +2944,15 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         actions.extend(duplication(project, &selected).map(Action::Run));
         state.playlist.selection = selected.iter().map(|c| (c.track, c.start + span)).collect();
     }
+    for (key, op) in [
+        (crate::ClipboardKey::Cut, ClipOp::Cut),
+        (crate::ClipboardKey::Copy, ClipOp::Copy),
+        (crate::ClipboardKey::Paste, ClipOp::Paste),
+    ] {
+        if crate::clipboard_key(ctx, key) {
+            clipboard_op(ctx, state, project, op, actions);
+        }
+    }
     let nudges = [
         (Key::ArrowLeft, Nudge::Left),
         (Key::ArrowRight, Nudge::Right),
@@ -2956,6 +2984,61 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         if pressed(modifiers, key) {
             zoom(state, project, op);
         }
+    }
+}
+
+/// Cut, copy or paste of playlist clips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClipOp {
+    Cut,
+    Copy,
+    Paste,
+}
+
+/// Cut and copy fill the playlist's clipboard with the selected clips;
+/// paste adds them at the playhead (snapped down) on their own tracks, as one
+/// undo step, and selects them.
+fn clipboard_op(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    project: &Project,
+    op: ClipOp,
+    actions: &mut Vec<Action>,
+) {
+    let selected = selected_clips(state, project);
+    match op {
+        ClipOp::Cut | ClipOp::Copy if !selected.is_empty() => {
+            let first = selected.iter().map(|c| c.start).min().unwrap_or(0);
+            state.playlist.clipboard = selected
+                .iter()
+                .map(|c| Clip {
+                    start: c.start - first,
+                    ..*c
+                })
+                .collect();
+            crate::copied(ctx, "clips");
+            if op == ClipOp::Cut {
+                actions.extend(removal(&selected).map(Action::Run));
+                state.playlist.selection.clear();
+            }
+        }
+        ClipOp::Paste if !state.playlist.clipboard.is_empty() => {
+            let list = &state.playlist;
+            let at = list.snap.floor(list.playhead, &list.meter);
+            let adds = list
+                .clipboard
+                .iter()
+                .map(|c| add_clip_invocation(project, c, c.track, c.start + at))
+                .collect();
+            actions.extend(batch(adds).map(Action::Run));
+            state.playlist.selection = state
+                .playlist
+                .clipboard
+                .iter()
+                .map(|c| (c.track, c.start + at))
+                .collect();
+        }
+        _ => {}
     }
 }
 
