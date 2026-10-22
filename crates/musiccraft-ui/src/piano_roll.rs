@@ -1388,8 +1388,9 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
     corner(
         ui,
         state,
-        body,
+        (project, body),
         crate::channel_color(project, channel_index),
+        actions,
     );
 }
 
@@ -1464,8 +1465,15 @@ fn overview(
 }
 
 /// The corner block above the keyboard: the colour group of new notes, with
-/// the Porta and Slide toggles on its right edge.
-fn corner(ui: &egui::Ui, state: &mut UiState, body: Rect, own: Color32) {
+/// the Porta and Slide toggles on its right edge. Right-click offers to give
+/// the selected notes this colour.
+fn corner(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    (project, body): (&Project, Rect),
+    own: Color32,
+    actions: &mut Vec<Action>,
+) {
     let block = Rect::from_min_size(
         body.min,
         vec2(KEYS_WIDTH, crate::scrollbars::BAR + RULER_HEIGHT),
@@ -1475,7 +1483,7 @@ fn corner(ui: &egui::Ui, state: &mut UiState, body: Rect, own: Color32) {
     let swatch = ui
         .interact(block, egui::Id::new("roll-corner"), Sense::click())
         .hint(format!(
-            "Colour group {} of new notes · click to choose",
+            "Colour group {} of new notes · click to choose · right-click to apply it to the selected notes",
             group + 1
         ));
     let painter = ui.painter();
@@ -1536,6 +1544,15 @@ fn corner(ui: &egui::Ui, state: &mut UiState, body: Rect, own: Color32) {
         .id(egui::Id::new("roll-colour-groups"))
         .open_memory(toggle)
         .show(|ui| colour_groups(ui, state, own));
+    swatch.context_menu(|ui| {
+        let any = !state.roll.selection.is_empty();
+        let item =
+            egui::Button::new("Apply this colour to the selected notes").shortcut_text("Alt+C");
+        if crate::widgets::add_enabled(ui, any, item).clicked() {
+            edit_op(state, project, EditOp::ApplyColour, actions);
+            ui.close();
+        }
+    });
 }
 
 /// Colour group `group` (0 is the channel's own colour, `own`).
@@ -2694,6 +2711,8 @@ enum EditOp {
     Duplicate,
     /// Move the selection by snap steps and semitones.
     Move(i64, i8),
+    /// Give the selected notes the colour group of new notes.
+    ApplyColour,
 }
 
 fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
@@ -2723,6 +2742,9 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     }
     if pressed(Modifiers::COMMAND, Key::B) {
         ops.push(EditOp::Duplicate);
+    }
+    if pressed(Modifiers::ALT, Key::C) {
+        ops.push(EditOp::ApplyColour);
     }
     if ops.contains(&EditOp::Copy) || ops.contains(&EditOp::Cut) {
         crate::copied(ctx, "notes");
@@ -2832,6 +2854,14 @@ fn edit_op(state: &mut UiState, project: &Project, op: EditOp, actions: &mut Vec
                 actions.push(Action::Run(invocation));
                 state.roll.selection = selected.iter().map(|n| shifted(n, dt, dk)).collect();
             }
+        }
+        EditOp::ApplyColour => {
+            let recolour: Vec<Note> = selected
+                .into_iter()
+                .filter(|n| n.props.color != state.roll.color)
+                .collect();
+            let group = (state.roll.color + 1).to_string();
+            actions.extend(set_notes_prop(channel, &recolour, "color", &group).map(Action::Run));
         }
         _ => {}
     }
@@ -3507,5 +3537,40 @@ mod tests {
         session.undo().unwrap();
         session.undo().unwrap();
         assert!(notes_of(&session).iter().all(|n| !n.props.muted));
+    }
+
+    #[test]
+    fn applying_the_colour_recolours_only_selected_notes_of_another_group() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "channel.add_synth",
+            "note.add 1 0t 24t 60 100",
+            "note.add 1 48t 24t 64 100",
+            "note.add 1 96t 24t 67 100",
+            "note.set_prop 1 48t 64 color 3",
+        ] {
+            session.run_line(line).unwrap();
+        }
+        let project = session.project().clone();
+        let mut state = UiState::default();
+        state.roll.color = 2;
+        state.roll.selection.extend([(0, 60), (48, 64)]);
+        let mut actions = Vec::new();
+        edit_op(&mut state, &project, EditOp::ApplyColour, &mut actions);
+        let ran: Vec<String> = actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::Run(i) => Some(i.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ran, ["note.set_prop 1 0t 60 color 3"]);
+        state.roll.selection.clear();
+        actions.clear();
+        edit_op(&mut state, &project, EditOp::ApplyColour, &mut actions);
+        assert!(actions.is_empty());
     }
 }

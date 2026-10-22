@@ -105,6 +105,7 @@ the typing keyboard is off); they take precedence over the global keys.
 | Page Up / Page Down | Zoom in / out horizontally |
 | Shift+1, Shift+2, Shift+3 | Fixed zoom levels (12, 24 and 48 points per step) |
 | Shift+4 / Shift+5 | Fit the pattern / zoom to the time selection (or the selected notes) |
+| Alt+C | Give the selected notes the colour group of new notes |
 
 ### Over the playlist
 

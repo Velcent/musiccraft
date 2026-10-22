@@ -282,6 +282,8 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - The corner block above the keyboard shows the colour group of new notes
   (the channel colour for group 1) with its number. Clicking it opens a 4 × 4
   grid of the 16 groups. The Porta and Slide toggles sit on its right edge.
+  Right-clicking it offers "Apply this colour to the selected notes" (Alt+C),
+  which gives the selected notes that group as one undo step.
 - Notes have a pan, -100 to 100 (`note.set_pan`; `note.add` takes it as an
   optional sixth argument; `note.set_all` rows may carry it as a fifth value).
   It is applied as a balance on top of the channel pan.
