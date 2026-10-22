@@ -276,7 +276,7 @@ fn ticks(value: u32) -> String {
 }
 
 /// Wraps several invocations into one undo step.
-fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
+pub(crate) fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
     match invocations.len() {
         0 => None,
         1 => invocations.into_iter().next(),

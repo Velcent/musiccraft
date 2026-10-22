@@ -1935,6 +1935,32 @@ fn mixer_strips_step_by_whole_strips() {
 }
 
 #[test]
+fn the_mixer_plus_adds_an_insert_and_selects_it() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let plus = (0..200)
+        .map(|i| mixer.left_top() + vec2(4.0 + 3.0 * i as f32, 11.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Add an insert track"))
+        })
+        .expect("the add-insert button");
+    let before = h.session.project().mixer.len();
+    assert_eq!(h.click(plus, PointerButton::Primary), ["mixer.add_track"]);
+    assert_eq!(h.session.project().mixer.len(), before + 1);
+    assert_eq!(h.state.selected_track, before);
+    // Right-click opens the menu instead of adding.
+    let out = h.click(plus, PointerButton::Secondary);
+    assert!(out.is_empty(), "{out:?}");
+}
+
+#[test]
 fn the_wheel_over_empty_strip_space_steps_the_strips() {
     let mut h = Harness::new(&["mixer.rename 2 Bass"]);
     h.state.windows.mixer = true;

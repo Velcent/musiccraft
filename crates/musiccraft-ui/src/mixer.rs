@@ -69,7 +69,7 @@ pub fn show(
                 &mut open,
                 &mut (&mut *state, &mut *actions),
                 |ui, (state, actions)| window_menu(ui, state, project, actions),
-                |ui, (state, actions)| header_tools(ui, state, actions),
+                |ui, (state, actions)| header_tools(ui, state, project, actions),
             );
             if folded {
                 return;
@@ -172,7 +172,12 @@ fn dock_divider(ui: &mut egui::Ui, height: f32) {
 const STRIP_MIN_HEIGHT: f32 = 300.0;
 
 /// The header's tools: strip details, slot panel, add insert.
-fn header_tools(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) {
+fn header_tools(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    actions: &mut Vec<Action>,
+) {
     if icons::header_button(
         ui,
         Icon::Details,
@@ -195,8 +200,40 @@ fn header_tools(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action
     {
         state.mixer_panel = !state.mixer_panel;
     }
-    if icons::header_button(ui, Icon::Plus, false, false, "Add an insert track").clicked() {
-        run(actions, "mixer.add_track", []);
+    let add = icons::header_button(
+        ui,
+        Icon::Plus,
+        false,
+        false,
+        "Add an insert track (right-click: more)",
+    );
+    // New inserts go after the last; the first of them becomes selected.
+    let mut added = 0;
+    if add.clicked() {
+        added = 1;
+    }
+    add.context_menu(|ui| {
+        if ui.button("Add one").clicked() {
+            added = 1;
+        }
+        ui.menu_button("Add several", |ui| {
+            for count in [2, 4, 8] {
+                if ui.button(format!("{count} inserts")).clicked() {
+                    added = count;
+                    ui.close();
+                }
+            }
+        });
+    });
+    let room = musiccraft_project::params::MAX_MIXER_TRACKS.saturating_sub(project.mixer.len());
+    let added = added.min(room);
+    if added > 0 {
+        let adds = (0..added)
+            .map(|_| Invocation::bare("mixer.add_track"))
+            .collect();
+        actions.extend(crate::piano_roll::batch(adds).map(Action::Run));
+        state.selected_track = project.mixer.len();
+        state.mixer_selection.clear();
     }
 }
 

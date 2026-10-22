@@ -166,7 +166,9 @@ Ranges and defaults are defined in `musiccraft-params`.
   edge: about two thirds of the width and a little under half the height.
   Strips fill the height of the window; the fader takes the spare height.
 - Header: window menu, the strip-details switch, the slot-panel switch and
-  the add-insert button (a plus: adds an insert and selects it), then the
+  the add-insert button (a plus: adds an insert after the last and selects
+  it; right-click offers Add one and Add several ▸ 2, 4 or 8 inserts, one
+  undo step, the first new one selected), then the
   title (`Mixer — <track>`) at the right end before the window buttons. The
   window menu holds View (Strip details, Slot panel, Slot panel on the left,
   Hairlines between strips, and Strip colour ▸ Off, Faint, Medium or Strong:
