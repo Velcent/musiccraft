@@ -519,6 +519,10 @@ fn window_buttons(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Acti
         if response.clicked() {
             run(actions, &format!("view.toggle {which}"));
         }
+        // The playlist and piano roll open maximized on right-click.
+        if matches!(which, "playlist" | "piano_roll") && response.secondary_clicked() {
+            run(actions, &format!("view.open_maximized {which}"));
+        }
         // A browser item dragged over the button opens and raises its window,
         // so the drag can go on into it.
         if dragging && !window.is_empty() && response.contains_pointer() {
@@ -526,6 +530,30 @@ fn window_buttons(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Acti
             raise(ui.ctx(), egui::Id::new(window));
         }
     }
+    layout_button(ui, actions);
+}
+
+/// The window layout button: its menu restores the default layout or
+/// maximizes the playlist.
+fn layout_button(ui: &mut egui::Ui, actions: &mut Vec<Action>) {
+    let button = icons::toggle(ui, Icon::Layout, false, "Window layout");
+    let toggle =
+        (button.clicked() || button.secondary_clicked()).then_some(egui::SetOpenCommand::Toggle);
+    egui::Popup::menu(&button).open_memory(toggle).show(|ui| {
+        let items = [
+            ("Default layout (Ctrl+Shift+H)", "view.default_layout"),
+            (
+                "Maximize or restore the playlist (Enter)",
+                "view.maximize playlist",
+            ),
+            ("Piano roll maximized", "view.open_maximized piano_roll"),
+        ];
+        for (label, invocation) in items {
+            if ui.button(label).clicked() {
+                run(actions, invocation);
+            }
+        }
+    });
 }
 
 /// Puts a workspace window on top of the others.

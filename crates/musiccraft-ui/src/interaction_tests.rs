@@ -2572,3 +2572,53 @@ fn the_toolbar_pattern_field_steps_renames_and_reveals() {
     let offset = h.state.playlist.offset;
     assert!(offset.x > 0.0, "scrolled to bar 7: {offset:?}");
 }
+
+#[test]
+fn right_clicking_the_piano_roll_button_opens_it_maximized() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.piano_roll = false;
+    h.settle();
+    let find = |h: &mut Harness, prefix: &str| {
+        [14.0, 38.0, 60.0]
+            .into_iter()
+            .flat_map(|y| (0..170).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|hint| hint.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("{prefix:?} in the toolbar"))
+    };
+    let roll = find(&mut h, "Piano roll (F7)");
+    h.click(roll, PointerButton::Secondary);
+    h.settle();
+    assert!(h.state.windows.piano_roll);
+    assert!(crate::chrome::maximized(
+        &h.ctx,
+        egui::Id::new("piano-roll")
+    ));
+
+    // The layout button's first item puts every window back.
+    let layout = find(&mut h, "Window layout");
+    h.click(layout, PointerButton::Primary);
+    h.settle();
+    let item = (0..40)
+        .map(|j| layout + vec2(20.0, 12.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.ctx
+                .memory(|m| m.layer_id_at(*p))
+                .is_some_and(|l| l.order == egui::Order::Foreground)
+        });
+    let item = item.expect("the layout menu") + vec2(0.0, 10.0);
+    h.click(item, PointerButton::Primary);
+    h.settle();
+    assert!(!crate::chrome::maximized(
+        &h.ctx,
+        egui::Id::new("piano-roll")
+    ));
+}

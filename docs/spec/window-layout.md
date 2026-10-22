@@ -107,8 +107,11 @@ stay our own. The full target look, window by window, is the style guide in
     chevron with the Patterns menu's items; the pattern field, whose click
     or right-click lists the patterns, wheel or stacked up/down arrows step
     them, double-click renames in place and Ctrl+click shows the pattern's
-    first clip in the playlist; and a plus) and the window buttons (Playlist, Channel rack, Piano roll,
-    Browser, Mixer).
+    first clip in the playlist; and a plus), the window buttons (Playlist,
+    Channel rack, Piano roll, Browser, Mixer; right-click on Playlist or
+    Piano roll opens that window maximized, `view.open_maximized`) and the
+    window layout button, whose menu has Default layout, Maximize or restore
+    the playlist, and Piano roll maximized.
 - Option toggles all light the same way: an accent fill with a dark glyph.
 - The time display shows bar.beat.step, minutes:seconds.hundredths or
   bar.beat.tick, with the last field smaller and the mode (BARS, TIME, TICKS)

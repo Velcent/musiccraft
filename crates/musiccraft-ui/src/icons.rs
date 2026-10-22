@@ -91,6 +91,8 @@ pub enum Icon {
     Pause,
     /// Wait for input (an hourglass).
     Wait,
+    /// Window layout (a frame split into three panes, a small chevron under it).
+    Layout,
     /// Count-in (three rising ticks and a play triangle).
     CountIn,
     /// Blend recording (two offset boxes, the front one filled).
@@ -601,6 +603,20 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                     color,
                 );
             }
+        }
+        Icon::Layout => {
+            painter.rect_stroke(
+                Rect::from_min_max(p(r, 0.05, 0.05), p(r, 0.95, 0.7)),
+                1.0,
+                stroke,
+                egui::StrokeKind::Middle,
+            );
+            painter.line_segment([p(r, 0.45, 0.05), p(r, 0.45, 0.7)], stroke);
+            painter.line_segment([p(r, 0.45, 0.38), p(r, 0.95, 0.38)], stroke);
+            painter.add(Shape::line(
+                vec![p(r, 0.38, 0.82), p(r, 0.5, 0.95), p(r, 0.62, 0.82)],
+                stroke,
+            ));
         }
         Icon::Wait => {
             painter.line_segment([p(r, 0.15, 0.03), p(r, 0.85, 0.03)], stroke);

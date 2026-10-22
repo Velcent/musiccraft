@@ -196,6 +196,8 @@ pub enum Arrange {
     DefaultLayout,
     /// Maximize or restore the playlist.
     MaximizePlaylist,
+    /// Maximize the window with this id (left maximized if it already is).
+    Maximize(&'static str),
     /// Bring the window with this id to the front.
     Raise(&'static str),
 }
@@ -374,6 +376,13 @@ fn arrange(ctx: &egui::Context, state: &mut UiState) {
             // A playlist that was closed is drawn once before it maximizes.
             let done = chrome::toggle_maximized(ctx, egui::Id::new("playlist-window"));
             state.arrange = (!done && state.windows.playlist).then_some(Arrange::MaximizePlaylist);
+        }
+        Some(Arrange::Maximize(id)) => {
+            if chrome::maximize(ctx, egui::Id::new(id)) {
+                ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
+            } else {
+                state.arrange = Some(Arrange::Maximize(id));
+            }
         }
         None => {}
     }
@@ -870,6 +879,13 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             {
                 state.windows.playlist = true;
                 state.arrange = Some(Arrange::MaximizePlaylist);
+            }
+            "view.open_maximized" => {
+                let which = invocation.args.first().map_or("", String::as_str);
+                if let Some((id, open)) = editor_window(&mut state.windows, which) {
+                    *open = true;
+                    state.arrange = Some(Arrange::Maximize(id));
+                }
             }
             "view.close_focused" | "view.hide_all" | "view.hide_effects" | "view.hide_others"
                 if state.dialog.is_none() =>

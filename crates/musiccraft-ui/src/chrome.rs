@@ -66,6 +66,16 @@ pub fn toggle_maximized(ctx: &egui::Context, id: egui::Id) -> bool {
     drawn
 }
 
+/// Maximizes window `id`, leaving it as it is when it already is. Returns
+/// false, changing nothing, when the window has not been drawn yet.
+pub fn maximize(ctx: &egui::Context, id: egui::Id) -> bool {
+    let drawn = ctx.data_mut(|d| d.get_temp::<Rect>(key(id, "rect")).is_some());
+    if drawn && !maximized(ctx, id) {
+        set_maximized(ctx, id, true);
+    }
+    drawn
+}
+
 /// Puts window `id` back where it first opened: unfolded, not maximized.
 pub fn reset(ctx: &egui::Context, id: egui::Id) {
     ctx.data_mut(|d| {
