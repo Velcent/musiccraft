@@ -511,17 +511,16 @@ fn make_primary(state: &mut UiState, index: usize) {
     }
 }
 
-/// Moves the fader (`mixer.set_volume`) or pan (`mixer.set_pan`) of every
-/// track in `tracks` by as much as track `index` moves to `value`: faders by
-/// the same share of their travel, pans by the same amount, each clamped.
+/// Moves the fader (`mixer.set_volume`), pan (`mixer.set_pan`) or separation
+/// (`mixer.set_separation`) of every track in `tracks` by as much as track
+/// `index` moves to `value`: faders by the same share of their travel, the
+/// knobs by the same amount, each clamped.
 fn ganged(project: &Project, tracks: &[usize], index: usize, name: &str, value: f32) -> Invocation {
     let volume = name == "mixer.set_volume";
-    let position = |t: &MixerTrack| {
-        if volume {
-            widgets::gain_to_fader(t.volume, MAX_VOLUME)
-        } else {
-            t.pan
-        }
+    let position = |t: &MixerTrack| match name {
+        "mixer.set_volume" => widgets::gain_to_fader(t.volume, MAX_VOLUME),
+        "mixer.set_separation" => t.separation,
+        _ => t.pan,
     };
     let to = if volume {
         widgets::gain_to_fader(value, MAX_VOLUME)
@@ -564,6 +563,29 @@ fn strip_control(
     if let Some(value) = out.changed {
         let invocation = ganged(project, &tracks, index, name, value);
         actions.push(Action::Coalesced(invocation, state.gesture()));
+    }
+}
+
+/// The tracks a switch on track `index` acts on: the whole selection when
+/// `index` is part of it, otherwise `index` alone.
+fn targets(state: &UiState, index: usize) -> Vec<usize> {
+    if is_selected(state, index) {
+        selection(state)
+    } else {
+        vec![index]
+    }
+}
+
+/// Runs `name <track> <value>` for each of `tracks`, as one undo step.
+fn run_each(actions: &mut Vec<Action>, name: &str, tracks: &[usize], value: &str) {
+    let mut lines: Vec<String> = tracks
+        .iter()
+        .map(|t| Invocation::new(name, [t.to_string(), value.to_owned()]).to_string())
+        .collect();
+    match lines.len() {
+        0 => {}
+        1 => actions.extend(Invocation::parse(&lines.remove(0)).ok().map(Action::Run)),
+        _ => run(actions, musiccraft_commands::BATCH, lines),
     }
 }
 
@@ -684,14 +706,7 @@ fn strip(
                     run(actions, "mixer.toggle_solo", [number.clone()]);
                 } else if selected && tracks.len() > 1 {
                     let to = if track.mute { "off" } else { "on" };
-                    let lines = tracks.iter().map(|t| {
-                        Invocation::new("mixer.set_mute", [t.to_string(), to.to_owned()])
-                            .to_string()
-                    });
-                    actions.push(Action::Run(Invocation::new(
-                        musiccraft_commands::BATCH,
-                        lines,
-                    )));
+                    run_each(actions, "mixer.set_mute", &tracks, to);
                 } else {
                     run(actions, "mixer.toggle_mute", [number.clone()]);
                 }
@@ -735,7 +750,7 @@ fn strip(
                 .response
                 .hint(format!("Level {}", format::level(track.volume)));
             if state.mixer_details {
-                details(ui, state, &number, track, actions);
+                details(ui, state, project, index, actions);
             }
             route_arrow(ui, state, project, index, actions);
         });
@@ -806,10 +821,14 @@ fn effect_drop(ui: &egui::Ui, index: usize, rect: egui::Rect, actions: &mut Vec<
 fn details(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    number: &str,
-    track: &MixerTrack,
+    project: &Project,
+    index: usize,
     actions: &mut Vec<Action>,
 ) {
+    let Some(track) = project.mixer.get(index) else {
+        return;
+    };
+    let tracks = targets(state, index);
     ui.spacing_mut().item_spacing.y = 1.0;
     for (icon, on, name, label) in [
         (
@@ -827,25 +846,32 @@ fn details(
     ] {
         let state_word = if on { "on" } else { "off" };
         if small_switch(ui, icon, on, &format!("{label}: {state_word}")).clicked() {
-            run(
-                actions,
-                name,
-                [number.to_owned(), if on { "off" } else { "on" }.to_owned()],
-            );
+            run_each(actions, name, &tracks, if on { "off" } else { "on" });
         }
     }
     let sep = widgets::knob(ui, track.separation, -1.0, 1.0, 0.0, true);
-    knob_command(state, &sep, "mixer.set_separation", number, actions);
+    strip_control(state, project, index, &sep, "mixer.set_separation", actions);
     sep.response.hint(format!(
         "Stereo separation {:+.0} (left: mono, right: wider)",
         track.separation * 100.0
     ));
-    effects_switch(ui, track, number, actions);
+    let with_effects: Vec<usize> = tracks
+        .into_iter()
+        .filter(|&t| project.mixer.get(t).is_some_and(|t| !t.effects.is_empty()))
+        .collect();
+    effects_switch(ui, track, (index, &with_effects), actions);
 }
 
 /// The effect count at the foot of a strip, lit while any effect runs.
 /// Clicking it bypasses every effect of the track, or brings them all back.
-fn effects_switch(ui: &mut egui::Ui, track: &MixerTrack, number: &str, actions: &mut Vec<Action>) {
+/// `tracks` are the ones with effects that the click changes.
+fn effects_switch(
+    ui: &mut egui::Ui,
+    track: &MixerTrack,
+    (index, tracks): (usize, &[usize]),
+    actions: &mut Vec<Action>,
+) {
+    let number = index.to_string();
     let count = track.effects.len();
     let running = track.effects.iter().filter(|e| e.enabled).count();
     let names: Vec<String> = track.effects.iter().map(|e| e.label()).collect();
@@ -884,17 +910,13 @@ fn effects_switch(ui: &mut egui::Ui, track: &MixerTrack, number: &str, actions: 
     if count > 0 {
         response.context_menu(|ui| {
             if ui.button("Open all effect windows").clicked() {
-                run(actions, "ui.open_effects", [number.to_owned()]);
+                run(actions, "ui.open_effects", [number.clone()]);
             }
         });
     }
     if count > 0 && response.clicked() {
         let on = if running > 0 { "off" } else { "on" };
-        run(
-            actions,
-            "mixer.set_effects_enabled",
-            [number.to_owned(), on.to_owned()],
-        );
+        run_each(actions, "mixer.set_effects_enabled", tracks, on);
     }
 }
 
@@ -1598,5 +1620,46 @@ mod tests {
             invocation.args,
             ["mixer.set_pan 1 0.2500", "mixer.set_pan 2 1.0000"]
         );
+    }
+
+    #[test]
+    fn switches_act_on_the_selection_only_when_their_track_is_in_it() {
+        let mut state = UiState::default();
+        select(&mut state, 1, false);
+        select(&mut state, 2, true);
+        assert_eq!(targets(&state, 1), [1, 2]);
+        assert_eq!(targets(&state, 3), [3]);
+        let mut actions = Vec::new();
+        run_each(
+            &mut actions,
+            "mixer.set_phase_invert",
+            &targets(&state, 2),
+            "on",
+        );
+        run_each(
+            &mut actions,
+            "mixer.set_phase_invert",
+            &targets(&state, 3),
+            "on",
+        );
+        let ran: Vec<String> = actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::Run(i) => Some(i.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ran.len(), 2);
+        assert!(ran[0].starts_with(musiccraft_commands::BATCH), "{ran:?}");
+        assert_eq!(ran[1], "mixer.set_phase_invert 3 on");
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        if let Action::Run(batch) = &actions[0] {
+            session.run(batch).unwrap();
+        }
+        let mixer = &session.project().mixer;
+        assert!(mixer[1].phase_invert && mixer[2].phase_invert && !mixer[3].phase_invert);
     }
 }

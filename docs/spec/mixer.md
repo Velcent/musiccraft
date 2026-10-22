@@ -171,12 +171,15 @@ Ranges and defaults are defined in `musiccraft-params`.
   it, and only it gets the accent edge; the others are lifted and have their
   meter outlined. Clicking a fader, knob or light of a track outside the
   selection selects that track alone; one inside keeps the selection.
-- Faders, pan knobs and enable lights are ganged across the selection.
-  Dragging a selected fader moves every selected fader by the same share of
-  its travel, and a pan knob moves every selected pan by the same amount,
-  each clamped to its range; the whole drag is one undo step. Clicking a
-  selected track's enable light mutes or unmutes every selected track to
-  match it (`mixer.set_mute`, one undo step).
+- Faders, pan and separation knobs, enable lights and the track switches
+  are ganged across the selection. Dragging a selected fader moves every
+  selected fader by the same share of its travel, and a pan or separation
+  knob moves every selected one by the same amount, each clamped to its
+  range; the whole drag is one undo step. Clicking a selected track's enable
+  light mutes or unmutes every selected track to match it
+  (`mixer.set_mute`); its phase or swap switch sets every selected track to
+  match it; its effect count bypasses or enables the effects of every
+  selected track that has any. Each click is one undo step.
 - Each strip is narrow and shows, top to bottom: the number cell (the number,
   or M for the master, on a cell tinted with the track's colour), the name
   written vertically beside the peak meter, a round enable light (lit while
