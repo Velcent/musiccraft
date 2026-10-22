@@ -531,6 +531,19 @@ fn window_menu(
                 markers_every(project, &state.playlist.meter, every),
             );
         }
+        // A change starts at the playhead's bar; the first bar's signature is
+        // the project's.
+        let bar = state.playlist.meter.bar(playhead);
+        let change = crate::widgets::add_enabled(
+            ui,
+            bar.index > 0,
+            egui::Button::new("Time signature change at this bar…"),
+        )
+        .on_hover_text("From the playhead's bar on (the first bar's is the project signature)");
+        if change.clicked() {
+            state.open_dialog(Dialog::time_signature(bar.start, &bar.sig.to_string()));
+            ui.close();
+        }
         menu_item(
             ui,
             actions,

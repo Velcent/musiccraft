@@ -32,6 +32,8 @@ pub enum Purpose {
     AddPluginFolder,
     RenameAutomation(usize),
     AddMarker(u32),
+    /// A signature change at this tick (`none` removes it).
+    TimeSignature(u32),
     SavePatch(usize),
     OpenPatch(usize),
     /// Antiserum channel and oscillator (0-based).
@@ -145,6 +147,11 @@ impl Dialog {
         Self::new(Purpose::AddMarker(tick), String::new())
     }
 
+    /// Puts a time signature change at `tick`, starting from `current`.
+    pub fn time_signature(tick: u32, current: &str) -> Self {
+        Self::new(Purpose::TimeSignature(tick), current.to_owned())
+    }
+
     /// Renames the marker at `tick` (re-adding a marker keeps its action).
     pub fn rename_marker(tick: u32, current: &str) -> Self {
         Self::new(Purpose::AddMarker(tick), current.to_owned())
@@ -223,6 +230,7 @@ impl Dialog {
             Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
             Purpose::AddMarker(_) => "Marker name",
+            Purpose::TimeSignature(_) => "Time signature from here (n/d; none removes the change)",
             Purpose::SavePatch(_) => "Save Antiserum patch (.json)",
             Purpose::OpenPatch(_) => "Open Antiserum patch (.json)",
             Purpose::AntiserumSample(_, _) => {
@@ -292,6 +300,9 @@ impl Dialog {
             Purpose::AddPluginFolder => Invocation::new("ui.add_plugin_folder", [text]),
             Purpose::AddMarker(tick) => {
                 Invocation::new("playlist.add_marker", [format!("{tick}t"), text])
+            }
+            Purpose::TimeSignature(tick) => {
+                Invocation::new("playlist.set_time_signature", [format!("{tick}t"), text])
             }
             Purpose::RenameAutomation(automation) => {
                 Invocation::new("automation.rename", [(automation + 1).to_string(), text])
@@ -520,6 +531,23 @@ pub fn shortcuts(ctx: &egui::Context, state: &mut UiState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_time_signature_prompt_sets_a_change_at_its_bar() {
+        let mut dialog = Dialog::time_signature(7680, "4/4");
+        assert_eq!(dialog.text, "4/4");
+        dialog.text = "7/8".into();
+        assert_eq!(
+            dialog.invocation().to_string(),
+            "playlist.set_time_signature 7680t 7/8"
+        );
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        session.run(&dialog.invocation()).unwrap();
+        assert_eq!(session.project().playlist.markers.len(), 1);
+    }
 
     #[test]
     fn prompts_build_quoted_invocations() {

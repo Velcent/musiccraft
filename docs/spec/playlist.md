@@ -94,7 +94,11 @@
   The window menu's Markers submenu also adds a pause marker at the playhead,
   adds a marker named after its bar every 4 or 8 bars through the end of the
   song (bars that have one keep it), and removes all markers except time
-  signature changes; each is one undo step.
+  signature changes; each is one undo step. "Time signature change at this
+  bar…" asks for a signature (filled with the one in force) and runs
+  `playlist.set_time_signature` at the start of the playhead's bar; `none`
+  removes the change there. It is disabled in the first bar, whose signature
+  is the project's.
 - Both are saved and undoable.
 
 ### Marker actions: making a song stop instead of looping
