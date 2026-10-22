@@ -402,7 +402,86 @@ fn window_menu(
             actions.push(Action::Run(Invocation::bare("ui.add_marker")));
             ui.close();
         }
+        let playhead = state.playlist.playhead.max(0.0) as u32;
+        let beat = playhead - playhead % PPQ;
+        menu_item(
+            ui,
+            actions,
+            "Add pause marker at the playhead",
+            "Song playback stops here and the playhead stays on the marker",
+            pause_marker(project, beat),
+        );
+        for every in [4, 8] {
+            menu_item(
+                ui,
+                actions,
+                &format!("Add a marker every {every} bars"),
+                "Through the end of the song; bars that have a marker keep it",
+                markers_every(project, &state.playlist.meter, every),
+            );
+        }
+        menu_item(
+            ui,
+            actions,
+            "Remove all markers",
+            "Time signature changes stay",
+            remove_markers(project),
+        );
     });
+}
+
+/// A pause marker at `tick`, as one undo step.
+fn pause_marker(project: &Project, tick: u32) -> Option<Invocation> {
+    let taken = project.playlist.markers.iter().any(|m| m.tick == tick);
+    (!taken).then(|| {
+        Invocation::new(
+            musiccraft_commands::BATCH,
+            [
+                Invocation::new(
+                    "playlist.add_marker",
+                    [format!("{tick}t"), "Pause".to_owned()],
+                )
+                .to_string(),
+                Invocation::new(
+                    "playlist.set_marker_action",
+                    [format!("{tick}t"), "pause".to_owned()],
+                )
+                .to_string(),
+            ],
+        )
+    })
+}
+
+/// A marker named after its bar every `every` bars through the song's end,
+/// skipping bars that already have one, as one undo step.
+fn markers_every(project: &Project, meter: &Meter, every: u32) -> Option<Invocation> {
+    let end = project.playlist.length_ticks();
+    let adds = (1..)
+        .map(|n| n * every)
+        .map(|bar| (bar, meter.bar_start(bar)))
+        .take_while(|(_, tick)| *tick < end)
+        .filter(|(_, tick)| !project.playlist.markers.iter().any(|m| m.tick == *tick))
+        .map(|(bar, tick)| {
+            Invocation::new(
+                "playlist.add_marker",
+                [format!("{tick}t"), format!("Bar {}", bar + 1)],
+            )
+        })
+        .collect();
+    batch(adds)
+}
+
+/// Removes every marker except time signature changes, as one undo step.
+fn remove_markers(project: &Project) -> Option<Invocation> {
+    batch(
+        project
+            .playlist
+            .markers
+            .iter()
+            .filter(|m| !matches!(m.action, MarkerAction::TimeSignature(_)))
+            .map(|m| Invocation::new("playlist.remove_marker", [format!("{}t", m.tick)]))
+            .collect(),
+    )
 }
 
 /// A Select menu item.
@@ -3102,6 +3181,51 @@ mod tests {
             offset: 0,
             muted: false,
         }
+    }
+
+    #[test]
+    fn marker_items_add_every_n_bars_a_pause_and_remove_all_but_signatures() {
+        let mut s = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "pattern.add",
+            "playlist.set_time_signature 2 3/4",
+            "playlist.add_clip 1 1 9",
+            "playlist.add_marker 4 Drop",
+        ] {
+            s.run_line(line).unwrap();
+        }
+        let names = |s: &musiccraft_commands::Session| -> Vec<String> {
+            s.project()
+                .playlist
+                .markers
+                .iter()
+                .map(|m| m.name.clone())
+                .collect()
+        };
+        let before = names(&s);
+        let every = markers_every(s.project(), &s.project().song_meter(), 4).unwrap();
+        s.run(&every).unwrap();
+        let added: Vec<String> = names(&s)
+            .into_iter()
+            .filter(|n| !before.contains(n))
+            .collect();
+        assert_eq!(added, ["Bar 9"], "bar 5 already had Drop");
+        let pause = pause_marker(s.project(), 0).unwrap();
+        s.run(&pause).unwrap();
+        let first = &s.project().playlist.markers[0];
+        assert_eq!((first.tick, first.action), (0, MarkerAction::Pause));
+        s.run(&remove_markers(s.project()).unwrap()).unwrap();
+        assert!(
+            s.project()
+                .playlist
+                .markers
+                .iter()
+                .all(|m| matches!(m.action, MarkerAction::TimeSignature(_)))
+        );
+        assert_eq!(s.project().playlist.markers.len(), 1);
     }
 
     #[test]

@@ -50,6 +50,10 @@
   markers (one per position; re-adding at a position renames the marker and keeps
   its action). UI: right-click the ruler → Add marker here, or Alt+T for a marker
   at the playhead (on the beat); clicking a marker's label jumps the playhead to it.
+  The window menu's Markers submenu also adds a pause marker at the playhead,
+  adds a marker named after its bar every 4 or 8 bars through the end of the
+  song (bars that have one keep it), and removes all markers except time
+  signature changes; each is one undo step.
 - Both are saved and undoable.
 
 ### Marker actions: making a song stop instead of looping
