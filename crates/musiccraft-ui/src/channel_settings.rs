@@ -78,6 +78,8 @@ fn with_editor(
     if channel.instrument.patch().is_some() {
         editor = editor.without_arpeggiator();
     }
+    // The presets are in the window's header.
+    editor = editor.presets_in_header();
     draw(ui, &mut editor);
     actions.extend(menu_actions);
     apply(state, number, &edits, actions);
@@ -207,7 +209,11 @@ pub fn show(
                     actions,
                 );
             },
-            |_, _| {},
+            |ui, (state, actions)| {
+                with_editor(ui, state, index, channel, actions, |ui, e| {
+                    e.preset_picker(ui);
+                });
+            },
         );
         if !folded {
             contents(ui, state, frame, index, channel, actions);

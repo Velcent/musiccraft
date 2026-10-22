@@ -110,6 +110,9 @@ pub struct InstrumentEditor<'a> {
     /// Whether the Functions page shows the channel arpeggiator (an
     /// instrument with its own, like Antiserum, hides it).
     arpeggiator: bool,
+    /// Whether the host draws the presets elsewhere (the app's channel
+    /// window header), so the Sound pages leave out their preset row.
+    presets_in_header: bool,
 }
 
 impl<'a> InstrumentEditor<'a> {
@@ -129,6 +132,23 @@ impl<'a> InstrumentEditor<'a> {
             edits,
             menu,
             arpeggiator: true,
+            presets_in_header: false,
+        }
+    }
+
+    /// Leaves the preset row off the Sound pages: the host shows
+    /// [`Self::preset_picker`] in its own header.
+    #[must_use]
+    pub fn presets_in_header(mut self) -> Self {
+        self.presets_in_header = true;
+        self
+    }
+
+    /// The previous chevron, preset list and next chevron for this
+    /// instrument's presets, in the caller's row (nothing when it has none).
+    pub fn preset_picker(&mut self, ui: &mut Ui) {
+        if let Some(list) = presets(self.kind) {
+            self.picker(ui, list);
         }
     }
 
@@ -249,13 +269,9 @@ impl<'a> InstrumentEditor<'a> {
 
     /// The preset picker: choosing a preset is one step.
     pub fn preset_bar(&mut self, ui: &mut Ui, list: &'static [Preset]) {
-        let Some(n) = (!list.is_empty()).then_some(list.len()) else {
+        if self.presets_in_header {
             return;
-        };
-        let current = list
-            .iter()
-            .position(|p| p.matches(INSTRUMENT_PARAMS, self.values));
-        let mut chosen = None;
+        }
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new("PRESET")
@@ -263,36 +279,47 @@ impl<'a> InstrumentEditor<'a> {
                     .strong()
                     .color(theme::TEXT_DIM),
             );
-            if crate::widgets::chevron_button(ui, true)
-                .hint("Previous preset")
-                .clicked()
-            {
-                chosen = Some(current.map_or(n - 1, |c| (c + n - 1) % n));
-            }
-            egui::ComboBox::from_id_salt(("instrument-preset", self.salt, list.as_ptr() as usize))
-                .width(180.0)
-                .selected_text(
-                    current
-                        .and_then(|i| list.get(i))
-                        .map_or("(custom)", |p| p.name),
-                )
-                .show_ui(ui, |ui| {
-                    for (i, preset) in list.iter().enumerate() {
-                        if ui
-                            .selectable_label(current == Some(i), preset.name)
-                            .clicked()
-                        {
-                            chosen = Some(i);
-                        }
-                    }
-                });
-            if crate::widgets::chevron_button(ui, false)
-                .hint("Next preset")
-                .clicked()
-            {
-                chosen = Some(current.map_or(0, |c| (c + 1) % n));
-            }
+            self.picker(ui, list);
         });
+    }
+
+    fn picker(&mut self, ui: &mut Ui, list: &'static [Preset]) {
+        let Some(n) = (!list.is_empty()).then_some(list.len()) else {
+            return;
+        };
+        let current = list
+            .iter()
+            .position(|p| p.matches(INSTRUMENT_PARAMS, self.values));
+        let mut chosen = None;
+        if crate::widgets::chevron_button(ui, true)
+            .hint("Previous preset")
+            .clicked()
+        {
+            chosen = Some(current.map_or(n - 1, |c| (c + n - 1) % n));
+        }
+        egui::ComboBox::from_id_salt(("instrument-preset", self.salt, list.as_ptr() as usize))
+            .width(130.0)
+            .selected_text(
+                current
+                    .and_then(|i| list.get(i))
+                    .map_or("(custom)", |p| p.name),
+            )
+            .show_ui(ui, |ui| {
+                for (i, preset) in list.iter().enumerate() {
+                    if ui
+                        .selectable_label(current == Some(i), preset.name)
+                        .clicked()
+                    {
+                        chosen = Some(i);
+                    }
+                }
+            });
+        if crate::widgets::chevron_button(ui, false)
+            .hint("Next preset")
+            .clicked()
+        {
+            chosen = Some(current.map_or(0, |c| (c + 1) % n));
+        }
         let Some(preset) = chosen.and_then(|i| list.get(i)) else {
             return;
         };

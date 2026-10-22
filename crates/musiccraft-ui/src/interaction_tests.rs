@@ -2232,3 +2232,25 @@ fn the_effect_window_strip_bypasses_and_its_header_steps_presets() {
     h.settle();
     assert_ne!(h.session.project().mixer[1].effects[0].values, before);
 }
+
+#[test]
+fn instrument_presets_step_from_the_channel_window_header() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let previous = (0..80)
+        .map(|i| window.left_top() + vec2(4.0 + 4.0 * i as f32, 16.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some("Previous preset")
+        })
+        .expect("the header's previous-preset chevron");
+    let before = h.session.project().channels[0].params;
+    h.click(previous, PointerButton::Primary);
+    h.settle();
+    assert_ne!(h.session.project().channels[0].params, before);
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.session.project().channels[0].params, before);
+}
