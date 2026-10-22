@@ -472,6 +472,8 @@ pub struct UiState {
     /// The channel rack's step graph editor: open, what it edits, and the
     /// step being dragged.
     pub(crate) graph: Option<piano_roll::LaneMode>,
+    /// The channel rack hides its mixer-track column (Alt+M).
+    pub(crate) rack_hide_tracks: bool,
     /// A channel's steps cut or copied in the channel rack.
     pub(crate) rack_clipboard: Option<Vec<musiccraft_project::Note>>,
     pub(crate) graph_drag: Option<musiccraft_project::Note>,
@@ -576,6 +578,7 @@ impl UiState {
             rack_group: None,
             graph: None,
             rack_clipboard: None,
+            rack_hide_tracks: false,
             graph_drag: None,
             graph_view: None,
             step_paint: None,

@@ -2719,6 +2719,8 @@ fn rack_keys_copy_steps_toggle_the_graph_and_step_groups() {
     h.key(egui::Key::PageUp, Modifiers::NONE);
     assert_eq!(h.state.rack_group.as_deref(), Some(""));
 
+    h.key(egui::Key::M, Modifiers::ALT);
+    assert!(h.state.rack_hide_tracks);
     h.key(egui::Key::F2, Modifiers::NONE);
     assert!(h.state.dialog.is_some(), "F2 renames the selected channel");
 }

@@ -70,6 +70,7 @@ one, which a click anywhere in it makes; and the typing keyboard is off); they t
 | Shift+Ctrl+Left / Right | Shift the selected channel's steps |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut the selected channel's notes in the current pattern; paste replaces the selected channel's notes with them (one undo step) |
 | Ctrl+K | Show or hide the graph editor |
+| Alt+M | Hide or show the mixer-track column |
 | F2 | Rename the selected channel |
 | Page Down / Page Up | Next / previous group in the group filter (All, each group, No group; wraps) |
 

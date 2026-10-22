@@ -43,7 +43,7 @@ pub fn show(
                     ui,
                     &mut open,
                     &mut (&mut *state, &mut *actions),
-                    |_, _| {},
+                    |ui, (state, _)| window_menu(ui, state),
                     |ui, (state, actions)| header(ui, state, project, actions),
                 );
                 if folded {
@@ -374,13 +374,15 @@ fn row(
             Instrument::Layer { .. } | Instrument::MidiOut { .. }
         );
         let mut track = channel.mixer_track;
-        if silent {
+        // The mixer-track column can be hidden (Alt+M).
+        let column = !state.rack_hide_tracks;
+        if column && silent {
             ui.add_sized(
                 vec2(28.0, 18.0),
                 egui::Label::new(RichText::new("–").color(theme::TEXT_FAINT)),
             )
             .hint("Makes no sound of its own, so it plays through no mixer track");
-        } else {
+        } else if column {
             let route = ui
                 .add_sized(
                     vec2(28.0, 18.0),
@@ -979,6 +981,9 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     if pressed(shift_ctrl, Key::ArrowRight) {
         run(actions, "step.shift", [number, "1".to_owned()]);
     }
+    if pressed(Modifiers::ALT, Key::M) {
+        state.rack_hide_tracks = !state.rack_hide_tracks;
+    }
     if pressed(Modifiers::COMMAND, Key::K) {
         state.graph = match state.graph {
             Some(_) => None,
@@ -1014,6 +1019,21 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
             let paste = crate::piano_roll::replace_notes(selected, &notes, copied);
             actions.extend(paste.map(Action::Run));
         }
+    }
+}
+
+/// The rack's own window-menu items.
+fn window_menu(ui: &mut egui::Ui, state: &mut UiState) {
+    let mut graph = state.graph.is_some();
+    if ui.checkbox(&mut graph, "Graph editor (Ctrl+K)").changed() {
+        state.graph = graph.then_some(crate::piano_roll::LaneMode::Velocity);
+    }
+    let mut tracks = !state.rack_hide_tracks;
+    if ui
+        .checkbox(&mut tracks, "Mixer-track column (Alt+M)")
+        .changed()
+    {
+        state.rack_hide_tracks = !tracks;
     }
 }
 

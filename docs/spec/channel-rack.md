@@ -39,6 +39,8 @@
   one named group is shown, a channel added from the rack's plus joins it (the
   add and the `channel.set_group` are one undo step). Over the rack, Page
   Down and Page Up step the filter through All, each group and No group.
+- The rack's window menu shows or hides the graph editor (Ctrl+K) and the
+  mixer-track column (Alt+M); both are view choices, not saved.
 - `channel.solo <n>` mutes every other channel; running it again on an already
   soloed channel unmutes all channels.
 - **Steps** are sixteenth notes. `step.toggle <channel> <step>` (0-based step)
