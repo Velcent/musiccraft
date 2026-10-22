@@ -20,6 +20,17 @@ stay our own. The full target look, window by window, is the style guide in
   or restores it, opening it first if it was closed. Neither key acts while a
   dialog is open or a text field has focus.
 
+## Focus
+
+- The focused window is the topmost one; clicking anywhere in a window brings
+  it to the front. Its header lifts and its edge takes the accent.
+- Window-local keys (piano roll, channel rack, playlist) go to the focused
+  window, wherever the pointer is.
+- The window keys (F5, F6, F7, F9), the toolbar's window buttons and the View
+  menu open a closed window and bring it to the front, bring an open window
+  that is behind others to the front, and close the focused window. The
+  browser, a docked panel, just shows or hides.
+
 ## Dragging from the browser
 
 - The drag ghost is a small raised chip beside the pointer: a `RAISED` fill,

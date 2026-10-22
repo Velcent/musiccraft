@@ -33,7 +33,7 @@
 | Ctrl+P | Recording count-in on / off |
 | Ctrl+I | Wait for input before recording on / off |
 | Ctrl+T | Typing keyboard plays notes |
-| F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer |
+| F5 / F6 / F7 / F9 | Playlist / channel rack / piano roll / mixer: a closed window opens and comes to the front, an open one behind others comes to the front, the focused one closes |
 | Alt+F8 | Browser |
 | Enter | Maximize the playlist, or restore it (opens it if closed) |
 | Ctrl+Shift+H | Put the windows back in the default layout |
@@ -55,8 +55,8 @@
 
 ### Over the channel rack
 
-Window-local keys, active while the pointer is over the rack (and the typing
-keyboard is off); they take precedence over the global keys above.
+Window-local keys, active while the rack is the focused window (the topmost
+one, which a click anywhere in it makes; and the typing keyboard is off); they take precedence over the global keys above.
 
 | Chord | Action |
 | --- | --- |

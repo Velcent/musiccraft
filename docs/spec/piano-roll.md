@@ -246,7 +246,7 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   selected note moves the whole selection; dragging its edge resizes all
   selected notes by the same amount. A selected note's whole body turns to one
   selection tone (`theme::NOTE_SELECTED`), whatever its colour.
-- Keys while the pointer is over the piano roll: Delete/Backspace remove the
+- Keys while the piano roll is the focused window (the topmost one): Delete/Backspace remove the
   selection; Ctrl+A selects all; Escape clears; Ctrl+C / Ctrl+X copy / cut;
   Ctrl+V pastes at the pointer; Ctrl+B duplicates the selection right after its
   end (rounded up to the snap); Shift+Up/Down move by one key, Shift+Left/Right

@@ -1712,3 +1712,43 @@ fn enter_maximizes_the_playlist_and_ctrl_shift_h_restores_the_default_layout() {
     let list = window_rect(&h, "playlist-window");
     assert!(rack.bottom() <= list.top() + 1.0, "{rack:?} over {list:?}");
 }
+
+#[test]
+fn window_keys_follow_the_focused_window_not_the_pointer() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let one = Event::Key {
+        key: egui::Key::Num1,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let rack = window_rect(&h, "channel-rack");
+    h.click(
+        rack.left_top() + vec2(rack.width() / 2.0, 8.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    // The pointer leaves the rack; its keys still go to it.
+    h.frame(vec![Event::PointerMoved(pos2(1390.0, 890.0))]);
+    assert_eq!(h.frame(vec![one.clone()]), ["channel.toggle_mute 1"]);
+
+    // Another window in front takes the keys.
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let roll = window_rect(&h, "piano-roll");
+    h.click(
+        roll.left_top() + vec2(roll.width() / 2.0, 8.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    h.frame(vec![Event::PointerMoved(rack.center())]);
+    let out = h.frame(vec![one]);
+    assert!(
+        !out.iter().any(|c| c.starts_with("channel.toggle_mute")),
+        "{out:?}"
+    );
+}

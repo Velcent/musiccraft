@@ -94,7 +94,8 @@ pub fn show(
         let over = ctx
             .pointer_hover_pos()
             .is_some_and(|p| window.response.rect.contains(p));
-        if open && over && !state.typing_keyboard && !ctx.egui_wants_keyboard_input() {
+        let focused = crate::chrome::focused(ctx, id);
+        if open && focused && !state.typing_keyboard && !ctx.egui_wants_keyboard_input() {
             keys(ctx, state, project, actions);
         }
         if over && egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ctx) {
@@ -740,7 +741,7 @@ fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Actio
     });
 }
 
-/// Keys while the pointer is over the rack: 1–0 mute channels 1–10 (Ctrl:
+/// Keys while the rack is the focused window: 1–0 mute channels 1–10 (Ctrl:
 /// solo), and for the selected channel Alt+C clone, Alt+Delete delete,
 /// Alt+Up/Down move, Ctrl+L route to a free mixer track and
 /// Shift+Ctrl+Left/Right shift its steps.

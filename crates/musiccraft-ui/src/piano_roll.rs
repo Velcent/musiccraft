@@ -436,11 +436,8 @@ pub fn show(
         .flatten();
     state.windows.piano_roll = open;
     crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
-    let hovered = window.is_some_and(|w| {
-        ctx.pointer_hover_pos()
-            .is_some_and(|p| w.response.rect.contains(p))
-    });
-    if open && hovered && !ctx.egui_wants_keyboard_input() {
+    let focused = window.is_some() && crate::chrome::focused(ctx, id);
+    if open && focused && !ctx.egui_wants_keyboard_input() {
         keys(ctx, state, project, actions);
     }
 }

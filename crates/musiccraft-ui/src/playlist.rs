@@ -2575,7 +2575,7 @@ fn edit(
             }
         }
     }
-    if response.contains_pointer() {
+    if crate::chrome::focused(ui.ctx(), egui::Id::new("playlist-window")) {
         keys(ui.ctx(), state, project, actions);
     }
     if let Some(pos) = response.hover_pos().filter(|p| editable(*p)) {
@@ -2589,7 +2589,7 @@ fn edit(
     }
 }
 
-/// Editing keys while the pointer is over the playlist.
+/// Editing keys while the playlist is the focused window.
 fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
     use egui::{Key, Modifiers};
     if ctx.egui_wants_keyboard_input() {

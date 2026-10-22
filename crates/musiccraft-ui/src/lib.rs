@@ -192,6 +192,8 @@ pub enum Arrange {
     DefaultLayout,
     /// Maximize or restore the playlist.
     MaximizePlaylist,
+    /// Bring the window with this id to the front.
+    Raise(&'static str),
 }
 
 /// The editor windows' ids, as each window module names them.
@@ -202,6 +204,44 @@ const EDITOR_WINDOWS: [&str; 4] = [
     "piano-roll",
 ];
 
+/// The editor window behind a `view.toggle` name, and its open flag.
+fn editor_window<'a>(
+    windows: &'a mut Windows,
+    which: &str,
+) -> Option<(&'static str, &'a mut bool)> {
+    Some(match which {
+        "playlist" => ("playlist-window", &mut windows.playlist),
+        "channel_rack" => ("channel-rack", &mut windows.channel_rack),
+        "piano_roll" => ("piano-roll", &mut windows.piano_roll),
+        "mixer" => ("mixer-window", &mut windows.mixer),
+        _ => return None,
+    })
+}
+
+/// `view.toggle`: an editor that is closed opens in front, one behind others
+/// comes to the front, and the focused one closes. Other windows (and the
+/// docked browser) just show or hide.
+fn toggle_window(state: &mut UiState, which: &str) {
+    let focused = state.focused_window;
+    if let Some((id, open)) = editor_window(&mut state.windows, which) {
+        if *open && focused == Some(egui::Id::new(id)) {
+            *open = false;
+        } else {
+            *open = true;
+            state.arrange = Some(Arrange::Raise(id));
+        }
+        return;
+    }
+    let windows = &mut state.windows;
+    let flag = match which {
+        "browser" => &mut windows.browser,
+        "shortcuts" => &mut windows.shortcuts,
+        "spectrum" => &mut windows.spectrum,
+        _ => return,
+    };
+    *flag = !*flag;
+}
+
 /// Applies a pending [`Arrange`] before the windows are drawn.
 fn arrange(ctx: &egui::Context, state: &mut UiState) {
     match state.arrange.take() {
@@ -211,6 +251,9 @@ fn arrange(ctx: &egui::Context, state: &mut UiState) {
             }
             // The mixer follows the rack's width again for a few frames.
             ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("mixer-settle")));
+        }
+        Some(Arrange::Raise(id)) => {
+            ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
         }
         Some(Arrange::MaximizePlaylist) => {
             // A playlist that was closed is drawn once before it maximizes.
@@ -269,6 +312,8 @@ pub struct UiState {
     pub typing_keyboard: bool,
     /// A window arrangement asked for by a key, applied next frame.
     pub arrange: Option<Arrange>,
+    /// The focused (topmost) workspace window as of the last frame.
+    pub focused_window: Option<egui::Id>,
     /// Times (seconds) of the latest tempo taps.
     pub taps: Vec<f64>,
     /// The custom time signature being entered in a signature menu.
@@ -373,6 +418,7 @@ impl UiState {
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             arrange: None,
+            focused_window: None,
             taps: Vec::new(),
             sig_draft: (4, 4),
             channel_tab: channel_settings::ChannelTab::default(),
@@ -528,6 +574,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
             painter.galley(rect.min + egui::vec2(5.0, 5.0), galley, theme::TEXT);
         }
     }
+    state.focused_window = ctx
+        .memory(|m| m.areas().top_layer_id(egui::Order::Middle))
+        .map(|layer| layer.id);
     handle_keys(&ctx, state, frame, &mut actions);
     resolve_ui_actions(state, frame, actions)
 }
@@ -643,19 +692,8 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
         };
         match invocation.name.as_str() {
             "view.toggle" => {
-                let windows = &mut state.windows;
-                let flag = match invocation.args.first().map(String::as_str) {
-                    Some("playlist") => Some(&mut windows.playlist),
-                    Some("channel_rack") => Some(&mut windows.channel_rack),
-                    Some("piano_roll") => Some(&mut windows.piano_roll),
-                    Some("mixer") => Some(&mut windows.mixer),
-                    Some("browser") => Some(&mut windows.browser),
-                    Some("shortcuts") => Some(&mut windows.shortcuts),
-                    Some("spectrum") => Some(&mut windows.spectrum),
-                    _ => None,
-                };
-                if let Some(flag) = flag {
-                    *flag = !*flag;
+                if let Some(which) = invocation.args.first() {
+                    toggle_window(state, which);
                 }
             }
             "view.default_layout" if state.dialog.is_none() => {
@@ -816,8 +854,20 @@ mod tests {
                 Action::Run(Invocation::parse("ui.save").unwrap()),
             ],
         );
-        assert!(!state.windows.mixer);
+        // Open but not focused: it comes to the front instead of closing.
+        assert!(state.windows.mixer);
+        assert_eq!(state.arrange, Some(Arrange::Raise("mixer-window")));
         assert_eq!(out, [Action::Run(Invocation::bare("transport.toggle"))]);
+        // Focused: it closes.
+        state.focused_window = Some(egui::Id::new("mixer-window"));
+        let toggle = || vec![Action::Run(Invocation::parse("view.toggle mixer").unwrap())];
+        resolve_ui_actions(&mut state, &frame, toggle());
+        assert!(!state.windows.mixer);
+        // Closed: it opens in front.
+        state.arrange = None;
+        resolve_ui_actions(&mut state, &frame, toggle());
+        assert!(state.windows.mixer);
+        assert_eq!(state.arrange, Some(Arrange::Raise("mixer-window")));
         assert!(state.dialog.is_some(), "unsaved project asks for a path");
         state.dialog = None;
         let out = resolve_ui_actions(

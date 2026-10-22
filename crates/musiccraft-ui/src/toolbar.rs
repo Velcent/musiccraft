@@ -382,7 +382,7 @@ fn two_bands(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
                 hint_field(ui, state, frame, width);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                window_buttons(ui, state);
+                window_buttons(ui, state, actions);
             });
         });
     });
@@ -419,7 +419,7 @@ fn racks(
             lower_rack(ui, state, frame, actions);
             if with_windows {
                 divider(ui);
-                window_buttons(ui, state);
+                window_buttons(ui, state, actions);
             }
         });
     });
@@ -453,35 +453,50 @@ fn menus(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mu
 }
 
 /// The window buttons: playlist, channel rack, piano roll, browser, mixer.
-fn window_buttons(ui: &mut egui::Ui, state: &mut UiState) {
+fn window_buttons(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) {
     ui.spacing_mut().item_spacing.x = 1.0;
     let dragging = egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ui.ctx());
     let w = &mut state.windows;
-    for (icon, open, hint, window) in [
+    for (icon, open, hint, which, window) in [
         (
             Icon::Playlist,
             &mut w.playlist,
             "Playlist (F5)",
+            "playlist",
             "playlist-window",
         ),
         (
             Icon::ChannelRack,
             &mut w.channel_rack,
             "Channel rack (F6)",
+            "channel_rack",
             "channel-rack",
         ),
         (
             Icon::PianoRoll,
             &mut w.piano_roll,
             "Piano roll (F7)",
+            "piano_roll",
             "piano-roll",
         ),
-        (Icon::Browser, &mut w.browser, "Browser (Alt+F8)", ""),
-        (Icon::Mixer, &mut w.mixer, "Mixer (F9)", "mixer-window"),
+        (
+            Icon::Browser,
+            &mut w.browser,
+            "Browser (Alt+F8)",
+            "browser",
+            "",
+        ),
+        (
+            Icon::Mixer,
+            &mut w.mixer,
+            "Mixer (F9)",
+            "mixer",
+            "mixer-window",
+        ),
     ] {
         let response = icons::toggle(ui, icon, *open, hint);
         if response.clicked() {
-            *open = !*open;
+            run(actions, &format!("view.toggle {which}"));
         }
         // A browser item dragged over the button opens and raises its window,
         // so the drag can go on into it.

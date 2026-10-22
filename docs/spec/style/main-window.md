@@ -42,10 +42,9 @@ There is no status bar along the bottom. Hints and status messages live in the t
 
 **Opening, toggling, raising**
 
-- F5 (playlist), F6 (channel rack), F7 (piano roll), F9 (mixer) and Alt+F8 (browser) each toggle their window. The toolbar's window buttons and the View menu do the same. These keys are already bound in `default.keymap`. Today `view.toggle` only flips visibility.
-  - **Proposed (needs `keymap.md` updated first)**, own design:
-    - a hidden window is shown, raised and focused;
-    - a window that is visible but not focused is raised and focused;
+- F5 (playlist), F6 (channel rack), F7 (piano roll), F9 (mixer) and Alt+F8 (browser) each toggle their window. The toolbar's window buttons and the View menu do the same. These keys are bound in `default.keymap`, own design for what they do:
+  - a hidden window is shown, raised and focused;
+  - a window that is visible but not focused is raised and focused;
     - the focused window is hidden.
 - Clicking anywhere in a window raises it above the others and focuses it.
 - **Proposed (needs `keymap.md` updated first)**; none of these keys is bound today, so none clashes:
@@ -393,23 +392,22 @@ Ordered by visual impact. Each needs `docs/spec/window-layout.md` (or the spec n
    - The piano roll and playlist have the shared bars (`crates/musiccraft-ui/src/scrollbars.rs`): the top row with chevrons, a thumb with zoom grips and the vertical zoom box, and the vertical bar. The channel rack, mixer and browser have the simplified bars (`plain_area`).
    - Nowhere is there right-drag two-way scrolling or a thin scroll bar setting.
 2. **No window snapping.** Windows neither snap to each other nor to the workspace edges, and there is no Alt override (all `egui::Window` uses).
-3. **Keys follow the pointer, not focus.** The focused (topmost) window now has a lighter header, a bright title and an `ACCENT_DIM` edge, but piano roll and rack keys still follow pointer hover (`piano_roll.rs`: the `hovered` check before `keys`).
-4. **Window state is forgotten on restart.**
+3. **Window state is forgotten on restart.**
     - eframe's `persistence` feature is off (workspace `Cargo.toml`), so positions, sizes and collapsed flags live only in egui memory for the session (`chrome.rs` stores collapse there).
     - The open-window set is reset by `Windows::default()` in `lib.rs`.
     - There is no `Windows layout ▸` submenu and no saved custom layout.
-5. **Missing window shortcuts**: Esc (close focused), Tab (cycle focus), F12, Alt+F12 and Ctrl+F12 (hide windows), Ctrl+F11 (hide toolbar). Enter (maximize the playlist) and Ctrl+Shift+H (default layout) are bound. None of the missing keys is in `default.keymap`, and none clashes with it. F10 is already bound to `ui.settings`, so no window or project-info shortcut may take F10. `view.toggle` in `lib.rs` only flips visibility and never raises or focuses. `keymap.md` changes first.
-6. **Browser chrome and placement** (`crates/musiccraft-ui/src/browser.rs`, `show`):
+4. **Missing window shortcuts**: Esc (close focused), Tab (cycle focus), F12, Alt+F12 and Ctrl+F12 (hide windows), Ctrl+F11 (hide toolbar). Enter (maximize the playlist) and Ctrl+Shift+H (default layout) are bound. None of the missing keys is in `default.keymap`, and none clashes with it. F10 is already bound to `ui.settings`, so no window or project-info shortcut may take F10. `keymap.md` changes first.
+5. **Browser chrome and placement** (`crates/musiccraft-ui/src/browser.rs`, `show`):
     - The header is a "Browser" label with a refresh glyph: no window menu, fold-all, collapse or close, and the tools come after the title rather than before it.
     - It cannot dock right, float or auto-hide.
     - Its divider has no second stored width.
-7. **No detaching or multiple screens.** Editors cannot become their own OS windows (an egui viewport would do it).
+6. **No detaching or multiple screens.** Editors cannot become their own OS windows (an egui viewport would do it).
     - Hosted plugin views already open in separate OS windows on Linux (`crates/musiccraft-plugin-window`), without our header.
     - There is no "Bring every window into view".
-8. **Workspace context.** Right-clicking the empty workspace does nothing.
-9. **No floating hint panel**, and no View-menu toggle for one. Optional; low priority.
-10. **Main window chrome.** The app keeps the OS title bar (`crates/musiccraft-app/src/main.rs`, `ViewportBuilder`). It has no own minimize/maximize/close at the toolbar's end, no drag-the-toolbar-to-move, and no "maximize across all screens". This is lowest priority and platform-dependent.
-11. **No touch support.** Header gestures and corner hot spots (see Touch) are later work.
+7. **Workspace context.** Right-clicking the empty workspace does nothing.
+8. **No floating hint panel**, and no View-menu toggle for one. Optional; low priority.
+9. **Main window chrome.** The app keeps the OS title bar (`crates/musiccraft-app/src/main.rs`, `ViewportBuilder`). It has no own minimize/maximize/close at the toolbar's end, no drag-the-toolbar-to-move, and no "maximize across all screens". This is lowest priority and platform-dependent.
+10. **No touch support.** Header gestures and corner hot spots (see Touch) are later work.
 
 ## Sources
 
