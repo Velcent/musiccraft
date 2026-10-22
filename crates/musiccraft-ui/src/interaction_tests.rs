@@ -498,6 +498,25 @@ fn velocity_lane_drag_is_one_undo_step() {
     assert_eq!(h.session.project().current_pattern().notes[0].velocity, 100);
 }
 
+#[test]
+fn alt_click_on_a_lane_stem_resets_it_to_the_default() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C5 40"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let (grid, clip) = h.state.roll.last_view.unwrap();
+    let stem = pos2(grid.x(10.0), clip.bottom() - 20.0);
+    h.modifiers = Modifiers::ALT;
+    let out = h.click(stem, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["note.set_velocity 1 0t 60 100"]);
+    assert_eq!(h.session.project().current_pattern().notes[0].velocity, 100);
+    // Already at the default: nothing to do.
+    h.modifiers = Modifiers::ALT;
+    let out = h.click(stem, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert!(out.is_empty(), "{out:?}");
+}
+
 impl Harness {
     fn key(&mut self, key: egui::Key, modifiers: Modifiers) -> Vec<String> {
         let held = self.modifiers;

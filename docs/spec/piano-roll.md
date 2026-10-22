@@ -302,6 +302,9 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   right for the note's length; selected notes' stems take the selection
   tone, and other channels' notes show faint ghost stems behind. In centred modes (pan, fine pitch…)
   stems grow up or down from the centre and snap to centre within ±3.
+  Alt+click on a stem resets that note's value to the lane's default
+  (velocity 100, the rest neutral), or every selected note's when that note
+  is selected, as one undo step.
 - Double-clicking a note (Draw or Select tool) opens the **Note properties**
   window, titled with its key ("Note properties — C5"): knobs for velocity,
   release, pan, fine pitch, Mod A and Mod B (in that order; each shows its

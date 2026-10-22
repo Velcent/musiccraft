@@ -3171,6 +3171,15 @@ impl LaneMode {
         }
     }
 
+    /// The lane's default as a lane position: velocity 100, the rest neutral.
+    pub(crate) fn default_unit(self) -> f32 {
+        match self {
+            Self::Velocity => 99.0 / 126.0,
+            Self::Pan | Self::Fine => 0.5,
+            Self::Release | Self::ModX | Self::ModY => 64.0 / 127.0,
+        }
+    }
+
     /// The note's value as text, for knob captions.
     pub(crate) fn shown(self, note: &Note) -> String {
         let p = note.props;
@@ -3305,7 +3314,30 @@ fn velocity_lane(
             Stroke::new(1.0, theme::GRID_BAR),
         );
     }
-    if response.drag_started() || response.clicked() {
+    let alt = ui.input(|i| i.modifiers.alt);
+    if alt && response.clicked() {
+        // Alt+click resets the stem under the pointer (the selection when
+        // that note is selected) to the lane's default, in one step.
+        if let Some(note) = response
+            .interact_pointer_pos()
+            .and_then(|pos| note_at_x(grid, notes, pos.x))
+        {
+            let selection = &state.roll.selection;
+            let picked = selection.contains(&(note.start, note.key));
+            let resets = notes
+                .iter()
+                .filter(|n| {
+                    if picked {
+                        selection.contains(&(n.start, n.key))
+                    } else {
+                        n.start == note.start && n.key == note.key
+                    }
+                })
+                .filter_map(|n| mode.invocation(channel, n, mode.default_unit()))
+                .collect();
+            actions.extend(batch(resets).map(Action::Run));
+        }
+    } else if response.drag_started() || response.clicked() {
         if let Some(pos) = response.interact_pointer_pos() {
             state.roll.lane_drag = note_at_x(grid, notes, pos.x).copied();
             state.begin_gesture();
