@@ -1,9 +1,15 @@
 //! Automation editing: the curve editor window, and the "Create automation
 //! clip" menu attached to knobs and faders.
 
-use egui::{Align2, Color32, FontId, PointerButton, Pos2, RichText, Sense, Stroke, pos2, vec2};
+use crate::hint::Hint;
+use egui::{Align2, FontId, PointerButton, Pos2, RichText, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
-use musiccraft_project::{Automation, AutomationPoint, Curve, Meter, PLAYLIST_TRACKS, Project};
+use musiccraft_editors::widgets;
+use musiccraft_project::{
+    Automation, AutomationPoint, AutomationTarget, Curve, Meter, PLAYLIST_TRACKS, Project,
+};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::geometry::Snap;
 use crate::{Action, Frame, UiState, theme};
@@ -32,17 +38,149 @@ pub(crate) fn create_invocation(project: &Project, target: &str) -> Invocation {
     )
 }
 
-/// Adds a right-click menu that automates `target` (command syntax such as
-/// `mixer:0:volume`). The UI resolves the request with the current project.
+/// The command syntax for `target` (`channel:2:volume`, `mixer:3:1:mix`), as
+/// the control menus name their targets.
+fn target_name(project: &Project, target: &AutomationTarget) -> Option<String> {
+    let channel = |id| project.channel_position(id).map(|i| i + 1);
+    Some(match target {
+        AutomationTarget::ChannelVolume { channel: id } => {
+            format!("channel:{}:volume", channel(*id)?)
+        }
+        AutomationTarget::ChannelPan { channel: id } => format!("channel:{}:pan", channel(*id)?),
+        AutomationTarget::ChannelParam { channel: id, param } => {
+            format!("channel:{}:{param}", channel(*id)?)
+        }
+        AutomationTarget::MixerVolume { track } => format!("mixer:{track}:volume"),
+        AutomationTarget::MixerPan { track } => format!("mixer:{track}:pan"),
+        AutomationTarget::EffectParam { track, slot, param } => {
+            format!("mixer:{track}:{}:{param}", slot + 1)
+        }
+    })
+}
+
+/// What drives one control.
+#[derive(Clone, Default)]
+struct Source {
+    /// Text the hint appends, such as " · automated (clip 'Master fade')".
+    hint: String,
+    /// The automation for it (1-based), if any.
+    automation: Option<usize>,
+    /// The controllers driving it (1-based).
+    controllers: Vec<usize>,
+}
+
+/// What every control menu needs to know this frame: the driven controls by
+/// target name, and the copied control position.
+#[derive(Clone, Default)]
+struct Published {
+    driven: Arc<HashMap<String, Source>>,
+    copied: Option<f32>,
+    /// The open menu's target and its default position.
+    default: Option<(String, f32)>,
+}
+
+fn published_id() -> egui::Id {
+    egui::Id::new("control-menus")
+}
+
+/// The target whose control menu was open last frame.
+fn open_menu_id() -> egui::Id {
+    egui::Id::new("control-menu-open")
+}
+
+/// Records which controls automation clips and controllers drive, so their
+/// menus can mark them (style guide, controls M), and the copied value
+/// their Paste item uses. Call once per frame.
+pub(crate) fn publish(ctx: &egui::Context, project: &Project, copied: Option<f32>) {
+    let mut driven: HashMap<String, Source> = HashMap::new();
+    for (i, automation) in project.automations.iter().enumerate() {
+        if let Some(name) = target_name(project, &automation.target) {
+            let source = driven.entry(name).or_default();
+            source.automation = Some(i + 1);
+            source.hint = format!(" · automated (clip '{}')", automation.name);
+        }
+    }
+    for (i, controller) in project.controllers.iter().enumerate() {
+        if let Some(name) = target_name(project, &controller.target) {
+            let source = driven.entry(name).or_default();
+            source.controllers.push(i + 1);
+            if source.hint.is_empty() {
+                source.hint = format!(" · driven by {}", controller.name);
+            }
+        }
+    }
+    // Only the open menu's default is looked up, a frame after it opens.
+    let default = ctx
+        .data_mut(|d| d.remove_temp::<String>(open_menu_id()))
+        .and_then(|target| {
+            let info = musiccraft_commands::control_info(project, &target)?;
+            Some((target, info.default))
+        });
+    let published = Published {
+        driven: Arc::new(driven),
+        copied,
+        default,
+    };
+    ctx.data_mut(|d| d.insert_temp(published_id(), published));
+}
+
+/// Draws the status dot on a driven control and adds its source to the hint.
+fn mark(response: &egui::Response, source: Option<&Source>) {
+    if source.is_some() {
+        let painter = response
+            .ctx
+            .layer_painter(response.layer_id)
+            .with_clip_rect(response.interact_rect.expand(6.0));
+        widgets::status_dot(&painter, widgets::status_anchor(response));
+    }
+    let hint = source.map(|s| s.hint.clone());
+    musiccraft_editors::hint::set_suffix(&response.ctx, response.id, hint);
+}
+
+/// A dim heading row inside a menu.
+fn heading(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(2.0);
+    ui.label(
+        RichText::new(text)
+            .size(theme::FONT_LABEL)
+            .color(theme::TEXT_DIM),
+    );
+}
+
+/// Adds the control menu to `target` (command syntax such as
+/// `mixer:0:volume`), and marks the control when something drives it. The UI
+/// resolves `ui.*` requests with the current project.
 pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Action>) {
+    let published = response
+        .ctx
+        .data(|d| d.get_temp::<Published>(published_id()))
+        .unwrap_or_default();
+    let source = published.driven.get(target);
+    mark(response, source);
+    let run = |actions: &mut Vec<Action>, name: &str, args: Vec<String>| {
+        actions.push(Action::Run(Invocation::new(name, args)));
+    };
+    let target_arg = || vec![target.to_owned()];
     response.context_menu(|ui| {
+        ui.data_mut(|d| d.insert_temp(open_menu_id(), target.to_owned()));
         if ui.button("Create automation clip").clicked() {
-            actions.push(Action::Run(Invocation::new(
-                "ui.automate",
-                [target.to_owned()],
-            )));
+            run(actions, "ui.automate", target_arg());
             ui.close();
         }
+        let automation = source.and_then(|s| s.automation);
+        if crate::widgets::add_enabled(
+            ui,
+            automation.is_some(),
+            egui::Button::new("Open its automation…"),
+        )
+        .clicked()
+            && let Some(number) = automation
+        {
+            run(actions, "ui.open_automation", vec![number.to_string()]);
+            ui.close();
+        }
+        ui.separator();
+        heading(ui, "Control from");
         ui.menu_button("Add controller", |ui| {
             for (label, kind) in [
                 ("LFO", "lfo"),
@@ -53,14 +191,63 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
                 ("Formula", "formula"),
             ] {
                 if ui.button(label).clicked() {
-                    actions.push(Action::Run(Invocation::new(
+                    run(
+                        actions,
                         "controller.add",
-                        [kind.to_owned(), target.to_owned()],
-                    )));
+                        vec![kind.to_owned(), target.to_owned()],
+                    );
                     ui.close();
                 }
             }
         });
+        let controllers = source.map(|s| s.controllers.as_slice()).unwrap_or_default();
+        if !controllers.is_empty() && ui.button("Remove controller").clicked() {
+            // Highest first, so the numbers stay valid.
+            let removals = controllers
+                .iter()
+                .rev()
+                .map(|n| Invocation::new("controller.remove", [n.to_string()]).to_string());
+            run(actions, BATCH, removals.collect());
+            ui.close();
+        }
+        ui.separator();
+        heading(ui, "Value");
+        if ui.button("Copy").clicked() {
+            run(actions, "ui.copy_control", target_arg());
+            ui.close();
+        }
+        if crate::widgets::add_enabled(ui, published.copied.is_some(), egui::Button::new("Paste"))
+            .clicked()
+            && let Some(position) = published.copied
+        {
+            run(
+                actions,
+                "control.set",
+                vec![target.to_owned(), format!("{position}")],
+            );
+            ui.close();
+        }
+        if ui.button("Enter exact value…").clicked() {
+            let at = response.rect.left_bottom();
+            run(
+                actions,
+                "ui.type_in",
+                vec![target.to_owned(), format!("{}", at.x), format!("{}", at.y)],
+            );
+            ui.close();
+        }
+        let default = published
+            .default
+            .as_ref()
+            .filter(|(t, _)| t == target)
+            .map(|(_, position)| format!("{:.0}%", position * 100.0))
+            .unwrap_or_default();
+        let reset = egui::Button::new("Reset to default")
+            .right_text(RichText::new(default).color(theme::TEXT_DIM));
+        if ui.add(reset).clicked() {
+            run(actions, "control.reset", target_arg());
+            ui.close();
+        }
     });
 }
 const HEIGHT: f32 = 180.0;
@@ -102,30 +289,28 @@ pub fn show(
     let automation = &project.automations[index];
     let mut open = true;
     let area = state.workspace;
-    egui::Window::new(format!("Automation — {}", automation.name))
-        .id(egui::Id::new("automation-editor"))
-        .open(&mut open)
-        .default_pos(area.left_bottom() + vec2(60.0, -HEIGHT - 120.0))
-        .default_width((area.width() - 120.0).max(400.0))
-        .constrain_to(area)
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(&automation.name)
-                        .strong()
-                        .color(theme::AUTOMATION),
-                );
-                ui.label(
-                    RichText::new("Click to add a point · drag to move · right-click to delete")
-                        .small()
-                        .color(theme::TEXT_DIM),
-                );
-            });
-            // Curve ticks count from the clip start: bars of the project
-            // signature.
-            let meter = Meter::new(project.time_signature);
-            canvas(ui, state, (index, automation), &meter, actions);
-        });
+    let window_id = egui::Id::new("automation-editor");
+    let title = format!("Automation — {}", automation.name);
+    let default = egui::Rect::from_min_size(
+        area.left_bottom() + vec2(60.0, -HEIGHT - 120.0),
+        vec2((area.width() - 120.0).max(400.0), 0.0),
+    );
+    crate::chrome::window(ctx, window_id, "Automation", area, default, true).show(ctx, |ui| {
+        let folded = crate::chrome::Header::new(window_id, &title).show(
+            ui,
+            &mut open,
+            &mut (),
+            |_, _| {},
+            |_, _| {},
+        );
+        if folded {
+            return;
+        }
+        // Curve ticks count from the clip start: bars of the project
+        // signature.
+        let meter = Meter::new(project.time_signature);
+        canvas(ui, state, (index, automation), &meter, actions);
+    });
     if !open {
         state.automation_editor = None;
     }
@@ -142,6 +327,8 @@ fn canvas(
         meter.round_up_to_bar(automation.length_ticks().max(meter.bar_start(4))) + meter.bar(0).len;
     let width = ui.available_width().max(200.0);
     let (rect, response) = ui.allocate_exact_size(vec2(width, HEIGHT), Sense::click_and_drag());
+    let response = response
+        .hint("Automation curve: click to add a point · drag to move · right-click to delete");
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, theme::LCD_BG);
     let inner = rect.shrink2(vec2(8.0, 10.0));
@@ -166,7 +353,7 @@ fn canvas(
                 pos2(x + 3.0, rect.top() + 2.0),
                 Align2::LEFT_TOP,
                 (beat.bar + 1).to_string(),
-                FontId::monospace(10.0),
+                FontId::monospace(theme::FONT_VALUE),
                 theme::TEXT_DIM,
             );
         }
@@ -217,7 +404,7 @@ fn canvas(
         painter.circle_stroke(
             pos2(x_of(*t as f32), y_of(*v)),
             POINT_RADIUS,
-            Stroke::new(1.0, Color32::BLACK),
+            Stroke::new(1.0, theme::BACKGROUND),
         );
     }
     let hit = |pos: Pos2| {
@@ -332,10 +519,10 @@ fn canvas(
                 .color(theme::TEXT_DIM),
         );
         for (curve, label) in [
-            (Curve::Single, "Single curve"),
-            (Curve::Double, "Double curve"),
+            (Curve::Single, "Curve"),
+            (Curve::Double, "S-curve"),
             (Curve::Hold, "Hold"),
-            (Curve::Stairs, "Stairs"),
+            (Curve::Stairs, "Steps"),
         ] {
             if ui.radio(start.curve == curve, label).clicked() {
                 actions.push(Action::Run(Invocation::new(
@@ -370,9 +557,35 @@ fn canvas(
                 pos + vec2(10.0, -14.0),
                 Align2::LEFT_BOTTOM,
                 format!("{:.0}%", point.value * 100.0),
-                FontId::monospace(11.0),
+                FontId::monospace(theme::FONT_LABEL),
                 theme::TEXT,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_open_control_menu_gets_its_default_a_frame_later() {
+        let ctx = egui::Context::default();
+        let project = Project::default();
+        publish(&ctx, &project, None);
+        let published = |ctx: &egui::Context| {
+            ctx.data(|d| d.get_temp::<Published>(published_id()))
+                .unwrap_or_default()
+        };
+        assert!(published(&ctx).default.is_none());
+        // The menu for the master's pan was drawn open.
+        ctx.data_mut(|d| d.insert_temp(open_menu_id(), "mixer:0:pan".to_owned()));
+        publish(&ctx, &project, None);
+        let (target, position) = published(&ctx).default.expect("the default");
+        assert_eq!(target, "mixer:0:pan");
+        assert!((position - 0.5).abs() < 1e-6);
+        // Closed again: nothing is looked up.
+        publish(&ctx, &project, None);
+        assert!(published(&ctx).default.is_none());
     }
 }

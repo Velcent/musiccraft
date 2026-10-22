@@ -85,17 +85,17 @@ Two strict rules:
 - **Teal and amber never swap.** If a control shows "this one of several is selected or singled out", use amber. If it shows "this thing is switched on / running", use teal.
 - **Red is only for record, delete, clip and error.** Mute is never red. A muted thing is dimmed, not coloured.
 
-Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `HIGHLIGHT`. This is tolerable only because content and signal never share a place: a lit step is a palette colour inside the rack grid, while the accent is chrome around it. See Gaps for the proposal to reorder.
+The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, so a lit step never reads as a signal (a test in `theme.rs` keeps content and signal colours apart).
 
 ### 4. Disabled and dim
 
-- A disabled control keeps its shape and place. Its text and glyph are drawn in the proposed `theme::TEXT_FAINT` (`TEXT_DIM` moved toward `PANEL`), with no hover change. Its fill stays `RAISED`. It is never hidden, so layouts do not jump. (A window button that cannot apply, such as maximize on a fixed-size window, is left out rather than greyed; main-window section.)
+- A disabled control keeps its shape and place. Its text and glyph are drawn in `theme::TEXT_FAINT` (`TEXT_DIM` moved toward `PANEL`), with no hover change. Its fill stays `RAISED`; nothing is faded. Code disables controls through `widgets::enabled_ui` and `widgets::add_enabled`, never egui's own fade. It is never hidden, so layouts do not jump. (A window button that cannot apply, such as maximize on a fixed-size window, is left out rather than greyed; main-window section.)
 - "Dim" content (a muted track's name, an inaudible row, an empty slot's "empty") uses `TEXT_DIM`. "Off" content (a muted note or clip) uses its own colour at low strength. Never grey content out to `TEXT_DIM`: it would lose its identity.
 
 ### 5. Typography
 
 - **Faces.** Only egui's bundled faces are used (no font files of our own and none from any other product). The proportional face is used for all ordinary text, the monospace face for changing numbers. `theme::fonts()` appends the monospace face as the last fallback for proportional text, so arrows and small triangles in labels draw. A test (`crates/musiccraft-ui/src/glyph_tests.rs`) checks that every non-ASCII character in a UI string exists in the bundled faces. Rule for new text: if a symbol is needed as an icon, draw it in `icons.rs` rather than relying on a font glyph.
-- **Size classes.** Our own sizes, in egui points. Today they are literals in code; they become named constants in `theme` (see Gaps):
+- **Size classes.** Our own sizes, in egui points, as named constants in `theme`; no UI code uses a size literal:
 
 | Class | Proposed name | Used for |
 |---|---|---|
@@ -106,7 +106,8 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
 | Small | egui `.small()` | Main menu titles, the hint bar, group-box titles, menu headings |
 | Caption | `theme::FONT_CAPTION` (the smallest) | LCD captions (BAR.BEAT.STEP, BPM, CPU), "empty" in mixer slots, unit marks |
 | Mono small | `theme::FONT_VALUE` (mono) | The CPU percentage, the tempo's decimals, step and tick numbers, the time signature button, mixer level readouts |
-| Watermark | (large, near-transparent) | `theme::watermark` only |
+| Readout | `theme::FONT_READOUT` | The tuner's note name only |
+| Watermark | `theme::FONT_WATERMARK` (large, near-transparent) | `theme::watermark` only |
 
 - **When to use mono:** any number that changes while you watch or drag it (positions, tempo, levels, percentages, the time signature, counts in number boxes), so the digits do not jitter. Names, words and static numbers (track numbers, ruler bar numbers) use the proportional face.
 - **Weight.** Strong (bold) text is used only where weight is the cue:
@@ -183,12 +184,12 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
 | Mixer columns | insert tracks (strips); the first is Master; default names "Insert *n*" | `mixer.rs` |
 | Effect list beside the strips | slots ("empty", "+ add effect") | `mixer.rs` |
 | File and plugin tree | Browser (proposed title "Browser" in place of today's capitalised caption). Roots today: Current project, Controllers (*n*) and a plugin-tree root. Proposed (browser section): This project, Controllers (*n*), Instruments & effects, Presets, then user folders | `browser.rs`, `controllers.rs` |
-| Channel window | "Channel settings" in menus and hints; title "Channel — *name*" today, proposed "*channel* — *track*" ("Lead — Insert 3") | `channel_settings.rs` |
-| Effect window | title "*track* › *effect*" today, proposed "*effect* — *track*" ("Equalizer — Lead") | `effect_window.rs` |
+| Channel window | "Channel settings" in menus and hints; title "*channel* — *track*" ("Lead — Insert 3") | `channel_settings.rs` |
+| Effect window | title "*track* › *effect*" today, proposed "*effect* — *track*" ("Equaliser — Lead") | `effect_window.rs` |
 | Automation window | Automation — *name* | `automation.rs` |
 | Settings | Settings | `settings.rs` |
 | Shortcut list | Keyboard shortcuts | `dialogs.rs` |
-| Analyser | Spectrum analyzer (spelling to be settled, see Gaps) | `spectrum.rs` |
+| Analyser | Spectrum analyser | `spectrum.rs` |
 | Built-in wavetable synth | Antiserum (owner-chosen name) | `antiserum.rs` |
 | Song/pattern switch | Pattern / Song (proposed, to replace today's PAT / SONG; "Ptn" where too narrow) | `toolbar.rs` |
 | Position display | caption BAR.BEAT.STEP or MIN:SEC | `toolbar.rs` |
@@ -208,7 +209,7 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
 - **An ellipsis (…)** marks an item that opens a dialog or asks for more input.
 - **"+ "** before a label marks an add button ("+ Insert", "+ New pattern").
 - **Hints** (main-window section, following the existing hints in `playlist.rs`): the control's name, then its shortcut in parentheses, then a colon and what click, drag and right-click do, with middle dots between gestures ("Scroll bar: drag to scroll · drag an end to zoom"). Sentence case, one line, no full stop at the end. While dragging, the hint bar shows the live value in place of the description. The idle text is a short readiness line with the two most useful shortcuts.
-- **Window titles:** the window's name, an em dash, then the context ("Piano roll — Lead", "Equalizer — Lead"). The "›" form is retired.
+- **Window titles:** the window's name, an em dash, then the context ("Piano roll — Lead", "Equaliser — Lead"). The "›" form is retired.
 - **Number formats** in displays:
 
 | Display | Format |
@@ -229,7 +230,7 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
 **Names we never use** (kinds, not a list of the names themselves):
 
 1. The original product's name, abbreviation or logo-word, and its maker's name, anywhere in the UI, in file extensions we write, in default project or preset names, or in hints. The only exception is the import format's plain file extension in the import dialog's file filter, which names a file type and is not branding.
-2. The names of its bundled instruments, effects, samplers, tools and preset packs, including near-spellings. Our instruments get plain descriptive names ("Synth", "Drum synth: kick", "Zone sampler", "Equalizer") or owner-chosen dictionary words (Antiserum).
+2. The names of its bundled instruments, effects, samplers, tools and preset packs, including near-spellings. Our instruments get plain descriptive names ("Synth", "Drum synth: kick", "Zone sampler", "Equaliser") or owner-chosen dictionary words (Antiserum).
 3. Its coined labels for interface parts and features: invented compound words, branded names for its hint area, its plugin wrapper, its plugin list, its channel filters, its routing or recording modes, its mode-switch captions and its theme presets. Where a generic DAW term exists we use it (playlist, piano roll, mixer, channel rack, browser, step sequencer, hint bar, pattern, clip, track, insert, send, master, transport, snap, tempo, metronome). Where none exists we describe it plainly ("group filter", "graph editor", "Instruments & effects", "Controller learn").
 4. Its colour names and theme preset names.
 5. Its menu wording copied verbatim. Our menu items are our own phrasing of what the command does.
@@ -342,7 +343,7 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
 | Mixer header | Strip details / slot panel toggles | `Icon::Strip`: a tall narrow outline with its lower third filled; `Icon::Slots`: a wide outline with its right third filled |
 | Mixer strip | Invert polarity | `Icon::Phase`: a small circle with a diagonal stroke through it, extending past the circle |
 | Mixer strip | Swap left and right | `Icon::Swap`: two short horizontal arrows one above the other, pointing opposite ways |
-| Mixer input / output | Input / output | `Icon::In` / `Icon::Out`: a small circle with a short arrow entering from the left / leaving to the right (replaces "→ none") |
+| Mixer input / output | Input / output | `Icon::In` (planned) / `Icon::Out` (existing): a small circle with a short arrow entering from the left / leaving to the right, drawn before the slot panel's Out row and each send row |
 | Piano roll, playlist tools | Audition / play from here | `Icon::Audition`: a play triangle with one short sound arc to its right |
 | Playlist tools | Slip content inside a clip | `Icon::Slip`: a wide outlined rectangle holding a short double-headed horizontal arrow |
 | Piano roll header | Ghost notes | `Icon::Ghost`: two horizontal bars offset diagonally, the rear one dashed and the front one solid |
@@ -402,7 +403,7 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
 | Record, armed, errors, delete items | `theme::DANGER` | Armed dots and the record fill pulse while recording |
 | Current pattern name, STEP badge, save reminder | `theme::HIGHLIGHT` | Save reminder pulses slowly |
 | Track / pattern / channel colour picker | 16 swatches of `theme::track_color(0..16)` in two rows of eight, "No colour" below | Hover swatch: `TEXT` one-point ring; current: `ACCENT` ring |
-| Disabled text and glyphs | proposed `theme::TEXT_FAINT` (`TEXT_DIM` toward `PANEL`) | No hover change |
+| Disabled text and glyphs | `theme::TEXT_FAINT` (`TEXT_DIM` toward `PANEL`) | No hover change |
 | Scroll bars | proposed `theme::SCROLL_RAIL` (`PANEL_DARK`), `theme::SCROLL_THUMB` (`RAISED`) | Hover `RAISED_HOVER`; drag `ACCENT_DIM` |
 | Past the song end | proposed `theme::PAST_END` (lane darkened) | — |
 
@@ -412,7 +413,7 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
 - **Group-box titles** in editor pages: small bold capitals in `TEXT_DIM` inside the box's top-left corner (OSCILLATORS, FILTER, LFO, ENVELOPE in the synth; SAMPLE, PLUGIN in channel windows).
 - **Menu headings:** small dim sentence-case text on a heading band ("Control from", "Value").
 - **List headings:** none. Today's PATTERNS / AUDIO / AUTOMATION headings in the playlist's left column are dropped (playlist section).
-- **Window titles**, existing: "Channel rack", "Playlist" (with "Arrangement" in `TEXT_DIM`), "Piano roll — *channel*", "Mixer — *track*", "Channel — *name*", "*track* › *effect*", "Automation — *name*", "Settings", "Keyboard shortcuts", "Spectrum analyzer". Proposed renames: the browser's capitalised caption → "Browser"; channel windows → "*channel* — *track*"; effect windows → "*effect* — *track*"; "Playlist" → "Playlist — *arrangement*" once arrangements exist.
+- **Window titles**, existing: "Channel rack", "Playlist" (with "Arrangement" in `TEXT_DIM`), "Piano roll — *channel*", "Mixer — *track*", "*channel* — *track*", "*effect* — *track*", "Automation — *name*", "Settings", "Keyboard shortcuts", "Spectrum analyser". Proposed renames: the browser's capitalised caption → "Browser"; "Playlist" → "Playlist — *arrangement*" once arrangements exist.
 - **Display captions:** BAR.BEAT.STEP, MIN:SEC, BPM, CPU.
 - **Switches:** today PAT / SONG, TAP, ON, S, "Graph", "Slide", "Porta", "Clip", "Snap". Proposed renames: PAT / SONG → "Pattern" / "Song" (toolbar section); "Graph" becomes an icon toggle named "Graph editor" in its hint (channel-rack section); ON becomes a round light (mixer section).
 - **Group filter:** "Group filter" in hints, "No group" for the unfiltered choice (channel-rack section). Today's hint uses a coined term (see Gaps).
@@ -428,7 +429,7 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
   - Shown in the caption or once per strip, never repeated beside every value.
   - Signed values always show their sign (+0.0).
   - Use the en dash for ranges (F5–F9, 1–16) and the true minus sign in prose.
-- **Spelling:** British English in labels ("Colour", "Favourites", "analyser"), matching the existing "Colour" labels. "Spectrum analyzer" and "Equalizer" are to be settled (open question).
+- **Spelling:** British English in labels ("Colour", "Favourites", "analyser"), matching the existing "Colour" labels. The owner settled the two exceptions on 2026-10-22: "Spectrum analyser" and "Equaliser".
 
 ## States and feedback
 
@@ -455,37 +456,10 @@ Note: palette entry 1 has the same value as `ACCENT`, and entry 3 the same as `H
 
 Ordered by visual impact. Where a gap changes layout or behaviour fixed in a spec, that spec is updated first.
 
-1. **Note colours come from a separate hue wheel, not the palette.** `note_color` in `crates/musiccraft-ui/src/piano_roll.rs` (around line 1268) builds 16 hues itself, so piano-roll notes, pattern colours and channel colours never match. Move it to `theme` and base it on `theme::track_color`.
-2. **Colour literals outside the tokens.** There are raw colours in:
-   - `crates/musiccraft-ui/src/piano_roll.rs`: the selection fill (around line 841), a tint (around line 1026) and the keyboard keys and seam (around lines 2111–2138);
-   - `crates/musiccraft-ui/src/playlist.rs`: the selection fill (around line 615), the automation clip body (751), `UNCOLOURED_CLIP` (863), loop-range shading (1083, 1085) and marker lines (1182);
-   - `crates/musiccraft-editors/src/theme.rs`: `theme::apply`'s window stroke and hover fill, and `theme::watermark`.
-
-   Replace them with existing or proposed tokens: `SELECTION_FILL`, `KEY_WHITE`, `KEY_BLACK`, `KEY_SEAM`, `CLIP_NEUTRAL`, `CLIP_BODY`, `WINDOW_EDGE`, `WATERMARK`.
-3. **Rounded, shadowed, card-like windows.** `theme::apply` sets a clearly rounded `window_corner_radius` and keeps egui's default window shadow on every window. Target: square or the Tiny radius, no shadow on editor windows, a faint one on menus, popups, tooltips and modal dialogs. Menus and tooltips use egui's window fill today, not a `MENU_BG` one step above the panel.
-4. **Header collapse at the left.** Headers put a filled collapse triangle at the far left (`crates/musiccraft-ui/src/chrome.rs`), as `docs/spec/window-layout.md` "Window header" describes. The target is the window menu at the far left and `Icon::Fold` in the right-hand window-button group (main-window section); `window-layout.md` changes first.
-5. **Tool glyphs are in the role colour at rest.** `icons::button` paints an idle glyph in its accent (`crates/musiccraft-ui/src/icons.rs`), so off tools look half-on. Target: `TEXT` at rest, except record.
-6. **Record does not pulse while recording.** `crates/musiccraft-ui/src/toolbar.rs` (around line 491) lights the record button steadily whenever armed, so recording looks the same as armed. COUNT-IN and WAITING sit beside the button instead of in the time display.
-7. **No playing-step marker, and step hover darkens.** The channel rack does not show which step is playing. The step hover fill uses `RAISED`, which is darker than `STEP_A`, so hovering a light group darkens it (`crates/musiccraft-ui/src/channel_rack.rs`, around line 550). Add `STEP_PLAYING` and `STEP_HOVER`.
-8. **Text characters used as icons.** Examples are ♪ for sounds, ⟳ for refresh, ▪ and ~ in lists, × to remove, → in routing, ◀ ▶ in preset selectors and ☰ for the piano roll's options. They appear in `crates/musiccraft-ui/src/browser.rs` (lines 134, 263, 518, 541, 585), `controllers.rs` (236), `mixer.rs` (427), `playlist.rs` (494), `lib.rs` (470) and `piano_roll.rs`. Replace them with the vector glyphs in the Icons table.
-9. **Many icon slots do not exist.** `Icon` has 17 variants. Window menu, chevrons, fold, maximize, zoom box, pause, snap, loop, gear, star, lock, warning, plus and the rest listed above are missing. The collapse arrow and the close cross are drawn in `chrome.rs` rather than in `icons.rs`.
-10. **The `Icon::Mute` doc comment is wrong.** `icons.rs` documents it as a speaker with a slash, but it draws a speaker with a cross. Fix the comment so other sections describe the glyph correctly.
-11. **Coined and capitalised labels in code.** The channel rack's group-filter hint (`channel_rack.rs`, around line 155) and its state comment (`lib.rs`, around line 239) use the reference's coined name for that control; rename to "group filter". The browser's plugin-tree root label (`browser.rs`, around line 352) is the reference's coined branch name; rename to "Instruments & effects". The PAT / SONG captions (`toolbar.rs`, around line 454) and the all-capitals menu bar are proposed renames (toolbar section).
-12. **Toolbar band tone.** The one-band toolbar fills its band with `PANEL_DARK`, darker than window headers, and the two-band fallback uses two tones. Target: one `PANEL` band in both layouts, with only the menu/hint field and the display wells recessed (toolbar section).
-13. **Two different colour pickers.** The track header's right-click menu shows a grid of 16 swatches plus "No colour" (`crates/musiccraft-ui/src/playlist.rs`, around line 1417). The pattern menu's Colour submenu is a text list of "■ Colour *n*" (around line 347). Use one shared swatch-grid widget everywhere: track, pattern, channel and note group.
-14. **Palette collides with signal colours.** `theme::PALETTE` entries 1 and 3 equal `ACCENT` and `HIGHLIGHT` (`crates/musiccraft-editors/src/theme.rs`), so the first channel's lit steps look like "active" teal. Proposal (own design): keep the eight hues but start the cycle on a hue that is not a signal colour, or give the palette its own teal and amber, one step lighter than the signal tokens.
-15. **Mixer selection and solo.** The selected strip is outlined in its own strip colour (amber for the master) (`crates/musiccraft-ui/src/mixer.rs`, around line 160), not `STRIP_SELECTED` with an `ACCENT` edge. Solo is a separate "S" LED lit in `HIGHLIGHT` (around line 316); there is no ring on the light and no silenced-by-solo look. In the channel rack solo is stored as mutes, so "silenced" cannot be told from "muted" (channel-rack section). `mixer.md`, `playlist.md` and `channel-rack.md` change first.
-16. **Font sizes and weight are scattered.** About ten distinct sizes are used across `crates/musiccraft-ui/src/*.rs` and `icons.rs` (`FontId::proportional(…)`, `.size(…)`). Collapse them to the named classes (`FONT_DISPLAY`, `FONT_TITLE`, `FONT_LABEL`, `FONT_CAPTION`, `FONT_VALUE`) in `theme`. Bold is also used beyond the weight rule, for example the playlist and mixer titles (`playlist.rs` around line 129, `mixer.rs` around line 597).
-17. **Number formats.** The tempo shows two decimals in one size (`toolbar.rs`, toolbar section gap list), not whole digits plus three small decimals.
-18. **Capitalisation and spelling drift.**
-    - Antiserum's knob captions are lower case ("position", "rnd phase") while the synth's are sentence case (`crates/musiccraft-editors/src/antiserum.rs`; see `docs/screenshots/antiserum.png` and `synth-and-eq.png`).
-    - "+ add effect" in the mixer slots is lower case.
-    - "Spectrum analyzer" and "Equalizer" use one spelling, "Colour" the other.
-19. **No disabled token.** Disabled widgets rely on egui's default fading. Add `TEXT_FAINT` and keep fills unchanged.
-20. **Meters lack a peak line and a clip mark.** `crates/musiccraft-editors/src/widgets.rs` (`meter`) draws a bar and a 0 dB tick only.
-21. **No focused-window emphasis.** All floating windows share one edge and header tone (`theme::apply`; `crates/musiccraft-ui/src/chrome.rs`). Add `WINDOW_EDGE`, `HEADER` and `HEADER_ACTIVE`.
-22. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
-23. **No theme adjustment.** The theme is fixed in `theme.rs`. A future Settings → Theme page (own design) would shift token groups as a whole.
+1. **Many icon slots do not exist.** `Icon` now has the header glyphs (menu, fold, unfold, maximize, restore, close, more) and refresh. Chevrons, zoom box, pause, snap, loop, gear, star, lock, warning, plus and the rest listed above are still missing.
+2. **Toolbar band tone.** The one-band toolbar fills its band with `PANEL_DARK`, darker than window headers, and the two-band fallback uses two tones. Target: one `PANEL` band in both layouts, with only the menu/hint field and the display wells recessed (toolbar section).
+3. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
+4. **No theme adjustment.** The theme is fixed in `theme.rs`. A future Settings → Theme page (own design) would shift token groups as a whole.
 
 ## Sources
 

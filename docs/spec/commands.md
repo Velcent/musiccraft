@@ -27,6 +27,12 @@
   undo step whose inverse restores the value from before the gesture.
 - `project.new`, `project.load`, `project.import_flp` and `project.recover`
   clear history.
+- The main menu's Edit › History lists the latest steps (up to 15 each way):
+  steps that can be redone at the top in a dim tone, then the current state,
+  then the steps that can be undone, newest first, and (when they all fit)
+  "Start of history". Picking a step runs
+  `edit.undo` or `edit.redo` as many times as it takes to get there, so the
+  project returns to the state just after that step.
 - Plugin state commands (`channel.set_plugin_state`, `mixer.set_plugin_state`)
   are not undoable: they mirror state the running plugin already holds. A
   plugin parameter with no stored value is restored with

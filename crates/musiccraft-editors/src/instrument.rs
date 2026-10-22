@@ -110,6 +110,9 @@ pub struct InstrumentEditor<'a> {
     /// Whether the Functions page shows the channel arpeggiator (an
     /// instrument with its own, like Antiserum, hides it).
     arpeggiator: bool,
+    /// Whether the host draws the presets elsewhere (the app's channel
+    /// window header), so the Sound pages leave out their preset row.
+    presets_in_header: bool,
 }
 
 impl<'a> InstrumentEditor<'a> {
@@ -129,6 +132,23 @@ impl<'a> InstrumentEditor<'a> {
             edits,
             menu,
             arpeggiator: true,
+            presets_in_header: false,
+        }
+    }
+
+    /// Leaves the preset row off the Sound pages: the host shows
+    /// [`Self::preset_picker`] in its own header.
+    #[must_use]
+    pub fn presets_in_header(mut self) -> Self {
+        self.presets_in_header = true;
+        self
+    }
+
+    /// The previous chevron, preset list and next chevron for this
+    /// instrument's presets, in the caller's row (nothing when it has none).
+    pub fn preset_picker(&mut self, ui: &mut Ui) {
+        if let Some(list) = presets(self.kind) {
+            self.picker(ui, list);
         }
     }
 
@@ -208,7 +228,10 @@ impl<'a> InstrumentEditor<'a> {
     /// A checkbox for an on/off parameter.
     pub fn toggle(&mut self, ui: &mut Ui, index: usize, text: &str, hint: &str) {
         let mut on = self.get(index) >= 0.5;
-        if ui.checkbox(&mut on, text).hint(hint).changed() {
+        if crate::widgets::led_switch(ui, &mut on, text)
+            .hint(hint)
+            .changed()
+        {
             self.set_once(index, if on { 1.0 } else { 0.0 });
         }
     }
@@ -246,13 +269,9 @@ impl<'a> InstrumentEditor<'a> {
 
     /// The preset picker: choosing a preset is one step.
     pub fn preset_bar(&mut self, ui: &mut Ui, list: &'static [Preset]) {
-        let Some(n) = (!list.is_empty()).then_some(list.len()) else {
+        if self.presets_in_header {
             return;
-        };
-        let current = list
-            .iter()
-            .position(|p| p.matches(INSTRUMENT_PARAMS, self.values));
-        let mut chosen = None;
+        }
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new("PRESET")
@@ -260,30 +279,42 @@ impl<'a> InstrumentEditor<'a> {
                     .strong()
                     .color(theme::TEXT_DIM),
             );
-            if ui.small_button("◀").hint("Previous preset").clicked() {
-                chosen = Some(current.map_or(n - 1, |c| (c + n - 1) % n));
-            }
-            egui::ComboBox::from_id_salt(("instrument-preset", self.salt, list.as_ptr() as usize))
-                .width(180.0)
-                .selected_text(
-                    current
-                        .and_then(|i| list.get(i))
-                        .map_or("(custom)", |p| p.name),
-                )
-                .show_ui(ui, |ui| {
-                    for (i, preset) in list.iter().enumerate() {
-                        if ui
-                            .selectable_label(current == Some(i), preset.name)
-                            .clicked()
-                        {
-                            chosen = Some(i);
-                        }
-                    }
-                });
-            if ui.small_button("▶").hint("Next preset").clicked() {
-                chosen = Some(current.map_or(0, |c| (c + 1) % n));
-            }
+            self.picker(ui, list);
         });
+    }
+
+    fn picker(&mut self, ui: &mut Ui, list: &'static [Preset]) {
+        let Some(n) = (!list.is_empty()).then_some(list.len()) else {
+            return;
+        };
+        let current = list
+            .iter()
+            .position(|p| p.matches(INSTRUMENT_PARAMS, self.values));
+        let mut chosen = None;
+        let salt = ("instrument-preset", self.salt, list.as_ptr() as usize);
+        if crate::widgets::preset_arrow(ui, true, salt).clicked() {
+            chosen = Some(current.map_or(n - 1, |c| (c + n - 1) % n));
+        }
+        egui::ComboBox::from_id_salt(salt)
+            .width(130.0)
+            .selected_text(
+                current
+                    .and_then(|i| list.get(i))
+                    .map_or("(custom)", |p| p.name),
+            )
+            .show_ui(ui, |ui| {
+                for (i, preset) in list.iter().enumerate() {
+                    if ui
+                        .selectable_label(current == Some(i), preset.name)
+                        .clicked()
+                    {
+                        chosen = Some(i);
+                    }
+                }
+            });
+        if crate::widgets::preset_arrow(ui, false, salt).clicked() {
+            chosen = Some(current.map_or(0, |c| (c + 1) % n));
+        }
         let Some(preset) = chosen.and_then(|i| list.get(i)) else {
             return;
         };
@@ -364,38 +395,133 @@ impl<'a> InstrumentEditor<'a> {
     /// The amplitude envelope knobs and their graph.
     pub fn envelope(&mut self, ui: &mut Ui) {
         section(ui, "ENVELOPE", |ui| {
+            self.envelope_graph(ui);
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 self.knob(ui, inst::ATTACK, "Attack");
                 self.knob(ui, inst::DECAY, "Decay");
                 self.knob(ui, inst::SUSTAIN, "Sustain");
                 self.knob(ui, inst::RELEASE, "Release");
-                envelope_graph(ui, self.values, self.color);
             });
         });
     }
 
-    /// The Functions page: arpeggiator, swing, timing and echo, voices.
-    /// `extra` adds controls of the caller's to the swing section (a
-    /// plugin's own swing amount).
+    /// The envelope's graph with a round handle at each stage's corner: the
+    /// peak sets the attack, the next corner the decay (across) and sustain
+    /// (up and down), the end the release. One drag is one undo step.
+    fn envelope_graph(&mut self, ui: &mut Ui) {
+        let (rect, _) =
+            ui.allocate_exact_size(vec2(ui.available_width().max(160.0), 120.0), Sense::hover());
+        ui.painter().rect_filled(rect, 4.0, theme::LCD_BG);
+        let shape = EnvelopeShape::new(rect.shrink(8.0));
+        let values = [inst::ATTACK, inst::DECAY, inst::SUSTAIN, inst::RELEASE].map(|i| self.get(i));
+        let corners = shape.corners(values);
+        ui.painter_at(rect)
+            .add(Shape::line(corners.to_vec(), Stroke::new(2.0, self.color)));
+        let handles = [
+            (1, "Attack: drag across"),
+            (
+                2,
+                "Decay and sustain: drag across for the decay, up or down for the sustain",
+            ),
+            (4, "Release: drag across"),
+        ];
+        for (corner, hint) in handles {
+            let at = corners[corner];
+            let response = ui
+                .interact(
+                    egui::Rect::from_center_size(at, vec2(14.0, 14.0)),
+                    self.salt.with(("envelope-handle", corner)),
+                    Sense::drag(),
+                )
+                .hint(hint);
+            let lit = response.hovered() || response.dragged();
+            ui.painter()
+                .circle_filled(at, if lit { 5.5 } else { 4.5 }, self.color);
+            if response.drag_started() {
+                self.edits.push(InstrumentEdit::Begin);
+            }
+            let Some(pointer) = response
+                .interact_pointer_pos()
+                .filter(|_| response.dragged())
+            else {
+                continue;
+            };
+            for (index, new) in shape.drag(corner, pointer, values) {
+                if (new - self.get(index)).abs() > 1e-6 {
+                    self.edits.push(InstrumentEdit::Set(index, new));
+                }
+            }
+        }
+    }
+
+    /// The Functions page: voices, timing (with swing), choke, arpeggiator
+    /// and echo, in the order of the style guide's Functions layout.
     pub fn functions(&mut self, ui: &mut Ui) {
         self.functions_with(ui, &mut |_, _| {});
     }
 
-    /// [`Self::functions`] with `extra` drawn in the swing and voices rows.
+    /// [`Self::functions`] with `extra` drawn in the timing ("swing") and
+    /// voices rows (a plugin's own swing amount and voice controls).
     pub fn functions_with(&mut self, ui: &mut Ui, extra: &mut dyn FnMut(&mut Ui, &str)) {
+        ui.columns(2, |row| {
+            section(&mut row[0], "VOICES", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.knob(ui, inst::POLY_MAX, "Max");
+                    self.choice(ui, inst::MONO, &["Poly", "Mono"]);
+                    extra(ui, "voices");
+                });
+            });
+            section(&mut row[1], "TIMING", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.knob(ui, inst::TIME_SHIFT, "Delay");
+                    self.knob(ui, inst::GATE, "Length");
+                    extra(ui, "swing");
+                    self.knob(ui, inst::SWING_MIX, "Swing");
+                });
+                ui.horizontal_wrapped(|ui| {
+                    self.choice(ui, inst::SWING_TRUNCATE, &["Delay", "Shorten"]);
+                });
+            });
+        });
+        ui.add_space(6.0);
         if self.arpeggiator {
             self.arpeggiator_section(ui);
             ui.add_space(6.0);
         }
-        section(ui, "SWING", |ui| {
-            ui.horizontal(|ui| {
-                extra(ui, "swing");
-                self.knob(ui, inst::SWING_MIX, "Mix");
-                self.choice(ui, inst::SWING_TRUNCATE, &["Shift", "Truncate"]);
+        ui.columns(2, |row| {
+            section(&mut row[0], "CHOKE", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.knob(ui, inst::CUT_GROUP, "Group");
+                    self.knob(ui, inst::CUT_BY, "Silenced by");
+                });
+                self.self_choke(ui);
+            });
+            section(&mut row[1], "ECHO", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.knob(ui, inst::ECHO_COUNT, "Repeats");
+                    self.knob(ui, inst::ECHO_TIME, "Time");
+                    self.knob(ui, inst::ECHO_FEED, "Feedback");
+                    self.knob(ui, inst::ECHO_PITCH, "Pitch step");
+                });
             });
         });
-        ui.add_space(6.0);
-        self.timing_and_voices(ui, extra);
+    }
+
+    /// "Self-choke": puts the channel in one group as both its group and the
+    /// group that silences it, so each new note cuts the last (one step).
+    fn self_choke(&mut self, ui: &mut Ui) {
+        let shared = self_choke_group(self.get(inst::CUT_GROUP), self.get(inst::CUT_BY));
+        let clicked = ui
+            .selectable_label(shared.is_none(), "Self-choke")
+            .on_hover_text("Each new note silences this channel's last one")
+            .clicked();
+        if let Some(shared) = shared.filter(|_| clicked) {
+            self.edits.push(InstrumentEdit::Preset(vec![
+                (inst::CUT_GROUP, shared),
+                (inst::CUT_BY, shared),
+            ]));
+        }
     }
 
     fn arpeggiator_section(&mut self, ui: &mut Ui) {
@@ -417,31 +543,6 @@ impl<'a> InstrumentEditor<'a> {
                     self.knob(ui, inst::ARP_GATE, "Gate");
                 });
             }
-        });
-    }
-
-    fn timing_and_voices(&mut self, ui: &mut Ui, extra: &mut dyn FnMut(&mut Ui, &str)) {
-        section(ui, "TIMING AND ECHO", |ui| {
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::TIME_SHIFT, "Shift");
-                self.knob(ui, inst::GATE, "Gate");
-            });
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::ECHO_COUNT, "Echoes");
-                self.knob(ui, inst::ECHO_TIME, "Time");
-                self.knob(ui, inst::ECHO_FEED, "Feed");
-                self.knob(ui, inst::ECHO_PITCH, "Pitch");
-            });
-        });
-        ui.add_space(6.0);
-        section(ui, "VOICES", |ui| {
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::CUT_GROUP, "Cut");
-                self.knob(ui, inst::CUT_BY, "Cut by");
-                self.knob(ui, inst::POLY_MAX, "Max");
-                self.choice(ui, inst::MONO, &["Poly", "Mono"]);
-                extra(ui, "voices");
-            });
         });
     }
 
@@ -862,7 +963,7 @@ pub fn waveform(ui: &mut Ui, overview: Option<&[(f32, f32)]>, color: Color32, sl
             rect.center(),
             egui::Align2::CENTER_CENTER,
             "no audio",
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(theme::FONT_LABEL),
             theme::TEXT_DIM,
         );
         return;
@@ -897,7 +998,7 @@ pub fn waveform(ui: &mut Ui, overview: Option<&[(f32, f32)]>, color: Color32, sl
                     pos2(x + 3.0, rect.top() + 2.0),
                     egui::Align2::LEFT_TOP,
                     (i + 1).to_string(),
-                    egui::FontId::proportional(9.0),
+                    egui::FontId::proportional(theme::FONT_CAPTION),
                     theme::HIGHLIGHT,
                 );
             }
@@ -906,30 +1007,82 @@ pub fn waveform(ui: &mut Ui, overview: Option<&[(f32, f32)]>, color: Color32, sl
 }
 
 /// The envelope shape: attack, decay, a fixed sustain segment, release.
-fn envelope_graph(ui: &mut Ui, values: &Params, color: Color32) {
-    let (rect, _) =
-        ui.allocate_exact_size(vec2(ui.available_width().max(100.0), 56.0), Sense::hover());
-    let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 4.0, theme::LCD_BG);
-    let a = value(values, inst::ATTACK);
-    let d = value(values, inst::DECAY);
-    let s = value(values, inst::SUSTAIN).clamp(0.0, 1.0);
-    let r = value(values, inst::RELEASE);
-    // Time axis compressed with a square root so short stages stay visible.
-    let w = |t: f32| t.max(0.0).sqrt();
-    let hold = 0.6;
-    let total = w(a) + w(d) + hold + w(r);
-    let inner = rect.shrink(6.0);
-    let x = |t: f32| inner.left() + t / total.max(1e-6) * inner.width();
-    let y = |level: f32| inner.bottom() - level * inner.height();
-    let points = vec![
-        pos2(x(0.0), y(0.0)),
-        pos2(x(w(a)), y(1.0)),
-        pos2(x(w(a) + w(d)), y(s)),
-        pos2(x(w(a) + w(d) + hold), y(s)),
-        pos2(x(total), y(0.0)),
-    ];
-    painter.add(Shape::line(points, Stroke::new(2.0, color)));
+/// Where the envelope graph draws its stages. Each timed stage has a
+/// quarter of the width, with time on a square-root scale up to the
+/// parameter's 5 s maximum, so short stages stay visible and a drag maps
+/// back to the same time; the sustain hold is a fixed quarter.
+struct EnvelopeShape {
+    inner: egui::Rect,
+}
+
+impl EnvelopeShape {
+    const MAX_SECONDS: f32 = 5.0;
+
+    fn new(inner: egui::Rect) -> Self {
+        Self { inner }
+    }
+
+    fn quarter(&self) -> f32 {
+        self.inner.width() / 4.0
+    }
+
+    fn width_of(&self, seconds: f32) -> f32 {
+        (seconds.max(0.0) / Self::MAX_SECONDS).sqrt().min(1.0) * self.quarter()
+    }
+
+    fn seconds_at(&self, width: f32) -> f32 {
+        let t = (width / self.quarter()).clamp(0.0, 1.0);
+        t * t * Self::MAX_SECONDS
+    }
+
+    fn y(&self, level: f32) -> f32 {
+        self.inner.bottom() - level.clamp(0.0, 1.0) * self.inner.height()
+    }
+
+    /// Start, peak, decay end, hold end and release end, from attack, decay,
+    /// sustain and release.
+    fn corners(&self, [a, d, s, r]: [f32; 4]) -> [Pos2; 5] {
+        let x0 = self.inner.left();
+        let x1 = x0 + self.width_of(a);
+        let x2 = x1 + self.width_of(d);
+        let x3 = x2 + self.quarter();
+        let x4 = x3 + self.width_of(r);
+        let (top, bottom) = (self.y(1.0), self.y(0.0));
+        [
+            pos2(x0, bottom),
+            pos2(x1, top),
+            pos2(x2, self.y(s)),
+            pos2(x3, self.y(s)),
+            pos2(x4, bottom),
+        ]
+    }
+
+    /// The parameters a drag of `corner` to `pointer` sets.
+    fn drag(&self, corner: usize, pointer: Pos2, values: [f32; 4]) -> Vec<(usize, f32)> {
+        let corners = self.corners(values);
+        match corner {
+            1 => vec![(inst::ATTACK, self.seconds_at(pointer.x - corners[0].x))],
+            2 => {
+                let level = (self.inner.bottom() - pointer.y) / self.inner.height();
+                vec![
+                    (inst::DECAY, self.seconds_at(pointer.x - corners[1].x)),
+                    (inst::SUSTAIN, level.clamp(0.0, 1.0)),
+                ]
+            }
+            4 => vec![(inst::RELEASE, self.seconds_at(pointer.x - corners[3].x))],
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// The group "Self-choke" puts a channel in, given its choke group and the
+/// group that silences it: the first one set, else group 1. `None` when it
+/// already chokes itself.
+fn self_choke_group(group: f32, by: f32) -> Option<f32> {
+    if group > 0.0 && group == by {
+        return None;
+    }
+    Some([group, by].into_iter().find(|g| *g > 0.0).unwrap_or(1.0))
 }
 
 #[cfg(test)]
@@ -983,5 +1136,29 @@ mod tests {
             values[musiccraft_params::index_of(INSTRUMENT_PARAMS, name).unwrap()] = v;
         }
         assert!(preset.matches(INSTRUMENT_PARAMS, &values));
+    }
+
+    #[test]
+    fn self_choke_shares_the_first_group_set() {
+        assert_eq!(self_choke_group(0.0, 0.0), Some(1.0));
+        assert_eq!(self_choke_group(3.0, 0.0), Some(3.0));
+        assert_eq!(self_choke_group(0.0, 5.0), Some(5.0));
+        assert_eq!(self_choke_group(2.0, 4.0), Some(2.0));
+        assert_eq!(self_choke_group(4.0, 4.0), None);
+    }
+
+    #[test]
+    fn envelope_handles_map_back_to_their_stage() {
+        let shape = EnvelopeShape::new(egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 100.0)));
+        let values = [0.2, 0.3, 0.8, 1.25];
+        let corners = shape.corners(values);
+        // Dragging each handle onto itself gives back the same values.
+        assert!((shape.drag(1, corners[1], values)[0].1 - 0.2).abs() < 1e-4);
+        let decay = shape.drag(2, corners[2], values);
+        assert!((decay[0].1 - 0.3).abs() < 1e-4 && (decay[1].1 - 0.8).abs() < 1e-4);
+        assert!((shape.drag(4, corners[4], values)[0].1 - 1.25).abs() < 1e-4);
+        // Past the end of its quarter a stage stops at the maximum.
+        let far = shape.drag(1, pos2(1_000.0, 0.0), values);
+        assert!((far[0].1 - EnvelopeShape::MAX_SECONDS).abs() < 1e-4);
     }
 }

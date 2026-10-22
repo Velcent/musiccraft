@@ -13,25 +13,67 @@
   <track> <on|off>` and `playlist.toggle_track_solo <track>`. While any row is
   soloed, only soloed rows play; a muted row stays silent even when soloed.
   Silenced rows skip pattern, audio and automation clips alike. The row header
-  shows the colour stripe and name on the left, and the arm dot, S (solo)
-  button and mute dot on the right; right-click it to
-  rename it or pick a colour. A coloured row shows a stripe of its colour at the
-  left of its header; silenced rows show their name dimmed.
+  is a raised plate, tinted well down by the row's colour and one step
+  lighter under the pointer, with a hairline gap under it. A plate at least
+  two text lines tall has the name on its top line and, on its bottom line, a
+  two-line resize grip at the left and the arm dot, S (solo) button and mute
+  light at the right; a shorter plate puts the name and switches on one line
+  and draws no grip. The arm dot shows only while the row is armed or the
+  pointer is over the plate. The mute light gains a ring in the highlight tone
+  while the row is soloed, and is lit at reduced strength while another row's
+  solo silences it. Right-click the plate to rename it or pick a colour, or
+  double-click it to rename it in place. Track and pattern menus share one
+  Colour submenu: two rows of eight swatches with the current one outlined,
+  a row of up to eight smaller swatches for the colours picked most recently
+  (newest first, for this session), then "No colour" and a dice
+  button that picks a colour that is neither the current one nor a recent
+  one. Silenced rows show their name dimmed.
+- **Track selection.** One track is selected (view state, not saved): its
+  plate is one step lighter and the narrow selector strip between the plate
+  and the lane is lit in the accent. Clicking or right-clicking a header
+  selects its track; Ctrl+Up and Ctrl+Down move the selection.
+- **Track menu** (right-click a header): Rename…, Colour ▸, Height ▸, then
+  "Name after first clip" (the first pattern clip's name and colour), "Reset
+  name, colour and height", "Mute all clips" / "Unmute all clips" (clip
+  mutes, separate from the track light), "Select all clips", "Join pattern
+  clips into one" (the Clip menu's Merge for the whole track) and "Render to
+  audio" (Consolidate for the track's pattern and audio clips). Each is one
+  undo step; items with nothing to do are greyed out.
+- **Track heights.** Each row can have its own height, a percentage of the
+  global track height (25–400%, default 100%; saved, undoable):
+  `playlist.set_track_height <track> <percent|reset>` and
+  `playlist.reset_track_heights` (window menu → Tracks → "Reset all track
+  heights"). The row's menu has Height ▸ 50%, 75%, 100%, 150%, 200%, 300%.
+  Dragging a header's bottom edge resizes that row alone in steps of 5%, shown
+  at once and saved as one step on release; the hint shows the percentage.
+  Alt+click on the edge resets the row. The vertical zoom still scales every
+  row together, keeping their proportions.
 - Playlist time arguments are in bars from 0 of the song's time signatures
   (`time-signatures.md`); fractions are allowed and `<n>t` gives exact ticks.
 - Commands: `playlist.add_clip <pattern> <track> <start> [length]` (default length:
   the pattern's length), `playlist.remove_clip <track> <at>` and
   `playlist.move_clip`/`playlist.resize_clip` (the clip covering a position),
+  `playlist.trim_clip <track> <at> <new start>` (moves the clip's start and
+  keeps its end, so the clip shows a later or earlier part of its source;
+  refused before the source's start, at or past the clip's end, or over
+  another clip),
   `playlist.set_track_mute`, `playlist.toggle_track_mute`, `playlist.clear`,
   `playlist.set_clips` (used by undo). All are undoable.
 - In song mode the song length is the end of the last clip rounded up to whole
   bars. Removing a pattern removes its clips (undo restores them).
 
-- **Picker** (UI): the list beside the playlist has tabs All, Pat(terns),
-  Aud(io) and Aut(omation). Clicking an entry chooses what a click on the
+- **Picker** (UI): the list beside the playlist has three kind switches at
+  the top (pattern, audio and automation glyphs). A lit switch shows only that
+  kind; clicking it again shows all kinds, with no switch lit. The list has no
+  group headings. Clicking an entry chooses what a click on the
   playlist places: the selected pattern, an audio clip of that channel (as
   long as its other audio clips), or that automation. Clips show their name in
-  a title strip with the preview (notes, waveform or curve) below it.
+  a title strip with the preview (notes, waveform or curve) below it. A
+  pattern clip longer than its pattern marks where each repeat starts with a
+  short tick at the top and bottom of its body; an automation clip tall
+  enough to show them marks its points as small dots on the curve. A "+"
+  button centred under the patterns adds a new empty pattern
+  (`pattern.add`) and paints with it.
 
 ## Loop region and markers
 
@@ -43,6 +85,20 @@
   markers (one per position; re-adding at a position renames the marker and keeps
   its action). UI: right-click the ruler → Add marker here, or Alt+T for a marker
   at the playhead (on the beat); clicking a marker's label jumps the playhead to it.
+  `playlist.move_marker <from> <to>` (undoable) moves a marker and keeps its
+  name and action; it is refused onto another marker's position and for
+  time-signature changes (those move with `playlist.set_time_signature`).
+  UI: drag a marker's label along the ruler (snapped like clips; an accent
+  line shows where it lands). Double-clicking a marker's label renames it in
+  place (`playlist.add_marker` at its position, which keeps its action).
+  The window menu's Markers submenu also adds a pause marker at the playhead,
+  adds a marker named after its bar every 4 or 8 bars through the end of the
+  song (bars that have one keep it), and removes all markers except time
+  signature changes; each is one undo step. "Time signature change at this
+  bar…" asks for a signature (filled with the one in force) and runs
+  `playlist.set_time_signature` at the start of the playhead's bar; `none`
+  removes the change there. It is disabled in the first bar, whose signature
+  is the project's.
 - Both are saved and undoable.
 
 ### Marker actions: making a song stop instead of looping
@@ -50,7 +106,7 @@
 - Song playback loops by default: at the end of the song it starts again from the
   beginning. Markers change that. `playlist.set_marker_action <bar>
   <none|pause|song_loop>` (undoable) sets what a marker does; UI: right-click a
-  marker → No action / Pause / Song loop, or right-click the ruler → Add pause
+  marker → Label only / Pause here / Loop the song here, or right-click the ruler → Add pause
   marker here (a marker named "Pause", one undo step).
   - `none` (default): only a label, drawn as a flag.
   - `pause`: when song playback reaches the marker it pauses there (transport
@@ -90,7 +146,12 @@
   play a sampler channel's sample once from the clip start, unpitched (at the
   channel's root key), cut at the clip end. Dropping a sound from the browser on
   the playlist adds a sampler channel with one-shot off and an audio clip as long
-  as the sample. Removing the channel removes its audio clips (undo restores).
+  as the sample. While the sound hovers a lane, a ghost clip one bar long
+  marks the snapped spot (the sample's length is known only once it loads) and
+  the track's header gets an accent outline. Dropped on a track header instead,
+  the sound lands at the start of the visible range (the first snap line in
+  view) on that track, and a track that still has its default name takes the
+  sound's name. Removing the channel removes its audio clips (undo restores).
 - **Automation clips** (`playlist.add_automation_clip <automation> <track>
   <start> [length]`) move one parameter during song playback (see below).
 - `playlist.remove_clip`, `move_clip`, `resize_clip` and selection editing work
@@ -130,14 +191,15 @@
   its second part moves. `playlist.delete_space <start> <length>` removes that
   stretch: clips inside it go, clips across its edges are cut back, and later
   clips and markers move earlier. Both are one undo step.
-- UI: the playlist's Clip menu acts on the selected clips (slice at the
-  playhead, make unique, merge, consolidate, reverse, fades) and inserts or
-  deletes the loop region's time; Ctrl+Insert and Ctrl+Delete do the same
-  (they need a loop region: Shift+drag the ruler).
+- UI: the playlist's window menu → Clip acts on the selected clips (Slice at
+  playhead, Make independent copy, Merge, Consolidate, Reverse, fades), and
+  window menu → Edit → Insert time / Remove time inserts or removes the loop
+  region's time; Ctrl+Insert and Ctrl+Delete do the same (they need a loop
+  region: Shift+drag the ruler).
 
 ## Audio recording
 
-- With File → Record audio input on, REC armed and the transport playing in song
+- With Options → Record audio input on, REC armed and the transport playing in song
   mode, the input device chosen in Settings → Audio (the system default unless
   set) is captured. When playback stops or REC is
   disarmed, the take is written as a 32-bit float WAV to `recordings/` beside the
@@ -168,7 +230,8 @@
   - `hold`: keeps the point's value until the next point, then jumps.
   - `stairs`: equal steps; tension sets their number (2 at -1, 16 at 1).
   `automation.set_curve <automation> <point time> <single|double|hold|stairs>
-  [tension]` (undoable). Saved as `"curve"` and `"tension"` on a point only
+  [tension]` (undoable). The editor names the four shapes Curve, S-curve,
+  Hold and Steps. Saved as `"curve"` and `"tension"` on a point only
   when not the defaults. The last point's shape is unused. Pattern lanes keep
   straight segments.
 - Playback samples curved segments every 6 ticks (a quarter step) into the
@@ -199,9 +262,19 @@
   play), Slice (click a clip to cut it at the snapped click), Play (click
   moves the playhead there and plays) and Zoom (click zooms in, Shift+click
   out). Keys P, B, D, E, T, C, Y, Z pick them.
+- The **song play button** (after the tools) plays the song from the
+  playhead, switching to song mode first, or pauses while the song plays;
+  right-click stops and returns to the start (while stopped: moves the
+  playhead to the start). It is lit while the song plays, like the piano
+  roll's pattern play button (`piano-roll.md`).
+- The **snap button** (before the tools) shows the snap glyph and value; a
+  click lists the values, the wheel over it steps to the next coarser value
+  (up) or finer one (down), and right-click returns it to Bar.
 
 - Left-click on an empty cell places the selected pattern at the snapped bar;
-  dragging a clip moves it; dragging its right edge resizes it; right-click
+  dragging a clip moves it; dragging its right edge resizes it and dragging
+  its left edge trims its start (`playlist.trim_clip`; with several clips
+  selected, all of them by the same amount); right-click
   deletes. The pattern list next to the playlist selects the pattern to paint.
 - **Pattern miniatures**: the picker shows each pattern as a small clip, so
   patterns are told apart by their content even when they keep their default
@@ -212,15 +285,67 @@
   colour or the neutral fill. Automation recorded into the pattern shows as
   faint curves under the notes. A pattern with neither notes nor automation
   says "empty". The pattern being painted is outlined in the accent colour. Click selects it for painting; right-click opens the pattern menu
-  (rename, clone, colour, time signature, clear automation, delete).
-- The playlist is the main workspace. Click or drag on the ruler to move the
-  playhead; during song playback the view follows the playhead.
+  (rename, show in playlist, clone, colour, time signature, clear
+  automation, delete). Show in playlist scrolls to the pattern's first clip.
+- The playlist is an editor window like the channel rack, piano roll and
+  mixer (`window-layout.md`, "Playlist"), not the workspace background. Click
+  or drag on the ruler to move the playhead; during song playback the view
+  follows the playhead.
 - Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
   dragging moves or resizes every selected clip; Delete removes; Ctrl+A selects
-  all; Ctrl+B duplicates the selection right after its end. One undo step each.
-- Ctrl+scroll zooms horizontally.
+  all; Ctrl+X, Ctrl+C and Ctrl+V cut, copy and paste (pasted clips land at
+  the playhead, snapped down, on their own tracks, and become the
+  selection); Ctrl+B duplicates the selection right after its end; Shift+Left and
+  Shift+Right nudge it one snap step, Shift+Up and Shift+Down move it one
+  track (nothing moves if a clip would leave the playlist). One undo step
+  each. The window-local keys are listed in `keymap.md`, "Over the playlist".
+  The window menu's Select submenu also inverts the selection and selects
+  the muted clips, every clip of the selected clips' sources, or every clip
+  overlapping the loop region.
+- Ctrl+scroll zooms horizontally, and so do Page Up and Page Down, which
+  keep the playhead where it is in the view. Shift+1 to Shift+3 pick fixed
+  zooms (32, 96 and 240 points per bar), Shift+4 zooms all the way out and
+  pressed again goes back, Shift+5 fits the loop region. The shared scroll/zoom row runs above the
+  ruler (as in the piano roll): chevrons that scroll a bar and repeat when
+  held, a rail that pages and shows a miniature of the clips, a thumb that
+  scrolls and whose ends zoom, and the vertical zoom box, which sets the
+  track height (18 to 96 points; double-click resets 36). A vertical scroll
+  bar runs down the right of the ruler and tracks.
+- The ruler has short beat ticks and longer bar ticks rising from its bottom
+  edge; in song mode a triangle marks the playhead and its line runs down the
+  lanes whether or not the song is playing (the view follows it only while
+  playing). A clip's glyph and name stay in view when the clip starts left
+  of the visible lanes. The glyph lights up under the pointer; a click on it
+  (with any tool) selects that clip alone and opens the Clip menu beside it,
+  while a drag from it trims the clip's start as a drag from the left edge
+  does. Zoomed far in (a bar wider than 240 points), each
+  bar is its own group for the shading and the strongest lines.
+- The window menu's Tracks submenu unmutes every muted track and clears
+  every track solo, each as one undo step.
+- Dragging with the middle button anywhere in the view pans it both ways,
+  with the grabbing hand as the pointer; it edits nothing.
+- The window menu's View submenu hides the clip list (Alt+P), moves it to
+  the right side, sets its width (Narrow 100, Normal 130 or Wide 180
+  points) and turns off the bar-group shading, the track separators and
+  following the playhead (the list on the left at Normal width, and the
+  rest on, by default; not saved with the project). With the clip list
+  hidden the lanes take its width.
+- Double-clicking a pattern clip opens it in the piano roll; an automation
+  clip opens the automation editor; an audio clip opens its channel's
+  settings.
 
 ## Sources
+
+- The scroll/zoom row, song overview and track-height zoom box: the
+  interface style guide (`docs/spec/style/main-window.md`, "Scroll and zoom
+  bars"). Drawing and sizes are our own.
+- The playlist as a window, its header and window menu, one lane tone with
+  step, beat, bar and bar-group lines, bar-group shading, and clips drawn as a
+  strong title strip over a dark body: the interface style guide,
+  `docs/spec/style/playlist.md` (owner's 2026-10-21 decision to follow the
+  manual's layout). The labels Make independent copy, Insert time, Remove
+  time, Label only, Pause here, Loop the song here, Curve, S-curve, Hold and
+  Steps are our own wording.
 
 - Automation curve types (single curve, double curve, hold, stairs) and
   tension follow the automation clip point modes described in the FL Studio

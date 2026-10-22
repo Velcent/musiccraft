@@ -248,13 +248,13 @@ fn the_editor_opens_in_a_host_window() {
         .instantiate(&request("org.musiccraft.eq", None))
         .unwrap();
     assert!(live.instance.has_editor());
-    live.instance.set_editor_open(true, "Equalizer").unwrap();
+    live.instance.set_editor_open(true, "Equaliser").unwrap();
     assert!(live.instance.editor_open());
     for _ in 0..20 {
         let _ = live.instance.poll();
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    live.instance.set_editor_open(false, "Equalizer").unwrap();
+    live.instance.set_editor_open(false, "Equaliser").unwrap();
     assert!(!live.instance.editor_open());
     live.processor.stop();
     drop(live);

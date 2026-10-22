@@ -2,14 +2,14 @@ use musiccraft_project::params::{
     EFFECT_KINDS, EffectKind, MAX_EFFECT_SLOTS, MAX_MIXER_TRACKS, index_of,
 };
 use musiccraft_project::{
-    ChannelId, EffectSlot, MAX_SENDS, MixerSend, MixerTrack, Project, ProjectError, check_pan,
-    check_volume,
+    ChannelId, Dock, EffectSlot, MAX_SENDS, MixerSend, MixerTrack, Project, ProjectError,
+    check_pan, check_volume,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::args::{Args, num, on_off};
 use crate::command::cmd;
-use crate::{Command, CommandError, Invocation, Outcome};
+use crate::{BATCH, Command, CommandError, Invocation, Outcome};
 
 pub(super) fn commands() -> Vec<Box<dyn Command>> {
     vec![
@@ -30,6 +30,24 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "mixer.insert_track <track> <json>",
             "Insert a mixer track from its JSON form (used by undo).",
             insert_track,
+        ),
+        cmd(
+            "mixer.reset_track",
+            "mixer.reset_track <track>",
+            "Return a mixer track to its defaults: default name and colour, no effects, sends or EQ, unity level, centred, routed to the master.",
+            reset_track,
+        ),
+        cmd(
+            "mixer.set_track",
+            "mixer.set_track <track> <json>",
+            "Replace a mixer track's settings with a saved copy (the undo of mixer.reset_track).",
+            set_track,
+        ),
+        cmd(
+            "mixer.move_track",
+            "mixer.move_track <track> <left|right>",
+            "Swap an insert with its left or right neighbour; routing, sends and automation follow.",
+            move_track,
         ),
         cmd(
             "mixer.rename",
@@ -66,6 +84,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "mixer.set_phase_invert <track> <on|off>",
             "Flip the polarity of a mixer track.",
             set_phase_invert,
+        ),
+        cmd(
+            "mixer.set_track_color",
+            "mixer.set_track_color <track> <1-16|none>",
+            "Colour a mixer track (none: its automatic colour).",
+            set_track_color,
+        ),
+        cmd(
+            "mixer.set_dock",
+            "mixer.set_dock <track> <left|middle|right>",
+            "Pin an insert's strip to the mixer's fixed left or right dock, or return it to the scrolling middle.",
+            set_dock,
         ),
         cmd(
             "mixer.set_swap_sides",
@@ -144,6 +174,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "mixer.set_effect_param <track> <slot> <param> <value>",
             "Set an effect parameter.",
             set_effect_param,
+        ),
+        cmd(
+            "mixer.set_effects_enabled",
+            "mixer.set_effects_enabled <track> <on|off>",
+            "Enable or bypass every effect of a track at once.",
+            set_effects_enabled,
         ),
         cmd(
             "mixer.set_effect_enabled",
@@ -235,6 +271,52 @@ fn shift_sidechains(project: &mut Project, from: usize, delta: isize) {
             project.mixer[t].effects[s].values[index] = source.saturating_add_signed(delta) as f32;
         }
     }
+}
+
+fn move_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = insert_arg(project, args, 0)?;
+    let (other, back) = match args.str(1)? {
+        "left" => (index - 1, "right"),
+        "right" => (index + 1, "left"),
+        _ => return Err(args.invalid("expected left or right")),
+    };
+    if other == 0 || other >= project.mixer.len() {
+        return Err(args.invalid(format!("insert {index} cannot move further that way")));
+    }
+    let (low, high) = (index.min(other), index.max(other));
+    if project.mixer[low]
+        .sends
+        .iter()
+        .any(|send| send.target == high)
+    {
+        return Err(args.invalid(format!(
+            "insert {low} sends to insert {high}; sends must go to a higher number, so remove it first"
+        )));
+    }
+    let swap = |track: usize| match track {
+        t if t == index => other,
+        t if t == other => index,
+        t => t,
+    };
+    for channel in &mut project.channels {
+        channel.mixer_track = swap(channel.mixer_track);
+    }
+    for track in &mut project.mixer {
+        for send in &mut track.sends {
+            send.target = swap(send.target);
+        }
+        track.sends.sort_by_key(|send| send.target);
+    }
+    for (t, s, i, source) in sidechains(project) {
+        project.mixer[t].effects[s].values[i] = swap(source) as f32;
+    }
+    super::automation::map_tracks(project, swap);
+    project.mixer.swap(index, other);
+    Ok(Outcome::undoable(
+        format!("moved mixer track {index} to {other}"),
+        Invocation::new(args.name(), [other.to_string(), back.to_owned()]),
+    ))
 }
 
 pub(super) fn track_arg(
@@ -347,6 +429,59 @@ fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     Ok(Outcome::undoable(
         format!("removed mixer track {index} ({name})"),
         Invocation::new("mixer.insert_track", [index.to_string(), json]),
+    ))
+}
+
+/// The name a track has when made: "Master", or "Insert n".
+fn default_track_name(index: usize) -> String {
+    if index == 0 {
+        "Master".to_owned()
+    } else {
+        format!("Insert {index}")
+    }
+}
+
+fn reset_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let index = track_arg(project, args, 0)?;
+    let slots = project.mixer[index].effects.len();
+    if (0..slots).any(|slot| super::automation::targets_track(project, index, Some(slot))) {
+        return Err(args.invalid(
+            "an automation drives one of this track's effects; delete the automation first",
+        ));
+    }
+    let old = std::mem::replace(
+        &mut project.mixer[index],
+        MixerTrack::new(default_track_name(index)),
+    );
+    let json = serde_json::to_string(&old).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Outcome::undoable(
+        format!("reset mixer track {index}"),
+        Invocation::new("mixer.set_track", [index.to_string(), json]),
+    ))
+}
+
+fn set_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let track: MixerTrack =
+        serde_json::from_str(args.str(1)?).map_err(|e| args.invalid(e.to_string()))?;
+    let len = project.mixer.len();
+    if track
+        .sends
+        .iter()
+        .any(|send| send.target <= index || send.target >= len)
+    {
+        return Err(args.invalid("sends must go to existing higher-numbered tracks"));
+    }
+    if track.effects.len() > MAX_EFFECT_SLOTS {
+        return Err(args.invalid(format!("a track holds at most {MAX_EFFECT_SLOTS} effects")));
+    }
+    let old = std::mem::replace(&mut project.mixer[index], track);
+    let json = serde_json::to_string(&old).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Outcome::undoable(
+        format!("set mixer track {index}"),
+        Invocation::new("mixer.set_track", [index.to_string(), json]),
     ))
 }
 
@@ -523,6 +658,49 @@ fn set_phase_invert(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
         |t| &mut t.phase_invert,
         |v| on_off(v).to_owned(),
         "phase invert",
+    ))
+}
+
+fn set_dock(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    if index == 0 {
+        return Err(args.invalid("the master always sits in the left dock"));
+    }
+    let dock =
+        Dock::parse(args.str(1)?).ok_or_else(|| args.invalid("docks are left, middle or right"))?;
+    Ok(set_track_field(
+        project,
+        args,
+        index,
+        dock,
+        |t| &mut t.dock,
+        |d| d.arg().to_owned(),
+        "dock",
+    ))
+}
+
+fn set_track_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let value = match args.str(1)? {
+        "none" => None,
+        _ => {
+            let n = args.number(1, "colour")?;
+            if !(1..=16).contains(&n) {
+                return Err(args.invalid("colours are 1 to 16"));
+            }
+            Some(u8::try_from(n - 1).unwrap_or(0))
+        }
+    };
+    Ok(set_track_field(
+        project,
+        args,
+        index,
+        value,
+        |t| &mut t.color,
+        |c| c.map_or_else(|| "none".to_owned(), |c| (c + 1).to_string()),
+        "colour",
     ))
 }
 
@@ -804,6 +982,41 @@ fn set_effect_enabled(project: &mut Project, args: &Args<'_>) -> Result<Outcome,
             ],
         ),
     ))
+}
+
+fn set_effects_enabled(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let enabled = args.flag(1)?;
+    let track = &mut project.mixer[index];
+    // Each slot that changes gets its own line in the inverse.
+    let restore: Vec<String> = track
+        .effects
+        .iter_mut()
+        .enumerate()
+        .filter(|(_, effect)| effect.enabled != enabled)
+        .map(|(slot, effect)| {
+            effect.enabled = enabled;
+            Invocation::new(
+                "mixer.set_effect_enabled",
+                [
+                    index.to_string(),
+                    (slot + 1).to_string(),
+                    on_off(!enabled).to_owned(),
+                ],
+            )
+            .to_string()
+        })
+        .collect();
+    let message = format!(
+        "{} effects {}",
+        track.name,
+        if enabled { "enabled" } else { "bypassed" }
+    );
+    if restore.is_empty() {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(message, Invocation::new(BATCH, restore)))
 }
 
 fn set_effect_file(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

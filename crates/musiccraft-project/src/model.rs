@@ -29,6 +29,8 @@ pub const DEFAULT_CHANNEL_VOLUME: f32 = 0.8;
 pub const MAX_PATTERN_STEPS: u32 = 1024;
 /// Number of playlist track rows.
 pub const PLAYLIST_TRACKS: u32 = 64;
+/// The range of a playlist track's own height, in percent of the global one.
+pub const TRACK_HEIGHT_PERCENT: std::ops::RangeInclusive<u16> = 25..=400;
 /// Inserts in a new project's mixer (plus master).
 pub const DEFAULT_INSERTS: usize = 16;
 /// Key that steps toggled in the channel rack play.
@@ -334,15 +336,35 @@ pub struct Channel {
     /// Whether the channel is silenced.
     #[serde(default)]
     pub mute: bool,
+    /// Whether the channel is soloed: while any channel is, only soloed
+    /// channels play (see [`Project::channel_plays`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub solo: bool,
+    /// Whether the channel is kept out of solo: another channel's solo never
+    /// silences it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub solo_lock: bool,
     /// Mixer track receiving this channel; 0 is master.
     #[serde(default)]
     pub mixer_track: usize,
     /// Display filter group ("" = none): the rack can show one group at a time.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub group: String,
+    /// Colour index 0–15 (shown as 1–16) set by the user; `None` follows the
+    /// channel's id (see [`Channel::color_index`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<u8>,
 }
 
 impl Channel {
+    /// The channel's palette index: the colour the user picked, or one taken
+    /// from its id, which reordering does not change.
+    #[must_use]
+    pub fn color_index(&self) -> usize {
+        self.color
+            .map_or(self.id.0.saturating_sub(1) as usize, usize::from)
+    }
+
     /// A channel with default settings.
     #[must_use]
     pub fn new(id: ChannelId, name: impl Into<String>, instrument: Instrument) -> Self {
@@ -359,8 +381,11 @@ impl Channel {
             volume: DEFAULT_CHANNEL_VOLUME,
             pan: 0.0,
             mute: false,
+            solo: false,
+            solo_lock: false,
             mixer_track: 0,
             group: String::new(),
+            color: None,
         }
     }
 }
@@ -455,6 +480,11 @@ pub struct Pattern {
     pub name: String,
     /// Minimum length in steps; notes past the end extend the pattern by bars.
     pub length_steps: u32,
+    /// The length follows the notes instead: whole bars up to the last bar
+    /// with a note in it, at least one bar. `length_steps` is kept for when
+    /// this is turned off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auto_length: bool,
     /// Notes, kept sorted by (channel, start, key).
     #[serde(default)]
     pub notes: Vec<Note>,
@@ -496,6 +526,7 @@ impl Pattern {
             id,
             name: name.into(),
             length_steps: sig.bar_steps(),
+            auto_length: false,
             notes: Vec::new(),
             legacy_swing: 0.0,
             automation: Vec::new(),
@@ -552,18 +583,33 @@ impl Pattern {
     /// Length in ticks: the step length, extended to whole bars to fit every note.
     #[must_use]
     pub fn length_ticks(&self) -> u32 {
-        let steps = self.length_steps.max(1) * musiccraft_params::TICKS_PER_STEP;
+        let minimum = if self.auto_length {
+            1
+        } else {
+            self.length_steps.max(1)
+        };
+        let steps = minimum * musiccraft_params::TICKS_PER_STEP;
         let last = self
             .notes
             .iter()
             .map(|n| n.start.saturating_add(1))
             .max()
             .unwrap_or(0);
-        if last > steps {
-            let bar = self.time_signature.bar_ticks().max(1);
+        let bar = self.time_signature.bar_ticks().max(1);
+        if last > steps || self.auto_length {
             last.div_ceil(bar).max(1) * bar
         } else {
             steps
+        }
+    }
+
+    /// The length in whole steps that step tools (fill, shift) work over.
+    #[must_use]
+    pub fn step_span(&self) -> u32 {
+        if self.auto_length {
+            self.length_ticks() / musiccraft_params::TICKS_PER_STEP
+        } else {
+            self.length_steps
         }
     }
 }
@@ -748,6 +794,52 @@ pub struct MixerTrack {
     /// The built-in three-band EQ.
     #[serde(default, skip_serializing_if = "TrackEq::is_flat")]
     pub eq: TrackEq,
+    /// Colour index 0–15 (shown as 1–16) set by the user; `None` uses the
+    /// track's automatic colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<u8>,
+    /// Where the mixer shows the strip: fixed at the left or right, or in
+    /// the scrolling middle (the default).
+    #[serde(default, skip_serializing_if = "Dock::is_middle")]
+    pub dock: Dock,
+}
+
+/// Where a mixer strip sits in the mixer window.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Dock {
+    /// The fixed dock at the left, with the master.
+    Left,
+    /// The scrolling middle.
+    #[default]
+    Middle,
+    /// The fixed dock at the right.
+    Right,
+}
+
+impl Dock {
+    /// Every dock, left to right.
+    pub const ALL: [Self; 3] = [Self::Left, Self::Middle, Self::Right];
+
+    /// The command argument.
+    #[must_use]
+    pub fn arg(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Middle => "middle",
+            Self::Right => "right",
+        }
+    }
+
+    /// Reads a command argument.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.arg() == text)
+    }
+
+    fn is_middle(&self) -> bool {
+        *self == Self::Middle
+    }
 }
 
 impl MixerTrack {
@@ -767,6 +859,8 @@ impl MixerTrack {
             phase_invert: false,
             swap_sides: false,
             eq: TrackEq::default(),
+            color: None,
+            dock: Dock::Middle,
         }
     }
 }
@@ -1169,6 +1263,10 @@ pub struct Playlist {
     /// Track colours by row (0-based): palette index 0..=15.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub track_colors: BTreeMap<u32, u8>,
+    /// Track heights by row (0-based), in percent of the global track height
+    /// (`TRACK_HEIGHT_PERCENT`); rows not listed are 100%.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub track_heights: BTreeMap<u32, u16>,
     /// Song-mode loop region `(start, end)` in ticks, if set.
     #[serde(default)]
     pub loop_range: Option<(u32, u32)>,
@@ -1178,6 +1276,12 @@ pub struct Playlist {
 }
 
 impl Playlist {
+    /// `track`'s own height, in percent of the global track height.
+    #[must_use]
+    pub fn track_height(&self, track: u32) -> u16 {
+        self.track_heights.get(&track).copied().unwrap_or(100)
+    }
+
     /// Whether clips on `track` play: not muted, and soloed when any row is.
     #[must_use]
     pub fn track_audible(&self, track: u32) -> bool {

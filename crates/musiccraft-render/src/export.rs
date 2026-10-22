@@ -278,6 +278,7 @@ pub fn export_stems(
         let mut solo = project.clone();
         for (i, channel) in solo.channels.iter_mut().enumerate() {
             channel.mute = !channels.contains(&i);
+            channel.solo = false;
         }
         let (left, right, _) = render_with(&solo, options, host);
         stems.push((stem, left, right));

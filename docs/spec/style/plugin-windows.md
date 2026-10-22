@@ -34,8 +34,8 @@ These are the windows where a user shapes one sound at a time: a channel's instr
 - **Channel windows**
   - Clicking a channel's name opens its channel window, and clicking the same name again closes it (today's behaviour).
   - By default there is one channel window, and it follows the clicked channel while keeping the same tab (today).
-  - **Proposed (needs `channel-rack.md` updated first):** Alt+click on a channel's name opens an additional channel window for that channel and leaves the others open. Plain click keeps today's behaviour.
-  - **Proposed (needs `settings.md` updated first):** a setting **Keep instrument windows open** (Settings → General). When on, every name click opens its own window instead of reusing the current one. Off by default.
+  - Alt+click on a channel's name opens an additional channel window for that channel and leaves the others open. Plain click keeps today's behaviour.
+  - A setting **Keep instrument windows open** (Settings → General). When on, every name click opens its own window instead of reusing the current one. Off by default.
 - **Effect windows**
   - There is one window per mixer slot, and any number can be open. Clicking the slot's name toggles its window (today).
   - Removing the slot closes its window (today). **Proposed (needs `mixer.md` updated first):** moving the slot up or down keeps the window open, with an updated title.
@@ -69,7 +69,7 @@ The header is the shared row from the main-window section (slots 1–9). Here on
 | 1 | **Window menu button** | The shared menu glyph (main-window section) | Opens the window menu (below) under the button | Same as click | — | — | As main-window: hover lightens it; while the menu is open it looks pressed with the glyph in the accent |
 | 2 | **Strip toggle** (the window's only tool) | Our strip glyph | Hides or shows the channel strip | — | — | — | Lit while the strip is shown |
 | 4a | **Channel colour mark** | A small square in the channel's colour, just before the title (channel windows only) | Same as clicking the title | — | — | — | Dimmed when the channel is muted |
-| 4 | **Title** | Main-window's title format: name, an em dash, then the context. Channel window: the channel's name, then the mixer track it plays to ("Lead — Insert 3"). Effect window: the effect's name, then the track's name ("Equalizer — Lead"). Long names are cut with an ellipsis before anything to their right is squeezed. Not a selector, so no chevron | Focuses the window. Dragging moves it | Opens a small menu with "Rename…" (channel windows) | — | Proposed: collapses or expands (see Placement) | Hint gives the full title and how to move or rename it. Focused: full text tone; unfocused: dimmed |
+| 4 | **Title** | Main-window's title format: name, an em dash, then the context. Channel window: the channel's name, then the mixer track it plays to ("Lead — Insert 3"). Effect window: the effect's name, then the track's name ("Equaliser — Lead"). Long names are cut with an ellipsis before anything to their right is squeezed. Not a selector, so no chevron | Focuses the window. Dragging moves it | Opens a small menu with "Rename…" (channel windows) | — | Proposed: collapses or expands (see Placement) | Hint gives the full title and how to move or rename it. Focused: full text tone; unfocused: dimmed |
 | 5 | **Drag area** | Header background | Raises and focuses; drag to move | Window menu | — | Proposed: collapses or expands | — |
 | 6 | **Keys-to-plugin toggle** *(reserved)* | Our keyboard glyph. Drawn only for a hosted plugin whose editor is embedded in our window (future) **and** that asks to receive typed keys, so it is absent today | Toggles whether typed keys go to the plugin first or to MusicCraft's shortcuts first | — | — | — | Lit when the plugin gets keys first |
 | 6 | **Preset name box** | The current preset's name, or "(custom)" when no preset matches. A small down-chevron sits at its right end. Shown only for instruments and effects that have presets and while "Show preset name in header" is on | Opens the preset list: category headings and, for Antiserum, the search field at the top. Choosing a preset is one undo step | Opens the window menu's PRESETS group | Proposed (own): steps to the previous or next preset | — | Inset like a small display. "(custom)" is dimmer than a real name |
@@ -234,12 +234,13 @@ How the tabs behave:
 - **Other boxes:** when the channel gains a per-channel modulator or filter (not today), each gets its own box to the right of ENVELOPE in the same row. A modulator box is about a third of the width. A filter box is a narrow column about a sixth of the width, with two stacked knobs and a type drop-down.
 - **Keyboard strip:** across the full width at the bottom (C7).
 
-**C6. Functions.** Tiled boxes, then the keyboard strip. Captions here are our own proposed captions (see Labels and wording; today's captions are listed under gaps):
+**C6. Functions.** Tiled boxes, then the keyboard strip. Captions are listed under Labels and wording (existing):
 
-- **Row 1:** VOICES (Max, Poly/Mono, the plugin's own voice controls) | TIMING (Delay and Length, plus SWING's Mix knob and its Delay/Shorten choice, which move in here) | a narrow box for any controls the instrument adds.
-- **Row 2:** CHOKE (Group, Silenced by, plus a small "Self-choke" button that sets both to the same group, *new*) | ARPEGGIATOR (direction choice row across the top, then rate, Octaves, Gate) | ECHO (Repeats, Time, Feedback, Pitch step).
+- **Row 1:** VOICES (Max, Poly/Mono, the plugin's own voice controls) | TIMING (Delay and Length, plus the Swing knob and its Delay/Shorten choice) | a narrow box for any controls the instrument adds.
+- **Row 2:** ARPEGGIATOR across the full width (direction choice row, then rate, Octaves, Gate). Its five-way direction row does not fit a third of the window, so it gets its own row (own design).
+- **Row 3:** CHOKE (Group, Silenced by, plus a small "Self-choke" button that sets both to the same group) | ECHO (Repeats, Time, Feedback, Pitch step; wraps onto a second line when narrow).
 - **Bottom:** the keyboard strip (C7).
-- When Antiserum hides the arpeggiator (it has its own), ECHO widens to fill the row.
+- When Antiserum hides the arpeggiator (it has its own), row 2 is left out.
 
 **C7. Keyboard strip** (bottom of Envelope and Functions; *new*):
 
@@ -336,7 +337,7 @@ Colour is given only as tokens from `crates/musiccraft-editors/src/theme.rs`, pl
 **Window names**
 
 - Channel window: "Channel settings" (menus and hints, existing). Its header title is the channel's name, an em dash, and the track's name: "Lead — Insert 3". The master is shown as "Master".
-- Effect window: "Equalizer — Lead". The effect's label comes first and the track's name second, which reverses today's "Lead › Equalizer".
+- Effect window: "Equaliser — Lead". The effect's label comes first and the track's name second, which reverses today's "Lead › Equaliser".
 - Plugin's own window: "Lead — <plugin name>".
 
 **Header**
@@ -360,19 +361,19 @@ Colour is given only as tokens from `crates/musiccraft-editors/src/theme.rs`, pl
 
 **Group titles** (small capitals, existing style)
 
-- Existing: SAMPLE, GRAINS, RESYNTHESIS, PADS, LAYER, MIDI OUT, ENVELOPE, ARPEGGIATOR, SWING, TIMING AND ECHO, VOICES.
-- New: KEYBOARD, CHOKE, ECHO, TIMING, DETAILS, PLUGIN, NOTES.
-- Proposed renames: LAYER → CHANNEL STACK, MIDI OUT → MIDI OUTPUT (with the browser section). When boxes are split as in C6, "TIMING AND ECHO" becomes TIMING and ECHO, and SWING's controls move into TIMING.
+- Existing: SAMPLE, GRAINS, RESYNTHESIS, PADS, LAYER, MIDI OUT, ENVELOPE, ARPEGGIATOR, VOICES.
+- Existing since the Functions split: CHOKE, ECHO, TIMING.
+- New: KEYBOARD, DETAILS, PLUGIN, NOTES.
+- Proposed renames: LAYER → CHANNEL STACK, MIDI OUT → MIDI OUTPUT (with the browser section).
 
-**Functions-page captions** (proposed renames of today's captions in `instrument.rs`; our own words, not the reference's):
+**Functions-page captions** (existing, in `instrument.rs`; our own words, not the reference's):
 
-| Today | Proposed |
+| Box | Captions |
 |---|---|
-| Cut / Cut by (in VOICES) | Group / Silenced by (in CHOKE) |
-| — | Self-choke (new button) |
-| Shift / Gate (in TIMING AND ECHO) | Delay / Length (in TIMING) |
-| Swing choice Shift / Truncate | Delay / Shorten |
-| Echoes / Time / Feed / Pitch | Repeats / Time / Feedback / Pitch step |
+| VOICES | Max, Poly / Mono |
+| TIMING | Delay, Length, Swing, and the swing choice Delay / Shorten |
+| CHOKE | Group, Silenced by, and the Self-choke button |
+| ECHO | Repeats, Time, Feedback, Pitch step |
 
 **Menu items:** our words, as listed under A ("Route to a free mixer track", "Show presets in the browser", "Store as B", "Swap A and B", "Replace instrument…", "Detach from main window"). Existing rack labels are kept: "Open in piano roll", "Rename…", "Clone", "Group…", "Delete", "Change sample…". Items that open a dialog end with "…".
 
@@ -422,34 +423,17 @@ Colour is given only as tokens from `crates/musiccraft-editors/src/theme.rs`, pl
 
 Ordered by visual impact.
 
-1. **These windows use the standard title bar and then repeat the name.** `crates/musiccraft-ui/src/channel_settings.rs` (`show`) opens `egui::Window::new("Channel — <name>")` with the default large, centred title, collapse triangle and cross. `contents` then adds a second row with the channel name in large coloured text and the instrument label. The guide wants the shared compact header (A) instead. `docs/spec/window-layout.md` currently says these windows keep a standard title bar, so update that spec first.
-2. **Three chrome bands instead of two.** In `channel_settings.rs` (`contents`, `header`) the name row, the knob row and a separate row of text tabs (`selectable_value`) with a separator line all sit above the page. The guide puts the tabs as icon cells at the left of the same strip as the knobs (B). `docs/spec/channel-rack.md` ("Channel settings window") describes today's fixed header and tabs and changes first.
-3. **Effect windows have no strip, and the preset row sits in the body.** `crates/musiccraft-ui/src/effect_window.rs` (`show_all`) titles the window "Track › Effect" on a standard title bar. `crates/musiccraft-editors/src/effect.rs` (`preset_bar`) draws a bypass dot, ◀, a preset drop-down and ▶ as the first body row. The window has no Mix knob: it is only on the slot, in `crates/musiccraft-ui/src/mixer.rs` (`slot_row`). The guide moves presets into the header and puts the On light and Mix knob in a slim strip (D).
-4. **Pages stack full-width sections instead of tiling boxes.** `crates/musiccraft-editors/src/instrument.rs` (`section`, `functions_with`, `timing_and_voices`, `envelope`) gives each section the full width, one under another, so the Functions page is four tall bands. The guide tiles two to four boxes per row (C, C6). The sampler page in `channel_settings.rs` (`sampler`) has the waveform in the middle of its section, not full width at the bottom (C2).
-5. **The strip's controls differ in order and kind.** `channel_settings.rs` (`header`) has these differences from B:
-   - It shows Volume, Pan, Pitch, then a "Mute" checkbox and a plain "Track" number field (0 for master). The guide's order is On light, Pan, Volume, Pitch, (Range), gap, Track box.
-   - The Track field has no "M", no clickable caption for a free mixer track, and no double-click to open the mixer.
-   - Pitch is hidden for plugins, so the strip shifts.
-   - Pan reads "+12" instead of the shared "25% left" / "Centre" format; the delay's tap pan in `effect.rs` (`pan_label`) uses yet another short form ("35L"). Both move to the controls section's formatter.
-6. **Instrument preset bars live in the page body.** The "PRESET ◀ … ▶" row in `instrument.rs` (`preset_bar`) and Antiserum's ◀ / list / ▶ / "Save…" / "Open…" row in `crates/musiccraft-editors/src/antiserum.rs` (`preset_bar`) should become the header's preset box and chevrons. Save and Open would move to the window menu, with the search kept inside the preset list. The arrows are font glyphs (◀ ▶), not vector chevrons. There is no way to show presets in the browser and no draggable save item.
-7. **There is no window menu.** Rename, clone, delete, route to a free mixer track and open in piano roll exist only in the rack row's right-click menu and shortcuts (`crates/musiccraft-ui/src/channel_rack.rs`, `context_menu`). There is no menu at all in effect windows.
-8. **Our headers put the collapse arrow at the left.** The compact header in `crates/musiccraft-ui/src/chrome.rs` (`header`) and `docs/spec/window-layout.md` ("Window header") put a collapse triangle at the far left; the shared header puts the window menu there and collapse in the right-hand group. The spec changes first. These windows do not use that header at all yet, so they have no collapse button or strip toggle; only the rack, piano roll and mixer use it.
-9. **The hosted-plugin page repeats chrome and nests scrolling.** In `crates/musiccraft-ui/src/plugins.rs` (`panel`):
+1. **Pages stack full-width sections instead of tiling boxes.** `crates/musiccraft-editors/src/instrument.rs` (`section`, `envelope`) still gives the Envelope page and the instruments' Sound pages full-width sections, one under another. The guide tiles two to four boxes per row (C). The Functions page now tiles (`functions_with`): VOICES | TIMING, then ARPEGGIATOR across the full width, then CHOKE | ECHO. The sampler page in `channel_settings.rs` (`sampler`) has the waveform in the middle of its section, not full width at the bottom (C2).
+2. **Antiserum's preset bar lives in the page body.** The built-in instruments' presets are now in the channel window header (`InstrumentEditor::preset_picker`). Antiserum's ◀ / list / ▶ / "Save…" / "Open…" row in `crates/musiccraft-editors/src/antiserum.rs` (`preset_bar`) should move there too, with Save and Open in the window menu and the search kept inside the preset list. There is no way to show presets in the browser and no draggable save item.
+3. **The hosted-plugin page repeats chrome and nests scrolling.** In `crates/musiccraft-ui/src/plugins.rs` (`panel`):
    - The plugin's name (accent) and id are drawn again in the body.
    - "Open plugin window" is a text button.
    - The parameter grid is a scroll area with a fixed maximum height inside the page's own scroll area.
    - There are no module headings and no parameter count.
    - The plugin's own window is titled with the plugin name only (`crates/musiccraft-app/src/plugins.rs`, `set_editor`).
-10. **There is no Plugin (details) tab** for hosted plugins (C4). Format, maker, file and the rescan/reload buttons are not shown in the channel window. There is no editor-scale choice for hosted editors and no processing options; `docs/spec/plugins.md` says nothing about either.
-11. **The envelope graph is display-only and squeezed.** `instrument.rs` (`envelope_graph`) is a short hover-only strip beside the four knobs. The guide puts a taller graph with draggable handles above the knobs (C5).
-12. **There is no keyboard strip** (root key, preview, key range) at the bottom of the Envelope and Functions pages (C7). The root key is only reachable on some instruments' own pages.
-13. **Functions-page captions follow the reference's wording.** `instrument.rs` (`functions_with`, `timing_and_voices`) uses "Cut", "Cut by", "Shift", "Gate", "Echoes", "Feed" and the swing choice "Shift" / "Truncate". Rename them as listed under Labels and wording, and split the boxes as in C6.
-14. **Only one channel window can exist.** `crates/musiccraft-ui/src/lib.rs` holds a single `windows.channel_settings` flag plus `selected_channel`. There is no Alt+click to open more, and no "Keep instrument windows open" setting.
-15. **The window width jumps between channels.** `channel_settings.rs` sets a default width, while Antiserum's page sets its own larger maximum (`antiserum.rs`, `MAX_WIDTH`). The window grows when an Antiserum channel is shown and does not follow the width rule in "Placement and proportions".
-16. **The MIDI output and channel stack windows have no strip.** `channel_settings.rs` (`contents`) returns early for MIDI output and shows only the MIDI page, with its own Mute checkbox.
-17. **The mixer cannot open all of a track's effect windows at once.** Neither the effect count nor any other strip control in `mixer.rs` does this.
-18. **Colour literals that should be tokens.** The piano roll's key colours (`crates/musiccraft-ui/src/piano_roll.rs`, `keyboard`) and the window outline in `theme::apply` are literals. The guide uses the proposed `KEY_WHITE`, `KEY_BLACK` (piano-roll section) and `WINDOW_EDGE`, `HEADER`, `HEADER_ACTIVE` (main-window section), and `LCD_TEXT` (toolbar section).
-19. **There is no detaching** to a desktop window (future item, main-window section).
+4. **There is no Plugin (details) tab** for hosted plugins (C4). Format, maker, file and the rescan/reload buttons are not shown in the channel window. There is no editor-scale choice for hosted editors and no processing options; `docs/spec/plugins.md` says nothing about either.
+5. **The keyboard strip is partial.** The KEYBOARD box (C7) shows the root key, Reset, preview and right-click to set the root, over a fixed C1–B8 range. Still missing: the fine-tune knob, the ruler with a draggable key range (needs a key-range parameter) and the zoom/scroll bar under the keys.
+6. **There is no detaching** to a desktop window (future item, main-window section).
 
 ## Sources
 

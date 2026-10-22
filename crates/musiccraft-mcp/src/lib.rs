@@ -354,12 +354,13 @@ impl Server {
                 }
             };
             out.push(format!(
-                "  {} {} ({source}) vol {:.2} pan {:+.2}{} → mixer {}",
+                "  {} {} ({source}) vol {:.2} pan {:+.2}{}{} → mixer {}",
                 i + 1,
                 c.name,
                 c.volume,
                 c.pan,
                 if c.mute { " MUTED" } else { "" },
+                if c.solo { " SOLO" } else { "" },
                 c.mixer_track
             ));
         }

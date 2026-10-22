@@ -16,19 +16,24 @@ mod effect_window;
 mod geometry;
 mod icons;
 mod mixer;
+mod note_props;
 mod piano_roll;
 mod playlist;
 mod plugins;
 mod rack_view;
 mod sample_editor;
+mod scrollbars;
 pub mod settings;
 mod signature;
 mod spectrum;
+mod swatches;
+mod tap_tempo;
 mod toolbar;
+mod type_in;
 mod zone_editor;
 
 pub use musiccraft_editors::hint;
-use musiccraft_editors::{theme, widgets};
+use musiccraft_editors::{format, theme, widgets};
 
 use musiccraft_commands::Invocation;
 use musiccraft_project::Project;
@@ -145,6 +150,12 @@ pub struct History {
     pub undo: Option<String>,
     /// Whether `edit.redo` is possible.
     pub can_redo: bool,
+    /// The latest commands `edit.undo` would reverse, newest first.
+    pub steps: Vec<String>,
+    /// The commands `edit.redo` would re-run, next first.
+    pub redo_steps: Vec<String>,
+    /// Whether the project has changes since it was last saved or opened.
+    pub unsaved: bool,
 }
 
 /// Which floating windows are open.
@@ -164,23 +175,323 @@ pub struct Windows {
     pub shortcuts: bool,
     /// Instrument editor of the selected channel.
     pub channel_settings: bool,
-    /// Spectrum analyzer of the master output.
+    /// Spectrum analyser of the master output.
     pub spectrum: bool,
+    /// Tap tempo pad.
+    pub tap_tempo: bool,
+}
+
+/// The windows a saved layout covers: name, flag, and floating window id
+/// (`None`: the browser side panel).
+type LayoutWindow = (
+    &'static str,
+    fn(&mut Windows) -> &mut bool,
+    Option<&'static str>,
+);
+
+const LAYOUT_WINDOWS: [LayoutWindow; 9] = [
+    (
+        "channel_rack",
+        |w| &mut w.channel_rack,
+        Some("channel-rack"),
+    ),
+    ("piano_roll", |w| &mut w.piano_roll, Some("piano-roll")),
+    ("playlist", |w| &mut w.playlist, Some("playlist-window")),
+    ("mixer", |w| &mut w.mixer, Some("mixer-window")),
+    ("browser", |w| &mut w.browser, None),
+    (
+        "shortcuts",
+        |w| &mut w.shortcuts,
+        Some("keyboard-shortcuts"),
+    ),
+    (
+        "channel_settings",
+        |w| &mut w.channel_settings,
+        Some("channel-settings"),
+    ),
+    ("spectrum", |w| &mut w.spectrum, Some("spectrum-analyzer")),
+    ("tap_tempo", |w| &mut w.tap_tempo, Some("tap-tempo")),
+];
+
+/// The window arrangement now, to save when the app closes.
+#[must_use]
+pub fn window_layout(ctx: &egui::Context, state: &UiState) -> settings::WindowLayout {
+    let mut windows = state.windows.clone();
+    let mut layout = settings::WindowLayout::default();
+    for (name, flag, id) in LAYOUT_WINDOWS {
+        if *flag(&mut windows) {
+            layout.open.push(name.to_owned());
+        }
+        let Some(id) = id.map(egui::Id::new) else {
+            continue;
+        };
+        if let Some(r) = chrome::last_rect(ctx, id) {
+            layout
+                .rects
+                .push((name.to_owned(), [r.left(), r.top(), r.width(), r.height()]));
+        }
+        if chrome::collapsed(ctx, id) {
+            layout.folded.push(name.to_owned());
+        }
+    }
+    layout
+}
+
+/// Opens the windows `layout` lists, closes the others, and puts each
+/// window back where it was (kept inside the workspace as usual).
+pub fn restore_window_layout(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    layout: &settings::WindowLayout,
+) {
+    for (name, flag, id) in LAYOUT_WINDOWS {
+        *flag(&mut state.windows) = layout.open.iter().any(|n| n == name);
+        let Some(id) = id.map(egui::Id::new) else {
+            continue;
+        };
+        let place = layout.rects.iter().find(|(n, _)| n == name);
+        if let Some((_, [left, top, width, height])) = place {
+            let rect =
+                egui::Rect::from_min_size(egui::pos2(*left, *top), egui::vec2(*width, *height));
+            if rect.is_finite() && rect.width() > 0.0 && rect.height() > 0.0 {
+                let folded = layout.folded.iter().any(|n| n == name);
+                chrome::place(ctx, id, rect, folded);
+            }
+        }
+    }
 }
 
 impl Default for Windows {
     fn default() -> Self {
         Self {
             channel_rack: true,
-            piano_roll: false,
+            piano_roll: true,
             playlist: true,
-            mixer: false,
+            mixer: true,
             browser: true,
             shortcuts: false,
             channel_settings: false,
             spectrum: false,
+            tap_tempo: false,
         }
     }
+}
+
+/// A change to the window arrangement (`view.default_layout`,
+/// `view.maximize`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrange {
+    /// Every editor back in its default slot.
+    DefaultLayout,
+    /// Maximize or restore the playlist.
+    MaximizePlaylist,
+    /// Maximize the window with this id (left maximized if it already is).
+    Maximize(&'static str),
+    /// Bring the window with this id to the front.
+    Raise(&'static str),
+}
+
+/// The editor windows' ids, as each window module names them.
+const EDITOR_WINDOWS: [&str; 4] = [
+    "playlist-window",
+    "channel-rack",
+    "mixer-window",
+    "piano-roll",
+];
+
+/// The editor window behind a `view.toggle` name, and its open flag.
+fn editor_window<'a>(
+    windows: &'a mut Windows,
+    which: &str,
+) -> Option<(&'static str, &'a mut bool)> {
+    Some(match which {
+        "playlist" => ("playlist-window", &mut windows.playlist),
+        "channel_rack" => ("channel-rack", &mut windows.channel_rack),
+        "piano_roll" => ("piano-roll", &mut windows.piano_roll),
+        "mixer" => ("mixer-window", &mut windows.mixer),
+        _ => return None,
+    })
+}
+
+/// `view.toggle`: an editor that is closed opens in front, one behind others
+/// comes to the front, and the focused one closes. Other windows (and the
+/// docked browser) just show or hide.
+fn toggle_window(state: &mut UiState, which: &str) {
+    let focused = state.focused_window;
+    if let Some((id, open)) = editor_window(&mut state.windows, which) {
+        if *open && focused == Some(egui::Id::new(id)) {
+            *open = false;
+        } else {
+            *open = true;
+            state.arrange = Some(Arrange::Raise(id));
+        }
+        return;
+    }
+    let windows = &mut state.windows;
+    let flag = match which {
+        "browser" => &mut windows.browser,
+        "shortcuts" => &mut windows.shortcuts,
+        "spectrum" => &mut windows.spectrum,
+        "tap_tempo" => &mut windows.tap_tempo,
+        _ => return,
+    };
+    *flag = !*flag;
+}
+
+/// The empty workspace's right-click menu: the editor windows and the
+/// default layout.
+fn workspace_menu(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) {
+    let response = ui.interact(
+        ui.max_rect(),
+        egui::Id::new("workspace-background"),
+        egui::Sense::click(),
+    );
+    response.context_menu(|ui| {
+        let w = &mut state.windows;
+        ui.checkbox(&mut w.playlist, "Playlist (F5)");
+        ui.checkbox(&mut w.channel_rack, "Channel rack (F6)");
+        ui.checkbox(&mut w.piano_roll, "Piano roll (F7)");
+        ui.checkbox(&mut w.browser, "Browser (Alt+F8)");
+        ui.checkbox(&mut w.mixer, "Mixer (F9)");
+        ui.separator();
+        if ui.button("Default layout (Ctrl+Shift+H)").clicked() {
+            actions.push(Action::Run(Invocation::bare("view.default_layout")));
+            ui.close();
+        }
+    });
+}
+
+/// A window in the workspace that the window keys can close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    Playlist,
+    ChannelRack,
+    Mixer,
+    PianoRoll,
+    ChannelSettings,
+    Automation,
+    Spectrum,
+    TapTempo,
+    Shortcuts,
+    Effect(usize, usize),
+}
+
+impl Slot {
+    /// The window's id, as its module names it.
+    fn id(self) -> egui::Id {
+        match self {
+            Self::Playlist => egui::Id::new("playlist-window"),
+            Self::ChannelRack => egui::Id::new("channel-rack"),
+            Self::Mixer => egui::Id::new("mixer-window"),
+            Self::PianoRoll => egui::Id::new("piano-roll"),
+            Self::ChannelSettings => egui::Id::new("channel-settings"),
+            Self::Automation => egui::Id::new("automation-editor"),
+            Self::Spectrum => egui::Id::new("spectrum-analyzer"),
+            Self::TapTempo => egui::Id::new("tap-tempo"),
+            Self::Shortcuts => egui::Id::new("keyboard-shortcuts"),
+            Self::Effect(track, slot) => egui::Id::new(("effect-window", track, slot)),
+        }
+    }
+}
+
+/// The open workspace windows (not the docked browser).
+fn open_slots(state: &UiState) -> Vec<Slot> {
+    let w = &state.windows;
+    let mut slots: Vec<Slot> = [
+        (w.playlist, Slot::Playlist),
+        (w.channel_rack, Slot::ChannelRack),
+        (w.mixer, Slot::Mixer),
+        (w.piano_roll, Slot::PianoRoll),
+        (w.channel_settings, Slot::ChannelSettings),
+        (state.automation_editor.is_some(), Slot::Automation),
+        (w.spectrum, Slot::Spectrum),
+        (w.tap_tempo, Slot::TapTempo),
+        (w.shortcuts, Slot::Shortcuts),
+    ]
+    .into_iter()
+    .filter_map(|(open, slot)| open.then_some(slot))
+    .collect();
+    slots.extend(
+        state
+            .effect_windows
+            .iter()
+            .map(|&(track, slot)| Slot::Effect(track, slot)),
+    );
+    slots
+}
+
+fn close_slot(state: &mut UiState, slot: Slot) {
+    let w = &mut state.windows;
+    match slot {
+        Slot::Playlist => w.playlist = false,
+        Slot::ChannelRack => w.channel_rack = false,
+        Slot::Mixer => w.mixer = false,
+        Slot::PianoRoll => w.piano_roll = false,
+        Slot::ChannelSettings => w.channel_settings = false,
+        Slot::Automation => state.automation_editor = None,
+        Slot::Spectrum => w.spectrum = false,
+        Slot::TapTempo => w.tap_tempo = false,
+        Slot::Shortcuts => w.shortcuts = false,
+        Slot::Effect(track, index) => state.effect_windows.retain(|&e| e != (track, index)),
+    }
+}
+
+/// `view.close_focused`, `view.hide_all`, `view.hide_effects` and
+/// `view.hide_others`.
+fn hide_windows(state: &mut UiState, which: &str) {
+    let focused = state.focused_window;
+    for slot in open_slots(state) {
+        let close = match which {
+            "view.close_focused" => focused == Some(slot.id()),
+            "view.hide_effects" => matches!(slot, Slot::Effect(..)),
+            "view.hide_others" => focused != Some(slot.id()),
+            _ => true,
+        };
+        if close {
+            close_slot(state, slot);
+        }
+    }
+}
+
+/// Applies a pending [`Arrange`] before the windows are drawn.
+fn arrange(ctx: &egui::Context, state: &mut UiState) {
+    match state.arrange.take() {
+        Some(Arrange::DefaultLayout) => {
+            for id in EDITOR_WINDOWS {
+                chrome::reset(ctx, egui::Id::new(id));
+            }
+            // The mixer follows the rack's width again for a few frames.
+            ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("mixer-settle")));
+        }
+        Some(Arrange::Raise(id)) => {
+            ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
+        }
+        Some(Arrange::MaximizePlaylist) => {
+            // A playlist that was closed is drawn once before it maximizes.
+            let done = chrome::toggle_maximized(ctx, egui::Id::new("playlist-window"));
+            state.arrange = (!done && state.windows.playlist).then_some(Arrange::MaximizePlaylist);
+        }
+        Some(Arrange::Maximize(id)) => {
+            if chrome::maximize(ctx, egui::Id::new(id)) {
+                ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
+            } else {
+                state.arrange = Some(Arrange::Maximize(id));
+            }
+        }
+        None => {}
+    }
+}
+
+/// What the toolbar's time display shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TimeMode {
+    /// `bar.beat.step`.
+    #[default]
+    Bars,
+    /// `minutes:seconds.hundredths`.
+    Time,
+    /// `bar.beat.tick`, for fine work.
+    Ticks,
 }
 
 /// A status line message.
@@ -199,10 +510,24 @@ pub struct UiState {
     pub windows: Windows,
     /// Selected channel (0-based), shown in the piano roll.
     pub selected_channel: usize,
-    /// Selected mixer track (0 = master).
+    /// Selected mixer track (0 = master), the primary one when several are
+    /// selected.
     pub selected_track: usize,
+    /// The other mixer tracks selected along with `selected_track`.
+    pub mixer_selection: std::collections::BTreeSet<usize>,
     /// Effect slot shown in the mixer's effect editor (0-based).
     pub mixer_slot: usize,
+    /// The mixer strips show their track switches (phase, swap, separation,
+    /// effects).
+    pub mixer_details: bool,
+    /// The mixer shows the selected track's slot panel.
+    pub mixer_panel: bool,
+    /// The slot panel sits left of the strips instead of right.
+    pub mixer_panel_left: bool,
+    /// How strongly each track's colour tints its strip: 0 off to 3 strong.
+    pub mixer_tint: u8,
+    /// Hairlines part the mixer strips.
+    pub mixer_hairlines: bool,
     /// Keyboard shortcuts.
     pub keymap: Keymap,
     /// Last command result.
@@ -224,23 +549,39 @@ pub struct UiState {
     pub workspace: egui::Rect,
     /// Letter keys play notes on the selected channel.
     pub typing_keyboard: bool,
+    /// The control position the control menu's Copy took.
+    pub(crate) copied_control: Option<f32>,
+    /// Channel rack rows drawn last frame: channel index and vertical span.
+    pub(crate) rack_rows: Vec<(usize, egui::Rangef)>,
+    /// The open type-in value box.
+    pub(crate) type_in: Option<type_in::TypeIn>,
+    /// A window arrangement asked for by a key, applied next frame.
+    pub arrange: Option<Arrange>,
+    /// The focused (topmost) workspace window as of the last frame.
+    pub focused_window: Option<egui::Id>,
     /// Times (seconds) of the latest tempo taps.
     pub taps: Vec<f64>,
     /// The custom time signature being entered in a signature menu.
     pub sig_draft: (u32, u32),
-    /// The toolbar's position display shows minutes and seconds instead of
-    /// bars and beats.
-    pub show_seconds: bool,
+    /// What the toolbar's position display shows.
+    pub time_mode: TimeMode,
     /// Text being typed in Settings → Folders: FL factory and user data
     /// folders, and a drive mapping's prefix and folder.
     pub path_drafts: [String; 4],
     /// The channel settings window's page.
     pub channel_tab: channel_settings::ChannelTab,
-    /// The channel rack shows only this display filter group (`None`: all).
+    /// Extra channel windows (Alt+click on a channel name), each on its own
+    /// channel and page.
+    pub(crate) kept_channels: Vec<(musiccraft_project::ChannelId, channel_settings::ChannelTab)>,
+    /// The channel rack shows only this group (the group filter; `None`: all).
     pub rack_group: Option<String>,
     /// The channel rack's step graph editor: open, what it edits, and the
     /// step being dragged.
     pub(crate) graph: Option<piano_roll::LaneMode>,
+    /// The channel rack hides its mixer-track column (Alt+M).
+    pub(crate) rack_hide_tracks: bool,
+    /// A channel's steps cut or copied in the channel rack.
+    pub(crate) rack_clipboard: Option<Vec<musiccraft_project::Note>>,
     pub(crate) graph_drag: Option<musiccraft_project::Note>,
     /// Where the graph strip was last drawn and its step count (for tests).
     pub(crate) graph_view: Option<(egui::Rect, u32)>,
@@ -255,7 +596,7 @@ pub struct UiState {
     pub plugin_filter: String,
     /// Hint of the control hovered last frame.
     pub(crate) hint: Option<String>,
-    /// Smoothed spectrum analyzer levels and their falling peaks (dB per bin).
+    /// Smoothed spectrum analyser levels and their falling peaks (dB per bin).
     pub(crate) spectrum: (Vec<f32>, Vec<f32>),
     /// Open effect windows: (mixer track, slot index).
     pub effect_windows: Vec<(usize, usize)>,
@@ -277,6 +618,8 @@ pub struct UiState {
     roll: piano_roll::RollState,
     playlist: playlist::PlaylistState,
     dialog: Option<dialogs::Dialog>,
+    /// A name being renamed where it is drawn.
+    renaming: Option<dialogs::InPlace>,
     antiserum: antiserum::AntiserumUi,
 }
 
@@ -313,7 +656,13 @@ impl UiState {
             windows: Windows::default(),
             selected_channel: 0,
             selected_track: 0,
+            mixer_selection: std::collections::BTreeSet::new(),
             mixer_slot: 0,
+            mixer_details: true,
+            mixer_panel: true,
+            mixer_panel_left: false,
+            mixer_tint: 1,
+            mixer_hairlines: false,
             keymap,
             status: StatusLine::default(),
             meters: Vec::new(),
@@ -325,13 +674,22 @@ impl UiState {
             automation_view: None,
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
+            copied_control: None,
+            type_in: None,
+            rack_rows: Vec::new(),
+            renaming: None,
+            arrange: None,
+            focused_window: None,
             taps: Vec::new(),
             sig_draft: (4, 4),
             channel_tab: channel_settings::ChannelTab::default(),
-            show_seconds: false,
+            kept_channels: Vec::new(),
+            time_mode: TimeMode::Bars,
             path_drafts: Default::default(),
             rack_group: None,
             graph: None,
+            rack_clipboard: None,
+            rack_hide_tracks: false,
             graph_drag: None,
             graph_view: None,
             step_paint: None,
@@ -427,8 +785,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     if state.selected_track >= frame.project.mixer.len() {
         state.selected_track = 0;
     }
+    let tracks = frame.project.mixer.len();
+    state.mixer_selection.retain(|&t| t < tracks);
+    state.mixer_selection.remove(&state.selected_track);
 
     state.hint = hint::begin_frame(ui.ctx(), frame.settings.show_hints);
+    automation::publish(ui.ctx(), frame.project, state.copied_control);
     toolbar::show(ui, state, frame, &mut actions);
     if state.windows.browser {
         browser::show(ui, state, frame, &mut actions);
@@ -436,29 +798,41 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     let workspace = egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(theme::BACKGROUND).inner_margin(6.0))
         .show(ui, |ui| {
-            if state.windows.playlist {
-                playlist::show(ui, state, frame, &mut actions);
-            } else {
-                theme::watermark(ui);
-            }
+            theme::watermark(ui);
+            workspace_menu(ui, state, &mut actions);
         })
         .response
         .rect;
     state.workspace = workspace;
 
     let ctx = ui.ctx().clone();
+    // A dialog, a menu or a drag open at the start of the frame takes Esc.
+    let escape_taken = state.dialog.is_some()
+        || state.type_in.is_some()
+        || state.renaming.is_some()
+        || egui::Popup::is_any_open(&ctx)
+        || ctx.dragged_id().is_some();
+    arrange(&ctx, state);
+    playlist::show(&ctx, state, frame, &mut actions);
+    channel_rack::show(&ctx, state, frame, &mut actions);
+    // After the rack, so the mixer can first open beside it.
     if state.windows.mixer {
         mixer::show(&ctx, state, frame, &mut actions);
     }
-    channel_rack::show(&ctx, state, frame, &mut actions);
     piano_roll::show(&ctx, state, frame, &mut actions);
+    note_props::show(&ctx, state, frame, &mut actions);
     channel_settings::show(&ctx, state, frame, &mut actions);
     automation::show(&ctx, state, frame, &mut actions);
     dialogs::show(&ctx, state, frame, &mut actions);
     dialogs::shortcuts(&ctx, state);
     effect_window::show_all(&ctx, state, frame, &mut actions);
     spectrum::show(&ctx, state, frame);
+    tap_tempo::show(&ctx, state, frame.project.tempo_bpm(), &mut actions);
     settings::show(&ctx, state, frame, &mut actions);
+    type_in::show(&ctx, state, &mut actions);
+    dialogs::show_in_place(&ctx, state, &mut actions);
+    // A menu cut, copy or paste that no focused editor took lapses.
+    ctx.data_mut(|d| d.remove::<ClipboardKey>(egui::Id::new(MENU_CLIPBOARD)));
 
     if let Some(dragged) = egui::DragAndDrop::payload::<browser::Dragged>(&ctx) {
         if let Some(pos) = ctx.pointer_hover_pos() {
@@ -467,16 +841,37 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
                 egui::Id::new("drag-ghost"),
             ));
             let galley = painter.layout_no_wrap(
-                format!("♪ {}", dragged.label()),
-                egui::FontId::proportional(13.0),
-                theme::BACKGROUND,
+                dragged.label(),
+                egui::FontId::proportional(theme::FONT_TITLE),
+                theme::TEXT,
             );
-            let rect =
-                egui::Rect::from_min_size(pos + egui::vec2(12.0, 8.0), galley.size()).expand(5.0);
-            painter.rect_filled(rect, 4.0, theme::ACCENT);
-            painter.galley(rect.min + egui::vec2(5.0, 5.0), galley, theme::BACKGROUND);
+            // Room for the kind glyph before the name.
+            let size = galley.size() + egui::vec2(18.0, 0.0);
+            let rect = egui::Rect::from_min_size(pos + egui::vec2(12.0, 8.0), size).expand(5.0);
+            let icon = if dragged.sample().is_some() {
+                icons::Icon::Wave
+            } else {
+                icons::Icon::ChannelRack
+            };
+            painter.rect(
+                rect,
+                3.0,
+                theme::RAISED,
+                egui::Stroke::new(1.0, theme::ACCENT),
+                egui::StrokeKind::Inside,
+            );
+            let glyph =
+                egui::Rect::from_min_size(rect.min + egui::vec2(4.0, 4.0), egui::vec2(14.0, 14.0));
+            icons::paint(&painter, glyph, icon, theme::ACCENT);
+            painter.galley(rect.min + egui::vec2(23.0, 5.0), galley, theme::TEXT);
         }
     }
+    if escape_taken {
+        ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    }
+    state.focused_window = ctx
+        .memory(|m| m.areas().top_layer_id(egui::Order::Middle))
+        .map(|layer| layer.id);
     handle_keys(&ctx, state, frame, &mut actions);
     resolve_ui_actions(state, frame, actions)
 }
@@ -582,6 +977,70 @@ fn handle_keys(ctx: &egui::Context, state: &UiState, frame: &Frame<'_>, actions:
     }
 }
 
+/// The colour of channel `index` (its stored colour, or the one that follows
+/// its id); the palette by index when there is no such channel.
+pub(crate) fn channel_color(project: &musiccraft_project::Project, index: usize) -> egui::Color32 {
+    theme::palette(
+        project
+            .channels
+            .get(index)
+            .map_or(index, musiccraft_project::Channel::color_index),
+    )
+}
+
+/// Cut, copy or paste in an editor window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClipboardKey {
+    Cut,
+    Copy,
+    Paste,
+}
+
+/// Where the main Edit menu leaves a cut, copy or paste for the focused
+/// editor to take this frame.
+const MENU_CLIPBOARD: &str = "menu-clipboard";
+
+/// Asks the focused editor for a cut, copy or paste, as its keys would.
+pub(crate) fn request_clipboard(ctx: &egui::Context, which: ClipboardKey) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new(MENU_CLIPBOARD), which));
+}
+
+/// Whether `which` was asked for this frame, and takes it from the input.
+/// On the desktop Ctrl+X, Ctrl+C and Ctrl+V reach egui as cut, copy and
+/// paste events instead of key presses (and paste only when the system
+/// clipboard holds text, see [`copied`]), so both forms count.
+pub(crate) fn clipboard_key(ctx: &egui::Context, which: ClipboardKey) -> bool {
+    use egui::Event;
+    let key = match which {
+        ClipboardKey::Cut => egui::Key::X,
+        ClipboardKey::Copy => egui::Key::C,
+        ClipboardKey::Paste => egui::Key::V,
+    };
+    let menu = egui::Id::new(MENU_CLIPBOARD);
+    if ctx.data(|d| d.get_temp::<ClipboardKey>(menu)) == Some(which) {
+        ctx.data_mut(|d| d.remove::<ClipboardKey>(menu));
+        return true;
+    }
+    ctx.input_mut(|i| {
+        let before = i.events.len();
+        i.events.retain(|e| {
+            !matches!(
+                (which, e),
+                (ClipboardKey::Cut, Event::Cut)
+                    | (ClipboardKey::Copy, Event::Copy)
+                    | (ClipboardKey::Paste, Event::Paste(_))
+            )
+        });
+        i.events.len() != before || i.consume_key(egui::Modifiers::COMMAND, key)
+    })
+}
+
+/// After a cut or copy inside an editor: puts a short description on the
+/// system clipboard, so that the next Ctrl+V reaches the app as a paste.
+pub(crate) fn copied(ctx: &egui::Context, what: &str) {
+    ctx.copy_text(format!("MusicCraft: {what}"));
+}
+
 /// Handles `view.*` and `ui.*` invocations here; passes the rest through.
 fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Action>) -> Vec<Action> {
     let mut out = Vec::with_capacity(actions.len());
@@ -592,21 +1051,41 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
         };
         match invocation.name.as_str() {
             "view.toggle" => {
-                let windows = &mut state.windows;
-                let flag = match invocation.args.first().map(String::as_str) {
-                    Some("playlist") => Some(&mut windows.playlist),
-                    Some("channel_rack") => Some(&mut windows.channel_rack),
-                    Some("piano_roll") => Some(&mut windows.piano_roll),
-                    Some("mixer") => Some(&mut windows.mixer),
-                    Some("browser") => Some(&mut windows.browser),
-                    Some("shortcuts") => Some(&mut windows.shortcuts),
-                    Some("spectrum") => Some(&mut windows.spectrum),
-                    _ => None,
-                };
-                if let Some(flag) = flag {
-                    *flag = !*flag;
+                if let Some(which) = invocation.args.first() {
+                    toggle_window(state, which);
                 }
             }
+            "view.default_layout" if state.dialog.is_none() => {
+                let w = &mut state.windows;
+                (w.playlist, w.channel_rack, w.mixer, w.piano_roll, w.browser) =
+                    (true, true, true, true, true);
+                state.arrange = Some(Arrange::DefaultLayout);
+            }
+            "view.maximize"
+                if state.dialog.is_none()
+                    && invocation.args.first().map(String::as_str) == Some("playlist") =>
+            {
+                state.windows.playlist = true;
+                state.arrange = Some(Arrange::MaximizePlaylist);
+            }
+            "view.open_maximized" => {
+                let which = invocation.args.first().map_or("", String::as_str);
+                if let Some((id, open)) = editor_window(&mut state.windows, which) {
+                    *open = true;
+                    state.arrange = Some(Arrange::Maximize(id));
+                }
+            }
+            "view.close_focused" | "view.hide_all" | "view.hide_effects" | "view.hide_others"
+                if state.dialog.is_none() =>
+            {
+                hide_windows(state, &invocation.name);
+            }
+            "view.default_layout"
+            | "view.maximize"
+            | "view.close_focused"
+            | "view.hide_all"
+            | "view.hide_effects"
+            | "view.hide_others" => {}
             "ui.new" => out.push(Action::Run(Invocation::bare("project.new"))),
             "ui.open" => state.dialog = Some(dialogs::Dialog::open(frame.project)),
             "ui.save" => match frame.project.path() {
@@ -666,11 +1145,48 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                 out.push(Action::Run(Invocation::bare("pattern.next_empty")));
                 state.dialog = Some(dialogs::Dialog::rename_pattern(index, &name));
             }
+            "ui.rename_pattern" => {
+                let project = frame.project;
+                state.dialog = Some(dialogs::Dialog::rename_pattern(
+                    project.current_pattern,
+                    &project.current_pattern().name,
+                ));
+            }
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.export_stems" => state.dialog = Some(dialogs::Dialog::export_stems(frame.project)),
             "ui.export_midi" => state.dialog = Some(dialogs::Dialog::export_midi(frame.project)),
             "ui.quit" => out.push(Action::Quit),
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
+            "ui.copy_control" => {
+                if let Some(target) = invocation.args.first() {
+                    state.copied_control = musiccraft_commands::control_info(frame.project, target)
+                        .map(|info| info.position);
+                }
+            }
+            "ui.type_in" => {
+                let number = |i: usize| invocation.args.get(i).and_then(|v| v.parse::<f32>().ok());
+                if let (Some(target), Some(x), Some(y)) =
+                    (invocation.args.first(), number(1), number(2))
+                {
+                    type_in::open(state, frame.project, target, egui::pos2(x, y));
+                }
+            }
+            "ui.open_effects" => {
+                if let Some(track) = invocation.args.first().and_then(|n| n.parse().ok()) {
+                    effect_window::open_all(state, frame.project, track);
+                }
+            }
+            "ui.open_automation" => {
+                let automation = invocation
+                    .args
+                    .first()
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .and_then(|n| frame.project.automations.get(n.checked_sub(1)?));
+                if let Some(automation) = automation {
+                    state.automation_editor = Some(automation.id);
+                    state.arrange = Some(Arrange::Raise("automation-editor"));
+                }
+            }
             "ui.automate" => {
                 if let Some(target) = invocation.args.first() {
                     out.push(Action::Run(automation::create_invocation(
@@ -725,6 +1241,40 @@ mod tests {
     }
 
     #[test]
+    fn mixer_track_colours_use_the_stored_choice() {
+        let mut s = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        let mixer = &s.project().mixer;
+        assert_eq!(mixer::track_color(0, &mixer[0]), theme::HIGHLIGHT);
+        assert_eq!(mixer::track_color(2, &mixer[2]), theme::palette(5));
+        s.run_line("mixer.set_track_color 2 1").unwrap();
+        s.run_line("mixer.set_track_color 0 3").unwrap();
+        let mixer = &s.project().mixer;
+        assert_eq!(mixer::track_color(2, &mixer[2]), theme::palette(0));
+        assert_eq!(mixer::track_color(0, &mixer[0]), theme::palette(2));
+    }
+
+    #[test]
+    fn channel_colours_follow_the_channel_and_its_stored_choice() {
+        let mut s = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in ["channel.add_synth", "channel.add_synth"] {
+            s.run_line(line).unwrap();
+        }
+        let first = channel_color(s.project(), 0);
+        assert_ne!(first, channel_color(s.project(), 1));
+        // The first channel is second after the move, and keeps its colour.
+        s.run_line("channel.move 1 2").unwrap();
+        assert_eq!(channel_color(s.project(), 1), first);
+        s.run_line("channel.set_color 2 5").unwrap();
+        assert_eq!(channel_color(s.project(), 1), theme::palette(4));
+    }
+
+    #[test]
     fn view_actions_toggle_windows_and_are_consumed() {
         let project = Project::default();
         let (engine, history) = frame_for(&project);
@@ -741,7 +1291,7 @@ mod tests {
             settings_info: &SettingsInfo::default(),
         };
         let mut state = UiState::default();
-        assert!(!state.windows.mixer);
+        assert!(state.windows.mixer, "all four editors start open");
         let out = resolve_ui_actions(
             &mut state,
             &frame,
@@ -751,8 +1301,20 @@ mod tests {
                 Action::Run(Invocation::parse("ui.save").unwrap()),
             ],
         );
+        // Open but not focused: it comes to the front instead of closing.
         assert!(state.windows.mixer);
+        assert_eq!(state.arrange, Some(Arrange::Raise("mixer-window")));
         assert_eq!(out, [Action::Run(Invocation::bare("transport.toggle"))]);
+        // Focused: it closes.
+        state.focused_window = Some(egui::Id::new("mixer-window"));
+        let toggle = || vec![Action::Run(Invocation::parse("view.toggle mixer").unwrap())];
+        resolve_ui_actions(&mut state, &frame, toggle());
+        assert!(!state.windows.mixer);
+        // Closed: it opens in front.
+        state.arrange = None;
+        resolve_ui_actions(&mut state, &frame, toggle());
+        assert!(state.windows.mixer);
+        assert_eq!(state.arrange, Some(Arrange::Raise("mixer-window")));
         assert!(state.dialog.is_some(), "unsaved project asks for a path");
         state.dialog = None;
         let out = resolve_ui_actions(
@@ -810,5 +1372,77 @@ mod tests {
         assert_eq!(state.meters, [(1.0, 0.5)]);
         state.update_meters(&[(0.0, 0.0)], 1.0);
         assert!(state.meters[0].0 < 0.07 && state.meters[0].0 > 0.05);
+    }
+
+    #[test]
+    fn control_menu_copy_and_open_automation_are_resolved_by_the_ui() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        session.run_line("control.set mixer:0:pan 0.75").unwrap();
+        session
+            .run_line("automation.create mixer:0:volume")
+            .unwrap();
+        let project = session.project().clone();
+        let (engine, history) = frame_for(&project);
+        let frame = Frame {
+            project: &project,
+            engine: &engine,
+            history: &history,
+            waveform: None,
+            waveform_seconds: None,
+            clip_waveforms: &[],
+            clip_durations: &[],
+            plugins: &Plugins::default(),
+            settings: &Settings::default(),
+            settings_info: &SettingsInfo::default(),
+        };
+        let mut state = UiState::default();
+        let out = resolve_ui_actions(
+            &mut state,
+            &frame,
+            vec![
+                Action::Run(Invocation::parse("ui.copy_control mixer:0:pan").unwrap()),
+                Action::Run(Invocation::parse("ui.open_automation 1").unwrap()),
+            ],
+        );
+        assert!(out.is_empty());
+        assert!((state.copied_control.unwrap() - 0.75).abs() < 1e-6);
+        assert_eq!(state.automation_editor, Some(project.automations[0].id));
+        assert_eq!(state.arrange, Some(Arrange::Raise("automation-editor")));
+    }
+
+    #[test]
+    fn open_effects_opens_every_effect_window_of_a_track() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        session.run_line("mixer.add_effect 2 delay").unwrap();
+        session.run_line("mixer.add_effect 2 reverb").unwrap();
+        let project = session.project().clone();
+        let (engine, history) = frame_for(&project);
+        let frame = Frame {
+            project: &project,
+            engine: &engine,
+            history: &history,
+            waveform: None,
+            waveform_seconds: None,
+            clip_waveforms: &[],
+            clip_durations: &[],
+            plugins: &Plugins::default(),
+            settings: &Settings::default(),
+            settings_info: &SettingsInfo::default(),
+        };
+        let mut state = UiState::default();
+        state.effect_windows.push((2, 1));
+        let out = resolve_ui_actions(
+            &mut state,
+            &frame,
+            vec![Action::Run(Invocation::parse("ui.open_effects 2").unwrap())],
+        );
+        assert!(out.is_empty());
+        assert_eq!(state.effect_windows, vec![(2, 1), (2, 0)]);
     }
 }

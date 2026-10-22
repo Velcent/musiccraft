@@ -1,4 +1,4 @@
-//! The spectrum analyzer window: the master output's frequency content on a
+//! The spectrum analyser window: the master output's frequency content on a
 //! log-frequency scale, with a slowly falling peak line.
 
 use egui::{Pos2, Rect, Stroke, pos2, vec2};
@@ -21,12 +21,21 @@ pub(crate) fn show(ctx: &egui::Context, state: &mut UiState, frame: &Frame<'_>) 
         0 => 48_000.0,
         rate => rate as f32,
     };
-    egui::Window::new("Spectrum analyzer")
-        .open(&mut open)
-        .default_size(vec2(520.0, 240.0))
-        .default_pos(pos2(240.0, 120.0))
-        .resizable(true)
+    let id = egui::Id::new("spectrum-analyzer");
+    let default = egui::Rect::from_min_size(pos2(240.0, 120.0), vec2(520.0, 240.0));
+    crate::chrome::window(ctx, id, "Spectrum analyser", state.workspace, default, true)
+        .default_height(default.height())
         .show(ctx, |ui| {
+            let folded = crate::chrome::Header::new(id, "Spectrum analyser").show(
+                ui,
+                &mut open,
+                &mut (),
+                |_, _| {},
+                |_, _| {},
+            );
+            if folded {
+                return;
+            }
             let size = vec2(
                 ui.available_width().max(200.0),
                 ui.available_height().max(140.0),
@@ -106,7 +115,7 @@ fn db_y(rect: Rect, db: f32) -> f32 {
 }
 
 fn grid(painter: &egui::Painter, rect: Rect) {
-    let font = egui::FontId::proportional(10.0);
+    let font = egui::FontId::proportional(theme::FONT_VALUE);
     for (f, label) in [
         (50.0, "50"),
         (100.0, "100"),

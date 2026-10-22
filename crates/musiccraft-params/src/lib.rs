@@ -1397,7 +1397,7 @@ impl EffectKind {
     pub const fn title(self) -> &'static str {
         match self {
             Self::Filter => "Filter",
-            Self::Eq => "Equalizer",
+            Self::Eq => "Equaliser",
             Self::Delay => "Delay",
             Self::Reverb => "Reverb",
             Self::Compressor => "Compressor",

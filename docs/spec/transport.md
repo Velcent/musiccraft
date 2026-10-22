@@ -11,6 +11,8 @@
 - `transport.play` starts playback. If already playing it does nothing and reports so.
 - `transport.stop` halts playback and returns the playhead to the start of the
   loop. If already stopped it does nothing and reports so.
+  Double-clicking the toolbar's stop button also runs `transport.panic`,
+  silencing every sounding note.
 - `transport.toggle` plays when stopped and stops when playing. The default keymap
   binds it to the space bar.
 - `transport.pause` halts playback and keeps the playhead (state `paused`);
@@ -25,7 +27,8 @@
   note is released at once, including one-shot samples, live keys, plugin
   instruments (all notes off) and MIDI Out channels (a note off for every
   note they started), and the browser preview stops. Playback is not stopped;
-  later notes play as usual. Effect tails (reverb, delay) ring out.
+  later notes play as usual. Effect tails (reverb, delay) ring out. It is
+  also in the main menu under Tools › Panic › All notes off.
 - `transport.set_mode pattern|song` chooses what plays: `pattern` loops the
   selected pattern; `song` plays the playlist arrangement and loops at its end.
   `transport.toggle_mode` switches between them (default key: `L`).
@@ -37,6 +40,12 @@
   tempo from the average interval of the last eight taps (clamped to the
   range); a pause over two seconds starts a new count. One run of taps is one
   undo step. The rule lives in `musiccraft_commands::tap_tempo`.
+  The **Tap tempo window** (View › Tap tempo, Tap tempo on the tempo
+  display's right-click menu, or a right-click on TAP) uses the same rule
+  and the same taps: a large pad that taps on each press, a bar under it
+  that fills as the run reaches eight taps, and a line with the measured
+  tempo and the tap count (or what to do, before the first tap). It is part
+  of the saved window layout.
 - **Master pitch** (`project.set_master_pitch <cents>`, -1200…1200, or
   `project.set_a4 <hz>`, 392–494 Hz, which sets the equivalent cents;
   undoable, saved as `"master_pitch"`; Settings → Project) transposes every

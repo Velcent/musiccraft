@@ -105,7 +105,8 @@ the editor from `musiccraft-editors::antiserum`. It reports edits, which the
 app turns into the commands above. A plugin can turn them into host gestures
 later.
 
-- **Preset bar:** the preset's name, previous/next, a menu by category with a
+- **Preset bar:** the preset's name, previous/next (right-click on
+  either opens the list), a menu by category with a
   search box that matches names and tags, plus save and open.
 - **Modulation sources strip:** chips for envelopes 1–4, LFOs 1–8, macros
   1–8, velocity, note, mod wheel, aftertouch and random. **Drag a chip onto
@@ -176,9 +177,11 @@ the app and the Antiserum plugin:
 
 ## Browser
 
-The browser's generators list has **Antiserum**. Under it, the factory
-presets are grouped by category, followed by a **User** group with the user
-presets; clicking one adds an Antiserum channel with that preset.
+The browser's generators list has **Antiserum**. Its presets are in the
+browser's **Presets** category (`browser.md`): an Antiserum folder with the
+factory presets grouped by category, followed by a **User** group with the
+user presets. A click selects a preset; a double-click, or dragging it onto
+the channel rack, adds an Antiserum channel with that preset.
 
 ## Sources
 

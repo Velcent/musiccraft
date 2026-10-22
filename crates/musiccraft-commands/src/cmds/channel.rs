@@ -127,10 +127,22 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             move_channel,
         ),
         cmd(
+            "channel.set_color",
+            "channel.set_color <channel> <1-16|none>",
+            "Colour a channel (none: the automatic colour, which follows the channel).",
+            set_color,
+        ),
+        cmd(
             "channel.set_group",
             "channel.set_group <channel> [group]",
-            "Put a channel in a display filter group (no group name: none).",
+            "Put a channel in a group for the group filter (no group name: none).",
             set_group,
+        ),
+        cmd(
+            "channel.rename_group",
+            "channel.rename_group <group> [new name]",
+            "Rename a channel group, moving every channel in it (no new name: the group goes and its channels are in no group).",
+            rename_group,
         ),
         cmd(
             "channel.rename",
@@ -165,8 +177,20 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         cmd(
             "channel.solo",
             "channel.solo <channel>",
-            "Mute every other channel; if already solo, unmute all.",
+            "Make a channel the only soloed one; if it already is, clear every solo.",
             solo,
+        ),
+        cmd(
+            "channel.set_solo",
+            "channel.set_solo <channel> <on|off>",
+            "Solo or unsolo one channel (while any channel is soloed, only soloed channels play).",
+            set_solo,
+        ),
+        cmd(
+            "channel.set_solo_lock",
+            "channel.set_solo_lock <channel> <on|off>",
+            "Keep a channel out of solo: another channel's solo never silences it.",
+            set_solo_lock,
         ),
         cmd(
             "channel.route_free",
@@ -681,6 +705,31 @@ fn move_channel(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     ))
 }
 
+fn set_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = channel_arg(project, args, 0)?;
+    let color = match args.str(1)? {
+        "none" => None,
+        _ => {
+            let n = args.number(1, "colour")?;
+            if !(1..=16).contains(&n) {
+                return Err(args.invalid("colours are 1 to 16"));
+            }
+            Some(u8::try_from(n - 1).unwrap_or(0))
+        }
+    };
+    let previous = std::mem::replace(&mut project.channels[index].color, color);
+    let label = |c: Option<u8>| c.map_or_else(|| "none".to_owned(), |c| (c + 1).to_string());
+    let message = format!("channel {} colour {}", index + 1, label(color));
+    if previous == color {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(args.name(), [(index + 1).to_string(), label(previous)]),
+    ))
+}
+
 fn set_group(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, usize::MAX)?;
     let index = channel_arg(project, args, 0)?;
@@ -702,6 +751,35 @@ fn set_group(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
         },
         Invocation::new(args.name(), inverse),
     ))
+}
+
+fn rename_group(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 2)?;
+    let old = args.str(0)?.trim().to_owned();
+    let new = if args.len() > 1 {
+        args.str(1)?.trim().to_owned()
+    } else {
+        String::new()
+    };
+    let members: Vec<usize> = (0..project.channels.len())
+        .filter(|&i| !old.is_empty() && project.channels[i].group == old)
+        .collect();
+    if members.is_empty() {
+        return Err(args.invalid(format!("no channel is in group `{old}`")));
+    }
+    let mut inverse = Vec::new();
+    for &i in &members {
+        project.channels[i].group.clone_from(&new);
+        inverse.push(
+            Invocation::new("channel.set_group", [(i + 1).to_string(), old.clone()]).to_string(),
+        );
+    }
+    let message = if new.is_empty() {
+        format!("removed group {old} from {} channels", members.len())
+    } else {
+        format!("renamed group {old} to {new}")
+    };
+    Ok(Outcome::undoable(message, Invocation::new(BATCH, inverse)))
 }
 
 fn rename(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
@@ -794,25 +872,25 @@ fn toggle_mute(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
 fn solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, 1)?;
     let index = channel_arg(project, args, 0)?;
-    let already_solo = project
+    let only = project
         .channels
         .iter()
         .enumerate()
-        .all(|(i, c)| c.mute == (i != index));
+        .all(|(i, c)| c.solo == (i == index));
     let mut undo = Vec::new();
     for (i, channel) in project.channels.iter_mut().enumerate() {
-        let mute = !already_solo && i != index;
-        if channel.mute != mute {
+        let solo = !only && i == index;
+        if channel.solo != solo {
             undo.push(format!(
-                "channel.set_mute {} {}",
+                "channel.set_solo {} {}",
                 i + 1,
-                on_off(channel.mute)
+                on_off(channel.solo)
             ));
-            channel.mute = mute;
+            channel.solo = solo;
         }
     }
-    let message = if already_solo {
-        "all channels unmuted".to_owned()
+    let message = if only {
+        "no channel soloed".to_owned()
     } else {
         format!("channel {} solo", index + 1)
     };
@@ -820,6 +898,42 @@ fn solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
         return Ok(Outcome::done(message));
     }
     Ok(Outcome::undoable(message, Invocation::new(BATCH, undo)))
+}
+
+fn set_solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = channel_arg(project, args, 0)?;
+    let solo = args.flag(1)?;
+    let previous = std::mem::replace(&mut project.channels[index].solo, solo);
+    let message = format!("channel {} solo {}", index + 1, on_off(solo));
+    if previous == solo {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(
+            args.name(),
+            [(index + 1).to_string(), on_off(previous).to_owned()],
+        ),
+    ))
+}
+
+fn set_solo_lock(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = channel_arg(project, args, 0)?;
+    let lock = args.flag(1)?;
+    let previous = std::mem::replace(&mut project.channels[index].solo_lock, lock);
+    let message = format!("channel {} solo lock {}", index + 1, on_off(lock));
+    if previous == lock {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(
+            args.name(),
+            [(index + 1).to_string(), on_off(previous).to_owned()],
+        ),
+    ))
 }
 
 /// Routes a channel to the first insert that nothing feeds and that has no

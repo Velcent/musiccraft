@@ -8,6 +8,23 @@ fn text_id() -> Id {
     Id::new("musiccraft-hint")
 }
 
+fn suffix_id(widget: Id) -> Id {
+    widget.with("hint-suffix")
+}
+
+/// Appends `suffix` to every hint `widget` shows from now on, or stops
+/// appending when `None` (for example " · automated (clip 'Fade')").
+pub fn set_suffix(ctx: &egui::Context, widget: Id, suffix: Option<String>) {
+    ctx.data_mut(|d| match suffix {
+        Some(text) => {
+            d.insert_temp(suffix_id(widget), text);
+        }
+        None => {
+            d.remove_temp::<String>(suffix_id(widget));
+        }
+    });
+}
+
 fn bar_id() -> Id {
     Id::new("musiccraft-hint-bar")
 }
@@ -20,7 +37,10 @@ pub trait Hint {
 
 impl Hint for Response {
     fn hint(self, text: impl Into<String>) -> Self {
-        let text = text.into();
+        let mut text = text.into();
+        if let Some(suffix) = self.ctx.data(|d| d.get_temp::<String>(suffix_id(self.id))) {
+            text.push_str(&suffix);
+        }
         let in_bar = self
             .ctx
             .data(|d| d.get_temp::<bool>(bar_id()))

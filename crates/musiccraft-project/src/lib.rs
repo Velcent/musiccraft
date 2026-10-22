@@ -21,11 +21,11 @@ pub use controller::{Controller, ControllerKind};
 pub use error::ProjectError;
 pub use model::{
     Automation, AutomationId, AutomationPoint, AutomationTarget, Channel, ChannelId, Clip,
-    ClipSource, Curve, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, EffectSlot,
+    ClipSource, Curve, DEFAULT_CHANNEL_VOLUME, DEFAULT_INSERTS, DEFAULT_VELOCITY, Dock, EffectSlot,
     Instrument, InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker,
     MarkerAction, MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern,
     PatternId, PatternLane, PlayMode, Playlist, PluginRef, PluginSlot, STEP_KEY, SampleZone,
-    TrackEq,
+    TRACK_HEIGHT_PERCENT, TrackEq,
 };
 pub use musiccraft_meter as meter;
 pub use musiccraft_meter::{Meter, TimeSig};
@@ -349,6 +349,12 @@ impl Project {
         std::mem::replace(&mut self.step_edit, on)
     }
 
+    /// The first pattern with no notes.
+    #[must_use]
+    pub fn first_empty_pattern(&self) -> Option<usize> {
+        self.patterns.iter().position(|p| p.notes.is_empty())
+    }
+
     /// The first pattern after the selected one with no notes.
     #[must_use]
     pub fn next_empty_pattern(&self) -> Option<usize> {
@@ -511,6 +517,54 @@ impl Project {
         self.patterns.iter().position(|p| p.id == id)
     }
 
+    /// Whether channel `index` sounds: not muted, and soloed whenever any
+    /// channel is.
+    #[must_use]
+    pub fn channel_plays(&self, index: usize) -> bool {
+        let any_solo = self.channels.iter().any(|c| c.solo);
+        self.channels
+            .get(index)
+            .is_some_and(|c| !c.mute && (!any_solo || c.solo || c.solo_lock))
+    }
+
+    /// When any insert is soloed: which tracks stay audible. A soloed track keeps
+    /// everything that feeds it and everything it feeds through sends.
+    #[must_use]
+    pub fn mixer_audible(&self) -> Option<Vec<bool>> {
+        let mixer = &self.mixer;
+        if !mixer.iter().skip(1).any(|t| t.solo) {
+            return None;
+        }
+        let edges: Vec<(usize, usize)> = mixer
+            .iter()
+            .enumerate()
+            .flat_map(|(i, t)| t.sends.iter().map(move |s| (i, s.target)))
+            .collect();
+        let mut audible: Vec<bool> = mixer.iter().map(|t| t.solo).collect();
+        // Downstream: sends point to higher indices, so one forward pass suffices.
+        for i in 0..mixer.len() {
+            if audible[i] {
+                for (from, to) in &edges {
+                    if *from == i && *to < audible.len() {
+                        audible[*to] = true;
+                    }
+                }
+            }
+        }
+        // Upstream from the originally soloed tracks: one backward pass.
+        let mut feeds: Vec<bool> = mixer.iter().map(|t| t.solo).collect();
+        for i in (0..mixer.len()).rev() {
+            if feeds[i] {
+                for (from, to) in &edges {
+                    if *to == i {
+                        feeds[*from] = true;
+                    }
+                }
+            }
+        }
+        Some(audible.iter().zip(&feeds).map(|(a, f)| *a || *f).collect())
+    }
+
     /// The selected pattern.
     #[must_use]
     pub fn current_pattern(&self) -> &Pattern {
@@ -642,6 +696,9 @@ impl Project {
         playlist
             .track_colors
             .retain(|t, c| *t < PLAYLIST_TRACKS && *c < 16);
+        playlist
+            .track_heights
+            .retain(|t, h| *t < PLAYLIST_TRACKS && *h != 100 && TRACK_HEIGHT_PERCENT.contains(h));
         // Older files kept swing per pattern: take the largest.
         if self.swing == 0.0 {
             self.swing = self

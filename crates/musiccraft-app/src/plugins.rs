@@ -49,6 +49,20 @@ fn command(slot: PluginSlot, what: &str) -> String {
     }
 }
 
+/// The plugin format named by a plugin file's extension.
+fn format_of(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("clap") => "CLAP",
+        Some("vst3") => "VST3",
+        _ => "",
+    }
+}
+
 impl PluginGlue {
     pub fn new(host: Option<PluginHost>) -> Self {
         let mut glue = Self {
@@ -69,6 +83,7 @@ impl PluginGlue {
             .unwrap_or_default()
             .into_iter()
             .map(|p| PluginEntry {
+                format: format_of(&p.path).to_owned(),
                 instrument: p.kind == PluginKind::Instrument,
                 id: p.id,
                 name: p.name,

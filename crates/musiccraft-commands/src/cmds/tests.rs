@@ -40,12 +40,18 @@ const SCRIPT: &[&str] = &[
     "channel.set_group 3 Low end",
     "channel.set_group 1 Drums",
     "channel.set_group 3",
+    "channel.set_color 2 7",
+    "channel.set_color 2 none",
+    "channel.set_color 1 16",
     "channel.set_volume 1 0.5",
     "channel.set_pan 2 -0.25",
     "channel.set_mute 2 on",
     "channel.toggle_mute 2",
     "channel.solo 1",
     "channel.solo 1",
+    "channel.set_solo 2 on",
+    "channel.solo 1",
+    "channel.set_solo 1 off",
     "channel.route 1 2",
     "channel.set_sample 1 builtin:clap",
     "channel.set_param 3 cutoff 1200",
@@ -95,6 +101,11 @@ const SCRIPT: &[&str] = &[
     "mixer.set_phase_invert 1 on",
     "mixer.set_swap_sides 1 on",
     "mixer.set_swap_sides 1 off",
+    "mixer.set_track_color 1 3",
+    "mixer.set_track_color 1 none",
+    "mixer.set_dock 2 right",
+    "mixer.set_dock 3 left",
+    "mixer.set_dock 2 middle",
     "mixer.rename 1 Kick bus",
     "mixer.set_volume 1 0.7",
     "mixer.set_pan 0 0.1",
@@ -140,6 +151,10 @@ const SCRIPT: &[&str] = &[
     "playlist.set_track_color 3 12",
     "playlist.set_track_color 3 none",
     "playlist.set_track_color 4 2",
+    "playlist.set_track_height 3 200",
+    "playlist.set_track_height 5 50",
+    "playlist.set_track_height 3 reset",
+    "playlist.reset_track_heights",
     "playlist.slice_clip 3 6",
     "playlist.toggle_clip_mute 3 6",
     "playlist.make_unique 3 6",
@@ -570,6 +585,27 @@ fn next_empty_selects_an_empty_pattern_or_adds_one() {
 }
 
 #[test]
+fn first_empty_looks_from_the_first_pattern() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C5");
+    run(&mut s, "pattern.add");
+    run(&mut s, "pattern.add");
+    run(&mut s, "note.add 1 0 1 C5 @3");
+    // From pattern 3, the empty pattern 2 lies behind: next_empty would add.
+    s.run_line("pattern.select 3").unwrap();
+    let depth = s.undo_depth();
+    run(&mut s, "pattern.first_empty");
+    assert_eq!(s.project().current_pattern, 1);
+    assert_eq!(s.undo_depth(), depth);
+    run(&mut s, "note.add 1 0 1 C5 @2");
+    run(&mut s, "pattern.first_empty");
+    assert_eq!(s.project().patterns.len(), 4);
+    assert_eq!(s.project().current_pattern, 3);
+    fails(&mut s, "pattern.first_empty 1");
+}
+
+#[test]
 fn recording_state_and_options_stay_out_of_history() {
     use musiccraft_project::RecordMode;
     let mut s = session();
@@ -854,7 +890,7 @@ fn chords_lay_down_a_progression() {
 }
 
 #[test]
-fn articulate_and_claw() {
+fn articulate_and_keep_every() {
     let mut s = synth_with(&[
         "note.add 1 0 1 C5 90",
         "note.add 1 2 1 D5 90",
@@ -869,10 +905,10 @@ fn articulate_and_claw() {
         "half the gap; accented on the beat"
     );
     assert_eq!(rows[1], (48, 12, 62, 90));
-    run(&mut s, "note.claw 1 2");
+    run(&mut s, "note.keep_every 1 2");
     let keys: Vec<u8> = note_rows(&s).iter().map(|n| n.2).collect();
     assert_eq!(keys, [60, 64]);
-    fails(&mut s, "note.claw 1 0");
+    fails(&mut s, "note.keep_every 1 0");
 }
 
 #[test]
@@ -904,6 +940,100 @@ fn channel_groups_are_saved_and_undoable() {
     assert!(s.project().channels[0].group.is_empty());
     run(&mut s, "edit.undo");
     assert_eq!(s.project().channels[0].group, "Drums");
+}
+
+#[test]
+fn channel_colours_are_saved_undoable_and_follow_the_channel() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.add_synth");
+    let auto = (
+        s.project().channels[0].color_index(),
+        s.project().channels[1].color_index(),
+    );
+    assert_ne!(auto.0, auto.1);
+    // Reordering keeps each channel's automatic colour.
+    run(&mut s, "channel.move 1 2");
+    assert_eq!(s.project().channels[1].color_index(), auto.0);
+    run(&mut s, "channel.set_color 1 9");
+    assert_eq!(s.project().channels[0].color_index(), 8);
+    let json = s.project().to_json().unwrap();
+    assert!(json.contains("\"color\": 8"));
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().channels[0].color, None);
+    fails(&mut s, "channel.set_color 1 17");
+}
+
+#[test]
+fn solo_is_its_own_state_and_leaves_mutes_alone() {
+    let mut s = session();
+    for line in [
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.set_mute 3 on",
+    ] {
+        run(&mut s, line);
+    }
+    run(&mut s, "channel.solo 2");
+    let p = s.project();
+    assert_eq!(
+        p.channels
+            .iter()
+            .map(|c| (c.mute, c.solo))
+            .collect::<Vec<_>>(),
+        [(false, false), (false, true), (true, false)]
+    );
+    assert_eq!(
+        (0..3).map(|i| p.channel_plays(i)).collect::<Vec<_>>(),
+        [false, true, false]
+    );
+    assert!(p.to_json().unwrap().contains("\"solo\": true"));
+    // Soloing the only soloed channel again clears solo; mutes stay.
+    run(&mut s, "channel.solo 2");
+    let p = s.project();
+    assert!(p.channels.iter().all(|c| !c.solo));
+    assert_eq!(
+        (0..3).map(|i| p.channel_plays(i)).collect::<Vec<_>>(),
+        [true, true, false]
+    );
+    run(&mut s, "edit.undo");
+    assert!(s.project().channels[1].solo);
+}
+
+#[test]
+fn a_solo_locked_channel_keeps_playing_through_another_solo() {
+    let mut s = session();
+    for line in [
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.set_solo_lock 3 on",
+        "channel.solo 1",
+    ] {
+        run(&mut s, line);
+    }
+    let plays = |s: &Session| {
+        (0..3)
+            .map(|i| s.project().channel_plays(i))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(plays(&s), [true, false, true]);
+    assert!(
+        s.project()
+            .to_json()
+            .unwrap()
+            .contains("\"solo_lock\": true")
+    );
+    // Its own mute still silences it.
+    run(&mut s, "channel.set_mute 3 on");
+    assert_eq!(plays(&s), [true, false, false]);
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert!(!s.project().channels[2].solo_lock);
+    assert_eq!(plays(&s), [true, true, true]);
+    fails(&mut s, "channel.set_solo_lock 3 maybe");
 }
 
 #[test]
@@ -951,6 +1081,32 @@ fn playlist_rejects_overlaps() {
     fails(&mut s, "playlist.move_clip 1 2 1 1");
     fails(&mut s, "playlist.resize_clip 1 0 3");
     assert_eq!(s.project().playlist.length_ticks(), 3 * TICKS_PER_BAR);
+}
+
+#[test]
+fn trimming_a_clip_moves_its_start_and_keeps_its_end() {
+    let mut s = session();
+    run(&mut s, "playlist.add_clip 1 1 0 1");
+    run(&mut s, "playlist.add_clip 1 1 2 2");
+    let bar = TICKS_PER_BAR;
+    run(&mut s, "playlist.trim_clip 1 2 2.5");
+    let c = s.project().playlist.clips[1];
+    assert_eq!(
+        (c.start, c.length, c.offset),
+        (5 * bar / 2, 3 * bar / 2, bar / 2)
+    );
+    // Back towards the source's start, but not before it.
+    run(&mut s, "playlist.trim_clip 1 2.5 2.25");
+    let c = s.project().playlist.clips[1];
+    assert_eq!((c.start, c.offset), (9 * bar / 4, bar / 4));
+    fails(&mut s, "playlist.trim_clip 1 2.25 1.5");
+    // Not past its end, and not over its neighbour.
+    fails(&mut s, "playlist.trim_clip 1 2.25 4");
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    let c = s.project().playlist.clips[1];
+    assert_eq!((c.start, c.length, c.offset), (2 * bar, 2 * bar, 0));
+    fails(&mut s, "playlist.trim_clip 1 2 0.5");
 }
 
 #[test]
@@ -1388,6 +1544,46 @@ fn removing_a_track_fixes_sends_pointing_at_and_past_it() {
         .map(|x| x.target)
         .collect();
     assert_eq!(targets, [3, 5]);
+}
+
+#[test]
+fn moving_a_track_carries_its_routing_sends_and_automation() {
+    let mut s = session();
+    for line in [
+        "channel.add_synth",
+        "channel.route 1 2",
+        "mixer.rename 2 Bass",
+        "mixer.set_send 1 2 0.5",
+        "mixer.set_send 3 4 0.7",
+        "mixer.add_effect 2 delay",
+        "automation.create mixer:2:1:mix",
+    ] {
+        run(&mut s, line);
+    }
+    run(&mut s, "mixer.move_track 2 right");
+    let p = s.project();
+    assert_eq!(p.mixer[3].name, "Bass");
+    assert_eq!(p.channels[0].mixer_track, 3);
+    assert_eq!(p.mixer[1].sends[0].target, 3);
+    assert_eq!(
+        (p.mixer[2].sends[0].target, p.mixer[2].sends[0].level),
+        (4, 0.7)
+    );
+    assert!(matches!(
+        p.automations[0].target,
+        musiccraft_project::AutomationTarget::EffectParam { track: 3, .. }
+    ));
+    run(&mut s, "edit.undo");
+    let p = s.project();
+    assert_eq!(p.mixer[2].name, "Bass");
+    assert_eq!(p.channels[0].mixer_track, 2);
+    assert_eq!(p.mixer[1].sends[0].target, 2);
+    fails(&mut s, "mixer.move_track 1 left");
+    fails(&mut s, "mixer.move_track 0 right");
+    run(&mut s, "mixer.set_send 2 3 0.5");
+    fails(&mut s, "mixer.move_track 2 right");
+    let last = s.project().mixer.len() - 1;
+    fails(&mut s, &format!("mixer.move_track {last} right"));
 }
 
 #[test]
@@ -1900,4 +2096,186 @@ fn patterns_have_no_colour_until_one_is_set() {
     assert_eq!(s.project().patterns[0].color, Some(2));
     fails(&mut s, "pattern.set_color 1 17");
     fails(&mut s, "pattern.set_color 9 1");
+}
+
+#[test]
+fn control_set_and_reset_move_a_control_and_undo_restores_it() {
+    let mut s = session();
+    run(&mut s, "control.set mixer:0:pan 1");
+    assert!((s.project().mixer[0].pan - 1.0).abs() < 1e-6);
+    run(&mut s, "control.reset mixer:0:pan");
+    assert!(s.project().mixer[0].pan.abs() < 1e-6);
+    run(&mut s, "edit.undo");
+    assert!((s.project().mixer[0].pan - 1.0).abs() < 1e-6);
+    run(&mut s, "edit.undo");
+    assert!(s.project().mixer[0].pan.abs() < 1e-6);
+    fails(&mut s, "control.set mixer:0:volume 1.5");
+}
+
+#[test]
+fn control_reset_returns_a_channel_volume_to_its_default() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.set_volume 1 0.2");
+    run(&mut s, "control.reset channel:1:volume");
+    let volume = s.project().channels[0].volume;
+    assert!(
+        (volume - musiccraft_project::DEFAULT_CHANNEL_VOLUME).abs() < 1e-4,
+        "{volume}"
+    );
+}
+
+#[test]
+fn set_effects_enabled_bypasses_a_whole_track_and_undo_restores_each_slot() {
+    let mut s = session();
+    run(&mut s, "mixer.add_effect 1 delay");
+    run(&mut s, "mixer.add_effect 1 reverb");
+    run(&mut s, "mixer.set_effect_enabled 1 2 off");
+    run(&mut s, "mixer.set_effects_enabled 1 off");
+    assert!(s.project().mixer[1].effects.iter().all(|e| !e.enabled));
+    run(&mut s, "edit.undo");
+    let enabled: Vec<bool> = s.project().mixer[1]
+        .effects
+        .iter()
+        .map(|e| e.enabled)
+        .collect();
+    assert_eq!(enabled, [true, false]);
+    run(&mut s, "mixer.set_effects_enabled 1 on");
+    assert!(s.project().mixer[1].effects.iter().all(|e| e.enabled));
+}
+
+#[test]
+fn playlist_track_heights_are_saved_undoable_and_bounded() {
+    let mut s = session();
+    run(&mut s, "playlist.set_track_height 2 150");
+    run(&mut s, "playlist.set_track_height 4 300");
+    let p = s.project();
+    assert_eq!(p.playlist.track_heights.get(&1), Some(&150));
+    assert!(p.to_json().unwrap().contains("track_heights"));
+    // 100% is the default and is not stored.
+    run(&mut s, "playlist.set_track_height 2 100");
+    assert_eq!(s.project().playlist.track_heights.len(), 1);
+    assert!(s.run_line("playlist.set_track_height 2 1000").is_err());
+    run(&mut s, "playlist.reset_track_heights");
+    assert!(s.project().playlist.track_heights.is_empty());
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.track_heights.get(&3), Some(&300));
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.track_heights.get(&1), Some(&150));
+}
+
+#[test]
+fn mixer_docks_are_saved_undoable_and_never_move_the_master() {
+    let mut s = session();
+    run(&mut s, "mixer.set_dock 4 right");
+    assert_eq!(s.project().mixer[4].dock, musiccraft_project::Dock::Right);
+    assert!(
+        s.project()
+            .to_json()
+            .unwrap()
+            .contains("\"dock\": \"right\"")
+    );
+    assert!(s.run_line("mixer.set_dock 0 right").is_err());
+    assert!(s.run_line("mixer.set_dock 4 top").is_err());
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().mixer[4].dock, musiccraft_project::Dock::Middle);
+}
+
+#[test]
+fn resetting_a_mixer_track_clears_it_and_undo_brings_it_back() {
+    let mut s = session();
+    run(&mut s, "mixer.rename 3 Vox");
+    run(&mut s, "mixer.set_volume 3 0.5");
+    run(&mut s, "mixer.add_effect 3 delay");
+    run(&mut s, "mixer.set_send 3 5 0.8");
+    run(&mut s, "mixer.set_track_color 3 4");
+    let before = s.project().mixer[3].clone();
+    run(&mut s, "mixer.reset_track 3");
+    let reset = &s.project().mixer[3];
+    assert_eq!(reset.name, "Insert 3");
+    assert!(reset.effects.is_empty() && reset.sends.is_empty());
+    assert_eq!((reset.volume, reset.color), (1.0, None));
+    assert!(reset.to_master);
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().mixer[3], before);
+    run(&mut s, "mixer.reset_track 0");
+    assert_eq!(s.project().mixer[0].name, "Master");
+    assert!(s.run_line("mixer.set_track 4 {\"bad\": 1}").is_err());
+}
+
+#[test]
+fn renaming_a_channel_group_moves_its_channels_and_undoes_in_one_step() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.add_synth");
+    let n = s.project().channels.len();
+    run(&mut s, &format!("channel.set_group {} Drums", n - 1));
+    run(&mut s, &format!("channel.set_group {n} Drums"));
+    run(&mut s, "channel.rename_group Drums \"Kit one\"");
+    let groups = |s: &Session| -> Vec<String> {
+        s.project().channels[n - 2..]
+            .iter()
+            .map(|c| c.group.clone())
+            .collect()
+    };
+    assert_eq!(groups(&s), ["Kit one", "Kit one"]);
+    run(&mut s, "edit.undo");
+    assert_eq!(groups(&s), ["Drums", "Drums"]);
+    run(&mut s, "channel.rename_group Drums");
+    assert_eq!(groups(&s), ["", ""]);
+    assert!(s.run_line("channel.rename_group Nothing Else").is_err());
+}
+
+#[test]
+fn an_auto_pattern_length_follows_its_notes_in_whole_bars() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    let n = s.project().channels.len();
+    run(&mut s, "pattern.set_length 1 32");
+    run(&mut s, "pattern.set_length 1 auto");
+    let bar = s.project().current_pattern().time_signature.bar_ticks();
+    let length = |s: &Session| s.project().current_pattern().length_ticks();
+    assert_eq!(length(&s), bar, "an empty auto pattern is one bar");
+    run(&mut s, &format!("note.add {n} {}t 24t 60 100", bar + 10));
+    assert_eq!(length(&s), 2 * bar, "a note in bar 2 makes two bars");
+    assert!(
+        s.project()
+            .to_json()
+            .unwrap()
+            .contains("\"auto_length\": true"),
+        "saved with the project"
+    );
+    run(&mut s, "pattern.set_length 1 8");
+    assert!(!s.project().current_pattern().auto_length);
+    run(&mut s, "edit.undo");
+    assert!(s.project().current_pattern().auto_length);
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    let pattern = s.project().current_pattern();
+    assert!(!pattern.auto_length && pattern.length_steps == 32);
+    assert!(s.run_line("pattern.set_length 1 automatic").is_err());
+}
+
+#[test]
+fn moving_a_marker_keeps_its_name_and_action() {
+    let mut s = session();
+    run(&mut s, "playlist.add_marker 2 Drop");
+    run(&mut s, "playlist.set_marker_action 2 pause");
+    run(&mut s, "playlist.add_marker 4 End");
+    run(&mut s, "playlist.move_marker 2 6");
+    let markers = &s.project().playlist.markers;
+    let bar = TICKS_PER_BAR;
+    assert_eq!(
+        markers.iter().map(|m| m.tick).collect::<Vec<_>>(),
+        [4 * bar, 6 * bar]
+    );
+    assert_eq!(markers[1].name, "Drop");
+    assert_eq!(markers[1].action, musiccraft_project::MarkerAction::Pause);
+    fails(&mut s, "playlist.move_marker 6 4");
+    fails(&mut s, "playlist.move_marker 3 5");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.markers[0].tick, 2 * bar);
+    run(&mut s, "playlist.set_time_signature 8 3/4");
+    fails(&mut s, "playlist.move_marker 8 9");
 }

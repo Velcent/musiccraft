@@ -1,5 +1,5 @@
 //! More piano roll tools: limit, LFO, scale levels, flam, randomize, chord
-//! progressions, articulate and claw machine. Each rewrites a channel's notes
+//! progressions, articulate and keep every Nth. Each rewrites a channel's notes
 //! in one undo step.
 
 use musiccraft_project::params::TICKS_PER_STEP;
@@ -55,10 +55,10 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             articulate,
         ),
         cmd(
-            "note.claw",
-            "note.claw <channel> <every> [offset] [@pattern]",
+            "note.keep_every",
+            "note.keep_every <channel> <every> [offset] [@pattern]",
             "Keep every Nth note (or chord) and drop the rest.",
-            claw,
+            keep_every,
         ),
     ]
 }
@@ -394,7 +394,7 @@ fn articulate(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     })
 }
 
-fn claw(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+fn keep_every(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 3)?;
     let every: usize = args.parse(1, "every")?;
     if every == 0 {
@@ -404,7 +404,7 @@ fn claw(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
         Some(_) => args.parse(2, "offset")?,
         None => 0,
     };
-    apply(project, args, "clawed", |notes| {
+    apply(project, args, "kept every Nth", |notes| {
         by_start(&notes)
             .into_values()
             .enumerate()

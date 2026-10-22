@@ -416,3 +416,18 @@ fn curve_shapes_bend_hold_and_step() {
     let back: Automation = serde_json::from_str(&json).unwrap();
     assert_eq!(back, automation);
 }
+
+#[test]
+fn mixer_solo_keeps_the_tracks_a_soloed_track_feeds_and_is_fed_by() {
+    let mut project = Project::new("Song");
+    assert_eq!(project.mixer_audible(), None);
+    project.mixer[1].sends.push(MixerSend {
+        target: 3,
+        level: 1.0,
+    });
+    project.mixer[3].solo = true;
+    let audible = project.mixer_audible().unwrap();
+    assert!(audible[1], "feeds the soloed track");
+    assert!(!audible[2], "silenced by solo");
+    assert!(audible[3]);
+}

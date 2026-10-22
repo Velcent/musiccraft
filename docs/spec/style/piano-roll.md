@@ -64,7 +64,7 @@ Slots follow the main-window section's shared header. Only the piano roll's own 
 | — | **Options group** (shared slot 2, first tool group) | — | — | — |
 | A2 | Note-tools menu button | Square icon button (own glyph, see Icons) | Click opens the note-tools menu directly: the same list as the window menu's Tools submenu (L4, item 3). A shortcut to that submenu, not a second copy of its logic. | Menu open: pressed look |
 | A3 | Snap button | Square icon button (own glyph) | Click opens the list of snap values (None, 1/4 step, 1/2 step, Step, Beat, Bar; existing). The current value is ticked in the list and named in the hint ("Snap: Step"). **Proposed (needs `piano-roll.md` updated first):** right-click sets the default length of new notes to the current snap value; mouse wheel over it steps through the values. | Hover lightens the plate. Snap set to None: glyph dimmed. |
-| A4 | Scale button | Square icon button (own glyph) | Click opens the scale menu: "No scale", then the root note (C to B) and scale type side by side (existing choices). **Proposed (needs `piano-roll.md` updated first):** a tick item at the end of this menu, "Fit edited notes to the scale": drawn and moved notes land on the nearest key of the highlighted scale; right-click on the button opens the root list directly. | No scale: glyph dimmed. Scale highlighted: glyph in the normal text tone. Fitting on: lit like an active tool. |
+| A4 | Scale button | Square icon button (own glyph) | Click opens the scale menu: "No scale", then the root note (C to B) and scale type side by side (existing choices). A tick item at the end of this menu (existing), "Fit edited notes to the scale": drawn and moved notes land on the nearest key of the highlighted scale; right-click on the button opens the root list directly. | No scale: glyph dimmed. Scale highlighted: glyph in the normal text tone. Fitting on: lit like an active tool. |
 | A5 | Chord button | Square icon button (own glyph) | Click opens the chord list ("Note", then the chord names; existing). While a chord is chosen, a click on empty grid draws the whole chord with its root on the clicked row (existing). "Note" returns to single notes. | Chord active: glyph in the highlight tone, so it is clear that clicks draw chords. The hint names the chord. |
 | — | Group gap | Hairline separator | — | — |
 | A6 | Tool buttons (shared slot 2, second tool group), in this order: **Draw** (P), **Paint** (B), **Delete** (D), **Mute** (T), **Slice** (C), **Select** (E), **Zoom** (Z), **Play** (Y) | Square icon buttons, all the same size, touching or nearly touching | Click picks the tool. Exactly one tool is always active. Keys come from the keymap (existing bindings, unchanged). The same tool choice applies to the playlist (existing). The order is the target; today's order differs (gaps). **Proposed (needs `piano-roll.md` updated first):** holding the right button while rolling the wheel over the tool group steps through the tools. Optional later additions, also proposed (needs `piano-roll.md` and `keymap.md` updated first): **Paint steps** (N, window-local), between Paint and Delete, which lays one-step hits on a fixed grid and toggles mute when clicking an existing note; **Ramp** (I, window-local), between Mute and Slice, which smooths stepped values in the lane into straight ramps. | Active: accent plate, glyph in the dark tone. Idle: raised plate, glyph in the text tone. Hover: plate one step lighter. |
@@ -87,7 +87,7 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
   - It is filled with the current **colour group** of new notes: the channel colour for group 1, otherwise the group's colour. The group number is written small in the lower-left corner.
   - Click opens a 4 × 4 grid of the 16 colour groups. Tiles are numbered 1 to 16, running down the first column and then down the next. The current group has a tick. Clicking a tile picks it and closes the grid. Own design: hovering a tile writes "Colour group N (MIDI channel N for plugins)" in the hint bar.
   - Along its right edge, stacked top to bottom: the **Porta** toggle (O) and the **Slide** toggle (S) (existing toggles and keys), drawn as small glyph-only switches on the swatch. Click toggles them. When on, new notes are portamento or slide notes. Own design, **Proposed (needs `piano-roll.md` updated first):** click-and-hold while adding a note cycles that note through normal → slide → porta.
-  - **Proposed (needs `piano-roll.md` and `keymap.md` updated first):** right-click on the block offers "Apply this colour to the selected notes" (Alt+C, window-local).
+  - Right-click on the block offers "Apply this colour to the selected notes" (Alt+C, window-local).
 - **B2 Left chevron**: scrolls left by one bar; holding it repeats.
 - **B3 Horizontal scroll and zoom bar**:
   - The thumb's length is the visible share of the pattern. Drag the body to scroll. Drag either end grip to zoom horizontally, keeping the opposite end fixed. Click the bare rail to page one screen.
@@ -120,14 +120,15 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
   - White keys run the full column width.
   - Black keys are shorter, reaching a little over half way across from the left edge. They sit on top of the white keys and have slightly rounded outer corners.
   - A thin seam separates neighbouring white keys at E–F and B–C.
-- **Labels**: by default only the C keys are labelled (for example "C5"; existing), small and right-aligned near the right edge, in the dark tone on the white key. **Proposed (needs `piano-roll.md` updated first):** when rows are tall enough, a keyboard-labels choice (window menu, View) labels all white keys, all keys, scale keys only, or none.
+- **Labels**: by default only the C keys are labelled (for example "C5"; existing), small and right-aligned near the right edge, in the dark tone on the white key. When rows are tall enough, a keyboard-labels choice (window menu, View, and the key menu) labels all white keys, all keys, scale keys only, or none.
 - **Hovered key**: shaded one step darker (white key) or lighter (black key). Its full name appears in the hint bar ("F#4 · click to hear").
 - **Pressed key** (click preview, or a note being dragged): filled with the accent role while held.
 - **Keys sounding during playback** (own design, optional): lit with the dimmed accent role while the channel's notes sound, so the keyboard shows what plays.
 - **Behaviour**:
   - Click and hold plays the key on the current channel (existing). Dragging up and down glides the preview from key to key.
   - Wheel scrolls vertically (existing, through the scroll area).
-  - **Proposed (needs `piano-roll.md` updated first):** Ctrl+click selects every note of that key and Ctrl+drag selects a range of keys; middle-drag up or down zooms vertically around the clicked key; right-click opens the key menu (L3).
+  - Ctrl+click selects every note of that key and Ctrl+drag selects a range of keys; middle-drag up or down zooms vertically around the clicked key.
+  - **Proposed (needs `piano-roll.md` updated first):** right-click opens the key menu (L3).
 
 ### E. Note grid
 
@@ -147,8 +148,9 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
 - **E5 Bar-group shading** (own design, optional View item): alternate groups of bars (four by default) are shaded very slightly differently, to help with long patterns.
 - **Empty-grid gestures**:
   - Existing: left-click with Draw adds a note at the snapped position with the last-used length; dragging right straight after adding sets its length; Ctrl+drag (any tool) or a drag with Select draws a selection rectangle, Shift adding to the selection; Select's click on empty space clears the selection; wheel scrolls vertically, and Ctrl+wheel zooms horizontally around the pointer.
-  - **Proposed (needs `piano-roll.md` updated first):** Shift+drag draws a note by its length; right-click on empty grid clears the selection; middle-drag pans in both directions (main-window section); Shift+wheel scrolls horizontally; Alt+wheel over a note changes the lane's property for that note (see K).
-  - **Proposed zoom keys (needs `keymap.md` updated first; window-local):** Page Up and Page Down zoom in and out horizontally around the pointer. Shift+1, Shift+2 and Shift+3 jump to three fixed zoom levels of our own choosing, Shift+4 fits the whole pattern, and Shift+5 zooms to the time selection. Plain 1–9 keep selecting patterns.
+  - Middle-drag pans in both directions (main-window section).
+  - **Proposed (needs `piano-roll.md` updated first):** Shift+drag draws a note by its length; right-click on empty grid clears the selection; Shift+wheel scrolls horizontally; Alt+wheel over a note changes the lane's property for that note (see K).
+  - **Zoom keys (existing, window-local):** Page Up and Page Down zoom in and out horizontally around the pointer. Shift+1, Shift+2 and Shift+3 jump to three fixed zoom levels of our own choosing (12, 24 and 48 points per step), Shift+4 fits the whole pattern, and Shift+5 zooms to the time selection. Plain 1–9 keep selecting patterns.
 
 ### F. Notes
 
@@ -185,7 +187,7 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
   - Hover over the body shows the move cursor; hover over the last few points of the right edge shows the horizontal resize cursor.
   - Existing: click selects the note; Shift+click toggles it in the selection; drag moves it (and the whole selection if it is selected); dragging the right edge resizes it (and all selected notes by the same amount); right-click deletes it; right-drag deletes every note the pointer crosses.
   - **Proposed (needs `piano-roll.md` updated first):** a click also makes the note's length the default for new notes; own extension: its velocity too.
-  - **Proposed (needs `piano-roll.md` updated first):** double-click opens the note-properties window (L5); Alt+wheel changes the current lane property of the note under the pointer (or of all selected notes), and Ctrl+Alt+wheel does it in fine steps.
+  - Double-click opens the note-properties window (L5); Alt+wheel changes the current lane property of the note under the pointer (or of all selected notes), and Ctrl+Alt+wheel does it in fine steps (existing).
 
 ### G. Playhead
 
@@ -203,7 +205,7 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
 - **Vertical scroll bar** (shared bar, main-window section): an up chevron at the top, a rail with a thumb whose length is the visible share of the 128 keys, and a down chevron at the bottom. Drag the thumb to scroll, click the rail to page, click the chevrons to step one key (hold to repeat).
 - When the view first opens for a channel it is centred on that channel's notes, or on C5 when the channel has none (existing).
 
-### J. Splitter (**Proposed (needs `piano-roll.md` and `window-layout.md` updated first)**)
+### J. Splitter
 
 - A thin strip across the full width between the grid and the property lane, with a small grip in its centre.
 - Drag it to move the boundary. Right-click restores the default lane height. Double-click hides or shows the lane (own design). Shift+Enter, window-local, also does this (needs `keymap.md`).
@@ -250,7 +252,7 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
   12. After a separator: the common window items (main-window section).
 
   Disabled items are dimmed and say in the hint bar why they are disabled (for example "Highlight a scale first", existing).
-- **L5 Note-properties window** (double-click a note; **Proposed (needs `piano-roll.md` updated first)**):
+- **L5 Note-properties window** (double-click a note; existing):
   - A small dialog titled with the note name ("Note properties — C5").
   - Top section: a row of our own knobs in our own order, Velocity, Release, Pan, Tune, Mod A, Mod B; then the Slide and Porta toggles and the colour-group swatch.
   - Lower section: start and length readouts in bar.beat.step. These are hidden when several notes are selected.
@@ -395,7 +397,7 @@ All glyphs are simple vector drawings in the style of `crates/musiccraft-ui/src/
   - Optional: "Paint steps (N): drag to lay one-step hits; click a note to mute it", "Ramp (I): drag across the lane to smooth steps into a ramp".
 - **Corner block**: "Colour group N". Slide and Porta keep their existing hints: "(S) New notes are slide notes: they bend the notes they overlap (in their colour group) to their key" and "(O) New notes are portamento notes: they glide from the previous note and retrigger". Proposed: reorder them to the house style, "Slide (S): …", "Porta (O): …".
 - **Lane targets**: Velocity, Pan, Release, Fine pitch (existing), and the two free modulation values. Their current labels "Mod X" and "Mod Y" are a proposed rename to **"Mod A"** and **"Mod B"** (our own names; same rename in the channel-rack section). The lane-name watermark uses the same words.
-- **Proposed renames of existing Tools items** (plain actions in our own words; commands unchanged): "Chop to grid" → "Split at grid lines", "Glue" → "Join touching notes", "Flip horizontally" → "Mirror in time", "Flip vertically" → "Mirror in pitch". The Shape item "Claw every 2nd" → "Keep every 2nd" (its hint, "Keep every second note or chord", already says this).
+- **Renamed Tools items** (plain actions in our own words; done 2026-10-22, commands unchanged except `note.claw`, now `note.keep_every`): "Chop to grid" → "Split at grid lines", "Glue" → "Join touching notes", "Flip horizontally" → "Mirror in time", "Flip vertically" → "Mirror in pitch". The Shape item "Claw every 2nd" → "Keep every 2nd" (its hint, "Keep every second note or chord", already says this).
 - **Other hints**: ruler "Click to seek · drag to select time · right-click for markers"; keyboard "‹key name› · click to hear · right-click to name this key"; splitter "Drag to resize the lane · right-click to reset"; stretch handle "Drag to stretch the selection in time · Alt ignores snap"; ghost button "Ghost notes: click for channels, right-click for options".
 - **Hint style**: sentence case, no final full stop. The tool or element name comes first with its key in parentheses, then a colon, then what a click or drag does. Several gestures are separated by " · ". Hints go to the hint bar, or appear as tooltips when the hint bar is hidden (`crates/musiccraft-editors/src/hint.rs`).
 - **Number formats**:
@@ -430,32 +432,19 @@ All glyphs are simple vector drawings in the style of `crates/musiccraft-ui/src/
 
 Ordered by visual impact. References are to the current code and to `docs/screenshots/piano-roll.png`.
 
-1. **Header is two wrapped rows of text widgets, not one row of small tools.** Slide and Porta are text toggles, and colour, channel, snap, chord, scale and velocity are text combos. In the screenshot the header wraps ("No scale", "Velocity 100" on a second line). The guide makes snap, scale and chord square icon buttons (A3–A5), adds the note-tools button (A2), moves colour, slide and porta into the corner block (B1) and velocity into the window menu, and makes the title the channel picker (A8). `crates/musiccraft-ui/src/piano_roll.rs` `toolbar()` (lines 413–554). `docs/spec/piano-roll.md` ("The toolbar wraps onto a second line in a narrow window") must change first.
-2. **Header order and window buttons.** Our header puts a collapse arrow at the far left and the title before the tools, and has only a close cross at the right (`crates/musiccraft-ui/src/chrome.rs` `header()`, lines 19–73; `docs/spec/window-layout.md` "Window header"). The shared header puts the window menu first, the tools before the title, and collapse, maximize/restore and close at the right. `window-layout.md` changes first.
-3. **No scroll/zoom row, corner block, or right column.** The view uses the toolkit's default scroll bars (`ScrollArea::both()`, `piano_roll.rs` line 646). There is no horizontal bar with a note overview, no draggable zoom ends, no chevron buttons, and no zoom boxes.
-4. **No vertical zoom at all.** `key_height` is fixed (`piano_roll.rs` line 138) and nothing changes it (B5, D middle-drag), and there are no zoom keys (Page Up/Down, Shift+1–5) in `docs/spec/keymap.md` or `default.keymap`.
-5. **Ruler is paint-only.** It has bar numbers and the playhead triangle only, with no markers, time-signature or key tabs, seek, or time selection. The grid's editable area excludes the ruler, so clicks there do nothing. `draw_ruler()` lines 1032–1056; `edit()` `editable` closure lines 1526–1530. Compare the playlist ruler in `crates/musiccraft-ui/src/playlist.rs` (lines 1060–1300), which already has markers, seek and loop.
-6. **Selected notes are only outlined.** A thin `theme::TEXT` stroke is drawn instead of a whole-body selection tone (`piano_roll.rs` lines 768–778; `piano-roll.md` "Selected notes are outlined").
-7. **Property lane is plain.** The stems are thin lines with a dot and have no length tail. There are no grid lines in the lane, no selected-stem tone, no ghost stems, no faint lane-name watermark, no splitter (fixed `LANE_HEIGHT`, line 21, matching the fixed height in `window-layout.md`), and no lane zoom box. `velocity_lane()` lines 2001–2088.
-8. **Ghost notes use faded channel colours**, not one neutral tone (`piano_roll.rs` lines 676–689; `piano-roll.md` "show faintly in their channel colours" changes first). There are no ghosts from overlapping clips, no ghost-channel panel or header button, and no double-right-click to switch channel.
-9. **Keyboard colours are hard-coded** instead of theme tokens (white-key, black-key and seam literals at lines 2111–2112 and 2138). There is no hover shading, no key menu or custom key names, labels only on C keys, and no Ctrl+click key selection. `keyboard()` lines 2090–2189.
-10. **Scale highlighting is an accent tint over the key rows**, not lighter in-scale and darker out-of-scale rows replacing the key shading. The tint is a hard-coded literal at lines 1019–1026. There is no fit-to-scale option.
-11. **Tool order differs.** Ours is Draw, Paint, Delete, Select, Mute, Slice, Play, Zoom; the target is Draw, Paint, Delete, Mute, Slice, Select, Zoom, Play. There is no right-hold + wheel tool switching. `piano_roll.rs` lines 420–457. The Play tool reuses the transport play glyph (`Icon::Play`).
-12. **No play/pause button in the header** (A7) and no note-tools button (A2).
-13. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
-14. **Note labels vanish below a fixed width** instead of being cut with an ellipsis. The label size is fixed and there is no tall-row property view. `draw_note()` lines 903–939.
-15. **Slide and porta marks sit at the note's start**, not its right end, and are drawn in a hard-coded white at partial strength instead of a token (lines 739–767). The selection-rectangle fill uses a hard-coded accent literal (line 841), and past-end shading a hard-coded black (line 981). These should use `theme::TEXT`, the proposed `theme::SELECTION_FILL` and `theme::PAST_END`.
-16. **Window menu is flat**: zoom −/+ buttons, Quantize, Tools, transpose an octave, clear. It has no File / Edit / Select / View / Snap / Zoom / Markers submenus. `options_menu()` lines 558–622.
-17. **Clicking a note does not make its length and velocity the new defaults.** `last_length` changes only after a drag (lines 1661–1663). Velocity comes from the header field. Snap has no right-click.
-18. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
-19. **Wording**:
-    - The Shape item "Claw every 2nd" (line 1243) and its command `note.claw` (`crates/musiccraft-commands/src/cmds/note_gen.rs`, the `articulate_and_claw` test in `crates/musiccraft-commands/src/cmds/tests.rs`, and `docs/spec/piano-roll.md`) borrow a word from a coined tool name. Rename the label to "Keep every 2nd" and the command to, for example, `note.keep_every`, with its spec and test; the spec changes first.
-    - "Chop to grid", "Glue", "Flip horizontally" and "Flip vertically" in `tools_menu()` (from line 1103) follow the manual's tool list too closely; proposed renames are in Labels.
-    - "Mod X" / "Mod Y" in `LaneMode` (lines 1892–1919), the lane hint (line 2038) and `piano-roll.md` become "Mod A" / "Mod B".
-    - The colour combo labels "Colour: channel" / "Colour N" (lines 468–485) become the swatch's group number.
-20. **Default size**: the window opens almost filling the workspace (`default_size`, lines 376–381). The target is about half the workspace, over its right half.
-21. **Cursors**: Paint, Delete, Mute, Slice, Play and Zoom keep the Draw cursors (crosshair or grab). There is no resize cursor between touching notes and no move (four-way) cursor on note bodies (`edit()` lines 1782–1790).
-22. **Keymap**: Page Up/Down, Shift+1–5, Alt+V, Alt+C, Shift+F, Shift+Enter, N and I over the piano roll are new window-local bindings for `docs/spec/keymap.md` (a new "Over the piano roll" section) and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today.
+1. **Header pickers lack value text.** The pattern play button (A7) is in, after the pickers. Snap, scale and chord are square icon buttons with their value in the hint and ticked in their list, the note-tools button opens the tools list, colour/porta/slide sit on the corner block, velocity is in the window menu and the title has its channel chevron (A2–A5, A8). Still missing: the small value text after each picker when the window is wide, wheel and right-click on the scale and chord pickers and the title (the snap button has both), and the fit-to-scale item. `crates/musiccraft-ui/src/piano_roll.rs` (`pickers`, `channel_picker`).
+2. **Scroll/zoom row details.** The row, corner block, vertical bar and zoom box are in (`crates/musiccraft-ui/src/scrollbars.rs`). Missing: the bar-range readout in the hint while dragging a grip, right-drag on the thumb for two-way scrolling, incremental rail paging, the thin-bars setting, and the lane zoom box (K6).
+3. **Zoom details.** The zoom box sets the key-row height (6 to 30 points) and double-click resets it, and the horizontal zoom keys are bound. Page Up and Page Down keep the view's left edge instead of zooming around the pointer. Middle-drag pans the view.
+4. **Ruler has no markers.** A click seeks, a drag makes a time selection (band, grid wash, notes selected), beat ticks rise from the bottom and numbers thin out when bars are narrow. Still missing: markers, time-signature and key tabs, the pattern's signature at the start, and the right-click menu. `crates/musiccraft-ui/src/piano_roll.rs` (`ruler`, `draw_ruler`).
+5. **Property lane details.** Stems have heads and length tails, take the selection tone when selected, show ghost stems behind, and the lane has quieter grid lines and a faint name watermark. The splitter resizes, hides (double-click, Shift+Enter) and resets the lane. Alt+click on a stem resets it to the default. Still missing: the lane zoom box, Shift+drag line drawing and the drag readout. `velocity_lane()`.
+6. **Ghost notes have no panel.** Other channels' notes are drawn in one neutral tone (`theme::GHOST_NOTE`), but there are no ghosts from overlapping clips, no ghost-channel panel or header button, and no double-right-click to switch channel.
+7. **Keyboard labels and menu.** Keys shade on hover with their name in the hint, and Ctrl+click selects a key's notes. Ctrl+drag selects a range of keys, middle-drag zooms, and the labels choice is in View and on a right-click key menu. Still missing: custom key names and the drawing-style choice in the key menu. `keyboard()`.
+8. **No tool switching from the wheel.** The tools follow the target order and Audition (renamed from Play) has its own glyph, but there is no right-hold + wheel tool switching, and the optional Paint steps and Ramp tools are not there.
+9. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
+10. **No tall-row property view.** Note labels are cut with an ellipsis, but the label size is fixed. `draw_note()`.
+11. **Window menu is incomplete.** It now has File, Edit, Tools, Chord, Snap, Select and Zoom submenus and the velocity field (`options_menu()`). Edit has Mute, Unmute and Apply the current colour, Select has muted notes and notes of the current colour, and Zoom has Zoom to selection. View has ghost notes, keyboard labels, note labels and the property lane. Still missing: MIDI import, View's other items (ghosts from overlapping clips, scale highlighting, bar-group shading, follow playhead), the Markers submenu, and the Channel and Lane submenus.
+12. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
+13. **Keymap**: Page Up/Down and Shift+1–5 are bound (`keymap.md`, "Over the piano roll"). Alt+C applies the current colour and Shift+Enter hides the lane. Still unbound: Alt+V, Shift+F, N and I, which wait for the features they drive (ghost panel, lane targets, Paint steps, Ramp).
 
 ## Sources
 

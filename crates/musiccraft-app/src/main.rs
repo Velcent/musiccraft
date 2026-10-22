@@ -115,11 +115,26 @@ enum Pending {
 }
 
 /// The answer to "save changes first?".
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum UnsavedChoice {
     Save,
     Discard,
     Cancel,
+}
+
+/// Enter answers the "save changes first?" box with its default button,
+/// Save, and Esc with Cancel.
+fn unsaved_key(ctx: &egui::Context) -> Option<UnsavedChoice> {
+    use egui::{Key, Modifiers};
+    ctx.input_mut(|i| {
+        if i.consume_key(Modifiers::NONE, Key::Enter) {
+            Some(UnsavedChoice::Save)
+        } else if i.consume_key(Modifiers::NONE, Key::Escape) {
+            Some(UnsavedChoice::Cancel)
+        } else {
+            None
+        }
+    })
 }
 
 /// Commands that replace the open project, losing unsaved changes.
@@ -278,6 +293,11 @@ impl App {
         // An autosave left behind means the last session did not close
         // properly; keep it safe from this session's autosaves.
         ui.autosave_path = autosave::take_crash_backup().map(|p| p.display().to_string());
+        if options.open.is_none()
+            && let Some(layout) = &settings.window_layout
+        {
+            musiccraft_ui::restore_window_layout(ctx, &mut ui, layout);
+        }
         if let Some(windows) = &options.open {
             let w = &mut ui.windows;
             w.channel_rack = windows.iter().any(|n| n == "channel_rack");
@@ -560,7 +580,7 @@ impl App {
             status.peaks = (0..tracks).map(|t| meters.take_peak(t)).collect();
             status.load = meters.load();
             status.pitches = pitch_readings(self.session.project(), meters);
-            // Enough for the spectrum analyzer; the toolbar scope uses the end.
+            // Enough for the spectrum analyser; the toolbar scope uses the end.
             let mut scope = vec![0.0; 2048];
             meters.scope(&mut scope);
             status.scope = scope;
@@ -1147,6 +1167,7 @@ impl App {
             return;
         }
         if self.closing || !self.has_unsaved_changes() {
+            self.save_window_layout(ctx);
             self.closing = true;
             autosave::discard();
             return;
@@ -1165,7 +1186,7 @@ impl App {
             Pending::Run(_) => "continuing",
         };
         let name = self.session.project().name().to_owned();
-        let mut choice = None;
+        let mut choice = unsaved_key(ctx);
         egui::Window::new("Unsaved changes")
             .collapsible(false)
             .resizable(false)
@@ -1175,13 +1196,16 @@ impl App {
                     "Save the changes to \u{201c}{name}\u{201d} before {before}?"
                 ));
                 ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
+                    // The default button (Enter) has an accent edge.
+                    let save = egui::Button::new("Save")
+                        .stroke(egui::Stroke::new(1.0, ui.visuals().selection.stroke.color));
+                    if ui.add(save).on_hover_text("Enter").clicked() {
                         choice = Some(UnsavedChoice::Save);
                     }
                     if ui.button("Don't save").clicked() {
                         choice = Some(UnsavedChoice::Discard);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button("Cancel").on_hover_text("Esc").clicked() {
                         choice = Some(UnsavedChoice::Cancel);
                     }
                 });
@@ -1212,10 +1236,23 @@ impl App {
         }
     }
 
+    /// Keeps the window arrangement in the settings, for the next start.
+    fn save_window_layout(&mut self, ctx: &egui::Context) {
+        let layout = musiccraft_ui::window_layout(ctx, &self.ui);
+        if self.settings.window_layout.as_ref() == Some(&layout) {
+            return;
+        }
+        self.settings.window_layout = Some(layout);
+        if let Err(err) = settings::save(&self.settings) {
+            eprintln!("cannot save the window layout: {err}");
+        }
+    }
+
     /// Carries out an action once unsaved changes are saved or discarded.
     fn proceed(&mut self, ctx: &egui::Context, pending: Pending) {
         match pending {
             Pending::Close => {
+                self.save_window_layout(ctx);
                 self.closing = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -1270,6 +1307,23 @@ impl eframe::App for App {
         let history = History {
             undo: self.session.undo_label().map(ToString::to_string),
             can_redo: self.session.redo_depth() > 0,
+            steps: self
+                .session
+                .history()
+                .0
+                .iter()
+                .take(15)
+                .map(ToString::to_string)
+                .collect(),
+            redo_steps: self
+                .session
+                .history()
+                .1
+                .iter()
+                .take(15)
+                .map(ToString::to_string)
+                .collect(),
+            unsaved: self.has_unsaved_changes(),
         };
         self.update_overview();
         self.update_clip_audio();
@@ -1383,4 +1437,35 @@ fn main() -> eframe::Result {
             Ok(Box::new(App::new(&options, &creation.egui_ctx)))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pressed(key: egui::Key) -> Option<UnsavedChoice> {
+        let ctx = egui::Context::default();
+        let event = |pressed| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let input = egui::RawInput {
+            events: vec![event(true), event(false)],
+            ..Default::default()
+        };
+        let mut choice = None;
+        let mut output = ctx.run_ui(input, |ui| choice = unsaved_key(ui.ctx()));
+        output.textures_delta.clear();
+        choice
+    }
+
+    #[test]
+    fn enter_saves_and_esc_cancels_the_unsaved_changes_box() {
+        assert_eq!(pressed(egui::Key::Enter), Some(UnsavedChoice::Save));
+        assert_eq!(pressed(egui::Key::Escape), Some(UnsavedChoice::Cancel));
+        assert_eq!(pressed(egui::Key::A), None);
+    }
 }

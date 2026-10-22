@@ -449,7 +449,7 @@ fn fill(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
         None => 0,
     };
     let target = Target::resolve(project, args)?;
-    let steps = project.patterns[target.pattern].length_steps;
+    let steps = project.patterns[target.pattern].step_span();
     apply(project, args, "filled", |mut notes| {
         let mut step = offset;
         while step < steps {
@@ -476,7 +476,7 @@ fn shift(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError
     args.expect(2, 2)?;
     let steps: i64 = args.parse(1, "step count")?;
     let target = Target::resolve(project, args)?;
-    let length = i64::from(project.patterns[target.pattern].length_steps.max(1) * TICKS_PER_STEP);
+    let length = i64::from(project.patterns[target.pattern].step_span().max(1) * TICKS_PER_STEP);
     let by = steps * i64::from(TICKS_PER_STEP);
     apply(project, args, "shifted", |notes| {
         notes

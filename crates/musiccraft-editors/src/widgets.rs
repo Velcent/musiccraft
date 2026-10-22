@@ -20,7 +20,156 @@ pub struct KnobOutput {
 /// or a double-click (see `docs/spec/controls.md`).
 #[must_use]
 pub fn wants_reset(response: &Response) -> bool {
-    response.middle_clicked() || response.double_clicked()
+    response.middle_clicked()
+        || response.double_clicked()
+        || (response.clicked() && response.ctx.input(|i| i.modifiers.alt))
+}
+
+/// How far past the default (as a share of the range) a drag must travel
+/// before it leaves the detent.
+const DETENT: f32 = 0.1;
+
+fn detent_id(widget: egui::Id) -> egui::Id {
+    widget.with("detent")
+}
+
+/// Whether `response`'s control is parked at its default by the detent.
+fn at_detent(response: &Response) -> bool {
+    response
+        .ctx
+        .data(|d| d.get_temp::<f32>(detent_id(response.id)))
+        .is_some()
+}
+
+/// Applies the default detent to a drag from `t` to `proposed` (0..1
+/// positions): crossing or reaching `default` parks the value there until the
+/// drag has gone [`DETENT`] further. Ctrl skips it.
+fn detent(ui: &Ui, response: &Response, t: f32, proposed: f32, default: f32) -> f32 {
+    let id = detent_id(response.id);
+    let parked = ui.data(|d| d.get_temp::<f32>(id));
+    let skip = ui.input(|i| i.modifiers.command);
+    let (value, parked) = match parked {
+        _ if skip => (proposed, None),
+        Some(past) => {
+            let past = past + (proposed - t);
+            if past.abs() > DETENT {
+                (default + past - DETENT * past.signum(), None)
+            } else {
+                (default, Some(past))
+            }
+        }
+        None => {
+            let crosses = t != default
+                && (proposed == default || (t - default).signum() != (proposed - default).signum());
+            if crosses {
+                (default, Some(0.0))
+            } else {
+                (proposed, None)
+            }
+        }
+    };
+    ui.data_mut(|d| match parked {
+        Some(past) => {
+            d.insert_temp(id, past);
+        }
+        None => {
+            d.remove_temp::<f32>(id);
+        }
+    });
+    value.clamp(0.0, 1.0)
+}
+
+fn status_id(widget: egui::Id) -> egui::Id {
+    widget.with("status-anchor")
+}
+
+/// Records where `response`'s control wants its status dot: just outside a
+/// knob's track at one o'clock, or on a fader cap's top edge.
+fn set_status_anchor(response: &Response, pos: Pos2) {
+    response
+        .ctx
+        .data_mut(|d| d.insert_temp(status_id(response.id), pos));
+}
+
+/// Where the status dot of `response`'s control goes: the spot the control
+/// recorded, or its top-right corner.
+#[must_use]
+pub fn status_anchor(response: &Response) -> Pos2 {
+    response
+        .ctx
+        .data(|d| d.get_temp(status_id(response.id)))
+        .unwrap_or(response.rect.right_top() + vec2(-3.0, 3.0))
+}
+
+/// The point at `angle` (radians, 0 = twelve o'clock, clockwise) on a circle.
+fn clock(center: Pos2, radius: f32, angle: f32) -> Pos2 {
+    center + vec2(angle.sin(), -angle.cos()) * radius
+}
+
+/// One o'clock, in radians from twelve.
+const ONE_OCLOCK: f32 = PI / 6.0;
+
+/// The status dot that marks an automated or driven control (style guide,
+/// controls M): a small filled dot in the automation tone.
+pub fn status_dot(painter: &egui::Painter, pos: Pos2) {
+    painter.circle_filled(pos, 2.0, theme::AUTOMATION);
+}
+
+/// Pixels of vertical drag for a knob's whole range, and with Shift held.
+const KNOB_DRAG: f32 = 150.0;
+const KNOB_DRAG_FINE: f32 = 600.0;
+/// Wheel points for a knob's whole range.
+const KNOB_WHEEL: f32 = 600.0;
+
+/// The one knob rule for every size, over a 0..1 position: vertical drag
+/// (finer with Shift), the wheel, and reset to `default`.
+fn knob_input(ui: &Ui, response: &Response, t: f32, default: f32) -> Option<f32> {
+    let mut changed = None;
+    if response.dragged_by(PointerButton::Primary) {
+        let fine = ui.input(|i| i.modifiers.shift);
+        let delta = -response.drag_delta().y / if fine { KNOB_DRAG_FINE } else { KNOB_DRAG };
+        if delta != 0.0 {
+            changed = Some(detent(
+                ui,
+                response,
+                t,
+                (t + delta).clamp(0.0, 1.0),
+                default,
+            ));
+        }
+    }
+    if response.drag_stopped() {
+        ui.data_mut(|d| d.remove_temp::<f32>(detent_id(response.id)));
+    }
+    if response.hovered() {
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        if scroll != 0.0 {
+            changed = Some((t + scroll / KNOB_WHEEL).clamp(0.0, 1.0));
+        }
+    }
+    if wants_reset(response) {
+        changed = Some(default);
+    }
+    changed
+}
+
+/// Whether a knob gesture began this frame: a drag, a reset or a wheel turn.
+/// Each is its own undo step.
+fn knob_started(ui: &Ui, response: &Response) -> bool {
+    response.drag_started_by(PointerButton::Primary)
+        || wants_reset(response)
+        || (response.hovered()
+            && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
+            && !response.dragged())
+}
+
+/// The knob body: lighter while hovered or dragged.
+fn knob_body(response: &Response) -> Color32 {
+    if response.hovered() || response.dragged() {
+        theme::RAISED_HOVER
+    } else {
+        theme::RAISED
+    }
 }
 
 /// A rotary knob. Drag vertically to change; middle-click or double-click
@@ -36,46 +185,60 @@ pub fn knob(
     let size = 22.0;
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click_and_drag());
     let range = (max - min).max(1e-6);
-    let mut changed = None;
-    if response.dragged_by(PointerButton::Primary) {
-        let fine = ui.input(|i| i.modifiers.shift);
-        let speed = if fine { 1_000.0 } else { 160.0 };
-        let delta = -response.drag_delta().y / speed * range;
-        if delta != 0.0 {
-            changed = Some((value + delta).clamp(min, max));
-        }
-    }
-    if wants_reset(&response) {
-        changed = Some(default);
-    }
+    let to_t = |v: f32| ((v - min) / range).clamp(0.0, 1.0);
+    let changed = knob_input(ui, &response, to_t(value), to_t(default)).map(|t| min + t * range);
     let shown = changed.unwrap_or(value);
     let painter = ui.painter_at(rect.expand(2.0));
     let center = rect.center();
     let radius = size / 2.0 - 2.0;
-    painter.circle_filled(center, radius, theme::RAISED);
+    painter.circle_filled(center, radius, knob_body(&response));
+    // A thin ring keeps a centred knob visible on dark wells.
+    painter.circle_stroke(center, radius, Stroke::new(1.0, theme::GRID_BAR));
     let t = ((shown - min) / range).clamp(0.0, 1.0);
+    // A disabled knob keeps its body; only its marks turn faint.
+    let enabled = ui.is_enabled();
     let start = PI * 0.75;
     let sweep = PI * 1.5;
     let angle_of = |t: f32| start + sweep * t;
+    let arc = |from: f32, to: f32| -> Vec<Pos2> {
+        (0..=16)
+            .map(|i| {
+                let a = angle_of(from + (to - from) * i as f32 / 16.0);
+                center + vec2(a.cos(), a.sin()) * (radius + 1.0)
+            })
+            .collect()
+    };
+    // The unlit track, so a knob at its minimum still reads as a knob.
+    painter.add(egui::Shape::line(
+        arc(0.0, 1.0),
+        Stroke::new(2.0, theme::PANEL),
+    ));
     let from = if bipolar { 0.5 } else { 0.0 };
-    let arc: Vec<Pos2> = (0..=16)
-        .map(|i| {
-            let k = from + (t - from) * i as f32 / 16.0;
-            let a = angle_of(k);
-            center + vec2(a.cos(), a.sin()) * (radius + 1.0)
-        })
-        .collect();
-    painter.add(egui::Shape::line(arc, Stroke::new(2.0, theme::ACCENT)));
+    painter.add(egui::Shape::line(
+        arc(from, t),
+        Stroke::new(2.0, theme::ACCENT),
+    ));
+    if at_detent(&response) {
+        let a = angle_of(to_t(default));
+        let tick = center + vec2(a.cos(), a.sin()) * (radius + 1.0);
+        painter.circle_filled(tick, 1.5, theme::HIGHLIGHT);
+    }
     let a = angle_of(t);
     painter.line_segment(
         [center, center + vec2(a.cos(), a.sin()) * (radius - 2.0)],
-        Stroke::new(2.0, theme::TEXT),
+        Stroke::new(
+            2.0,
+            if enabled {
+                theme::TEXT
+            } else {
+                theme::TEXT_FAINT
+            },
+        ),
     );
-    // A reset is its own undo step.
-    let started = response.drag_started_by(PointerButton::Primary) || wants_reset(&response);
+    set_status_anchor(&response, clock(center, radius + 3.0, ONE_OCLOCK));
     KnobOutput {
         changed,
-        started,
+        started: knob_started(ui, &response),
         response,
     }
 }
@@ -93,29 +256,13 @@ pub fn labeled_knob(
 ) -> KnobOutput {
     let size = vec2(52.0, 60.0);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-    let mut changed = None;
-    if response.dragged_by(PointerButton::Primary) {
-        let fine = ui.input(|i| i.modifiers.shift);
-        let delta = -response.drag_delta().y / if fine { 600.0 } else { 150.0 };
-        if delta != 0.0 {
-            changed = Some((t + delta).clamp(0.0, 1.0));
-        }
-    }
-    if response.hovered() {
-        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-        if scroll != 0.0 {
-            changed = Some((t + scroll / 600.0).clamp(0.0, 1.0));
-        }
-    }
-    if wants_reset(&response) {
-        changed = Some(default);
-    }
+    let changed = knob_input(ui, &response, t, default);
     let shown = changed.unwrap_or(t);
     let painter = ui.painter_at(rect);
     let center = pos2(rect.center().x, rect.top() + 22.0);
     let radius = 15.0;
     painter.circle_filled(center, radius + 3.0, theme::PANEL_DARK);
-    painter.circle_filled(center, radius - 2.0, theme::RAISED);
+    painter.circle_filled(center, radius - 2.0, knob_body(&response));
     let start = PI * 0.75;
     let sweep = PI * 1.5;
     let angle = |k: f32| start + sweep * k;
@@ -136,6 +283,11 @@ pub fn labeled_knob(
         arc(from, shown),
         Stroke::new(3.0, theme::ACCENT),
     ));
+    if at_detent(&response) {
+        let a = angle(default);
+        let tick = center + vec2(a.cos(), a.sin()) * (radius + 1.0);
+        painter.circle_filled(tick, 2.0, theme::HIGHLIGHT);
+    }
     let a = angle(shown);
     painter.line_segment(
         [
@@ -144,26 +296,22 @@ pub fn labeled_knob(
         ],
         Stroke::new(2.0, theme::TEXT),
     );
+    set_status_anchor(&response, clock(center, radius + 5.0, ONE_OCLOCK));
     let active = response.hovered() || response.dragged();
     painter.text(
         pos2(rect.center().x, rect.bottom() - 9.0),
         egui::Align2::CENTER_CENTER,
         if active { value } else { label },
-        egui::FontId::proportional(10.5),
+        egui::FontId::proportional(theme::FONT_LABEL),
         if active {
-            theme::PLAYHEAD
+            theme::LCD_TEXT
         } else {
             theme::TEXT_DIM
         },
     );
-    // A reset is its own undo step.
-    let started = response.drag_started_by(PointerButton::Primary) || wants_reset(&response);
     KnobOutput {
         changed,
-        started: started
-            || (response.hovered()
-                && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
-                && !response.dragged()),
+        started: knob_started(ui, &response),
         response,
     }
 }
@@ -177,12 +325,36 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
     let travel = rect.shrink2(vec2(0.0, 10.0));
     let mut changed = None;
     let position = gain_to_fader(gain, max);
-    if response.dragged_by(PointerButton::Primary) {
+    let cap_y = travel.bottom() - travel.height() * position;
+    // A press on the rail away from the cap glides the cap toward the
+    // pointer while held, instead of jumping.
+    let on_rail = ui
+        .input(|i| i.pointer.press_origin())
+        .is_some_and(|p| (p.y - cap_y).abs() > 8.0);
+    let mut glide_started = false;
+    let primary = ui.input(|i| i.pointer.primary_down());
+    if on_rail && primary && response.is_pointer_button_down_on() {
+        if let Some(p) = ui.input(|i| i.pointer.latest_pos()) {
+            let target = ((travel.bottom() - p.y) / travel.height()).clamp(0.0, 1.0);
+            let step = (target - position).clamp(-0.02, 0.02);
+            if step.abs() > 1e-4 {
+                changed = Some(fader_to_gain(position + step, max));
+                ui.ctx().request_repaint();
+            }
+            glide_started = ui.input(|i| i.pointer.primary_pressed());
+        }
+    } else if response.dragged_by(PointerButton::Primary) {
         let fine = ui.input(|i| i.modifiers.shift);
         let delta = -response.drag_delta().y / travel.height() * if fine { 0.25 } else { 1.0 };
         if delta != 0.0 {
-            changed = Some(fader_to_gain(position + delta, max));
+            let unity = gain_to_fader(1.0, max);
+            let proposed = (position + delta).clamp(0.0, 1.0);
+            let moved = detent(ui, &response, position, proposed, unity);
+            changed = Some(fader_to_gain(moved, max));
         }
+    }
+    if response.drag_stopped() {
+        ui.data_mut(|d| d.remove_temp::<f32>(detent_id(response.id)));
     }
     if response.hovered() {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y);
@@ -231,7 +403,9 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
         ],
         Stroke::new(2.0, theme::ACCENT),
     );
-    let started = response.drag_started_by(PointerButton::Primary)
+    set_status_anchor(&response, cap.right_top() + vec2(-4.0, 4.0));
+    let started = (response.drag_started_by(PointerButton::Primary) && !on_rail)
+        || glide_started
         || wants_reset(&response)
         || (response.hovered()
             && ui.input(|i| i.smooth_scroll_delta.y != 0.0)
@@ -253,6 +427,84 @@ pub fn dot(ui: &mut Ui, on: bool, color: Color32) -> Response {
     response
 }
 
+/// Runs `add_contents` with its widgets disabled when `enabled` is false.
+/// Unlike egui's own fade, a disabled control keeps its fill: only its text
+/// and glyphs turn `TEXT_FAINT`, and it never reacts to hover.
+pub fn enabled_ui<R>(ui: &mut Ui, enabled: bool, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.scope(|ui| {
+        if !enabled {
+            disable(ui);
+        }
+        add_contents(ui)
+    })
+    .inner
+}
+
+/// Adds `widget`, disabled when `enabled` is false (see [`enabled_ui`]).
+pub fn add_enabled(ui: &mut Ui, enabled: bool, widget: impl egui::Widget) -> Response {
+    enabled_ui(ui, enabled, |ui| ui.add(widget))
+}
+
+/// Disables the rest of `ui` in our style: no opacity fade, faint text.
+fn disable(ui: &mut Ui) {
+    let opacity = ui.opacity();
+    ui.disable();
+    ui.set_opacity(opacity);
+    let visuals = &mut ui.style_mut().visuals;
+    visuals.override_text_color = Some(theme::TEXT_FAINT);
+    for widget in [
+        &mut visuals.widgets.noninteractive,
+        &mut visuals.widgets.inactive,
+        &mut visuals.widgets.hovered,
+        &mut visuals.widgets.active,
+    ] {
+        widget.fg_stroke.color = theme::TEXT_FAINT;
+    }
+}
+/// An LED switch: a round light with its label to the right. Clicking the
+/// light or the label toggles `on`; the response reports `changed()`.
+pub fn led_switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) -> Response {
+    let galley = label.into().into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Body,
+    );
+    let gap = if galley.size().x > 0.0 { 5.0 } else { 0.0 };
+    let size = vec2(14.0 + gap + galley.size().x, galley.size().y.max(16.0));
+    let (rect, mut response) = ui.allocate_exact_size(size, Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    let centre = pos2(rect.left() + 7.0, rect.center().y);
+    let painter = ui.painter();
+    let ring = if response.hovered() {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
+    painter.circle_filled(centre, 5.5, theme::PANEL_DARK);
+    if *on {
+        painter.circle_filled(centre, 4.0, theme::ACCENT);
+    }
+    painter.circle_stroke(centre, 5.5, Stroke::new(1.0, ring));
+    let text = if ui.is_enabled() {
+        theme::TEXT
+    } else {
+        theme::TEXT_FAINT
+    };
+    painter.galley(
+        pos2(
+            rect.left() + 14.0 + gap,
+            rect.center().y - galley.size().y / 2.0,
+        ),
+        galley,
+        text,
+    );
+    response
+}
+
 /// Converts linear gain to a 0..1 meter position (-60 dB .. +6 dB).
 fn meter_position(gain: f32) -> f32 {
     if gain <= 1e-6 {
@@ -260,6 +512,79 @@ fn meter_position(gain: f32) -> f32 {
     }
     let db = 20.0 * gain.log10();
     ((db + 60.0) / 66.0).clamp(0.0, 1.0)
+}
+
+/// The peak of one meter channel held for 1.5 s, then falling, and whether
+/// it clipped in the last 3 s.
+pub fn held_peak(ui: &Ui, id: egui::Id, level: f32) -> (f32, bool) {
+    let now = ui.input(|i| i.time);
+    let (mut peak, mut until, mut clip_until) = ui
+        .data(|d| d.get_temp::<(f32, f64, f64)>(id))
+        .unwrap_or((0.0, 0.0, 0.0));
+    if level >= peak {
+        peak = level;
+        until = now + 1.5;
+    } else if now > until {
+        peak = (peak * 0.9).max(level);
+    }
+    if level >= 1.0 {
+        clip_until = now + 3.0;
+    }
+    ui.data_mut(|d| d.insert_temp(id, (peak, until, clip_until)));
+    (peak, now < clip_until)
+}
+
+/// A small raised tile with a chevron pointing left (`left`) or right, for
+/// stepping through presets.
+pub fn chevron_button(ui: &mut Ui, left: bool) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(16.0, 18.0), Sense::click());
+    let hovered = response.hovered();
+    let fill = if response.is_pointer_button_down_on() {
+        theme::ACCENT_DIM
+    } else if hovered {
+        theme::RAISED_HOVER
+    } else {
+        theme::RAISED
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, 2.0, fill);
+    let color = if hovered {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
+    let c = rect.center();
+    let (tip, back) = if left { (-2.5, 2.0) } else { (2.5, -2.0) };
+    let stroke = Stroke::new(1.5, color);
+    painter.line_segment([pos2(c.x + back, c.y - 4.0), pos2(c.x + tip, c.y)], stroke);
+    painter.line_segment([pos2(c.x + tip, c.y), pos2(c.x + back, c.y + 4.0)], stroke);
+    response
+}
+
+/// A previous (`left`) or next preset arrow beside the preset list whose
+/// `ComboBox` uses `list_salt` in this `ui`. Right-click opens that list, as
+/// a click on the list does. The list opens on the next frame so the
+/// right-click does not count as a click outside it; the previous arrow,
+/// drawn before the list, opens it.
+pub fn preset_arrow(ui: &mut Ui, left: bool, list_salt: impl egui::AsIdSalt) -> Response {
+    let popup = ui
+        .make_persistent_id(egui::IdSalt::new(&list_salt))
+        .with("popup");
+    let pending = popup.with("open-from-arrow");
+    if left && ui.data_mut(|d| d.remove_temp::<bool>(pending)).is_some() {
+        egui::Popup::open_id(ui.ctx(), popup);
+    }
+    let hint = if left {
+        "Previous preset · right-click for the list"
+    } else {
+        "Next preset · right-click for the list"
+    };
+    let response = crate::hint::Hint::hint(chevron_button(ui, left), hint);
+    if response.secondary_clicked() {
+        ui.data_mut(|d| d.insert_temp(pending, true));
+        ui.ctx().request_repaint();
+    }
+    response
 }
 
 /// A vertical stereo peak meter.
@@ -290,6 +615,20 @@ pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
             theme::ACCENT
         };
         painter.rect_filled(bar, 1.0, color);
+        // The peak holds for a moment as a thin line; a clip leaves a
+        // red mark at the top for a few seconds.
+        let (peak, clip) = held_peak(ui, response.id.with(i), level);
+        if peak > 1e-6 {
+            let y = rect.bottom() - rect.height() * meter_position(peak);
+            painter.line_segment(
+                [pos2(x0, y), pos2(x0 + half - 2.0, y)],
+                Stroke::new(1.0, theme::TEXT),
+            );
+        }
+        if clip {
+            let mark = egui::Rect::from_min_size(pos2(x0, rect.top() + 1.0), vec2(half - 2.0, 3.0));
+            painter.rect_filled(mark, 0.0, theme::DANGER);
+        }
     }
     // 0 dB tick.
     let zero = rect.bottom() - rect.height() * meter_position(1.0);
@@ -303,6 +642,34 @@ pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabled_widgets_keep_their_opacity_and_turn_their_text_faint() {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            enabled_ui(ui, true, |ui| assert!(ui.is_enabled()));
+            let opacity = ui.opacity();
+            enabled_ui(ui, false, |ui| {
+                assert!(!ui.is_enabled());
+                assert!((ui.opacity() - opacity).abs() < f32::EPSILON);
+                let visuals = ui.visuals();
+                assert_eq!(visuals.override_text_color, Some(theme::TEXT_FAINT));
+                assert_eq!(visuals.widgets.inactive.fg_stroke.color, theme::TEXT_FAINT);
+                assert_eq!(
+                    visuals.widgets.inactive.weak_bg_fill,
+                    ui.ctx()
+                        .global_style()
+                        .visuals
+                        .widgets
+                        .inactive
+                        .weak_bg_fill,
+                    "fills stay"
+                );
+            });
+            assert!(ui.is_enabled(), "only the inner scope is disabled");
+        });
+        output.textures_delta.clear();
+    }
 
     #[test]
     fn fader_curve_round_trips_and_puts_unity_at_three_quarters() {
@@ -395,6 +762,149 @@ mod tests {
             fader(ui, 0.2, 1.25, vec2(30.0, 120.0))
         });
         assert_eq!(fader_run, [(1.0, true)]);
+    }
+
+    #[test]
+    fn tiny_and_medium_knobs_follow_one_drag_rule() {
+        // Every widget sits at the top left of the panel; aim inside it.
+        let at = pos2(10.0, 12.0);
+        let up = drag(at, at - vec2(0.0, 30.0), PointerButton::Primary);
+        let tiny = drive(up.clone(), |ui| knob(ui, 0.0, 0.0, 1.0, 0.0, false));
+        let medium = drive(up, |ui| labeled_knob(ui, "Cutoff", 0.0, 0.0, false, ""));
+        // Each frame reports its own step from the value passed in.
+        let total = |run: &[(f32, bool)]| run.iter().map(|(v, _)| v).sum::<f32>();
+        assert!((total(&tiny) - 30.0 / KNOB_DRAG).abs() < 1e-3, "{tiny:?}");
+        assert!(
+            (total(&tiny) - total(&medium)).abs() < 1e-4,
+            "{tiny:?} {medium:?}"
+        );
+    }
+
+    /// Drags a knob that keeps the value it reports, as the app does, and
+    /// returns the value after each frame.
+    fn drag_knob(start: f32, default: f32, frames: Vec<Vec<egui::Event>>) -> Vec<f32> {
+        let ctx = egui::Context::default();
+        let mut value = start;
+        let mut seen = Vec::new();
+        for (i, events) in frames.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 400.0))),
+                time: Some(i as f64 / 60.0),
+                events,
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| {
+                if let Some(v) = knob(ui, value, 0.0, 1.0, default, false).changed {
+                    value = v;
+                }
+            })
+            .textures_delta
+            .clear();
+            seen.push(value);
+        }
+        seen
+    }
+
+    #[test]
+    fn alt_click_resets_a_knob() {
+        let alt = |events: Vec<egui::Event>| {
+            let mut with = vec![egui::Event::ModifiersChanged(egui::Modifiers::ALT)];
+            with.extend(events.into_iter().map(|e| match e {
+                egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed,
+                    ..
+                } => egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed,
+                    modifiers: egui::Modifiers::ALT,
+                },
+                other => other,
+            }));
+            with
+        };
+        let frames = click(pos2(10.0, 12.0), PointerButton::Primary)
+            .into_iter()
+            .map(alt)
+            .collect();
+        let run = drive(frames, |ui| knob(ui, 0.3, 0.0, 1.0, 0.8, false));
+        assert_eq!(run, [(0.8, true)]);
+    }
+
+    #[test]
+    fn dragging_through_the_default_pauses_there() {
+        let at = pos2(10.0, 12.0);
+        // 0.06 of the range per frame upward, from 0.3 toward a 0.5 default.
+        let frames = |n: usize| {
+            let mut frames = drag(at, at, PointerButton::Primary);
+            frames.truncate(2);
+            for i in 1..=n {
+                frames.push(vec![egui::Event::PointerMoved(
+                    at - vec2(0.0, 9.0 * i as f32),
+                )]);
+            }
+            frames
+        };
+        let seen = drag_knob(0.3, 0.5, frames(8));
+        let parked = seen.iter().filter(|v| (**v - 0.5).abs() < 1e-6).count();
+        assert!(parked >= 2, "held at the default for a while: {seen:?}");
+        assert!(*seen.last().unwrap() > 0.5, "then carries on: {seen:?}");
+    }
+
+    #[test]
+    fn clicking_an_led_switch_label_toggles_it() {
+        let ctx = egui::Context::default();
+        let mut on = false;
+        let mut changes = 0;
+        // The label starts 19 points in; click on it, past the light.
+        for (i, events) in click(pos2(40.0, 10.0), PointerButton::Primary)
+            .into_iter()
+            .enumerate()
+        {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 400.0))),
+                time: Some(i as f64 / 60.0),
+                events,
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| {
+                if led_switch(ui, &mut on, "Reverse playback").changed() {
+                    changes += 1;
+                }
+            })
+            .textures_delta
+            .clear();
+        }
+        assert!(on);
+        assert_eq!(changes, 1);
+    }
+
+    #[test]
+    fn holding_the_fader_rail_glides_the_cap_toward_the_pointer() {
+        // The cap of a 120-point fader at unity sits near y = 37; hold the
+        // button down near the bottom of the rail.
+        let at = pos2(15.0, 100.0);
+        let mut frames = vec![
+            vec![],
+            vec![
+                egui::Event::PointerMoved(at),
+                egui::Event::PointerButton {
+                    pos: at,
+                    button: PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        ];
+        frames.extend(std::iter::repeat_n(vec![], 5));
+        let run = drive(frames, |ui| fader(ui, 1.0, 1.25, vec2(30.0, 120.0)));
+        assert!(run.len() >= 3, "{run:?}");
+        assert!(run.first().is_some_and(|(_, started)| *started));
+        // Each frame moves a small step down, never a jump.
+        let first = run.first().map_or(1.0, |(g, _)| *g);
+        assert!(first < 1.0 && first > 0.8, "{run:?}");
     }
 
     #[test]

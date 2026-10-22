@@ -23,6 +23,7 @@ mod registry;
 mod session;
 pub mod tap_tempo;
 
+pub use cmds::control::{ControlInfo, info as control_info};
 pub use command::{Command, Outcome};
 pub use error::CommandError;
 pub use invocation::Invocation;

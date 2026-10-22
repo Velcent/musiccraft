@@ -1,5 +1,8 @@
+use std::collections::BTreeMap;
+
 use musiccraft_project::{
     Clip, ClipSource, Instrument, Marker, MarkerAction, Meter, PLAYLIST_TRACKS, Project,
+    TRACK_HEIGHT_PERCENT,
 };
 
 use crate::args::{Args, on_off, ticks};
@@ -45,6 +48,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             resize_clip,
         ),
         cmd(
+            "playlist.trim_clip",
+            "playlist.trim_clip <track> <at bar> <new start bar>",
+            "Move a clip's start, keeping its end: the clip begins at a later or earlier point of its source.",
+            trim_clip,
+        ),
+        cmd(
             "playlist.set_track_mute",
             "playlist.set_track_mute <track> <on|off>",
             "Mute or unmute a playlist track.",
@@ -87,6 +96,24 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_track_color,
         ),
         cmd(
+            "playlist.set_track_height",
+            "playlist.set_track_height <track> <percent|reset>",
+            "Set one playlist track's height as a percentage of the global track height (25-400), or reset it to 100.",
+            set_track_height,
+        ),
+        cmd(
+            "playlist.reset_track_heights",
+            "playlist.reset_track_heights",
+            "Return every playlist track to the global track height.",
+            reset_track_heights,
+        ),
+        cmd(
+            "playlist.set_track_heights",
+            "playlist.set_track_heights <json>",
+            "Replace every playlist track's own height (used by undo).",
+            set_track_heights,
+        ),
+        cmd(
             "playlist.toggle_track_mute",
             "playlist.toggle_track_mute <track>",
             "Toggle a playlist track's mute.",
@@ -97,6 +124,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "playlist.add_marker <bar> <name>",
             "Add a named marker to the song timeline.",
             add_marker,
+        ),
+        cmd(
+            "playlist.move_marker",
+            "playlist.move_marker <from bar> <to bar>",
+            "Move a marker, keeping its name and what it does.",
+            move_marker,
         ),
         cmd(
             "playlist.remove_marker",
@@ -407,6 +440,37 @@ fn resize_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
     ))
 }
 
+fn trim_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = clip_arg(project, args, 0)?;
+    let old = project.playlist.clips[index];
+    let start = args.bars(2, &project.song_meter())?;
+    let offset = i64::from(old.offset) + i64::from(start) - i64::from(old.start);
+    if start >= old.end() {
+        return Err(args.invalid("the new start is at or past the clip's end"));
+    }
+    let Ok(offset) = u32::try_from(offset) else {
+        return Err(args.invalid("the clip cannot start before its source does"));
+    };
+    let trimmed = Clip {
+        start,
+        length: old.end() - start,
+        offset,
+        ..old
+    };
+    if overlaps(project, &trimmed, Some(index)) {
+        return Err(args.invalid("the new start overlaps another clip"));
+    }
+    project.playlist.clips[index] = trimmed;
+    Ok(Outcome::undoable(
+        format!("clip starts at {start}t"),
+        Invocation::new(
+            args.name(),
+            [(old.track + 1).to_string(), ticks(start), ticks(old.start)],
+        ),
+    ))
+}
+
 fn set_mute_state(project: &mut Project, track: u32, mute: bool) -> bool {
     if mute {
         !project.playlist.muted_tracks.insert(track)
@@ -547,6 +611,61 @@ fn set_track_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Co
     ))
 }
 
+fn set_track_height(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let track = track_arg(args, 0)?;
+    let percent = match args.str(1)? {
+        "reset" => 100,
+        _ => {
+            let n = args.number(1, "height")?;
+            u16::try_from(n)
+                .ok()
+                .filter(|n| TRACK_HEIGHT_PERCENT.contains(n))
+                .ok_or_else(|| args.invalid("track heights are 25 to 400 percent"))?
+        }
+    };
+    let heights = &mut project.playlist.track_heights;
+    let previous = if percent == 100 {
+        heights.remove(&track)
+    } else {
+        heights.insert(track, percent)
+    }
+    .unwrap_or(100);
+    Ok(Outcome::undoable(
+        format!("playlist track {} height {percent}%", track + 1),
+        Invocation::new(args.name(), [(track + 1).to_string(), previous.to_string()]),
+    ))
+}
+
+fn reset_track_heights(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    let old = std::mem::take(&mut project.playlist.track_heights);
+    Ok(Outcome::undoable(
+        "playlist track heights reset".to_owned(),
+        restore_heights(args, &old)?,
+    ))
+}
+
+fn set_track_heights(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let mut heights: BTreeMap<u32, u16> =
+        serde_json::from_str(args.str(0)?).map_err(|e| args.invalid(e.to_string()))?;
+    heights.retain(|t, h| *t < PLAYLIST_TRACKS && *h != 100 && TRACK_HEIGHT_PERCENT.contains(h));
+    let old = std::mem::replace(&mut project.playlist.track_heights, heights);
+    Ok(Outcome::undoable(
+        "playlist track heights".to_owned(),
+        restore_heights(args, &old)?,
+    ))
+}
+
+fn restore_heights(
+    args: &Args<'_>,
+    heights: &BTreeMap<u32, u16>,
+) -> Result<Invocation, CommandError> {
+    let json = serde_json::to_string(heights).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Invocation::new("playlist.set_track_heights", [json]))
+}
+
 pub(super) fn replace_clips(
     project: &mut Project,
     args: &Args<'_>,
@@ -617,6 +736,33 @@ fn add_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     Ok(Outcome::undoable(
         format!("marker {name} at {tick}t"),
         inverse,
+    ))
+}
+
+fn move_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let meter = project.song_meter();
+    let (from, to) = (args.bars(0, &meter)?, args.bars(1, &meter)?);
+    let markers = &mut project.playlist.markers;
+    let index = markers
+        .iter()
+        .position(|m| m.tick == from)
+        .ok_or_else(|| args.invalid(format!("there is no marker at {from}t")))?;
+    if matches!(markers[index].action, MarkerAction::TimeSignature(_)) {
+        return Err(args.invalid("a time signature change moves with playlist.set_time_signature"));
+    }
+    if from == to {
+        return Ok(Outcome::done("marker stays"));
+    }
+    if markers.iter().any(|m| m.tick == to) {
+        return Err(args.invalid(format!("there is already a marker at {to}t")));
+    }
+    markers[index].tick = to;
+    let name = markers[index].name.clone();
+    markers.sort_by_key(|m| m.tick);
+    Ok(Outcome::undoable(
+        format!("moved marker {name} to {to}t"),
+        Invocation::new(args.name(), [ticks(to), ticks(from)]),
     ))
 }
 

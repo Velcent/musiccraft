@@ -111,7 +111,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Vocoder with a sidechain modulator | `fx:vocoder` `cmd:mixer.set_effect_param` |
 | Effects | Pitch shifter | `fx:pitch_shift` |
 | Effects | Convolution reverb with impulse files or generated rooms | `fx:convolution` `cmd:mixer.set_effect_file` |
-| Effects | Spectrum analyzer | `done` |
+| Effects | Spectrum analyser | `done` |
 | Effects | Pitch correction and tuner | `fx:pitch_correct` `fx:tuner` `spec:mixer.md` |
 | Generators | Sample editor: trim, cut, fades, gain, normalize, reverse, time-stretch, pitch-shift, tune | `cmd:sample.edit` `spec:sample-editor.md` |
 | Generators | Resynthesis of a sample's harmonics | `cmd:channel.add_resynth` `spec:channel-rack.md` |
@@ -186,11 +186,11 @@ of contents; see `docs/clean-room.md`.
 | Export | MIDI file export | `cmd:project.export_midi` `key:Ctrl+Shift+M=ui.export_midi` `spec:project-file.md` |
 | Piano roll | Limit, LFO, scale levels, flam | `cmd:note.limit` `cmd:note.lfo` `cmd:note.scale_levels` `cmd:note.flam` |
 | Piano roll | Randomizer and chord progressions | `cmd:note.randomize` `cmd:note.chords` |
-| Piano roll | Articulate and claw machine | `cmd:note.articulate` `cmd:note.claw` |
+| Piano roll | Articulate and claw machine | `cmd:note.articulate` `cmd:note.keep_every` |
 | Channel rack | Time shift, gate and note echo | `spec:channel-rack.md` `done` |
 | Transport | Master pitch / A4 tuning | `cmd:project.set_master_pitch` `cmd:project.set_a4` |
 | Transport | Tap tempo | `spec:transport.md` `done` |
-| Channel rack | Display filter groups | `cmd:channel.set_group` |
+| Channel rack | Group filter | `cmd:channel.set_group` |
 | Transport | Arm playlist tracks for audio takes; choose the input device | `cmd:playlist.toggle_track_arm` `spec:settings.md` |
 | Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
 | Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |

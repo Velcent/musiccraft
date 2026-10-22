@@ -152,7 +152,13 @@ fn start_mode(project: &Project) -> Start {
     }
 }
 
-fn channel_params(channel: &Channel, pan_law: PanLaw, master_pitch: f32) -> ChannelParams {
+/// `silent`: muted, or silenced by another channel's solo.
+fn channel_params(
+    channel: &Channel,
+    silent: bool,
+    pan_law: PanLaw,
+    master_pitch: f32,
+) -> ChannelParams {
     let mut instrument = channel.params.0;
     // The master pitch transposes every built-in instrument.
     if let Some(pitch) = instrument.get_mut(musiccraft_params::inst::PITCH) {
@@ -162,7 +168,7 @@ fn channel_params(channel: &Channel, pan_law: PanLaw, master_pitch: f32) -> Chan
         volume: channel.volume,
         pan: channel.pan,
         pan_law,
-        mute: channel.mute,
+        mute: silent,
         track: u16::try_from(channel.mixer_track).unwrap_or(0),
         instrument,
     }
@@ -197,42 +203,6 @@ fn track_params(track: &MixerTrack, index: usize, audible: Option<&[bool]>) -> T
     params
 }
 
-/// When any insert is soloed: which tracks stay audible. A soloed track keeps
-/// everything that feeds it and everything it feeds through sends.
-fn solo_audible(mixer: &[MixerTrack]) -> Option<Vec<bool>> {
-    if !mixer.iter().skip(1).any(|t| t.solo) {
-        return None;
-    }
-    let edges: Vec<(usize, usize)> = mixer
-        .iter()
-        .enumerate()
-        .flat_map(|(i, t)| t.sends.iter().map(move |s| (i, s.target)))
-        .collect();
-    let mut audible: Vec<bool> = mixer.iter().map(|t| t.solo).collect();
-    // Downstream: sends point to higher indices, so one forward pass suffices.
-    for i in 0..mixer.len() {
-        if audible[i] {
-            for (from, to) in &edges {
-                if *from == i && *to < audible.len() {
-                    audible[*to] = true;
-                }
-            }
-        }
-    }
-    // Upstream from the originally soloed tracks: one backward pass.
-    let mut feeds: Vec<bool> = mixer.iter().map(|t| t.solo).collect();
-    for i in (0..mixer.len()).rev() {
-        if feeds[i] {
-            for (from, to) in &edges {
-                if *to == i {
-                    feeds[*from] = true;
-                }
-            }
-        }
-    }
-    Some(audible.iter().zip(&feeds).map(|(a, f)| *a || *f).collect())
-}
-
 fn describe(
     project: &Project,
     slots: &BTreeMap<u32, u16>,
@@ -240,7 +210,7 @@ fn describe(
     paths: &mut Resolver,
 ) -> Desc {
     let base = project.path().and_then(Path::parent);
-    let audible = solo_audible(&project.mixer);
+    let audible = project.mixer_audible();
     let sequence = build_sequence(project);
     let pan_law = match project.pan_law {
         musiccraft_project::PanLaw::Circular => PanLaw::Circular,
@@ -330,7 +300,11 @@ fn describe(
         channels: project
             .channels
             .iter()
-            .map(|c| channel_params(c, pan_law, project.master_pitch))
+            .enumerate()
+            .map(|(i, c)| {
+                let silent = !project.channel_plays(i);
+                channel_params(c, silent, pan_law, project.master_pitch)
+            })
             .collect(),
         tracks: project
             .mixer

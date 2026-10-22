@@ -10,7 +10,8 @@ use musiccraft_project::EffectSlot;
 use musiccraft_project::params::{EffectKind, ParamSpec};
 
 use crate::hint::Hint;
-use crate::{Action, Frame, UiState};
+use crate::{Action, Frame, UiState, theme, widgets};
+use egui::RichText;
 
 /// Opens (or closes) the window of effect `slot` on `track`.
 pub(crate) fn toggle(state: &mut UiState, track: usize, slot: usize) {
@@ -22,6 +23,16 @@ pub(crate) fn toggle(state: &mut UiState, track: usize, slot: usize) {
         state.effect_windows.remove(i);
     } else {
         state.effect_windows.push((track, slot));
+    }
+}
+
+/// Opens the window of every effect on `track` (those already open stay).
+pub(crate) fn open_all(state: &mut UiState, project: &musiccraft_project::Project, track: usize) {
+    let count = project.mixer.get(track).map_or(0, |t| t.effects.len());
+    for slot in 0..count {
+        if !state.effect_windows.contains(&(track, slot)) {
+            state.effect_windows.push((track, slot));
+        }
     }
 }
 
@@ -79,25 +90,113 @@ pub(crate) fn show_all(
             continue;
         };
         let track_name = project.mixer.get(track).map_or("", |t| t.name.as_str());
-        let title = format!("{track_name} › {}", effect_title(effect));
+        let title = format!("{} — {track_name}", effect_title(effect));
         let mut keep = true;
-        egui::Window::new(title)
-            .id(egui::Id::new(("effect-window", track, slot)))
-            .open(&mut keep)
-            .resizable(false)
-            .default_pos(
-                state.workspace.left_top()
-                    + vec2(60.0 + 24.0 * index as f32, 60.0 + 24.0 * index as f32),
-            )
-            .constrain_to(state.workspace)
-            .show(ctx, |ui| {
-                contents(ui, state, frame, track, slot, effect, actions)
-            });
+        let id = egui::Id::new(("effect-window", track, slot));
+        let area = state.workspace;
+        let default = egui::Rect::from_min_size(
+            area.left_top() + vec2(60.0 + 24.0 * index as f32, 60.0 + 24.0 * index as f32),
+            vec2(0.0, 0.0),
+        );
+        crate::chrome::window(ctx, id, &title, area, default, false).show(ctx, |ui| {
+            let mut header_edits = Vec::new();
+            let folded = crate::chrome::Header::new(id, &title).fixed_size().show(
+                ui,
+                &mut keep,
+                &mut (&mut *state, &mut *actions, &mut header_edits),
+                |ui, (state, actions, _)| {
+                    if let Some(mixer_track) = project.mixer.get(track) {
+                        crate::mixer::slot_menu(
+                            ui,
+                            state,
+                            mixer_track,
+                            &track.to_string(),
+                            slot,
+                            false,
+                            actions,
+                        );
+                    }
+                },
+                |ui, (_, _, edits)| {
+                    if effect.plugin.is_none() {
+                        let editor = egui::Id::new(("effect-editor", track, slot));
+                        effect::preset_picker(ui, editor, &view(effect), edits);
+                    }
+                },
+            );
+            apply(
+                state,
+                KnobTarget::Slot(track, slot),
+                effect,
+                header_edits,
+                actions,
+            );
+            if !folded {
+                strip(ui, state, track, slot, effect, actions);
+                ui.add_space(4.0);
+                contents(ui, state, frame, track, slot, effect, actions);
+            }
+        });
         if !keep {
             toggle(state, track, slot);
         }
     }
 }
+
+/// The slim strip under the header: the On light (bypass) and the Mix knob,
+/// flush right; the same controls as the mixer slot's.
+fn strip(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    track: usize,
+    slot: usize,
+    effect: &EffectSlot,
+    actions: &mut Vec<Action>,
+) {
+    let (number, slot_no) = (track.to_string(), (slot + 1).to_string());
+    egui::Frame::new()
+        .fill(theme::PANEL_DARK)
+        .corner_radius(3.0)
+        .inner_margin(egui::Margin::symmetric(6, 2))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.add_space((ui.available_width() - STRIP_CONTROLS).max(0.0));
+                let word = if effect.enabled { "on" } else { "bypassed" };
+                let light = widgets::dot(ui, effect.enabled, theme::ACCENT)
+                    .hint(format!("Effect {word} · click to bypass or restore"));
+                if light.clicked() {
+                    actions.push(Action::Run(Invocation::new(
+                        "mixer.toggle_effect",
+                        [number.clone(), slot_no.clone()],
+                    )));
+                }
+                ui.label(RichText::new("On").small().color(theme::TEXT_DIM));
+                ui.add_space(8.0);
+                let mix = widgets::knob(ui, effect.mix, 0.0, 1.0, 1.0, false);
+                if mix.started {
+                    state.begin_gesture();
+                }
+                if let Some(value) = mix.changed {
+                    actions.push(Action::Coalesced(
+                        Invocation::new(
+                            "mixer.set_effect_mix",
+                            [number.clone(), slot_no.clone(), format!("{value:.3}")],
+                        ),
+                        state.gesture(),
+                    ));
+                }
+                mix.response.hint(format!(
+                    "Mix {:.0}% · how much of the effect is heard",
+                    effect.mix * 100.0
+                ));
+                ui.label(RichText::new("Mix").small().color(theme::TEXT_DIM));
+            });
+        });
+}
+
+/// Width of the effect strip's right group: light, captions and knob.
+const STRIP_CONTROLS: f32 = 110.0;
 
 fn effect_title(effect: &EffectSlot) -> String {
     match &effect.plugin {
@@ -124,8 +223,6 @@ fn contents(
     let view = view(effect);
     let target = KnobTarget::Slot(track, slot);
     let mut edits = Vec::new();
-    effect::preset_bar(ui, id, &view, &mut edits);
-    ui.add_space(4.0);
     let sample_rate = match frame.settings_info.running_rate {
         0 => 48_000.0,
         rate => rate as f32,

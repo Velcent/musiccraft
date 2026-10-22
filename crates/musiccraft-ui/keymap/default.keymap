@@ -41,10 +41,19 @@ F6           = view.toggle channel_rack
 F7           = view.toggle piano_roll
 F9           = view.toggle mixer
 Alt+F8       = view.toggle browser
+Enter        = view.maximize playlist
+Ctrl+Shift+H = view.default_layout
+Escape       = view.close_focused
+F12          = view.hide_all
+Alt+F12      = view.hide_effects
+Ctrl+F12     = view.hide_others
 F10          = ui.settings
+F1           = view.toggle shortcuts
 
 # Patterns
 F4           = ui.next_empty_pattern
+Shift+F4     = pattern.first_empty
+F2           = ui.rename_pattern
 1            = pattern.select 1
 2            = pattern.select 2
 3            = pattern.select 3

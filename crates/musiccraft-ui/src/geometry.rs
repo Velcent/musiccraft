@@ -9,12 +9,20 @@ use musiccraft_project::params::TICKS_PER_STEP;
 pub enum Snap {
     /// No snapping (single ticks).
     Off,
+    /// A sixth of a step (triplet 1/64 notes).
+    SixthStep,
     /// A quarter of a step (1/64 note).
     QuarterStep,
+    /// A third of a step (1/48 note, triplet 1/32s).
+    ThirdStep,
     /// Half a step (1/32 note).
     HalfStep,
     /// One step (1/16 note).
     Step,
+    /// A third of a beat (triplet eighths in 4/4).
+    ThirdBeat,
+    /// Half a beat (eighths in 4/4).
+    HalfBeat,
     /// One beat of the time signature.
     Beat,
     /// One bar of the time signature.
@@ -23,11 +31,15 @@ pub enum Snap {
 
 impl Snap {
     /// Every option, finest first.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 10] = [
         Self::Off,
+        Self::SixthStep,
         Self::QuarterStep,
+        Self::ThirdStep,
         Self::HalfStep,
         Self::Step,
+        Self::ThirdBeat,
+        Self::HalfBeat,
         Self::Beat,
         Self::Bar,
     ];
@@ -38,9 +50,13 @@ impl Snap {
     pub fn ticks_at(self, tick: u32, meter: &Meter) -> u32 {
         match self {
             Self::Off => 1,
+            Self::SixthStep => TICKS_PER_STEP / 6,
             Self::QuarterStep => TICKS_PER_STEP / 4,
+            Self::ThirdStep => TICKS_PER_STEP / 3,
             Self::HalfStep => TICKS_PER_STEP / 2,
             Self::Step => TICKS_PER_STEP,
+            Self::ThirdBeat => (meter.sig_at(tick).beat_ticks() / 3).max(1),
+            Self::HalfBeat => (meter.sig_at(tick).beat_ticks() / 2).max(1),
             Self::Beat => meter.sig_at(tick).beat_ticks(),
             Self::Bar => meter.bar(tick).len,
         }
@@ -51,9 +67,13 @@ impl Snap {
     pub fn label(self) -> &'static str {
         match self {
             Self::Off => "None",
+            Self::SixthStep => "1/6 step",
             Self::QuarterStep => "1/4 step",
+            Self::ThirdStep => "1/3 step",
             Self::HalfStep => "1/2 step",
             Self::Step => "Step",
+            Self::ThirdBeat => "1/3 beat",
+            Self::HalfBeat => "1/2 beat",
             Self::Beat => "Beat",
             Self::Bar => "Bar",
         }
@@ -66,6 +86,11 @@ impl Snap {
         match self {
             Self::Beat => meter.floor_to_beat(tick),
             Self::Bar => meter.floor_to_bar(tick),
+            Self::ThirdBeat | Self::HalfBeat => {
+                let beat = meter.floor_to_beat(tick);
+                let grid = self.ticks_at(tick, meter);
+                beat + (tick - beat) / grid * grid
+            }
             _ => {
                 let grid = self.ticks_at(tick, meter);
                 tick / grid * grid
@@ -104,7 +129,17 @@ pub struct Grid {
     pub row_height: f32,
     /// Number of rows.
     pub rows: u32,
+    /// Rows with their own height: each row's share of `row_height` in
+    /// percent (the playlist's per-track heights). `None`: every row is
+    /// `row_height` tall.
+    pub scales: Option<RowScales>,
 }
+
+/// Rows covered by [`Grid::scales`]; later rows are 100%.
+pub const SCALED_ROWS: usize = 64;
+
+/// Each row's height in percent of the grid's row height.
+pub type RowScales = [u16; SCALED_ROWS];
 
 impl Grid {
     /// X coordinate of a tick.
@@ -116,7 +151,24 @@ impl Grid {
     /// Y coordinate of the top of a row.
     #[must_use]
     pub fn y(&self, row: u32) -> f32 {
-        self.origin.y + row as f32 * self.row_height
+        let Some(scales) = &self.scales else {
+            return self.origin.y + row as f32 * self.row_height;
+        };
+        let row = row as usize;
+        let scaled: u32 = scales.iter().take(row).map(|&s| u32::from(s)).sum();
+        let rest = row.saturating_sub(SCALED_ROWS) as f32;
+        self.origin.y + self.row_height * (scaled as f32 / 100.0 + rest)
+    }
+
+    /// Height of one row.
+    #[must_use]
+    pub fn height_of(&self, row: u32) -> f32 {
+        let scale = self
+            .scales
+            .as_ref()
+            .and_then(|s| s.get(row as usize))
+            .map_or(100, |&s| s);
+        self.row_height * f32::from(scale) / 100.0
     }
 
     /// Tick under an x coordinate (never negative).
@@ -128,8 +180,14 @@ impl Grid {
     /// Row under a y coordinate, if inside the grid.
     #[must_use]
     pub fn row_at(&self, y: f32) -> Option<u32> {
-        let row = ((y - self.origin.y) / self.row_height).floor();
-        (row >= 0.0 && row < self.rows as f32).then_some(row as u32)
+        if self.scales.is_none() {
+            let row = ((y - self.origin.y) / self.row_height).floor();
+            return (row >= 0.0 && row < self.rows as f32).then_some(row as u32);
+        }
+        if y < self.origin.y {
+            return None;
+        }
+        (0..self.rows).find(|&row| y < self.y(row + 1))
     }
 
     /// Screen rectangle of a span of ticks on a row.
@@ -176,7 +234,22 @@ pub fn hit_test(boxes: impl DoubleEndedIterator<Item = (usize, Rect)>, pos: Pos2
 #[must_use]
 pub fn position_label(ticks: f64, meter: &Meter) -> String {
     let p = meter.position(ticks.max(0.0) as u32);
-    format!("{:>3}.{}.{}", p.bar, p.beat, p.step)
+    format!("{}.{}.{}", p.bar, p.beat, p.step)
+}
+
+/// `bar.beat.tick`: the tick within the beat in place of the step.
+#[must_use]
+pub fn tick_label(ticks: f64, meter: &Meter) -> String {
+    let tick = ticks.max(0.0) as u32;
+    let p = meter.position(tick);
+    let bar = meter.bar(tick);
+    let into = tick - bar.start.min(tick);
+    format!(
+        "{}.{}.{:02}",
+        p.bar,
+        p.beat,
+        into % bar.sig.beat_ticks().max(1)
+    )
 }
 
 #[cfg(test)]
@@ -189,7 +262,28 @@ mod tests {
             px_per_tick: 0.5,
             row_height: 10.0,
             rows: 128,
+            scales: None,
         }
+    }
+
+    #[test]
+    fn scaled_rows_stack_their_own_heights() {
+        let mut scales = [100; SCALED_ROWS];
+        scales[1] = 200;
+        scales[2] = 50;
+        let g = Grid {
+            scales: Some(scales),
+            ..grid()
+        };
+        assert!((g.y(1) - 60.0).abs() < 1e-4);
+        assert!((g.y(2) - 80.0).abs() < 1e-4);
+        assert!((g.y(3) - 85.0).abs() < 1e-4);
+        assert!((g.height_of(1) - 20.0).abs() < 1e-4);
+        assert_eq!(g.row_at(79.0), Some(1));
+        assert_eq!(g.row_at(82.0), Some(2));
+        assert_eq!(g.row_at(49.0), None);
+        // Rows past the scaled ones are 100%.
+        assert!((g.y(70) - (50.0 + 10.0 * 70.5)).abs() < 1e-3);
     }
 
     #[test]
@@ -233,6 +327,28 @@ mod tests {
     }
 
     #[test]
+    fn triplet_and_beat_fraction_snaps() {
+        let m = Meter::default();
+        assert_eq!(Snap::ThirdStep.ticks_at(0, &m), 8);
+        assert_eq!(Snap::SixthStep.round(13.0, &m), 12);
+        assert_eq!(Snap::ThirdBeat.floor(100.0, &m), 96);
+        assert_eq!(Snap::ThirdBeat.round(120.0, &m), 128);
+        assert_eq!(Snap::HalfBeat.floor(150.0, &m), 144);
+        // Beat fractions count from each beat, after a bar cut short.
+        let sig = |s: &str| s.parse::<musiccraft_project::TimeSig>().unwrap();
+        let m = Meter::with_changes(sig("4/4"), [(200, sig("4/4"))]);
+        assert_eq!(Snap::HalfBeat.floor(250.0, &m), 248);
+        let ticks: Vec<u32> = Snap::ALL
+            .iter()
+            .map(|s| s.ticks_at(0, &Meter::default()))
+            .collect();
+        assert!(
+            ticks.windows(2).all(|w| w[0] < w[1]),
+            "finest first: {ticks:?}"
+        );
+    }
+
+    #[test]
     fn hits_prefer_topmost_and_detect_edges() {
         let a = Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 10.0));
         let b = Rect::from_min_max(pos2(50.0, 0.0), pos2(150.0, 10.0));
@@ -246,9 +362,11 @@ mod tests {
     #[test]
     fn position_labels() {
         let m = Meter::default();
-        assert_eq!(position_label(0.0, &m), "  1.1.1");
-        assert_eq!(position_label(f64::from(384 + 96 + 24), &m), "  2.2.2");
+        assert_eq!(position_label(0.0, &m), "1.1.1");
+        assert_eq!(position_label(f64::from(384 + 96 + 24), &m), "2.2.2");
+        assert_eq!(tick_label(f64::from(384 + 96 + 30), &m), "2.2.30");
+        assert_eq!(tick_label(f64::from(384 + 5), &m), "2.1.05");
         let m = Meter::new("7/8".parse().unwrap());
-        assert_eq!(position_label(f64::from(336 + 48), &m), "  2.2.1");
+        assert_eq!(position_label(f64::from(336 + 48), &m), "2.2.1");
     }
 }

@@ -4,7 +4,7 @@ use crate::hint::Hint;
 use std::collections::BTreeSet;
 
 use egui::{
-    Align2, Color32, FontId, PointerButton, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2,
+    Align2, Color32, FontId, PointerButton, Pos2, Rect, RichText, Sense, Stroke, Vec2, pos2, vec2,
 };
 use musiccraft_commands::Invocation;
 use musiccraft_project::music::key_name;
@@ -15,10 +15,19 @@ use crate::geometry::{Grid, Hit, Snap, hit_test};
 use crate::icons::{self, Icon};
 use crate::{Action, Frame, UiState, theme};
 
-const KEYS_WIDTH: f32 = 52.0;
+pub(crate) const KEYS_WIDTH: f32 = 52.0;
 const RULER_HEIGHT: f32 = 18.0;
-/// Height of the velocity lane pinned to the bottom of the view.
+/// Default height of the property lane pinned to the bottom of the view.
 const LANE_HEIGHT: f32 = 96.0;
+/// The lane's height range when the splitter is dragged.
+const LANE_HEIGHT_RANGE: (f32, f32) = (40.0, 320.0);
+/// Thickness of the splitter between the grid and the lane.
+const SPLITTER: f32 = 5.0;
+/// Key-row height: the default and the vertical zoom range, in points.
+const KEY_HEIGHT: f32 = 14.0;
+const KEY_HEIGHT_RANGE: (f32, f32) = (6.0, 30.0);
+/// Horizontal zoom range, in points per step.
+pub(crate) const STEP_WIDTH_RANGE: (f32, f32) = (6.0, 120.0);
 const KEYS: u32 = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +91,8 @@ impl Tool {
 pub struct RollState {
     /// The active tool.
     pub(crate) tool: Tool,
+    /// The note (start, key) whose properties window is open.
+    pub(crate) props_note: Option<(u32, u8)>,
     /// The selected pattern's bars and beats, refreshed every frame.
     pub(crate) meter: Meter,
     /// New notes are slide notes.
@@ -94,13 +105,13 @@ pub struct RollState {
     stroke: Vec<Note>,
     /// Notes swept by a right-button drag, deleted when it ends.
     pub(crate) right_erase: Vec<Note>,
-    px_per_step: f32,
+    pub(crate) px_per_step: f32,
     key_height: f32,
     pub(crate) snap: Snap,
-    last_length: u32,
-    velocity: u8,
+    pub(crate) last_length: u32,
+    pub(crate) velocity: u8,
     drag: Option<NoteDrag>,
-    preview: Option<(usize, u8)>,
+    pub(crate) preview: Option<(usize, u8)>,
     /// Channel the view was last centred for.
     centred_for: Option<usize>,
     /// Grid and visible area from the last frame (used by tests and tools).
@@ -108,7 +119,9 @@ pub struct RollState {
     /// Chord drawn by a click, or `None` for single notes.
     chord: Option<&'static str>,
     /// Highlighted scale: (root pitch class, scale index).
-    scale: Option<(u8, usize)>,
+    pub(crate) scale: Option<(u8, usize)>,
+    /// Whether drawn and moved notes land on the highlighted scale's keys.
+    pub(crate) fit_scale: bool,
     /// Note whose velocity is being dragged in the lane.
     lane_drag: Option<Note>,
     /// What the bottom lane edits.
@@ -123,6 +136,85 @@ pub struct RollState {
     clipboard: Vec<Note>,
     /// Snapped tick under the pointer, used as the paste position.
     hover_tick: Option<u32>,
+    /// Time selection made on the ruler, as (start, end) ticks.
+    pub(crate) time_selection: Option<(u32, u32)>,
+    /// Scroll offset of the last frame, in points.
+    offset: Vec2,
+    /// Scroll offset asked for by the scroll bars, applied next frame.
+    jump: Option<Vec2>,
+    /// Which keys of the keyboard carry their name.
+    pub(crate) key_labels: KeyLabels,
+    /// Other channels' notes are drawn behind.
+    pub(crate) ghosts: bool,
+    /// Notes carry their key name.
+    pub(crate) note_labels: bool,
+    /// Height of the property lane while shown.
+    pub(crate) lane_height: f32,
+    /// The property lane is shown.
+    pub(crate) lane_shown: bool,
+}
+
+impl RollState {
+    /// The property lane's height on screen: nothing while hidden.
+    fn lane(&self) -> f32 {
+        if self.lane_shown {
+            self.lane_height
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Which keys of the piano roll's keyboard are labelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeyLabels {
+    C,
+    White,
+    All,
+    Scale,
+    None,
+}
+
+impl KeyLabels {
+    const ALL: [(Self, &'static str); 5] = [
+        (Self::C, "C keys"),
+        (Self::White, "White keys"),
+        (Self::All, "All keys"),
+        (Self::Scale, "Keys of the scale"),
+        (Self::None, "None"),
+    ];
+
+    /// Whether `key` is labelled; the C keys always fit, the others need
+    /// rows at least `LABEL_ROWS` points tall.
+    fn shows(self, key: u8, row_height: f32, scale: Option<(u8, usize)>) -> bool {
+        let fits = row_height >= LABEL_ROWS;
+        match self {
+            Self::C => key % 12 == 0,
+            Self::White => fits && !is_black(key),
+            Self::All => fits,
+            Self::Scale => {
+                fits && scale.is_some_and(|(root, s)| {
+                    musiccraft_project::music::SCALES
+                        .get(s)
+                        .is_some_and(|(_, d)| musiccraft_project::music::in_scale(key, root, d))
+                })
+            }
+            Self::None => false,
+        }
+    }
+}
+
+/// The shortest key row that takes a label (other than the C keys).
+const LABEL_ROWS: f32 = 9.0;
+
+/// The Keyboard labels choices, as radio items.
+fn key_labels_list(ui: &mut egui::Ui, state: &mut UiState) {
+    for (labels, text) in KeyLabels::ALL {
+        if ui.radio(state.roll.key_labels == labels, text).clicked() {
+            state.roll.key_labels = labels;
+            ui.close();
+        }
+    }
 }
 
 impl Default for RollState {
@@ -135,7 +227,7 @@ impl Default for RollState {
             stroke: Vec::new(),
             right_erase: Vec::new(),
             px_per_step: 24.0,
-            key_height: 14.0,
+            key_height: KEY_HEIGHT,
             snap: Snap::Step,
             meter: Meter::default(),
             last_length: TICKS_PER_STEP,
@@ -146,13 +238,23 @@ impl Default for RollState {
             last_view: None,
             chord: None,
             scale: None,
+            fit_scale: false,
             lane_drag: None,
             lane_mode: LaneMode::Velocity,
+            props_note: None,
             selection: BTreeSet::new(),
             selection_for: None,
             marquee: None,
             clipboard: Vec::new(),
             hover_tick: None,
+            time_selection: None,
+            offset: Vec2::ZERO,
+            jump: None,
+            key_labels: KeyLabels::C,
+            ghosts: true,
+            note_labels: true,
+            lane_height: LANE_HEIGHT,
+            lane_shown: true,
         }
     }
 }
@@ -161,7 +263,7 @@ fn is_black(key: u8) -> bool {
     matches!(key % 12, 1 | 3 | 6 | 8 | 10)
 }
 
-fn key_of_row(row: u32) -> u8 {
+pub(crate) fn key_of_row(row: u32) -> u8 {
     u8::try_from(KEYS - 1 - row.min(KEYS - 1)).unwrap_or(0)
 }
 
@@ -174,7 +276,7 @@ fn ticks(value: u32) -> String {
 }
 
 /// Wraps several invocations into one undo step.
-fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
+pub(crate) fn batch(invocations: Vec<Invocation>) -> Option<Invocation> {
     match invocations.len() {
         0 => None,
         1 => invocations.into_iter().next(),
@@ -247,6 +349,34 @@ fn add_notes(channel: usize, notes: &[Note], offset: u32) -> Option<Invocation> 
     )
 }
 
+/// Tests a note against the current colour, for the Select menu.
+type NotePick = fn(&Note, u8) -> bool;
+
+/// A window-menu item that sets one property: label, notes, property, value.
+type PropItem<'a> = (&'a str, Vec<Note>, &'a str, &'a str);
+
+/// Sets property `prop` to `value` on each of `notes`, as one undo step.
+fn set_notes_prop(channel: usize, notes: &[Note], prop: &str, value: &str) -> Option<Invocation> {
+    let ch = (channel + 1).to_string();
+    batch(
+        notes
+            .iter()
+            .map(|n| {
+                Invocation::new(
+                    "note.set_prop",
+                    [
+                        ch.clone(),
+                        ticks(n.start),
+                        n.key.to_string(),
+                        prop.to_owned(),
+                        value.to_owned(),
+                    ],
+                )
+            })
+            .collect(),
+    )
+}
+
 fn remove_notes(channel: usize, notes: &[Note]) -> Option<Invocation> {
     let ch = (channel + 1).to_string();
     batch(
@@ -265,6 +395,22 @@ fn remove_notes(channel: usize, notes: &[Note]) -> Option<Invocation> {
 /// Invocation that finishes a drag gesture.
 /// The command that creates `note` on `channel`: `note.add` for plain
 /// notes, `note.restore` when it carries other properties.
+/// Replaces channel `channel`'s notes `old` with `new`, as one undo step.
+pub(crate) fn replace_notes(channel: usize, old: &[Note], new: &[Note]) -> Option<Invocation> {
+    let ch = (channel + 1).to_string();
+    let removes = old.iter().map(|n| {
+        Invocation::new(
+            "note.remove",
+            [ch.clone(), ticks(n.start), n.key.to_string()],
+        )
+    });
+    batch(
+        removes
+            .chain(new.iter().map(|n| create(channel, n)))
+            .collect(),
+    )
+}
+
 fn create(channel: usize, note: &Note) -> Invocation {
     let ch = (channel + 1).to_string();
     if note.props == musiccraft_project::NoteProps::default() {
@@ -366,26 +512,47 @@ pub fn show(
     };
     let area = state.workspace;
     let id = egui::Id::new("piano-roll");
-    let folded = crate::chrome::collapsed(ctx, id);
+    let size = vec2(
+        (area.width() / 2.0).max(480.0),
+        (area.height() / 2.0).max(300.0),
+    );
+    let default = egui::Rect::from_min_size(
+        pos2(
+            (area.right() - size.x).max(area.left()),
+            area.top() + area.height() / 4.0,
+        ),
+        size,
+    );
     let window = open
         .then(|| {
-            egui::Window::new("Piano roll")
-                .id(id)
-                .title_bar(false)
-                .resizable(!folded)
-                .default_pos(area.left_top() + egui::vec2(40.0, 60.0))
-                .default_size([
-                    (area.width() - 80.0).max(480.0),
-                    (area.height() - 120.0).max(300.0),
-                ])
-                .constrain_to(area)
+            crate::chrome::window(ctx, id, "Piano roll", area, default, true)
+                .default_height(default.height())
                 .show(ctx, |ui| {
                     let empty = project.channels.is_empty();
-                    let folded = crate::chrome::header(ui, id, &title, &mut open, |ui| {
-                        if !empty {
-                            toolbar(ui, state, project, actions);
-                        }
-                    });
+                    let number = (state.selected_channel + 1).to_string();
+                    let folded = crate::chrome::Header::new(id, &title).show_with_extra(
+                        ui,
+                        &mut open,
+                        &mut (&mut *state, &mut *actions),
+                        |ui, (state, actions)| {
+                            if !empty {
+                                options_menu(ui, state, project, &number, actions);
+                            }
+                        },
+                        |ui, (state, actions)| {
+                            if !empty {
+                                pickers(ui, state, project, &number, actions);
+                                play_button(ui, project, PlayMode::Pattern, actions);
+                                ui.add_space(6.0);
+                                tools(ui, state);
+                            }
+                        },
+                        |ui, (state, _)| {
+                            if !empty {
+                                channel_picker(ui, state, project);
+                            }
+                        },
+                    );
                     if folded {
                         return;
                     }
@@ -401,160 +568,327 @@ pub fn show(
         })
         .flatten();
     state.windows.piano_roll = open;
-    let hovered = window.is_some_and(|w| {
-        ctx.pointer_hover_pos()
-            .is_some_and(|p| w.response.rect.contains(p))
-    });
-    if open && hovered && !ctx.egui_wants_keyboard_input() {
+    crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
+    let focused = window.is_some() && crate::chrome::focused(ctx, id);
+    if open && focused && !ctx.egui_wants_keyboard_input() {
         keys(ctx, state, project, actions);
     }
 }
 
-fn toolbar(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
-    let channel = state.selected_channel;
-    let number = (channel + 1).to_string();
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 2.0;
-        options_menu(ui, state, project, &number, actions);
-        ui.add_space(4.0);
-        for (tool, icon, hint) in [
-            (
-                Tool::Draw,
-                Icon::Pencil,
-                "Draw (P): click adds a note, drag moves or resizes, Ctrl+drag selects",
-            ),
-            (
-                Tool::Paint,
-                Icon::Brush,
-                "Paint (B): drag to lay down notes one after another",
-            ),
-            (
-                Tool::Delete,
-                Icon::Eraser,
-                "Delete (D): click or drag over notes to delete them",
-            ),
-            (
-                Tool::Select,
-                Icon::Select,
-                "Select (E): drag a box around notes; click empty space to clear",
-            ),
-            (
-                Tool::Mute,
-                Icon::Mute,
-                "Mute (T): click or drag over notes to mute or unmute them",
-            ),
-            (
-                Tool::Slice,
-                Icon::Slice,
-                "Slice (C): click a note to cut it in two there",
-            ),
-            (Tool::Play, Icon::Play, "Play (Y): click to hear a note or key"),
-            (
-                Tool::Zoom,
-                Icon::Zoom,
-                "Zoom (Z): click to zoom in, Shift+click to zoom out",
-            ),
-        ] {
-            if icons::button(ui, icon, state.roll.tool == tool, theme::ACCENT, hint).clicked() {
-                state.roll.tool = tool;
-            }
+/// The editing tools, in the style guide's order.
+const TOOLS: [(Tool, Icon, &str); 8] = [
+    (
+        Tool::Draw,
+        Icon::Pencil,
+        "Draw (P): click adds a note, drag moves or resizes, Ctrl+drag selects",
+    ),
+    (
+        Tool::Paint,
+        Icon::Brush,
+        "Paint (B): drag to lay down notes one after another",
+    ),
+    (
+        Tool::Delete,
+        Icon::Eraser,
+        "Delete (D): click or drag over notes to delete them",
+    ),
+    (
+        Tool::Mute,
+        Icon::Mute,
+        "Mute (T): click or drag over notes to mute or unmute them",
+    ),
+    (
+        Tool::Slice,
+        Icon::Slice,
+        "Slice (C): click a note to cut it in two there",
+    ),
+    (
+        Tool::Select,
+        Icon::Select,
+        "Select (E): drag a box around notes; click empty space to clear",
+    ),
+    (
+        Tool::Zoom,
+        Icon::Zoom,
+        "Zoom (Z): click to zoom in, Shift+click to zoom out",
+    ),
+    (
+        Tool::Play,
+        Icon::PlayNote,
+        "Audition (Y): click to hear a note or key",
+    ),
+];
+
+/// A window's play button: a click plays in `mode` (the pattern for the
+/// piano roll, the song for the playlist), switching to it first, or pauses;
+/// a right-click stops and returns to the start.
+pub(crate) fn play_button(
+    ui: &mut egui::Ui,
+    project: &Project,
+    mode: PlayMode,
+    actions: &mut Vec<Action>,
+) {
+    let playing = project.transport().is_playing() && project.play_mode == mode;
+    let what = match mode {
+        PlayMode::Pattern => "pattern",
+        PlayMode::Song => "song",
+    };
+    let (icon, hint) = if playing {
+        (
+            Icon::Pause,
+            format!("Pause the {what} · right-click to stop"),
+        )
+    } else {
+        (
+            Icon::Play,
+            format!("Play the {what} · right-click to go back to its start"),
+        )
+    };
+    let response = icons::button(ui, icon, playing, theme::ACCENT, &hint);
+    let mut run = |line: &str| {
+        if let Ok(invocation) = Invocation::parse(line) {
+            actions.push(Action::Run(invocation));
         }
-        ui.spacing_mut().item_spacing.x = 8.0;
-        ui.toggle_value(&mut state.roll.slide, "Slide")
-            .hint("(S) New notes are slide notes: they bend the notes they overlap (in their colour group) to their key");
-        ui.toggle_value(&mut state.roll.porta, "Porta").hint(
-            "(O) New notes are portamento notes: they glide from the previous note and retrigger",
-        );
-        let label = if state.roll.color == 0 {
-            "Colour: channel".to_owned()
+    };
+    if response.clicked() {
+        if playing {
+            run("transport.pause");
         } else {
-            format!("Colour {}", state.roll.color + 1)
+            if project.play_mode != mode {
+                run(&format!("transport.set_mode {what}"));
+            }
+            run("transport.play");
+        }
+    }
+    if response.secondary_clicked() {
+        run(if playing {
+            "transport.stop"
+        } else {
+            "transport.jump_to_start"
+        });
+    }
+}
+
+/// The header's tool group.
+fn tools(ui: &mut egui::Ui, state: &mut UiState) {
+    ui.spacing_mut().item_spacing.x = 1.0;
+    for (tool, icon, hint) in TOOLS {
+        if icons::button(ui, icon, state.roll.tool == tool, theme::ACCENT, hint).clicked() {
+            state.roll.tool = tool;
+        }
+    }
+}
+
+/// A square header button that opens `list` in a popup.
+fn picker(
+    ui: &mut egui::Ui,
+    (key, icon): (&str, Icon),
+    look: (bool, bool),
+    hint: &str,
+    list: impl FnOnce(&mut egui::Ui),
+) -> egui::Response {
+    let popup = egui::Id::new(key);
+    let open = egui::Popup::is_id_open(ui.ctx(), popup);
+    let response = icons::picker(ui, icon, open, look, hint);
+    let toggle = response.clicked().then_some(egui::SetOpenCommand::Toggle);
+    egui::Popup::menu(&response)
+        .id(popup)
+        .open_memory(toggle)
+        .show(list);
+    response
+}
+
+fn scale_name(scale: Option<(u8, usize)>) -> String {
+    match scale {
+        Some((root, i)) => format!(
+            "{} {}",
+            key_name(root).trim_end_matches(char::is_numeric),
+            musiccraft_project::music::SCALES[i].0
+        ),
+        None => "No scale".to_owned(),
+    }
+}
+
+/// The options group: note tools, snap, scale and chord, each a square
+/// button whose value is in its hint and ticked in its list.
+fn pickers(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    number: &str,
+    actions: &mut Vec<Action>,
+) {
+    ui.spacing_mut().item_spacing.x = 1.0;
+    let selected = selected_of(state, project);
+    let _ = picker(
+        ui,
+        ("roll-note-tools", Icon::Wand),
+        (false, false),
+        "Note tools: strum, arpeggiate, generate and shape the notes",
+        |ui| tools_menu(ui, state, number, &selected, actions, true),
+    );
+    let snap = state.roll.snap;
+    let button = picker(
+        ui,
+        ("roll-snap", Icon::Snap),
+        (snap == Snap::Off, false),
+        &format!(
+            "Snap: {} · click to choose · right-click: new notes this long · wheel steps",
+            snap.label()
+        ),
+        |ui| snap_list(ui, state),
+    );
+    snap_shortcuts(ui, state, &button);
+    let scale = state.roll.scale;
+    let _ = picker(
+        ui,
+        ("roll-scale", Icon::Scale),
+        (scale.is_none(), scale.is_some() && state.roll.fit_scale),
+        &format!(
+            "Scale: {} · click to highlight a scale's keys",
+            scale_name(scale)
+        ),
+        |ui| scale_list(ui, state),
+    );
+    let chord = state.roll.chord;
+    let _ = picker(
+        ui,
+        ("roll-chord", Icon::Chord),
+        (false, chord.is_some()),
+        &format!(
+            "Draw: {} · click to draw single notes or chords",
+            chord.unwrap_or("Note")
+        ),
+        |ui| chord_list(ui, state),
+    );
+}
+
+/// Right-click on the snap button makes new notes one snap step long; the
+/// wheel over it steps through the snap values.
+fn snap_shortcuts(ui: &egui::Ui, state: &mut UiState, button: &egui::Response) {
+    let snap = state.roll.snap;
+    if button.secondary_clicked() && snap != Snap::Off {
+        state.roll.last_length = snap.ticks_at(0, &state.roll.meter);
+    }
+    let notches = if button.hovered() {
+        crate::scrollbars::wheel_notches(ui)
+    } else {
+        0.0
+    };
+    if notches != 0.0 {
+        let at = Snap::ALL.iter().position(|s| *s == snap).unwrap_or(0);
+        let next = if notches > 0.0 {
+            at.saturating_sub(1)
+        } else {
+            (at + 1).min(Snap::ALL.len() - 1)
         };
-        crate::chrome::fit(ui, 130.0);
-        egui::ComboBox::from_id_salt("roll-color")
-            .width(96.0)
-            .selected_text(label)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut state.roll.color, 0, "Channel colour");
-                for c in 1..16u8 {
-                    let text = RichText::new(format!("Colour {}", c + 1)).color(note_color(c));
-                    ui.selectable_value(&mut state.roll.color, c, text);
+        state.roll.snap = Snap::ALL[next];
+    }
+}
+
+/// "No scale", then the root notes side by side with the scale types.
+fn scale_list(ui: &mut egui::Ui, state: &mut UiState) {
+    if ui
+        .selectable_label(state.roll.scale.is_none(), "No scale")
+        .clicked()
+    {
+        state.roll.scale = None;
+        ui.close();
+    }
+    ui.separator();
+    let current = state.roll.scale;
+    ui.horizontal_top(|ui| {
+        ui.vertical(|ui| {
+            for root in 0..12_u8 {
+                let name = key_name(root);
+                let name = name.trim_end_matches(char::is_numeric);
+                let on = current.is_some_and(|(r, _)| r == root);
+                if ui.selectable_label(on, name).clicked() {
+                    state.roll.scale = Some((root, current.map_or(0, |(_, i)| i)));
                 }
-            })
-            .response
-            .hint("Colour group of new notes (also their MIDI channel for plugins)");
-        ui.add_space(4.0);
-        crate::chrome::fit(ui, 164.0);
-        egui::ComboBox::from_id_salt("roll-channel")
-            .width(130.0)
-            .selected_text(
-                project
-                    .channels
-                    .get(channel)
-                    .map_or("", |c| c.name.as_str()),
-            )
-            .show_ui(ui, |ui| {
-                for (i, c) in project.channels.iter().enumerate() {
-                    ui.selectable_value(&mut state.selected_channel, i, &c.name);
+            }
+        });
+        ui.vertical(|ui| {
+            for (i, (scale, _)) in musiccraft_project::music::SCALES.iter().enumerate() {
+                let on = current.is_some_and(|(_, s)| s == i);
+                if ui.selectable_label(on, *scale).clicked() {
+                    state.roll.scale = Some((current.map_or(0, |(r, _)| r), i));
                 }
-            });
-        crate::chrome::fit(ui, 150.0);
-        ui.label("Snap");
-        egui::ComboBox::from_id_salt("roll-snap")
-            .width(80.0)
-            .selected_text(state.roll.snap.label())
-            .show_ui(ui, |ui| {
-                for snap in Snap::ALL {
-                    ui.selectable_value(&mut state.roll.snap, snap, snap.label());
-                }
-            });
-        crate::chrome::fit(ui, 104.0);
-        egui::ComboBox::from_id_salt("roll-chord")
-            .width(70.0)
-            .selected_text(state.roll.chord.unwrap_or("Note"))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut state.roll.chord, None, "Note");
-                for (name, _) in musiccraft_project::music::CHORDS {
-                    ui.selectable_value(&mut state.roll.chord, Some(name), name);
-                }
-            })
-            .response
-            .hint("Click draws a single note or a chord");
-        let scale_label = match state.roll.scale {
-            Some((root, i)) => format!(
-                "{} {}",
-                key_name(root).trim_end_matches(char::is_numeric),
-                musiccraft_project::music::SCALES[i].0
-            ),
-            None => "No scale".to_owned(),
-        };
-        crate::chrome::fit(ui, 154.0);
-        egui::ComboBox::from_id_salt("roll-scale")
-            .width(120.0)
-            .selected_text(scale_label)
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut state.roll.scale, None, "No scale");
-                for root in 0..12_u8 {
-                    let name = key_name(root);
-                    let name = name.trim_end_matches(char::is_numeric);
-                    for (i, (scale, _)) in musiccraft_project::music::SCALES.iter().enumerate() {
-                        ui.selectable_value(
-                            &mut state.roll.scale,
-                            Some((root, i)),
-                            format!("{name} {scale}"),
-                        );
-                    }
-                }
-            })
-            .response
-            .hint("Highlight the keys of a scale");
-        ui.label("Velocity");
-        ui.add(egui::DragValue::new(&mut state.roll.velocity).range(1..=127));
+            }
+        });
+    });
+    ui.separator();
+    let mut fit = state.roll.fit_scale;
+    crate::widgets::enabled_ui(ui, state.roll.scale.is_some(), |ui| {
+        if ui
+            .checkbox(&mut fit, "Fit edited notes to the scale")
+            .changed()
+        {
+            state.roll.fit_scale = fit;
+        }
     });
 }
 
-/// The menu at the left of the toolbar: zoom, quantize, note tools,
-/// transposing by octaves and clearing the channel's notes.
+/// The chevron after the title: the list of channels, with a tick on each
+/// channel that has notes in this pattern.
+fn channel_picker(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
+    let popup = egui::Id::new("roll-channel");
+    let open = egui::Popup::is_id_open(ui.ctx(), popup);
+    let icon = if open {
+        Icon::ChevronDown
+    } else {
+        Icon::ChevronRight
+    };
+    let (rect, response) = ui.allocate_exact_size(vec2(14.0, 22.0), Sense::click());
+    let color = if response.hovered() || open {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
+    icons::paint(ui.painter(), rect, icon, color);
+    let response = response.hint("Choose the channel to edit");
+    let toggle = response.clicked().then_some(egui::SetOpenCommand::Toggle);
+    let pattern = project.current_pattern();
+    egui::Popup::menu(&response)
+        .id(popup)
+        .open_memory(toggle)
+        .show(|ui| {
+            for (i, c) in project.channels.iter().enumerate() {
+                let used = pattern.notes_of(c.id).next().is_some();
+                let text = if used {
+                    format!("{}  ✔", c.name)
+                } else {
+                    c.name.clone()
+                };
+                if ui
+                    .selectable_label(state.selected_channel == i, text)
+                    .clicked()
+                {
+                    state.selected_channel = i;
+                    ui.close();
+                }
+            }
+        });
+}
+
+/// The selected notes of the shown channel.
+fn selected_of(state: &UiState, project: &Project) -> Vec<Note> {
+    project
+        .channels
+        .get(state.selected_channel)
+        .map(|c| {
+            project
+                .current_pattern()
+                .notes_of(c.id)
+                .filter(|n| state.roll.selection.contains(&(n.start, n.key)))
+                .copied()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The piano roll's own window-menu items: new-note velocity, quantize, note
+/// tools, transposing by octaves and clearing the channel's notes.
 fn options_menu(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -567,39 +901,55 @@ fn options_menu(
         all.extend(args.iter().map(|a| (*a).to_owned()));
         actions.push(Action::Run(Invocation::new(name, all)));
     };
-    ui.menu_button("☰", |ui| {
-        ui.horizontal(|ui| {
-            ui.label("Zoom");
-            if ui.button("−").clicked() {
-                state.roll.px_per_step = (state.roll.px_per_step / 1.25).max(6.0);
-            }
-            if ui.button("+").clicked() {
-                state.roll.px_per_step = (state.roll.px_per_step * 1.25).min(120.0);
-            }
-        });
-        ui.separator();
-        if ui
-            .button("Quantize")
-            .hint("Snap note starts to the grid")
-            .clicked()
-        {
-            let grid = format!("{}t", state.roll.snap.ticks_at(0, &state.roll.meter));
-            run(actions, "note.quantize", &[&grid]);
+    ui.menu_button("File", |ui| {
+        if ui.button("Export the song as a MIDI file…").clicked() {
+            actions.push(Action::Run(Invocation::new(
+                "ui.export_midi",
+                Vec::<String>::new(),
+            )));
             ui.close();
         }
-        let selected: Vec<Note> = project
-            .channels
-            .get(state.selected_channel)
-            .map(|c| {
-                project
-                    .current_pattern()
-                    .notes_of(c.id)
-                    .filter(|n| state.roll.selection.contains(&(n.start, n.key)))
-                    .copied()
-                    .collect()
-            })
-            .unwrap_or_default();
-        tools_menu(ui, state, number, &selected, actions);
+    });
+    ui.menu_button("Edit", |ui| {
+        let any = !state.roll.selection.is_empty();
+        let item = |ui: &mut egui::Ui, enabled: bool, label: &str, keys: &str| {
+            crate::widgets::add_enabled(ui, enabled, egui::Button::new(label).shortcut_text(keys))
+                .clicked()
+        };
+        let ops = [
+            (any, "Cut", "Ctrl+X", EditOp::Cut),
+            (any, "Copy", "Ctrl+C", EditOp::Copy),
+            (
+                !state.roll.clipboard.is_empty(),
+                "Paste",
+                "Ctrl+V",
+                EditOp::Paste,
+            ),
+            (any, "Duplicate", "Ctrl+B", EditOp::Duplicate),
+            (any, "Delete", "Del", EditOp::Delete),
+        ];
+        for (enabled, label, keys, op) in ops {
+            if item(ui, enabled, label, keys) {
+                if matches!(op, EditOp::Copy | EditOp::Cut) {
+                    crate::copied(ui.ctx(), "notes");
+                }
+                edit_op(state, project, op, actions);
+                ui.close();
+            }
+        }
+        ui.separator();
+        let moves = [
+            ("Move left one snap step", "Shift+←", EditOp::Move(-1, 0)),
+            ("Move right one snap step", "Shift+→", EditOp::Move(1, 0)),
+            ("Transpose up a semitone", "Shift+↑", EditOp::Move(0, 1)),
+            ("Transpose down a semitone", "Shift+↓", EditOp::Move(0, -1)),
+        ];
+        for (label, keys, op) in moves {
+            if item(ui, any, label, keys) {
+                edit_op(state, project, op, actions);
+                ui.close();
+            }
+        }
         if ui.button("Transpose an octave up").clicked() {
             run(actions, "note.transpose", &["12"]);
             ui.close();
@@ -609,6 +959,47 @@ fn options_menu(
             ui.close();
         }
         ui.separator();
+        let selected = selected_of(state, project);
+        let channel = state.selected_channel;
+        let color = (state.roll.color + 1).to_string();
+        let props: [PropItem; 3] = [
+            (
+                "Mute",
+                selected
+                    .iter()
+                    .filter(|n| !n.props.muted)
+                    .copied()
+                    .collect(),
+                "muted",
+                "on",
+            ),
+            (
+                "Unmute",
+                selected.iter().filter(|n| n.props.muted).copied().collect(),
+                "muted",
+                "off",
+            ),
+            (
+                "Apply the current colour",
+                selected
+                    .iter()
+                    .filter(|n| n.props.color != state.roll.color)
+                    .copied()
+                    .collect(),
+                "color",
+                &color,
+            ),
+        ];
+        for (label, notes, prop, value) in props {
+            let invocation = set_notes_prop(channel, &notes, prop, value);
+            if crate::widgets::add_enabled(ui, invocation.is_some(), egui::Button::new(label))
+                .clicked()
+            {
+                actions.extend(invocation.map(Action::Run));
+                ui.close();
+            }
+        }
+        ui.separator();
         if ui
             .button(RichText::new("Clear the channel's notes").color(theme::DANGER))
             .clicked()
@@ -616,9 +1007,166 @@ fn options_menu(
             run(actions, "note.clear", &[]);
             ui.close();
         }
-    })
-    .response
-    .hint("Piano roll options: zoom, quantize, tools, transpose, clear");
+    });
+    ui.menu_button("Tools", |ui| {
+        if ui
+            .button("Quantize")
+            .hint("Snap note starts to the grid")
+            .clicked()
+        {
+            let grid = format!("{}t", state.roll.snap.ticks_at(0, &state.roll.meter));
+            run(actions, "note.quantize", &[&grid]);
+            ui.close();
+        }
+        let selected = selected_of(state, project);
+        tools_menu(ui, state, number, &selected, actions, false);
+    });
+    ui.menu_button("Chord", |ui| chord_list(ui, state));
+    ui.menu_button("Snap", |ui| snap_list(ui, state));
+    ui.menu_button("Select", |ui| {
+        let ops = [
+            ("All", "Ctrl+A", EditOp::SelectAll),
+            ("None", "Esc", EditOp::SelectNone),
+            ("Invert", "", EditOp::InvertSelection),
+        ];
+        for (label, keys, op) in ops {
+            if ui
+                .add(egui::Button::new(label).shortcut_text(keys))
+                .clicked()
+            {
+                edit_op(state, project, op, actions);
+                ui.close();
+            }
+        }
+        ui.separator();
+        let notes: Vec<Note> = project
+            .channels
+            .get(state.selected_channel)
+            .map(|c| project.current_pattern().notes_of(c.id).copied().collect())
+            .unwrap_or_default();
+        let color = state.roll.color;
+        let picks: [(&str, NotePick); 2] = [
+            ("Muted notes", |n, _| n.props.muted),
+            ("Notes of the current colour", |n, c| n.props.color == c),
+        ];
+        for (label, pick) in picks {
+            if ui.button(label).clicked() {
+                state.roll.selection = notes
+                    .iter()
+                    .filter(|n| pick(n, color))
+                    .map(|n| (n.start, n.key))
+                    .collect();
+                ui.close();
+            }
+        }
+    });
+    ui.menu_button("View", |ui| {
+        ui.checkbox(&mut state.roll.ghosts, "Ghost notes");
+        ui.menu_button("Keyboard labels", |ui| key_labels_list(ui, state));
+        ui.checkbox(&mut state.roll.note_labels, "Note labels");
+        ui.add(egui::Checkbox::new(
+            &mut state.roll.lane_shown,
+            "Property lane",
+        ))
+        .hint("Shift+Enter shows or hides the property lane");
+    });
+    ui.menu_button("Zoom", |ui| {
+        let items = [
+            ("Zoom in", "Page Up", Zoom::By(1.5)),
+            ("Zoom out", "Page Down", Zoom::By(1.0 / 1.5)),
+            ("Fit the pattern", "Shift+4", Zoom::Pattern),
+            ("Zoom to selection", "Shift+5", Zoom::Selection),
+        ];
+        for (label, keys, op) in items {
+            if ui
+                .add(egui::Button::new(label).shortcut_text(keys))
+                .clicked()
+            {
+                zoom(state, project, op);
+                ui.close();
+            }
+        }
+    });
+    ui.separator();
+    ui.horizontal(|ui| {
+        ui.label("New-note velocity");
+        ui.add(egui::DragValue::new(&mut state.roll.velocity).range(1..=127));
+    });
+}
+
+/// Horizontal zoom from the window menu and the window-local keys.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Zoom {
+    /// Multiply the step width.
+    By(f32),
+    /// A fixed step width (Shift+1–3).
+    Level(f32),
+    /// The whole pattern in the window (Shift+4).
+    Pattern,
+    /// The time selection, or the selected notes (Shift+5).
+    Selection,
+}
+
+/// The fixed zoom levels of Shift+1, Shift+2 and Shift+3, in points per step.
+const ZOOM_LEVELS: [f32; 3] = [12.0, 24.0, 48.0];
+
+fn zoom(state: &mut UiState, project: &Project, zoom: Zoom) {
+    let clamp = |px: f32| px.clamp(STEP_WIDTH_RANGE.0, STEP_WIDTH_RANGE.1);
+    let range = match zoom {
+        Zoom::By(factor) => {
+            state.roll.px_per_step = clamp(state.roll.px_per_step * factor);
+            return;
+        }
+        Zoom::Level(px) => {
+            state.roll.px_per_step = clamp(px);
+            return;
+        }
+        Zoom::Pattern => Some((0, project.current_pattern().length_ticks().max(1))),
+        Zoom::Selection => state.roll.time_selection.or_else(|| {
+            let id = project.channels.get(state.selected_channel)?.id;
+            let picked = project
+                .current_pattern()
+                .notes_of(id)
+                .filter(|n| state.roll.selection.contains(&(n.start, n.key)));
+            picked.fold(None, |span, n| {
+                let (a, b) = span.unwrap_or((n.start, n.start + n.length));
+                Some((a.min(n.start), b.max(n.start + n.length)))
+            })
+        }),
+    };
+    let (Some((from, to)), Some((_, clip))) = (range, state.roll.last_view) else {
+        return;
+    };
+    let steps = (to.saturating_sub(from)).max(1) as f32 / TICKS_PER_STEP as f32;
+    state.roll.px_per_step = clamp((clip.width() - KEYS_WIDTH) / steps);
+    let x = from as f32 / TICKS_PER_STEP as f32 * state.roll.px_per_step;
+    state.roll.jump = Some(vec2(x, state.roll.offset.y));
+}
+
+/// The snap values, the current one ticked (header picker and window menu).
+fn snap_list(ui: &mut egui::Ui, state: &mut UiState) {
+    let snap = state.roll.snap;
+    for value in Snap::ALL {
+        if ui.selectable_label(snap == value, value.label()).clicked() {
+            state.roll.snap = value;
+            ui.close();
+        }
+    }
+}
+
+/// Single notes or a chord for the Draw tool (header picker and window menu).
+fn chord_list(ui: &mut egui::Ui, state: &mut UiState) {
+    let chord = state.roll.chord;
+    if ui.selectable_label(chord.is_none(), "Note").clicked() {
+        state.roll.chord = None;
+        ui.close();
+    }
+    for (name, _) in musiccraft_project::music::CHORDS {
+        if ui.selectable_label(chord == Some(name), name).clicked() {
+            state.roll.chord = Some(name);
+            ui.close();
+        }
+    }
 }
 
 fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
@@ -640,13 +1188,29 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
     let key_h = state.roll.key_height;
     let size = vec2(
         KEYS_WIDTH + visible_ticks as f32 * px_per_tick,
-        RULER_HEIGHT + KEYS as f32 * key_h + LANE_HEIGHT,
+        RULER_HEIGHT + KEYS as f32 * key_h + state.roll.lane(),
     );
 
+    // The scroll/zoom row runs along the top and the vertical bar down the
+    // right; the view (ruler, keyboard, grid and lane) fills the rest.
+    let body = ui.available_rect_before_wrap();
+    ui.advance_cursor_after_rect(body);
+    let view_rect = crate::scrollbars::view_rect(body);
+    let mut view_ui = ui.new_child(egui::UiBuilder::new().max_rect(view_rect));
+    // Alt+wheel edits the note under the pointer (`alt_wheel`), so the view
+    // must not scroll with it.
+    let over = ui.input(|i| i.pointer.hover_pos().is_some_and(|p| view_rect.contains(p)));
+    if over && ui.input(|i| i.modifiers.alt) {
+        ui.ctx()
+            .input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
+    }
     let mut scroll = egui::ScrollArea::both()
         .id_salt("roll-scroll")
-        .auto_shrink([false, false]);
-    if state.roll.centred_for != Some(channel_index) {
+        .auto_shrink([false, false])
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
+    if let Some(jump) = state.roll.jump.take() {
+        scroll = scroll.scroll_offset(jump);
+    } else if state.roll.centred_for != Some(channel_index) {
         // Centre vertically on the channel's notes, or on C5 when it has none.
         let keys: Vec<u8> = pattern.notes_of(channel.id).map(|n| n.key).collect();
         let target = match (keys.iter().min(), keys.iter().max()) {
@@ -654,10 +1218,10 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             _ => 60,
         };
         let y = RULER_HEIGHT + row_of_key(u8::try_from(target).unwrap_or(60)) as f32 * key_h;
-        scroll = scroll.vertical_scroll_offset((y - ui.available_height() / 2.0).max(0.0));
+        scroll = scroll.vertical_scroll_offset((y - view_rect.height() / 2.0).max(0.0));
         state.roll.centred_for = Some(channel_index);
     }
-    scroll.show(ui, |ui| {
+    let output = scroll.show(&mut view_ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
         let clip = ui.clip_rect();
         let grid = Grid {
@@ -665,30 +1229,39 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             px_per_tick,
             row_height: key_h,
             rows: KEYS,
+            scales: None,
         };
         state.roll.last_view = Some((grid, clip));
+        // The keyboard keeps middle-drag for zooming.
+        let lanes = Rect::from_min_max(pos2(clip.left() + KEYS_WIDTH, clip.top()), clip.max);
+        if let Some(offset) = crate::scrollbars::middle_pan(ui, lanes, clip.min - rect.min) {
+            state.roll.jump = Some(offset);
+        }
         let painter = ui.painter_at(clip);
-        draw_background(&painter, &grid, (clip, rect), length, &state.roll.meter);
-        if let Some((root, scale)) = state.roll.scale {
-            draw_scale(&painter, &grid, clip, rect, root, scale);
+        draw_background(
+            &painter,
+            &grid,
+            (clip, rect),
+            length,
+            (&state.roll.meter, state.roll.scale),
+        );
+        if let Some(range) = state.roll.time_selection {
+            let lanes = Rect::from_min_max(clip.min, clip.max - vec2(0.0, state.roll.lane()));
+            draw_time_wash(&painter, &grid, lanes, range);
         }
 
-        // Ghost notes: other channels' notes, faded in their own colours.
-        for note in pattern.notes.iter().filter(|n| n.channel != channel.id) {
+        // Ghost notes: other channels' notes, in one neutral tone.
+        let ghosts = pattern
+            .notes
+            .iter()
+            .filter(|n| state.roll.ghosts && n.channel != channel.id);
+        for note in ghosts {
             let r = grid.span(row_of_key(note.key), note.start, note.length);
-            let ghost = project
-                .channel_position(note.channel)
-                .map_or(theme::TEXT_DIM, theme::palette);
-            painter.rect_filled(r.shrink(1.0), 2.0, ghost.gamma_multiply(0.18));
-            painter.rect_stroke(
-                r.shrink(1.0),
-                2.0,
-                Stroke::new(1.0, ghost.gamma_multiply(0.35)),
-                egui::StrokeKind::Inside,
-            );
+            painter.rect_filled(r.shrink2(vec2(0.5, 1.0)), 2.0, theme::GHOST_NOTE);
         }
         let notes: Vec<&Note> = pattern.notes_of(channel.id).collect();
-        let color = theme::palette(channel_index);
+        let color = crate::channel_color(project, channel_index);
+        let labels = state.roll.note_labels;
         // While dragging, the affected notes are drawn at their new place.
         let moving: Vec<Note> = match state.roll.drag {
             Some(d) if d.kind == DragKind::Create => Vec::new(),
@@ -709,20 +1282,38 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             {
                 continue;
             }
+            let selected = state.roll.selection.contains(&(note.start, note.key));
             let tint = if note.props.color > 0 {
-                note_color(note.props.color)
+                theme::note_color(note.props.color)
             } else {
                 color
             };
             let r = grid.span(row_of_key(note.key), note.start, note.length);
             if note.props.muted {
                 // Muted notes are hollow.
+                let edge = if selected {
+                    theme::NOTE_SELECTED
+                } else {
+                    tint.gamma_multiply(0.7)
+                };
                 painter.rect_filled(r.shrink(1.0), 3.0, tint.gamma_multiply(0.12));
                 painter.rect_stroke(
                     r.shrink(1.0),
                     3.0,
-                    Stroke::new(1.0, tint.gamma_multiply(0.7)),
+                    Stroke::new(1.0, edge),
                     egui::StrokeKind::Inside,
+                );
+            } else if selected {
+                // A selected note's whole body turns to the selection tone.
+                draw_note(
+                    &painter,
+                    &grid,
+                    note.start,
+                    note.length,
+                    note.key,
+                    127,
+                    theme::NOTE_SELECTED,
+                    (false, labels),
                 );
             } else {
                 draw_note(
@@ -733,48 +1324,43 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     note.key,
                     note.velocity,
                     tint,
-                    false,
+                    (false, labels),
                 );
             }
+            let mark = if selected && !note.props.muted {
+                theme::at_strength(theme::BACKGROUND, 170)
+            } else {
+                theme::at_strength(theme::TEXT, 160)
+            };
             if note.props.porta {
-                // A small curve marks a portamento note.
-                let a = pos2(r.left() + 3.0, r.bottom() - 3.0);
-                let b = pos2(r.left() + 3.0 + r.height(), r.top() + 3.0);
+                // A small curve at the right end marks a portamento note.
+                let size = (r.height() - 6.0).min(r.width() - 4.0).max(2.0);
+                let a = pos2(r.right() - 3.0 - size, r.bottom() - 3.0);
+                let b = pos2(r.right() - 3.0, r.top() + 3.0);
                 painter.add(egui::Shape::QuadraticBezier(
                     egui::epaint::QuadraticBezierShape::from_points_stroke(
                         [a, pos2(a.x, b.y), b],
                         false,
                         Color32::TRANSPARENT,
-                        Stroke::new(1.5, Color32::from_white_alpha(170)),
+                        Stroke::new(1.5, mark),
                     ),
                 ));
             }
             if note.slide {
-                // A ramp at the start marks a slide note.
+                // A ramp at the right end marks a slide note.
                 let r = grid
                     .span(row_of_key(note.key), note.start, note.length)
                     .shrink2(vec2(1.0, 2.0));
                 let w = r.width().min(r.height() * 1.5);
                 painter.add(egui::Shape::convex_polygon(
                     vec![
-                        r.left_bottom(),
-                        pos2(r.left() + w, r.top()),
-                        pos2(r.left() + w, r.bottom()),
+                        pos2(r.right() - w, r.bottom()),
+                        r.right_top(),
+                        r.right_bottom(),
                     ],
-                    Color32::from_white_alpha(150),
+                    mark,
                     Stroke::NONE,
                 ));
-            }
-            if state.roll.selection.contains(&(note.start, note.key)) {
-                let r = grid
-                    .span(row_of_key(note.key), note.start, note.length)
-                    .shrink2(vec2(0.5, 1.0));
-                painter.rect_stroke(
-                    r,
-                    3.0,
-                    Stroke::new(1.5, theme::TEXT),
-                    egui::StrokeKind::Inside,
-                );
             }
         }
         if state.roll.tool == Tool::Paint {
@@ -787,7 +1373,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     note.key,
                     note.velocity,
                     color,
-                    true,
+                    (true, labels),
                 );
             }
         }
@@ -801,7 +1387,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     drag.key,
                     state.roll.velocity,
                     color,
-                    true,
+                    (true, labels),
                 );
             } else {
                 let dt = i64::from(drag.start) - i64::from(drag.original.start);
@@ -828,18 +1414,14 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                         key,
                         note.velocity,
                         color,
-                        true,
+                        (true, labels),
                     );
                 }
             }
         }
         if let Some((origin, current)) = state.roll.marquee {
             let area = Rect::from_two_pos(origin, current);
-            painter.rect_filled(
-                area,
-                0.0,
-                Color32::from_rgba_unmultiplied(0x2e, 0xc4, 0xb6, 24),
-            );
+            painter.rect_filled(area, 0.0, theme::SELECTION_FILL);
             painter.rect_stroke(
                 area,
                 0.0,
@@ -874,6 +1456,14 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             actions,
         );
         draw_ruler(&painter, &grid, clip, length, &state.roll.meter);
+        if let Some((a, b)) = state.roll.time_selection {
+            let band = Rect::from_x_y_ranges(
+                grid.x(a as f32)..=grid.x(b as f32),
+                clip.top()..=clip.top() + RULER_HEIGHT,
+            );
+            painter.rect_filled(band, 0.0, theme::at_strength(theme::HIGHLIGHT, 60));
+        }
+        ruler(ui, state, project, &grid, clip, (&notes, actions));
         // The ruler marks the playhead whether or not it is moving.
         if let Some(tick) = playhead {
             let x = grid.x(tick as f32);
@@ -888,15 +1478,264 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 Stroke::NONE,
             ));
         }
-        velocity_lane(ui, state, &grid, clip, &notes, channel_index, actions);
-        if response.hovered() {
+        let ghosts: Vec<&Note> = pattern
+            .notes
+            .iter()
+            .filter(|n| n.channel != channel.id)
+            .collect();
+        velocity_lane(
+            ui,
+            state,
+            (&grid, clip),
+            (&notes, &ghosts),
+            (channel_index, crate::channel_color(project, channel_index)),
+            actions,
+        );
+        if response.hovered() && !ui.input(|i| i.modifiers.alt) {
             let zoom = ui.input(|i| i.zoom_delta());
             if zoom != 1.0 {
-                state.roll.px_per_step = (state.roll.px_per_step * zoom).clamp(6.0, 120.0);
+                state.roll.px_per_step =
+                    (state.roll.px_per_step * zoom).clamp(STEP_WIDTH_RANGE.0, STEP_WIDTH_RANGE.1);
             }
         }
-        keyboard(ui, state, &grid, clip, channel_index, actions);
+        keyboard(ui, state, (&grid, clip), &notes, channel_index, actions);
     });
+    state.roll.offset = output.state.offset;
+    let notes: Vec<&Note> = pattern.notes_of(channel.id).collect();
+    let view = output.inner_rect.size();
+    scroll_row(
+        ui,
+        state,
+        body,
+        view,
+        (&notes, visible_ticks, bar),
+        crate::channel_color(project, channel_index),
+    );
+    corner(
+        ui,
+        state,
+        (project, body),
+        crate::channel_color(project, channel_index),
+        actions,
+    );
+}
+
+/// The scroll/zoom row, the vertical zoom box and the vertical scroll bar.
+/// `view` is the size of the visible view; `content` holds the notes, the
+/// ticks the canvas covers and one bar's length.
+fn scroll_row(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    body: Rect,
+    view: Vec2,
+    (notes, total, bar_length): (&[&Note], u32, u32),
+    color: Color32,
+) {
+    use crate::scrollbars::{self, Setup};
+    let roll = &mut state.roll;
+    let tps = TICKS_PER_STEP as f32;
+    let (lo, hi) = STEP_WIDTH_RANGE;
+    let setup = Setup {
+        view,
+        offset: roll.offset,
+        lead: KEYS_WIDTH,
+        top: RULER_HEIGHT,
+        tail: roll.lane(),
+        x: (
+            roll.px_per_step / tps,
+            total as f32,
+            bar_length as f32,
+            (lo / tps, hi / tps),
+        ),
+        y: (roll.key_height, KEYS as f32, KEY_HEIGHT_RANGE, KEY_HEIGHT),
+        y_label: "Key height",
+    };
+    let out = scrollbars::around(
+        ui,
+        body,
+        egui::Id::new("roll-bars"),
+        setup,
+        |p, rail, span| {
+            overview(p, rail, (notes, color), span);
+        },
+    );
+    if let Some(scale) = out.scale {
+        roll.px_per_step = scale * tps;
+    }
+    if let Some(row) = out.row {
+        roll.key_height = row;
+    }
+    if out.jump.is_some() {
+        roll.jump = out.jump;
+    }
+}
+
+/// A miniature of the channel's notes along the scroll rail, brighter inside
+/// the visible range.
+fn overview(
+    painter: &egui::Painter,
+    rail: Rect,
+    (notes, color): (&[&Note], Color32),
+    view: crate::scrollbars::Span,
+) {
+    let total = view.total.max(1.0);
+    for note in notes {
+        let x0 = rail.left() + note.start as f32 / total * rail.width();
+        let w = (note.length as f32 / total * rail.width()).max(1.5);
+        let y = rail.top() + row_of_key(note.key) as f32 / KEYS as f32 * rail.height();
+        let inside = (note.start as f32) < view.first + view.span
+            && (note.start + note.length) as f32 > view.first;
+        let color = theme::at_strength(color, if inside { 200 } else { 90 });
+        painter.line_segment([pos2(x0, y), pos2(x0 + w, y)], Stroke::new(1.0, color));
+    }
+}
+
+/// The corner block above the keyboard: the colour group of new notes, with
+/// the Porta and Slide toggles on its right edge. Right-click offers to give
+/// the selected notes this colour.
+fn corner(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    (project, body): (&Project, Rect),
+    own: Color32,
+    actions: &mut Vec<Action>,
+) {
+    let block = Rect::from_min_size(
+        body.min,
+        vec2(KEYS_WIDTH, crate::scrollbars::BAR + RULER_HEIGHT),
+    );
+    let group = state.roll.color;
+    let fill = group_color(group, own);
+    let swatch = ui
+        .interact(block, egui::Id::new("roll-corner"), Sense::click())
+        .hint(format!(
+            "Colour group {} of new notes · click to choose · right-click to apply it to the selected notes",
+            group + 1
+        ));
+    let painter = ui.painter();
+    painter.rect_filled(block, 0.0, fill);
+    if swatch.hovered() {
+        painter.rect_filled(block, 0.0, theme::BAR_GROUP);
+    }
+    painter.text(
+        block.left_bottom() + vec2(3.0, -2.0),
+        Align2::LEFT_BOTTOM,
+        (group + 1).to_string(),
+        FontId::proportional(theme::FONT_LABEL),
+        theme::BACKGROUND,
+    );
+    let side = (block.height() / 2.0).floor();
+    for (i, (icon, on, hint)) in [
+        (
+            Icon::Porta,
+            state.roll.porta,
+            "Porta (O): new notes glide from the previous note",
+        ),
+        (
+            Icon::SlideRamp,
+            state.roll.slide,
+            "Slide (S): new notes bend the notes they overlap",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let rect = Rect::from_min_size(
+            pos2(block.right() - side, block.top() + i as f32 * side),
+            vec2(side, side),
+        );
+        let response = ui
+            .interact(
+                rect,
+                egui::Id::new(("roll-corner-toggle", i)),
+                Sense::click(),
+            )
+            .hint(hint);
+        let tone = if on { 255 } else { 80 };
+        icons::paint(
+            ui.painter(),
+            rect,
+            icon,
+            theme::at_strength(theme::BACKGROUND, tone),
+        );
+        if response.clicked() {
+            match i {
+                0 => state.roll.porta = !state.roll.porta,
+                _ => state.roll.slide = !state.roll.slide,
+            }
+        }
+    }
+    let toggle = swatch.clicked().then_some(egui::SetOpenCommand::Toggle);
+    egui::Popup::menu(&swatch)
+        .id(egui::Id::new("roll-colour-groups"))
+        .open_memory(toggle)
+        .show(|ui| colour_groups(ui, state, own));
+    swatch.context_menu(|ui| {
+        let any = !state.roll.selection.is_empty();
+        let item =
+            egui::Button::new("Apply this colour to the selected notes").shortcut_text("Alt+C");
+        if crate::widgets::add_enabled(ui, any, item).clicked() {
+            edit_op(state, project, EditOp::ApplyColour, actions);
+            ui.close();
+        }
+    });
+}
+
+/// Colour group `group` (0 is the channel's own colour, `own`).
+pub(crate) fn group_color(group: u8, own: Color32) -> Color32 {
+    if group == 0 {
+        own
+    } else {
+        theme::note_color(group)
+    }
+}
+
+/// The 4 × 4 grid of colour groups for new notes.
+fn colour_groups(ui: &mut egui::Ui, state: &mut UiState, own: Color32) {
+    if let Some(group) = colour_grid(ui, state.roll.color, own) {
+        state.roll.color = group;
+        ui.close();
+    }
+}
+
+/// The 4 × 4 grid of colour groups, numbered down each column, with
+/// `current` outlined; returns the group clicked.
+pub(crate) fn colour_grid(ui: &mut egui::Ui, current: u8, own: Color32) -> Option<u8> {
+    ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
+    let mut picked = None;
+    for row in 0..4_u8 {
+        ui.horizontal(|ui| {
+            for column in 0..4_u8 {
+                let group = column * 4 + row;
+                let (rect, response) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
+                let painter = ui.painter();
+                painter.rect_filled(rect, 2.0, group_color(group, own));
+                if group == current || response.hovered() {
+                    painter.rect_stroke(
+                        rect,
+                        2.0,
+                        Stroke::new(2.0, theme::TEXT),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                painter.text(
+                    rect.center(),
+                    Align2::CENTER_CENTER,
+                    (group + 1).to_string(),
+                    FontId::proportional(theme::FONT_LABEL),
+                    theme::BACKGROUND,
+                );
+                let n = group + 1;
+                if response
+                    .hint(format!("Colour group {n} (MIDI channel {n} for plugins)"))
+                    .clicked()
+                {
+                    picked = Some(group);
+                }
+            }
+        });
+    }
+    picked
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -908,7 +1747,7 @@ fn draw_note(
     key: u8,
     velocity: u8,
     color: Color32,
-    ghost: bool,
+    (ghost, label): (bool, bool),
 ) {
     let rect = grid
         .span(row_of_key(key), start, length)
@@ -918,23 +1757,31 @@ fn draw_note(
     } else {
         110 + u32::from(velocity)
     };
-    let fill =
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha.min(255) as u8);
+    let fill = theme::at_strength(color, alpha.min(255) as u8);
     painter.rect_filled(rect, 3.0, fill);
     painter.rect_stroke(
         rect,
         3.0,
-        Stroke::new(1.0, Color32::from_black_alpha(120)),
+        Stroke::new(1.0, theme::shade(120)),
         egui::StrokeKind::Inside,
     );
-    if rect.width() > 28.0 {
-        painter.text(
-            rect.left_center() + vec2(4.0, 0.0),
-            Align2::LEFT_CENTER,
+    // The key name, cut short with an ellipsis when the note is narrow.
+    let room = rect.width() - 6.0;
+    if label && room > 8.0 && rect.height() >= 8.0 {
+        let mut job = egui::text::LayoutJob::simple_singleline(
             key_name(key),
-            FontId::proportional(9.5),
+            FontId::proportional(theme::FONT_CAPTION),
             theme::BACKGROUND,
         );
+        job.wrap = egui::text::TextWrapping {
+            max_width: room,
+            max_rows: 1,
+            break_anywhere: true,
+            overflow_character: Some('…'),
+        };
+        let galley = painter.layout_job(job);
+        let at = pos2(rect.left() + 4.0, rect.center().y - galley.size().y / 2.0);
+        painter.galley(at, galley, theme::BACKGROUND);
     }
 }
 
@@ -943,18 +1790,14 @@ fn draw_background(
     grid: &Grid,
     (clip, rect): (Rect, Rect),
     length: u32,
-    meter: &Meter,
+    (meter, scale): (&Meter, Option<(u8, usize)>),
 ) {
     let first = grid.row_at(clip.top().max(grid.origin.y)).unwrap_or(0);
     let last = grid.row_at(clip.bottom() - 1.0).unwrap_or(KEYS - 1);
     for row in first..=last {
         let key = key_of_row(row);
         let y = grid.y(row);
-        let fill = if is_black(key) {
-            theme::BLACK_KEY_ROW
-        } else {
-            theme::WHITE_KEY_ROW
-        };
+        let fill = row_fill(key, scale);
         painter.rect_filled(
             Rect::from_min_max(
                 pos2(grid.origin.x, y),
@@ -978,7 +1821,7 @@ fn draw_background(
     painter.rect_filled(
         Rect::from_min_max(pos2(end, grid.origin.y), rect.right_bottom()),
         0.0,
-        Color32::from_black_alpha(60),
+        theme::PAST_END,
     );
     let first_tick = grid.tick_at(clip.left()) as u32 / TICKS_PER_STEP * TICKS_PER_STEP;
     let last_tick = grid.tick_at(clip.right()) as u32;
@@ -999,33 +1842,47 @@ fn draw_background(
     }
 }
 
-fn draw_scale(
-    painter: &egui::Painter,
-    grid: &Grid,
-    clip: Rect,
-    rect: Rect,
-    root: u8,
-    scale: usize,
-) {
-    let Some((_, degrees)) = musiccraft_project::music::SCALES.get(scale) else {
-        return;
+/// `key` moved to the nearest key of `scale` (ties go down, as in
+/// `note.to_scale`); unchanged without a scale.
+fn fit_to_scale(key: u8, scale: Option<(u8, usize)>) -> u8 {
+    let Some((root, degrees)) = scale.and_then(|(root, s)| {
+        musiccraft_project::music::SCALES
+            .get(s)
+            .map(|(_, d)| (root, *d))
+    }) else {
+        return key;
     };
-    let first = grid.row_at(clip.top().max(grid.origin.y)).unwrap_or(0);
-    let last = grid.row_at(clip.bottom() - 1.0).unwrap_or(KEYS - 1);
-    for row in first..=last {
-        let key = key_of_row(row);
-        if musiccraft_project::music::in_scale(key, root, degrees) {
-            let y = grid.y(row);
-            let tint = if key % 12 == root % 12 { 22 } else { 12 };
-            painter.rect_filled(
-                Rect::from_min_max(
-                    pos2(grid.origin.x, y),
-                    pos2(rect.right(), y + grid.row_height),
-                ),
-                0.0,
-                Color32::from_rgba_unmultiplied(0x2e, 0xc4, 0xb6, tint),
-            );
+    let fits = |k: i32| {
+        u8::try_from(k)
+            .ok()
+            .filter(|k| *k <= 127 && musiccraft_project::music::in_scale(*k, root, degrees))
+    };
+    (0..12)
+        .find_map(|d| fits(i32::from(key) - d).or_else(|| fits(i32::from(key) + d)))
+        .unwrap_or(key)
+}
+
+/// A key row's tone. Without a scale, black-key rows are darker. With one,
+/// that shading is replaced: in-scale rows a step lighter than white-key
+/// rows (the root's with a faint accent), the rest like black-key rows.
+fn row_fill(key: u8, scale: Option<(u8, usize)>) -> Color32 {
+    let degrees = scale.and_then(|(root, s)| {
+        musiccraft_project::music::SCALES
+            .get(s)
+            .map(|(_, d)| (root, *d))
+    });
+    match degrees {
+        None if is_black(key) => theme::BLACK_KEY_ROW,
+        None => theme::WHITE_KEY_ROW,
+        Some((root, degrees)) if musiccraft_project::music::in_scale(key, root, degrees) => {
+            let lighter = theme::mix(theme::WHITE_KEY_ROW, theme::RAISED, 0.45);
+            if key % 12 == root % 12 {
+                theme::mix(lighter, theme::ACCENT, 0.12)
+            } else {
+                lighter
+            }
         }
+        Some(_) => theme::BLACK_KEY_ROW,
     }
 }
 
@@ -1035,23 +1892,175 @@ fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, length: u32, met
         pos2(clip.right(), clip.top() + RULER_HEIGHT),
     );
     painter.rect_filled(ruler, 0.0, theme::PANEL_DARK);
-    let first_bar = meter.bar(grid.tick_at(clip.left()) as u32).index;
-    let last_bar = meter.bar(grid.tick_at(clip.right()) as u32).index + 1;
+    let first_bar = meter.bar(grid.tick_at(clip.left()).max(0.0) as u32).index;
+    let last_bar = meter.bar(grid.tick_at(clip.right()).max(0.0) as u32).index + 1;
+    // Narrow bars show only every 2nd or 4th number.
+    let bar_width =
+        grid.x(meter.bar_start(first_bar + 1) as f32) - grid.x(meter.bar_start(first_bar) as f32);
+    let every = if bar_width >= 28.0 {
+        1
+    } else if bar_width >= 14.0 {
+        2
+    } else {
+        4
+    };
     for bar in first_bar..=last_bar {
         let start = meter.bar_start(bar);
         let x = grid.x(start as f32);
-        let color = if start < length {
-            theme::TEXT
-        } else {
-            theme::TEXT_DIM
-        };
-        painter.text(
-            pos2(x + 3.0, ruler.center().y),
-            Align2::LEFT_CENTER,
-            (bar + 1).to_string(),
-            FontId::monospace(11.0),
-            color,
+        let past = start >= length;
+        // Short beat ticks rise from the bottom edge.
+        let info = meter.bar(start);
+        let beat = info.sig.beat_ticks().max(1);
+        for at in (start + beat..info.end()).step_by(beat as usize) {
+            let bx = grid.x(at as f32);
+            painter.line_segment(
+                [pos2(bx, ruler.bottom() - 3.0), pos2(bx, ruler.bottom())],
+                Stroke::new(1.0, theme::GRID_BEAT),
+            );
+        }
+        painter.line_segment(
+            [pos2(x, ruler.bottom() - 6.0), pos2(x, ruler.bottom())],
+            Stroke::new(1.0, theme::GRID_BAR),
         );
+        if bar % every == 0 {
+            painter.text(
+                pos2(x + 3.0, ruler.top() + 2.0),
+                Align2::LEFT_TOP,
+                (bar + 1).to_string(),
+                FontId::monospace(theme::FONT_LABEL),
+                if past { theme::TEXT_DIM } else { theme::TEXT },
+            );
+        }
+    }
+}
+
+/// The splitter between the grid and the property lane: drag it to resize
+/// the lane, double-click to hide or show the lane, right-click to restore
+/// its default height.
+fn splitter(ui: &egui::Ui, state: &mut UiState, clip: Rect) {
+    let y = clip.bottom() - state.roll.lane();
+    let rect = Rect::from_min_max(pos2(clip.left(), y - SPLITTER), pos2(clip.right(), y));
+    let response = ui
+        .interact(rect, ui.id().with("roll-splitter"), Sense::click_and_drag())
+        .on_hover_cursor(egui::CursorIcon::ResizeVertical)
+        .hint(
+            "Drag to resize the property lane · double-click to hide or show it (Shift+Enter) · right-click for the default height",
+        );
+    let painter = ui.painter_at(clip);
+    painter.rect_filled(rect, 0.0, theme::PANEL_DARK);
+    let grip = if response.hovered() || response.dragged() {
+        theme::TEXT
+    } else {
+        theme::TEXT_FAINT
+    };
+    for dx in [-4.0, 0.0, 4.0] {
+        painter.circle_filled(rect.center() + vec2(dx, 0.0), 1.0, grip);
+    }
+    let roll = &mut state.roll;
+    if response.double_clicked() {
+        roll.lane_shown = !roll.lane_shown;
+    } else if response.secondary_clicked() {
+        roll.lane_height = LANE_HEIGHT;
+        roll.lane_shown = true;
+    } else if response.dragged()
+        && let Some(p) = response.interact_pointer_pos()
+    {
+        roll.lane_shown = true;
+        let most = LANE_HEIGHT_RANGE.1.min(clip.height() * 0.7);
+        roll.lane_height =
+            (clip.bottom() - p.y).clamp(LANE_HEIGHT_RANGE.0, most.max(LANE_HEIGHT_RANGE.0));
+    }
+}
+
+/// The time selection's faint wash over the grid, with its two edges.
+/// `clip` is the visible view above the property lane.
+fn draw_time_wash(painter: &egui::Painter, grid: &Grid, clip: Rect, (a, b): (u32, u32)) {
+    let (x0, x1) = (grid.x(a as f32), grid.x(b as f32));
+    let top = clip.top() + RULER_HEIGHT;
+    let bottom = clip.bottom();
+    painter.rect_filled(
+        Rect::from_x_y_ranges(x0..=x1, top..=bottom),
+        0.0,
+        theme::at_strength(theme::HIGHLIGHT, 16),
+    );
+    for x in [x0, x1] {
+        painter.line_segment(
+            [pos2(x, top), pos2(x, bottom)],
+            Stroke::new(1.0, theme::at_strength(theme::HIGHLIGHT, 160)),
+        );
+    }
+}
+
+/// The ruler's gestures: a click seeks, a drag makes a time selection and
+/// selects the notes that overlap it.
+fn ruler(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    grid: &Grid,
+    clip: Rect,
+    (notes, actions): (&[&Note], &mut Vec<Action>),
+) {
+    let area = Rect::from_min_max(
+        pos2(clip.left() + KEYS_WIDTH, clip.top()),
+        pos2(clip.right(), clip.top() + RULER_HEIGHT),
+    );
+    let response = ui
+        .interact(area, ui.id().with("roll-ruler"), Sense::click_and_drag())
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .hint("Click to seek · drag to select time");
+    let snap = state.roll.snap;
+    let meter = state.roll.meter.clone();
+    let tick_at = |x: f32| snap.floor(grid.tick_at(x).max(0.0), &meter);
+    if response.clicked() {
+        state.roll.time_selection = None;
+        if let Some(pos) = response.interact_pointer_pos() {
+            if let Some(at) = song_position(project, tick_at(pos.x)) {
+                actions.push(Action::Seek(at));
+            }
+        }
+    }
+    if response.dragged() {
+        if let (Some(origin), Some(pos)) = (
+            ui.input(|i| i.pointer.press_origin()),
+            response.interact_pointer_pos(),
+        ) {
+            let (a, b) = (
+                tick_at(origin.x),
+                snap.round(grid.tick_at(pos.x).max(0.0), &meter),
+            );
+            let range = (a.min(b), a.max(b));
+            state.roll.time_selection = (range.1 > range.0).then_some(range);
+        }
+    }
+    if response.drag_stopped() {
+        if let Some((a, b)) = state.roll.time_selection {
+            state.roll.selection = notes
+                .iter()
+                .filter(|n| n.start < b && n.start + n.length > a)
+                .map(|n| (n.start, n.key))
+                .collect();
+        }
+    }
+}
+
+/// Where the playhead goes for pattern tick `tick`: the tick itself in
+/// pattern mode; in song mode, the same place inside the clip of this
+/// pattern under the playhead, or else inside its first clip.
+fn song_position(project: &Project, tick: u32) -> Option<f64> {
+    let pattern = project.current_pattern();
+    match project.play_mode {
+        PlayMode::Pattern => Some(f64::from(tick)),
+        PlayMode::Song => {
+            let mut clips = project
+                .playlist
+                .clips
+                .iter()
+                .filter(|c| c.pattern() == Some(pattern.id));
+            let first = clips.next()?;
+            let at = first.start + tick.saturating_sub(first.offset);
+            Some(f64::from(at.min(first.end().saturating_sub(1))))
+        }
     }
 }
 
@@ -1077,6 +2086,7 @@ fn tools_menu(
     number: &str,
     selected: &[Note],
     actions: &mut Vec<Action>,
+    direct: bool,
 ) {
     let toggles: Vec<Invocation> = selected
         .iter()
@@ -1100,7 +2110,7 @@ fn tools_menu(
         all.extend(args);
         actions.push(Action::Run(Invocation::new(name, all)));
     };
-    ui.menu_button("Tools", |ui| {
+    let mut body = |ui: &mut egui::Ui| {
         let mut item =
             |ui: &mut egui::Ui, label: &str, hint: &str, name: &str, args: Vec<String>| {
                 if ui.button(label).hint(hint.to_owned()).clicked() {
@@ -1139,28 +2149,28 @@ fn tools_menu(
         );
         item(
             ui,
-            "Chop to grid",
+            "Split at grid lines",
             "Split notes into grid-length pieces",
             "note.chop",
             vec![grid.clone()],
         );
         item(
             ui,
-            "Glue",
+            "Join touching notes",
             "Join touching notes of the same key",
             "note.glue",
             vec![],
         );
         item(
             ui,
-            "Flip horizontally",
+            "Mirror in time",
             "Reverse the notes in time",
             "note.flip",
             vec!["time".into()],
         );
         item(
             ui,
-            "Flip vertically",
+            "Mirror in pitch",
             "Turn the melody upside down",
             "note.flip",
             vec!["pitch".into()],
@@ -1180,13 +2190,12 @@ fn tools_menu(
                 );
             }
             None => {
-                ui.add_enabled(false, egui::Button::new("Snap to scale"))
+                crate::widgets::add_enabled(ui, false, egui::Button::new("Snap to scale"))
                     .hint("Highlight a scale first");
             }
         }
         let enabled = toggle_slide.is_some();
-        if ui
-            .add_enabled(enabled, egui::Button::new("Toggle slide"))
+        if crate::widgets::add_enabled(ui, enabled, egui::Button::new("Toggle slide"))
             .hint("Make the selected notes slide notes, or normal again")
             .clicked()
         {
@@ -1233,14 +2242,62 @@ fn tools_menu(
             }
         });
         ui.menu_button("Shape", |ui| {
-            item(ui, "Limit to C4–B5", "Fold notes into two octaves", "note.limit", vec!["C4".into(), "B5".into()]);
-            item(ui, "Velocity LFO", "Sine on velocity, one bar per cycle", "note.lfo", vec!["velocity".into(), "16".into(), "50".into()]);
-            item(ui, "Pan LFO", "Sine on pan, one bar per cycle", "note.lfo", vec!["pan".into(), "16".into(), "80".into()]);
-            item(ui, "Scale velocities 75%", "Bring velocities closer to the middle", "note.scale_levels", vec!["velocity".into(), "75".into()]);
-            item(ui, "Flam", "Add a quieter grace note just before each note", "note.flam", vec!["6t".into()]);
-            item(ui, "Staccato", "Half the gap to the next note; accent the beats", "note.articulate", vec!["50".into(), "10".into()]);
-            item(ui, "Tenuto", "Hold each note until the next one", "note.articulate", vec!["100".into()]);
-            item(ui, "Claw every 2nd", "Keep every second note or chord", "note.claw", vec!["2".into()]);
+            item(
+                ui,
+                "Limit to C4–B5",
+                "Fold notes into two octaves",
+                "note.limit",
+                vec!["C4".into(), "B5".into()],
+            );
+            item(
+                ui,
+                "Velocity LFO",
+                "Sine on velocity, one bar per cycle",
+                "note.lfo",
+                vec!["velocity".into(), "16".into(), "50".into()],
+            );
+            item(
+                ui,
+                "Pan LFO",
+                "Sine on pan, one bar per cycle",
+                "note.lfo",
+                vec!["pan".into(), "16".into(), "80".into()],
+            );
+            item(
+                ui,
+                "Scale velocities 75%",
+                "Bring velocities closer to the middle",
+                "note.scale_levels",
+                vec!["velocity".into(), "75".into()],
+            );
+            item(
+                ui,
+                "Flam",
+                "Add a quieter grace note just before each note",
+                "note.flam",
+                vec!["6t".into()],
+            );
+            item(
+                ui,
+                "Staccato",
+                "Half the gap to the next note; accent the beats",
+                "note.articulate",
+                vec!["50".into(), "10".into()],
+            );
+            item(
+                ui,
+                "Tenuto",
+                "Hold each note until the next one",
+                "note.articulate",
+                vec!["100".into()],
+            );
+            item(
+                ui,
+                "Keep every 2nd",
+                "Keep every second note or chord",
+                "note.keep_every",
+                vec!["2".into()],
+            );
         });
         ui.menu_button("Arpeggiate", |ui| {
             for (label, mode) in [
@@ -1258,16 +2315,15 @@ fn tools_menu(
                 );
             }
         });
-    });
+    };
+    if direct {
+        body(ui);
+    } else {
+        ui.menu_button("Tools", body);
+    }
     if let Some(invocation) = toggled {
         actions.push(Action::Run(invocation));
     }
-}
-
-/// The colour of note group `index` (1–15; 0 uses the channel colour).
-pub(crate) fn note_color(index: u8) -> Color32 {
-    let hue = f32::from(index % 16) / 16.0;
-    egui::ecolor::Hsva::new(hue, 0.55, 0.85, 1.0).into()
 }
 
 /// Right button: click deletes the note under the pointer; dragging deletes
@@ -1511,6 +2567,70 @@ fn tool_stroke(
     }
 }
 
+/// Alt+wheel over a note steps the property lane's value of that note (or
+/// of every selected note, when it is one of them) by a tenth of the range
+/// per notch, Ctrl+Alt+wheel by a fiftieth. A run of notches over the same
+/// notes is one undo step.
+fn alt_wheel(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    pos: Pos2,
+    (notes, boxes): (&[&Note], &[(usize, Rect)]),
+    channel: usize,
+    actions: &mut Vec<Action>,
+) {
+    let modifiers = ui.input(|i| i.modifiers);
+    if !modifiers.alt {
+        return;
+    }
+    let notches = crate::scrollbars::wheel_notches(ui);
+    let hovered = match hit_test(boxes.iter().copied(), pos) {
+        Hit::Body(i) | Hit::Edge(i) => notes.get(i).copied(),
+        Hit::Empty => None,
+    };
+    let Some(hovered) = hovered.filter(|_| notches != 0.0) else {
+        return;
+    };
+    let step = if modifiers.command {
+        1.0 / 50.0
+    } else {
+        1.0 / 10.0
+    };
+    let targets: Vec<&Note> = if state.roll.selection.contains(&(hovered.start, hovered.key)) {
+        notes
+            .iter()
+            .copied()
+            .filter(|n| state.roll.selection.contains(&(n.start, n.key)))
+            .collect()
+    } else {
+        vec![hovered]
+    };
+    let mode = state.roll.lane_mode;
+    let lines: Vec<Invocation> = targets
+        .iter()
+        .filter_map(|n| {
+            let value = (mode.value(n) + notches * step).clamp(0.0, 1.0);
+            mode.invocation(channel, n, value)
+        })
+        .collect();
+    if lines.is_empty() {
+        return;
+    }
+    let key = egui::Id::new("roll-alt-wheel");
+    let now = ui.input(|i| i.time);
+    let ids: Vec<(u32, u8)> = targets.iter().map(|n| (n.start, n.key)).collect();
+    let last = ui.data(|d| d.get_temp::<(f64, Vec<(u32, u8)>)>(key));
+    if last.is_none_or(|(t, was)| now - t > 1.0 || was != ids) {
+        state.begin_gesture();
+    }
+    ui.data_mut(|d| d.insert_temp(key, (now, ids)));
+    let batch = Invocation::new(
+        musiccraft_commands::BATCH,
+        lines.iter().map(ToString::to_string),
+    );
+    actions.push(Action::Coalesced(batch, state.gesture()));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn edit(
     ui: &egui::Ui,
@@ -1523,15 +2643,19 @@ fn edit(
     channel: usize,
     actions: &mut Vec<Action>,
 ) {
+    let lane = state.roll.lane();
     let editable = |p: Pos2| {
         p.x > clip.left() + KEYS_WIDTH
             && p.y > clip.top() + RULER_HEIGHT
-            && p.y < clip.bottom() - LANE_HEIGHT
+            && p.y < clip.bottom() - lane
     };
     let snap = state.roll.snap;
     let meter = state.roll.meter.clone();
-    let at =
-        |p: Pos2| -> (f32, Option<u8>) { (grid.tick_at(p.x), grid.row_at(p.y).map(key_of_row)) };
+    let fit = state.roll.scale.filter(|_| state.roll.fit_scale);
+    let at = |p: Pos2| -> (f32, Option<u8>) {
+        let key = grid.row_at(p.y).map(key_of_row);
+        (grid.tick_at(p.x), key.map(|k| fit_to_scale(k, fit)))
+    };
     let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
     state.roll.hover_tick = response
         .hover_pos()
@@ -1540,6 +2664,22 @@ fn edit(
 
     right_erase(state, response, notes, boxes, channel, actions);
     let tool = state.roll.tool;
+    // Pressing a note makes its length and velocity the new-note defaults.
+    if matches!(tool, Tool::Draw | Tool::Paint) && response.is_pointer_button_down_on() {
+        let pressed = ui.input(|i| {
+            i.pointer
+                .primary_pressed()
+                .then(|| i.pointer.press_origin())
+        });
+        if let Some(origin) = pressed.flatten().filter(|p| editable(*p)) {
+            if let Hit::Body(i) | Hit::Edge(i) = hit_test(boxes.iter().copied(), origin) {
+                if let Some(n) = notes.get(i) {
+                    state.roll.last_length = n.length;
+                    state.roll.velocity = n.velocity;
+                }
+            }
+        }
+    }
     if tool_stroke(ui, state, response, notes, boxes, channel, &at, actions) {
         return;
     }
@@ -1779,20 +2919,122 @@ fn edit(
             }
         }
     }
+    if response.double_clicked() && matches!(state.roll.tool, Tool::Draw | Tool::Select) {
+        let pos = response.interact_pointer_pos().filter(|p| editable(*p));
+        if let Some(Hit::Body(i) | Hit::Edge(i)) = pos.map(|p| hit_test(boxes.iter().copied(), p))
+            && let Some(note) = notes.get(i)
+        {
+            state.roll.props_note = Some((note.start, note.key));
+        }
+    }
     if let Some(pos) = response.hover_pos().filter(|p| editable(*p)) {
-        let cursor = match hit_test(boxes.iter().copied(), pos) {
-            Hit::Edge(_) => egui::CursorIcon::ResizeHorizontal,
-            Hit::Body(_) => egui::CursorIcon::Grab,
-            Hit::Empty if ctrl => egui::CursorIcon::Cell,
-            Hit::Empty => egui::CursorIcon::Crosshair,
+        alt_wheel(ui, state, pos, (notes, boxes), channel, actions);
+        let moving = state.roll.drag.is_some_and(|d| d.kind == DragKind::Move);
+        let cursor = match (tool, hit_test(boxes.iter().copied(), pos)) {
+            (Tool::Delete | Tool::Mute | Tool::Slice | Tool::Play | Tool::Zoom, _) => {
+                egui::CursorIcon::Default
+            }
+            (_, Hit::Edge(_)) => egui::CursorIcon::ResizeHorizontal,
+            _ if moving => egui::CursorIcon::Grabbing,
+            (_, Hit::Body(_)) => egui::CursorIcon::Move,
+            (Tool::Select, Hit::Empty) => egui::CursorIcon::Cell,
+            (_, Hit::Empty) if ctrl => egui::CursorIcon::Cell,
+            (_, Hit::Empty) => egui::CursorIcon::Crosshair,
         };
         ui.ctx().set_cursor_icon(cursor);
     }
 }
 
 /// Editing keys, active while the pointer is over the piano roll.
+/// The piano roll's selection and clipboard edits, run from keys and from
+/// the window menu's Edit and Select submenus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditOp {
+    SelectAll,
+    SelectNone,
+    InvertSelection,
+    Delete,
+    Cut,
+    Copy,
+    Paste,
+    Duplicate,
+    /// Move the selection by snap steps and semitones.
+    Move(i64, i8),
+    /// Give the selected notes the colour group of new notes.
+    ApplyColour,
+}
+
 fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
     use egui::{Key, Modifiers};
+    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
+    let mut ops = Vec::new();
+    if pressed(Modifiers::COMMAND, Key::A) {
+        ops.push(EditOp::SelectAll);
+    }
+    // Esc clears a selection first; with none, it closes the window.
+    let any = !state.roll.selection.is_empty() || state.roll.time_selection.is_some();
+    if any && pressed(Modifiers::NONE, Key::Escape) {
+        ops.push(EditOp::SelectNone);
+    }
+    if pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace) {
+        ops.push(EditOp::Delete);
+    }
+    use crate::ClipboardKey;
+    for (key, op) in [
+        (ClipboardKey::Copy, EditOp::Copy),
+        (ClipboardKey::Cut, EditOp::Cut),
+        (ClipboardKey::Paste, EditOp::Paste),
+    ] {
+        if crate::clipboard_key(ctx, key) {
+            ops.push(op);
+        }
+    }
+    if pressed(Modifiers::COMMAND, Key::B) {
+        ops.push(EditOp::Duplicate);
+    }
+    if pressed(Modifiers::ALT, Key::C) {
+        ops.push(EditOp::ApplyColour);
+    }
+    if pressed(Modifiers::SHIFT, Key::Enter) {
+        state.roll.lane_shown = !state.roll.lane_shown;
+    }
+    if ops.contains(&EditOp::Copy) || ops.contains(&EditOp::Cut) {
+        crate::copied(ctx, "notes");
+    }
+    let moves = [
+        (Modifiers::SHIFT, Key::ArrowUp, 0, 1),
+        (Modifiers::SHIFT, Key::ArrowDown, 0, -1),
+        (Modifiers::COMMAND, Key::ArrowUp, 0, 12),
+        (Modifiers::COMMAND, Key::ArrowDown, 0, -12),
+        (Modifiers::SHIFT, Key::ArrowRight, 1, 0),
+        (Modifiers::SHIFT, Key::ArrowLeft, -1, 0),
+    ];
+    for (modifiers, key, steps, keys) in moves {
+        if pressed(modifiers, key) {
+            ops.push(EditOp::Move(steps, keys));
+        }
+    }
+    for op in ops {
+        edit_op(state, project, op, actions);
+    }
+    let zooms = [
+        (Modifiers::NONE, Key::PageUp, Zoom::By(1.5)),
+        (Modifiers::NONE, Key::PageDown, Zoom::By(1.0 / 1.5)),
+        (Modifiers::SHIFT, Key::Num1, Zoom::Level(ZOOM_LEVELS[0])),
+        (Modifiers::SHIFT, Key::Num2, Zoom::Level(ZOOM_LEVELS[1])),
+        (Modifiers::SHIFT, Key::Num3, Zoom::Level(ZOOM_LEVELS[2])),
+        (Modifiers::SHIFT, Key::Num4, Zoom::Pattern),
+        (Modifiers::SHIFT, Key::Num5, Zoom::Selection),
+    ];
+    for (modifiers, key, op) in zooms {
+        if pressed(modifiers, key) {
+            zoom(state, project, op);
+        }
+    }
+}
+
+/// Runs one selection or clipboard edit on the selected channel's notes.
+fn edit_op(state: &mut UiState, project: &Project, op: EditOp, actions: &mut Vec<Action>) {
     let channel = state.selected_channel;
     let Some(id) = project.channels.get(channel).map(|c| c.id) else {
         return;
@@ -1804,71 +3046,76 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         .copied()
         .collect();
     let snap = i64::from(state.roll.snap.ticks_at(0, &state.roll.meter));
-    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
-
-    if pressed(Modifiers::COMMAND, Key::A) {
-        state.roll.selection = notes.iter().map(|n| (n.start, n.key)).collect();
-    }
-    if pressed(Modifiers::NONE, Key::Escape) {
-        state.roll.selection.clear();
-    }
-    if pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace) {
-        actions.extend(remove_notes(channel, &selected).map(Action::Run));
-        state.roll.selection.clear();
-    }
-    let copy = pressed(Modifiers::COMMAND, Key::C);
-    let cut = pressed(Modifiers::COMMAND, Key::X);
-    if (copy || cut) && !selected.is_empty() {
-        let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
-        state.roll.clipboard = selected
-            .iter()
-            .map(|n| Note {
-                start: n.start - first,
-                ..*n
-            })
-            .collect();
-        if cut {
+    match op {
+        EditOp::SelectAll => {
+            state.roll.selection = notes.iter().map(|n| (n.start, n.key)).collect();
+        }
+        EditOp::SelectNone => {
+            state.roll.selection.clear();
+            state.roll.time_selection = None;
+        }
+        EditOp::InvertSelection => {
+            state.roll.selection = notes
+                .iter()
+                .map(|n| (n.start, n.key))
+                .filter(|k| !state.roll.selection.contains(k))
+                .collect();
+        }
+        EditOp::Delete => {
             actions.extend(remove_notes(channel, &selected).map(Action::Run));
             state.roll.selection.clear();
         }
-    }
-    if pressed(Modifiers::COMMAND, Key::V) && !state.roll.clipboard.is_empty() {
-        let at = state.roll.hover_tick.unwrap_or(0);
-        actions.extend(add_notes(channel, &state.roll.clipboard, at).map(Action::Run));
-        state.roll.selection = state
-            .roll
-            .clipboard
-            .iter()
-            .map(|n| (n.start + at, n.key))
-            .collect();
-    }
-    if pressed(Modifiers::COMMAND, Key::B) && !selected.is_empty() {
-        let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
-        let end = selected
-            .iter()
-            .map(|n| n.start + n.length)
-            .max()
-            .unwrap_or(first);
-        let span = (end - first).div_ceil(snap.max(1) as u32) * snap.max(1) as u32;
-        actions.extend(add_notes(channel, &selected, span).map(Action::Run));
-        state.roll.selection = selected.iter().map(|n| (n.start + span, n.key)).collect();
-    }
-    let moves = [
-        (Modifiers::SHIFT, Key::ArrowUp, 0, 1),
-        (Modifiers::SHIFT, Key::ArrowDown, 0, -1),
-        (Modifiers::COMMAND, Key::ArrowUp, 0, 12),
-        (Modifiers::COMMAND, Key::ArrowDown, 0, -12),
-        (Modifiers::SHIFT, Key::ArrowRight, snap, 0),
-        (Modifiers::SHIFT, Key::ArrowLeft, -snap, 0),
-    ];
-    for (modifiers, key, dt, dk) in moves {
-        if pressed(modifiers, key) && !selected.is_empty() {
-            let (dt, dk) = clamp_delta(&selected, dt, dk);
+        EditOp::Copy | EditOp::Cut if !selected.is_empty() => {
+            let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
+            state.roll.clipboard = selected
+                .iter()
+                .map(|n| Note {
+                    start: n.start - first,
+                    ..*n
+                })
+                .collect();
+            if op == EditOp::Cut {
+                actions.extend(remove_notes(channel, &selected).map(Action::Run));
+                state.roll.selection.clear();
+            }
+        }
+        EditOp::Paste if !state.roll.clipboard.is_empty() => {
+            let at = state.roll.hover_tick.unwrap_or(0);
+            actions.extend(add_notes(channel, &state.roll.clipboard, at).map(Action::Run));
+            state.roll.selection = state
+                .roll
+                .clipboard
+                .iter()
+                .map(|n| (n.start + at, n.key))
+                .collect();
+        }
+        EditOp::Duplicate if !selected.is_empty() => {
+            let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
+            let end = selected
+                .iter()
+                .map(|n| n.start + n.length)
+                .max()
+                .unwrap_or(first);
+            let span = (end - first).div_ceil(snap.max(1) as u32) * snap.max(1) as u32;
+            actions.extend(add_notes(channel, &selected, span).map(Action::Run));
+            state.roll.selection = selected.iter().map(|n| (n.start + span, n.key)).collect();
+        }
+        EditOp::Move(steps, keys) if !selected.is_empty() => {
+            let (dt, dk) = clamp_delta(&selected, steps * snap, i32::from(keys));
             if let Some(invocation) = move_notes(channel, &selected, dt, dk) {
                 actions.push(Action::Run(invocation));
                 state.roll.selection = selected.iter().map(|n| shifted(n, dt, dk)).collect();
             }
         }
+        EditOp::ApplyColour => {
+            let recolour: Vec<Note> = selected
+                .into_iter()
+                .filter(|n| n.props.color != state.roll.color)
+                .collect();
+            let group = (state.roll.color + 1).to_string();
+            actions.extend(set_notes_prop(channel, &recolour, "color", &group).map(Action::Run));
+        }
+        _ => {}
     }
 }
 
@@ -1915,8 +3162,8 @@ impl LaneMode {
             Self::Pan => "Pan",
             Self::Release => "Release",
             Self::Fine => "Fine pitch",
-            Self::ModX => "Mod X",
-            Self::ModY => "Mod Y",
+            Self::ModX => "Mod A",
+            Self::ModY => "Mod B",
         }
     }
 
@@ -1934,6 +3181,28 @@ impl LaneMode {
             Self::Fine => (f32::from(p.fine) + 100.0) / 200.0,
             Self::ModX => f32::from(p.mod_x) / 127.0,
             Self::ModY => f32::from(p.mod_y) / 127.0,
+        }
+    }
+
+    /// The lane's default as a lane position: velocity 100, the rest neutral.
+    pub(crate) fn default_unit(self) -> f32 {
+        match self {
+            Self::Velocity => 99.0 / 126.0,
+            Self::Pan | Self::Fine => 0.5,
+            Self::Release | Self::ModX | Self::ModY => 64.0 / 127.0,
+        }
+    }
+
+    /// The note's value as text, for knob captions.
+    pub(crate) fn shown(self, note: &Note) -> String {
+        let p = note.props;
+        match self {
+            Self::Velocity => note.velocity.to_string(),
+            Self::Pan => musiccraft_editors::format::pan(f32::from(note.pan) / 100.0),
+            Self::Release => p.release.to_string(),
+            Self::Fine => format!("{:+} cents", p.fine),
+            Self::ModX => p.mod_x.to_string(),
+            Self::ModY => p.mod_y.to_string(),
         }
     }
 
@@ -1983,7 +3252,7 @@ impl LaneMode {
 /// Where the playhead is inside the shown pattern, in pattern ticks: the
 /// loop position in pattern mode; in song mode, inside a clip of this
 /// pattern under the playhead (none elsewhere).
-fn pattern_position(project: &Project, position: f64) -> Option<u32> {
+pub(crate) fn pattern_position(project: &Project, position: f64) -> Option<u32> {
     let pattern = project.current_pattern();
     let period = pattern.length_ticks().max(1);
     let tick = position.max(0.0) as u32;
@@ -2001,24 +3270,36 @@ fn pattern_position(project: &Project, position: f64) -> Option<u32> {
 fn velocity_lane(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    grid: &Grid,
-    clip: Rect,
-    notes: &[&Note],
-    channel: usize,
+    (grid, clip): (&Grid, Rect),
+    (notes, ghosts): (&[&Note], &[&Note]),
+    (channel, color): (usize, Color32),
     actions: &mut Vec<Action>,
 ) {
+    splitter(ui, state, clip);
+    if !state.roll.lane_shown {
+        return;
+    }
     let mode = state.roll.lane_mode;
     let lane = Rect::from_min_max(
-        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - LANE_HEIGHT),
+        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - state.roll.lane()),
         clip.right_bottom(),
     );
     let response = ui.interact(lane, ui.id().with("velocity-lane"), Sense::click_and_drag());
     let strip = Rect::from_min_max(pos2(clip.left(), lane.top()), lane.right_bottom());
     let painter = ui.painter_at(strip);
     painter.rect_filled(strip, 0.0, theme::PANEL_DARK);
+    lane_grid(&painter, grid, lane, &state.roll.meter);
     painter.line_segment(
         [strip.left_top(), strip.right_top()],
         Stroke::new(1.0, theme::GRID_BAR),
+    );
+    // The target's name, faint, like a watermark.
+    painter.text(
+        lane.left_top() + vec2(6.0, 4.0),
+        Align2::LEFT_TOP,
+        mode.label(),
+        FontId::proportional(theme::FONT_DISPLAY),
+        theme::WATERMARK,
     );
     // The lane's target: a menu of what it edits.
     let label_rect = Rect::from_min_size(
@@ -2035,7 +3316,7 @@ fn velocity_lane(
                 }
             })
             .response
-            .hint("What the lane edits: velocity, pan, release, fine pitch, Mod X or Mod Y")
+            .hint("What the lane edits: velocity, pan, release, fine pitch, Mod A or Mod B")
     });
     if mode.centred() {
         painter.line_segment(
@@ -2046,7 +3327,30 @@ fn velocity_lane(
             Stroke::new(1.0, theme::GRID_BAR),
         );
     }
-    if response.drag_started() || response.clicked() {
+    let alt = ui.input(|i| i.modifiers.alt);
+    if alt && response.clicked() {
+        // Alt+click resets the stem under the pointer (the selection when
+        // that note is selected) to the lane's default, in one step.
+        if let Some(note) = response
+            .interact_pointer_pos()
+            .and_then(|pos| note_at_x(grid, notes, pos.x))
+        {
+            let selection = &state.roll.selection;
+            let picked = selection.contains(&(note.start, note.key));
+            let resets = notes
+                .iter()
+                .filter(|n| {
+                    if picked {
+                        selection.contains(&(n.start, n.key))
+                    } else {
+                        n.start == note.start && n.key == note.key
+                    }
+                })
+                .filter_map(|n| mode.invocation(channel, n, mode.default_unit()))
+                .collect();
+            actions.extend(batch(resets).map(Action::Run));
+        }
+    } else if response.drag_started() || response.clicked() {
         if let Some(pos) = response.interact_pointer_pos() {
             state.roll.lane_drag = note_at_x(grid, notes, pos.x).copied();
             state.begin_gesture();
@@ -2065,51 +3369,117 @@ fn velocity_lane(
     if response.drag_stopped() || (!response.dragged() && !response.clicked()) {
         state.roll.lane_drag = None;
     }
-    let color = theme::palette(channel);
-    let y_of = |t: f32| lane.bottom() - 4.0 - t * (lane.height() - 8.0);
+
+    let stem = Stem {
+        lane,
+        centred: mode.centred(),
+    };
+    for note in ghosts {
+        stem.draw(&painter, grid, note, mode.value(note), theme::GHOST_NOTE);
+    }
     for note in notes {
         let t = match shown {
             Some((n, t)) if n.start == note.start && n.key == note.key => t,
             _ => mode.value(note),
         };
+        let tone = if state.roll.selection.contains(&(note.start, note.key)) {
+            theme::NOTE_SELECTED
+        } else if note.props.color > 0 {
+            theme::note_color(note.props.color)
+        } else {
+            color
+        };
+        stem.draw(&painter, grid, note, t, tone);
+    }
+}
+
+/// How the lane draws one note's value.
+struct Stem {
+    lane: Rect,
+    centred: bool,
+}
+
+impl Stem {
+    /// A bar from the baseline to the value with a round head, and a thin
+    /// tail running right for the note's length.
+    fn draw(&self, painter: &egui::Painter, grid: &Grid, note: &Note, t: f32, color: Color32) {
+        let lane = self.lane;
         let x = grid.x(note.start as f32) + 2.0;
-        if x < lane.left() || x > lane.right() {
-            continue;
+        let end = grid.x((note.start + note.length) as f32) - 1.0;
+        if end < lane.left() || x > lane.right() {
+            return;
         }
-        let base = if mode.centred() {
+        let base = if self.centred {
             lane.center().y
         } else {
             lane.bottom()
         };
-        let tip = y_of(t);
+        let tip = lane.bottom() - 4.0 - t * (lane.height() - 8.0);
         painter.line_segment([pos2(x, base), pos2(x, tip)], Stroke::new(2.0, color));
+        if end > x + 3.0 {
+            painter.line_segment([pos2(x, tip), pos2(end, tip)], Stroke::new(1.0, color));
+        }
         painter.circle_filled(pos2(x, tip), 3.0, color);
+    }
+}
+
+/// The grid's step, beat and bar lines through the lane, a step quieter.
+fn lane_grid(painter: &egui::Painter, grid: &Grid, lane: Rect, meter: &Meter) {
+    let first = grid.tick_at(lane.left()).max(0.0) as u32 / TICKS_PER_STEP * TICKS_PER_STEP;
+    let last = grid.tick_at(lane.right()).max(0.0) as u32;
+    let sig = meter.first();
+    for tick in (first..=last).step_by(TICKS_PER_STEP as usize) {
+        let color = if tick % sig.bar_ticks() == 0 {
+            theme::GRID_BEAT
+        } else if tick % sig.beat_ticks() == 0 {
+            theme::GRID_LINE
+        } else {
+            theme::at_strength(theme::GRID_LINE, 110)
+        };
+        let x = grid.x(tick as f32);
+        painter.line_segment(
+            [pos2(x, lane.top()), pos2(x, lane.bottom())],
+            Stroke::new(1.0, color),
+        );
     }
 }
 
 fn keyboard(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    grid: &Grid,
-    clip: Rect,
+    (grid, clip): (&Grid, Rect),
+    notes: &[&Note],
     channel: usize,
     actions: &mut Vec<Action>,
 ) {
     let keys_rect = Rect::from_min_max(
         pos2(clip.left(), clip.top() + RULER_HEIGHT),
-        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - LANE_HEIGHT),
+        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - state.roll.lane()),
     );
-    let response = ui.interact(
-        keys_rect,
-        ui.id().with("roll-keys"),
-        Sense::click_and_drag(),
-    );
+    let response = ui
+        .interact(
+            keys_rect,
+            ui.id().with("roll-keys"),
+            Sense::click_and_drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
     let painter = ui.painter_at(keys_rect);
     let first = grid.row_at(keys_rect.top()).unwrap_or(0);
     let last = grid.row_at(keys_rect.bottom() - 1.0).unwrap_or(KEYS - 1);
     let held = state.roll.preview.map(|(_, k)| k);
-    let ivory = Color32::from_rgb(0xdf, 0xe3, 0xea);
-    let ebony = Color32::from_rgb(0x1e, 0x22, 0x29);
+    let hovered = response
+        .hover_pos()
+        .and_then(|p| grid.row_at(p.y))
+        .map(key_of_row);
+    let response = match hovered {
+        Some(key) => response.hint(format!(
+            "{} · click to hear · Ctrl+click selects its notes, Ctrl+drag a range · middle-drag zooms · right-click for labels",
+            key_name(key)
+        )),
+        None => response,
+    };
+    let ivory = theme::KEY_WHITE;
+    let ebony = theme::KEY_BLACK;
     // White keys run the full width behind the black ones, like a piano.
     painter.rect_filled(keys_rect, 0.0, ivory);
     for row in first..=last {
@@ -2123,31 +3493,97 @@ fn keyboard(
             let black = Rect::from_min_max(r.min, pos2(r.left() + r.width() * 0.62, r.bottom()));
             let fill = if held == Some(key) {
                 theme::ACCENT
+            } else if hovered == Some(key) {
+                theme::mix(ebony, ivory, 0.18)
             } else {
                 ebony
             };
-            painter.rect_filled(black, 2.0, fill);
+            painter.rect_filled(
+                black,
+                egui::CornerRadius {
+                    nw: 0,
+                    sw: 0,
+                    ne: 2,
+                    se: 2,
+                },
+                fill,
+            );
         } else {
             if held == Some(key) {
                 painter.rect_filled(r, 0.0, theme::ACCENT);
+            } else if hovered == Some(key) {
+                painter.rect_filled(r, 0.0, theme::shade(40));
             }
             // A seam between neighbouring white keys (E/F and B/C).
             if matches!(key % 12, 4 | 11) {
                 painter.line_segment(
                     [r.left_top(), r.right_top()],
-                    Stroke::new(1.0, Color32::from_rgb(0x9a, 0xa0, 0xab)),
+                    Stroke::new(1.0, theme::KEY_SEAM),
                 );
             }
         }
-        if key % 12 == 0 {
+        if state
+            .roll
+            .key_labels
+            .shows(key, grid.row_height, state.roll.scale)
+        {
             painter.text(
                 r.right_center() - vec2(3.0, 0.0),
                 Align2::RIGHT_CENTER,
                 key_name(key),
-                FontId::proportional(9.0),
+                FontId::proportional(theme::FONT_CAPTION),
                 theme::BACKGROUND,
             );
         }
+    }
+    middle_zoom(ui, state, (grid, clip), keys_rect);
+    response.context_menu(|ui| {
+        ui.menu_button("Keyboard labels", |ui| key_labels_list(ui, state));
+    });
+    // Ctrl+click selects every note of the key, Ctrl+drag every note of the
+    // keys it crosses; Shift adds to the selection. (A preview already
+    // sounding still gets its note-off below.)
+    let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
+    if ctrl && state.roll.preview.is_none() {
+        let from = ui
+            .input(|i| i.pointer.press_origin())
+            .and_then(|p| grid.row_at(p.y))
+            .map(key_of_row);
+        let to = response
+            .interact_pointer_pos()
+            .and_then(|p| grid.row_at(p.y))
+            .map(key_of_row);
+        if let (true, Some(a), Some(b)) = (response.dragged_by(PointerButton::Primary), from, to) {
+            let range = a.min(b)..=a.max(b);
+            if !shift {
+                state.roll.selection.clear();
+            }
+            state.roll.selection.extend(
+                notes
+                    .iter()
+                    .filter(|n| range.contains(&n.key))
+                    .map(|n| (n.start, n.key)),
+            );
+            return;
+        }
+        if let Some(key) = response
+            .clicked()
+            .then(|| response.interact_pointer_pos())
+            .flatten()
+            .and_then(|p| grid.row_at(p.y))
+            .map(key_of_row)
+        {
+            if !shift {
+                state.roll.selection.clear();
+            }
+            state.roll.selection.extend(
+                notes
+                    .iter()
+                    .filter(|n| n.key == key)
+                    .map(|n| (n.start, n.key)),
+            );
+        }
+        return;
     }
     let pressed_key = response
         .interact_pointer_pos()
@@ -2186,6 +3622,33 @@ fn keyboard(
         }
         _ => {}
     }
+}
+
+/// Middle-drag on the keyboard zooms the key rows: up to grow them, down to
+/// shrink them, keeping the key first pressed under the pointer.
+fn middle_zoom(ui: &egui::Ui, state: &mut UiState, (grid, clip): (&Grid, Rect), keys: Rect) {
+    let (down, origin, dy) = ui.input(|i| {
+        (
+            i.pointer.button_down(PointerButton::Middle),
+            i.pointer.press_origin(),
+            i.pointer.delta().y,
+        )
+    });
+    let Some(origin) = origin.filter(|o| down && keys.contains(*o)) else {
+        return;
+    };
+    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    let height = state.roll.key_height;
+    let zoomed = (height * (-dy / 100.0).exp()).clamp(KEY_HEIGHT_RANGE.0, KEY_HEIGHT_RANGE.1);
+    if dy == 0.0 || zoomed == height {
+        return;
+    }
+    // The pressed point's place in the rows stays at the same height on screen.
+    let rows = (origin.y - grid.origin.y) / height;
+    let top = origin.y - RULER_HEIGHT - rows * zoomed;
+    let left = grid.origin.x - KEYS_WIDTH;
+    state.roll.key_height = zoomed;
+    state.roll.jump = Some(vec2(clip.left() - left, (clip.top() - top).max(0.0)));
 }
 
 #[cfg(test)]
@@ -2341,5 +3804,156 @@ mod tests {
         assert_eq!(key_of_row(127), 0);
         assert_eq!(row_of_key(60), 67);
         assert!(is_black(61) && !is_black(60));
+    }
+
+    #[test]
+    fn a_scale_replaces_the_key_shading() {
+        // No scale: black keys dark, white keys light.
+        assert_eq!(row_fill(61, None), theme::BLACK_KEY_ROW);
+        assert_eq!(row_fill(62, None), theme::WHITE_KEY_ROW);
+        // D major: C# (a black key) is in the scale, C (white) is not.
+        let d_major = Some((2, 0));
+        assert_ne!(row_fill(61, d_major), theme::BLACK_KEY_ROW);
+        assert_eq!(row_fill(60, d_major), theme::BLACK_KEY_ROW);
+        // The root row differs from other in-scale rows.
+        assert_ne!(row_fill(62, d_major), row_fill(64, d_major));
+    }
+
+    #[test]
+    fn fitting_moves_keys_onto_the_scale() {
+        let c_major = Some((0, 0));
+        assert_eq!(fit_to_scale(61, c_major), 60, "C# goes down to C");
+        assert_eq!(fit_to_scale(64, c_major), 64);
+        assert_eq!(fit_to_scale(61, None), 61);
+    }
+
+    #[test]
+    fn select_invert_and_menu_moves_use_the_shared_edits() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "channel.add_synth",
+            "note.add 1 0t 24t 60 100",
+            "note.add 1 48t 24t 64 100",
+        ] {
+            session.run_line(line).unwrap();
+        }
+        let project = session.project().clone();
+        let mut state = UiState::default();
+        state.roll.selection.insert((0, 60));
+        let mut actions = Vec::new();
+        edit_op(&mut state, &project, EditOp::InvertSelection, &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(
+            state.roll.selection.iter().copied().collect::<Vec<_>>(),
+            [(48, 64)]
+        );
+        edit_op(&mut state, &project, EditOp::Move(0, 1), &mut actions);
+        let ran: Vec<String> = actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::Run(i) => Some(i.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ran, ["note.move 1 48t 64 48t 65"]);
+        assert_eq!(
+            state.roll.selection.iter().copied().collect::<Vec<_>>(),
+            [(48, 65)]
+        );
+    }
+
+    #[test]
+    fn note_props_are_set_on_the_given_notes_as_one_undo_step() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "channel.add_synth",
+            "note.add 1 0t 24t 60 100",
+            "note.add 1 48t 24t 64 100",
+        ] {
+            session.run_line(line).unwrap();
+        }
+        let notes_of = |session: &musiccraft_commands::Session| -> Vec<Note> {
+            let p = session.project();
+            let id = p.channels[0].id;
+            p.current_pattern().notes_of(id).copied().collect()
+        };
+        let notes = notes_of(&session);
+        assert!(set_notes_prop(0, &[], "muted", "on").is_none());
+        let mute = set_notes_prop(0, &notes, "muted", "on").unwrap();
+        session.run(&mute).unwrap();
+        assert!(notes_of(&session).iter().all(|n| n.props.muted));
+        let recolour = set_notes_prop(0, &notes[..1], "color", "3").unwrap();
+        session.run(&recolour).unwrap();
+        let colours: Vec<u8> = notes_of(&session).iter().map(|n| n.props.color).collect();
+        assert_eq!(colours, [2, 0]);
+        session.undo().unwrap();
+        session.undo().unwrap();
+        assert!(notes_of(&session).iter().all(|n| !n.props.muted));
+    }
+
+    #[test]
+    fn applying_the_colour_recolours_only_selected_notes_of_another_group() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "channel.add_synth",
+            "note.add 1 0t 24t 60 100",
+            "note.add 1 48t 24t 64 100",
+            "note.add 1 96t 24t 67 100",
+            "note.set_prop 1 48t 64 color 3",
+        ] {
+            session.run_line(line).unwrap();
+        }
+        let project = session.project().clone();
+        let mut state = UiState::default();
+        state.roll.color = 2;
+        state.roll.selection.extend([(0, 60), (48, 64)]);
+        let mut actions = Vec::new();
+        edit_op(&mut state, &project, EditOp::ApplyColour, &mut actions);
+        let ran: Vec<String> = actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::Run(i) => Some(i.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ran, ["note.set_prop 1 0t 60 color 3"]);
+        state.roll.selection.clear();
+        actions.clear();
+        edit_op(&mut state, &project, EditOp::ApplyColour, &mut actions);
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn keyboard_labels_pick_their_keys_and_need_room() {
+        let c_major = Some((0, 0));
+        let tall = LABEL_ROWS;
+        assert!(
+            KeyLabels::C.shows(60, 6.0, None),
+            "C keys are labelled at any height"
+        );
+        assert!(!KeyLabels::C.shows(62, tall, None));
+        assert!(KeyLabels::White.shows(62, tall, None));
+        assert!(!KeyLabels::White.shows(61, tall, None));
+        assert!(
+            !KeyLabels::White.shows(62, tall - 1.0, None),
+            "short rows stay bare"
+        );
+        assert!(KeyLabels::All.shows(61, tall, None));
+        assert!(KeyLabels::Scale.shows(64, tall, c_major));
+        assert!(!KeyLabels::Scale.shows(61, tall, c_major));
+        assert!(
+            !KeyLabels::Scale.shows(64, tall, None),
+            "no scale, no labels"
+        );
+        assert!(!KeyLabels::None.shows(60, tall, None));
     }
 }

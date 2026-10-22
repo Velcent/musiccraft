@@ -97,9 +97,6 @@ pub fn is_routing(kind: EffectKind, index: usize) -> bool {
 
 /// The bypass switch and the effect's factory presets.
 pub fn preset_bar(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits: &mut Vec<Edit>) {
-    let list = presets::effect(effect.kind);
-    let specs = effect.kind.params();
-    let current = list.iter().position(|p| p.matches(specs, &effect.values));
     ui.horizontal(|ui| {
         let on = effect.enabled;
         if widgets::dot(ui, on, theme::ACCENT)
@@ -112,43 +109,54 @@ pub fn preset_bar(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits: &
         {
             edits.push(Edit::ToggleBypass);
         }
-        let step = |delta: isize| {
-            let n = list.len() as isize;
-            let from = current.map_or(if delta > 0 { -1 } else { 0 }, |c| c as isize);
-            ((from + delta).rem_euclid(n.max(1))) as usize
-        };
-        let mut chosen = None;
-        if ui.small_button("◀").hint("Previous preset").clicked() {
-            chosen = Some(step(-1));
-        }
-        let name = current.map_or("(custom)", |i| list[i].name);
-        egui::ComboBox::from_id_salt(id.with("preset"))
-            .width(170.0)
-            .selected_text(name)
-            .show_ui(ui, |ui| {
-                for (i, preset) in list.iter().enumerate() {
-                    if ui
-                        .selectable_label(current == Some(i), preset.name)
-                        .clicked()
-                    {
-                        chosen = Some(i);
-                    }
-                }
-            });
-        if ui.small_button("▶").hint("Next preset").clicked() {
-            chosen = Some(step(1));
-        }
-        if let Some(preset) = chosen.and_then(|i| list.get(i)) {
-            let changes: Vec<_> = preset
-                .resolve(specs)
-                .into_iter()
-                .filter(|(name, value)| (effect.value(name) - value).abs() > 1e-6)
-                .collect();
-            if !changes.is_empty() {
-                edits.push(Edit::Set(changes));
-            }
-        }
+        preset_picker(ui, id, effect, edits);
     });
+}
+
+/// The previous chevron, the preset drop-down ("(custom)" when no preset
+/// matches) and the next chevron, laid out in the caller's row (the app puts
+/// them in the effect window's header).
+pub fn preset_picker(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits: &mut Vec<Edit>) {
+    let list = presets::effect(effect.kind);
+    let specs = effect.kind.params();
+    let current = list.iter().position(|p| p.matches(specs, &effect.values));
+    let step = |delta: isize| {
+        let n = list.len() as isize;
+        let from = current.map_or(if delta > 0 { -1 } else { 0 }, |c| c as isize);
+        ((from + delta).rem_euclid(n.max(1))) as usize
+    };
+    let mut chosen = None;
+    let salt = id.with("preset");
+    if crate::widgets::preset_arrow(ui, true, salt).clicked() {
+        chosen = Some(step(-1));
+    }
+    let name = current.map_or("(custom)", |i| list[i].name);
+    egui::ComboBox::from_id_salt(salt)
+        .width(170.0)
+        .selected_text(name)
+        .show_ui(ui, |ui| {
+            for (i, preset) in list.iter().enumerate() {
+                if ui
+                    .selectable_label(current == Some(i), preset.name)
+                    .clicked()
+                {
+                    chosen = Some(i);
+                }
+            }
+        });
+    if crate::widgets::preset_arrow(ui, false, salt).clicked() {
+        chosen = Some(step(1));
+    }
+    if let Some(preset) = chosen.and_then(|i| list.get(i)) {
+        let changes: Vec<_> = preset
+            .resolve(specs)
+            .into_iter()
+            .filter(|(name, value)| (effect.value(name) - value).abs() > 1e-6)
+            .collect();
+        if !changes.is_empty() {
+            edits.push(Edit::Set(changes));
+        }
+    }
 }
 
 /// Whether parameter `index` of `kind` has a knob. The rest are edited in the
@@ -268,7 +276,7 @@ fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effe
     }
     let delay = value(effect, "delay");
     for (i, label) in ["L", "R"].into_iter().enumerate() {
-        let font = egui::FontId::proportional(11.0);
+        let font = egui::FontId::proportional(theme::FONT_LABEL);
         painter.text(
             inputs[i],
             egui::Align2::CENTER_BOTTOM,
@@ -323,7 +331,7 @@ fn chain_diagram(painter: &egui::Painter, rect: Rect, color: Color32, stages: &[
             block.center(),
             egui::Align2::CENTER_CENTER,
             *name,
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(theme::FONT_LABEL),
             if *on {
                 theme::BACKGROUND
             } else {
@@ -402,17 +410,6 @@ fn lfo_strip(
 fn drawn_shape(effect: &EffectView) -> bool {
     effect.kind == EffectKind::Waveshaper
         && value(effect, "shape").round() as i32 == musiccraft_dsp::character::DRAWN_SHAPE
-}
-
-/// Short label for a pan position: `L`, `C`, `R`, or a percentage.
-fn pan_label(pan: f32) -> String {
-    match pan {
-        p if p <= -0.99 => "L".to_owned(),
-        p if p >= 0.99 => "R".to_owned(),
-        p if p.abs() < 0.01 => "C".to_owned(),
-        p if p < 0.0 => format!("{:.0}L", -p * 100.0),
-        p => format!("{:.0}R", p * 100.0),
-    }
 }
 
 /// A parameter name for display: `low_gain` → `Low gain`.
@@ -515,7 +512,7 @@ fn frequency_grid(painter: &egui::Painter, rect: Rect) {
             pos2(x + 2.0, rect.bottom() - 2.0),
             egui::Align2::LEFT_BOTTOM,
             label,
-            egui::FontId::proportional(9.0),
+            egui::FontId::proportional(theme::FONT_CAPTION),
             theme::TEXT_DIM,
         );
     }
@@ -841,14 +838,14 @@ pub fn graph(
                 pos2(rect.left() + 4.0, rect.top() + 4.0),
                 egui::Align2::LEFT_TOP,
                 "R",
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(theme::FONT_VALUE),
                 theme::TEXT_DIM,
             );
             painter.text(
                 pos2(rect.left() + 4.0, rect.bottom() - 4.0),
                 egui::Align2::LEFT_BOTTOM,
                 "L",
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(theme::FONT_VALUE),
                 theme::TEXT_DIM,
             );
             let points: Vec<Pos2> = (0..=width)
@@ -913,7 +910,7 @@ pub fn graph(
                     end,
                     egui::Align2::CENTER_BOTTOM,
                     if side < 0.0 { "L" } else { "R" },
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::proportional(theme::FONT_LABEL),
                     theme::TEXT,
                 );
             }
@@ -1108,8 +1105,8 @@ pub fn graph(
                 painter.text(
                     pos2(x + 4.0, y),
                     egui::Align2::LEFT_TOP,
-                    pan_label(value(effect, &format!("tap{tap}_pan"))),
-                    egui::FontId::proportional(10.0),
+                    crate::format::pan(value(effect, &format!("tap{tap}_pan"))),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT_DIM,
                 );
                 let names = effect.kind.params();
@@ -1195,7 +1192,7 @@ pub fn graph(
                     pos2((a + b) * 0.5, rect.top() + 4.0),
                     egui::Align2::CENTER_TOP,
                     format!("{name} {threshold:.0} dB {ratio:.1}:1"),
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT,
                 );
             }
@@ -1226,7 +1223,7 @@ pub fn graph(
                     pos2((a + b) * 0.5, rect.top() + 4.0),
                     egui::Align2::CENTER_TOP,
                     text,
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT,
                 );
             }
@@ -1259,7 +1256,7 @@ pub fn graph(
                     pos2((a + b) * 0.5, rect.top() + 4.0),
                     egui::Align2::CENTER_TOP,
                     format!("{name} +{drive:.0} dB"),
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT,
                 );
             }
@@ -1299,7 +1296,7 @@ pub fn graph(
                 } else {
                     format!("Modulator: insert {source:.0}")
                 },
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(theme::FONT_LABEL),
                 theme::TEXT,
             );
             hint = "16 bands: the modulator's levels (grey, from the sidechain) shape the carrier on this insert (colour)";
@@ -1412,7 +1409,7 @@ pub fn graph(
                     pos2(rect.right() - 4.0, rect.top() + 2.0),
                     egui::Align2::RIGHT_TOP,
                     "from file",
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT_DIM,
                 );
             }
@@ -1472,7 +1469,7 @@ pub fn graph(
                     pos2(strip.right() - 4.0, strip.bottom() - 2.0),
                     egui::Align2::RIGHT_BOTTOM,
                     label,
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT_DIM,
                 );
             }
@@ -1500,7 +1497,7 @@ pub fn graph(
                 } else {
                     "recording (turn hold on to freeze)"
                 },
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(theme::FONT_VALUE),
                 theme::TEXT,
             );
             // One cycle of the play point's movement, time down the graph.
@@ -1545,7 +1542,7 @@ pub fn graph(
                     Stroke::new(1.0, theme::GRID_LINE),
                 );
             }
-            let font = egui::FontId::proportional(10.0);
+            let font = egui::FontId::proportional(theme::FONT_VALUE);
             painter.text(
                 pos2(rect.right() - 4.0, rect.bottom() - 4.0),
                 egui::Align2::RIGHT_BOTTOM,
@@ -1564,7 +1561,7 @@ pub fn graph(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 BLOCK_NAMES.get(block).copied().unwrap_or("?"),
-                egui::FontId::proportional(16.0),
+                egui::FontId::proportional(theme::FONT_DISPLAY),
                 color.gamma_multiply(0.5),
             );
             let at = pos2(

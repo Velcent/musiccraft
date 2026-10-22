@@ -18,6 +18,8 @@ pub struct PluginEntry {
     pub vendor: String,
     /// `true` for instruments, `false` for effects.
     pub instrument: bool,
+    /// Plugin format as shown in the browser ("CLAP", "VST3"), or empty.
+    pub format: String,
 }
 
 /// One parameter of a running plugin, with its current value.
@@ -169,7 +171,7 @@ pub(crate) fn panel(
     actions: &mut Vec<Action>,
 ) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(&plugin.name).strong().color(theme::ACCENT));
+        ui.label(RichText::new(&plugin.name).color(theme::ACCENT));
         ui.label(RichText::new(&plugin.id).small().color(theme::TEXT_DIM));
     });
     state.plugin_layout = (None, Vec::new());
@@ -251,7 +253,7 @@ fn param_row(
     let slider = egui::Slider::new(&mut value, param.min..=param.max.max(param.min))
         .show_value(false)
         .step_by(if param.stepped { 1.0 } else { 0.0 });
-    let response = ui.add_enabled(!param.read_only, slider);
+    let response = crate::widgets::add_enabled(ui, !param.read_only, slider);
     state.plugin_layout.1.push((param.id, response.rect));
     // A slider jumps on press, before egui reports a drag; the gesture starts
     // with the press.

@@ -29,9 +29,15 @@
   the notes of a chord (major, minor, dim, aug, sus2, sus4, maj7, min7, dom7,
   dim7, add9) as one undo step. The piano roll's chord menu makes a click draw
   the chosen chord.
-- The scale menu tints the rows of a scale (major, natural and harmonic minor,
-  dorian, mixolydian, major and minor pentatonic) on any root; the root row is
-  tinted more strongly. Display only.
+- The scale menu highlights a scale (major, natural and harmonic minor,
+  dorian, mixolydian, major and minor pentatonic) on any root. The usual
+  black/white key-row shading is replaced: rows in the scale are a step
+  lighter than white-key rows, the root's rows also get a faint accent, and
+  rows outside the scale are drawn like black-key rows. The last item of the
+  scale menu, "Fit edited notes to the scale" (a tick, off by default, only
+  while a scale is highlighted), makes drawn and moved notes land on the
+  nearest key of the scale (ties go down, as in `note.to_scale`); the scale
+  button is lit while it is on.
 - With recording armed (REC button or R) and playback running, notes played on
   a MIDI keyboard or the typing keyboard are written into the selected pattern on
   the selected channel at the playhead position (folded into the pattern length
@@ -57,9 +63,17 @@
   notes); on the others they play normally.
 - **Muted notes** stay in the pattern but do not play; they are drawn hollow.
   The piano roll's Mute tool toggles muting on the notes it clicks or sweeps.
-- The bottom lane edits velocity, pan, release, fine pitch, Mod X or Mod Y.
+- The bottom lane edits velocity, pan, release, fine pitch, Mod A or Mod B
+  (the note properties `mod_x` and `mod_y`).
+- Pointer shapes: a crosshair over empty grid (a cell cursor with Ctrl or the
+  Select tool), a four-way move cursor over a note body (grabbing while a
+  move drags), horizontal resize over a note's right end, and the plain
+  pointer for the Delete, Mute, Slice, Play and Zoom tools. The ruler and the
+  keyboard show a pointing hand.
+- Pressing a note with the Draw or Paint tool makes its length and velocity
+  the ones the next new notes take.
 - New notes take the toolbar's colour and Portamento setting. Fine pitch,
-  release velocity and Mod X/Y apply to the built-in instruments; plugins get
+  release velocity and Mod A/B apply to the built-in instruments; plugins get
   the note's key and velocity.
 - Project files store only properties that differ from their defaults.
 
@@ -90,7 +104,8 @@
   normal note too.
 - In the piano roll, the Slide toggle on the toolbar makes new notes slide
   notes, and Tools → Toggle slide flips the selected notes. Slide notes are
-  drawn with a ramp mark.
+  drawn with a ramp mark at their right end (portamento notes: a small
+  curve there).
 
 ## Shaping and generating tools
 
@@ -101,7 +116,7 @@ Shape / Generate in the piano roll use the defaults in brackets).
   octaves into it (clamped when the range is under an octave) [C4–B5].
 - `note.lfo <channel> <velocity|pan|fine|mod_x|mod_y> <period> <depth>
   [sine|triangle|square|saw]`: sets the property from an LFO over each note's
-  start time, swinging around the property's centre (velocity and Mod X/Y
+  start time, swinging around the property's centre (velocity and Mod A/B
   64, pan and fine 0) by `depth` percent of the room on either side [one bar,
   50% velocity or 80% pan, sine].
 - `note.scale_levels <channel> <prop> <percent> [offset]`: scales the
@@ -122,7 +137,7 @@ Shape / Generate in the piano roll use the defaults in brackets).
 - `note.articulate <channel> <length percent> [accent]`: sets each note to a
   share of the gap to the next note start and adds `accent` to the velocity
   of notes on a beat [staccato 50% +10, tenuto 100%].
-- `note.claw <channel> <every> [offset]`: keeps every Nth start time (a chord
+- `note.keep_every <channel> <every> [offset]`: keeps every Nth start time (a chord
   counts once) from `offset` and drops the rest [every 2nd].
 
 ## Arpeggiator
@@ -175,7 +190,9 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 ## Pattern length
 
 - A pattern has a minimum length in steps (default 16). When notes start past it,
-  the pattern extends to whole bars to fit them.
+  the pattern extends to whole bars to fit them. An auto-length pattern has no
+  minimum beyond one bar: it is whole bars up to its last note (see
+  `channel-rack.md`); step fill and shift then work over that length.
 
 ## Synth
 
@@ -222,15 +239,26 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 
 - Vertical keyboard on the left (drawn as piano keys), time grid snapped to
   steps by default. Notes of other channels in the pattern show faintly in
-  their channel colours (ghost notes).
-- **Tools** (toolbar, left): Draw (the default behavior below), Paint (drag to
+  one neutral tone (ghost notes, `theme::GHOST_NOTE`).
+- **Snap values** (piano roll and playlist, finest first): None (single
+  ticks), 1/6 step, 1/4 step, 1/3 step, 1/2 step, Step, 1/3 beat, 1/2 beat,
+  Beat and Bar. The thirds and sixths are triplet grids. Beat fractions count
+  from the start of each beat, so they follow the time signature.
+- **Pattern play button** (header, after the pickers): a click plays the
+  pattern from the playhead, switching to pattern mode first if the song was
+  selected, or pauses while the pattern plays; a right-click stops and
+  returns to the start while playing, or moves the playhead to the start
+  while stopped. It shows a pause glyph and is lit while the pattern plays.
+  The playlist header has the same button for the song (after its tools).
+- **Tools** (header, in this order: Draw, Paint, Delete, Mute, Slice, Select,
+  Zoom, Audition): Draw (the default behavior below), Paint (drag to
   lay notes end to end at the last length; one undo step), Delete (click or
   drag over notes; one undo step) and Select (drag a box without Ctrl; click
   empty space to clear). Starting a Paint drag on a note moves it as Draw would.
   Mute (click or drag toggles muting), Slice (click a note to cut it in two at
   the snapped click: `note.slice <channel> <start> <key> <at> [@pattern]`,
-  undoable, both parts keep the note's properties), Play (click hears the note
-  or key under the pointer) and Zoom (click zooms in, Shift+click out). Keys:
+  undoable, both parts keep the note's properties), Audition (click hears the
+  note or key under the pointer) and Zoom (click zooms in, Shift+click out). Keys:
   P, B, D, E, T, C, Y, Z pick the tools (the same choice applies to the
   playlist); S and O toggle Slide and Porta for new notes.
 - Left-click on empty grid adds a note with the last used length; dragging a note
@@ -241,34 +269,111 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - Selection: click a note to select it, Shift+click toggles, Ctrl+drag on empty
   grid draws a selection rectangle (Shift adds to the selection). Dragging a
   selected note moves the whole selection; dragging its edge resizes all
-  selected notes by the same amount. Selected notes are outlined.
-- Keys while the pointer is over the piano roll: Delete/Backspace remove the
+  selected notes by the same amount. A selected note's whole body turns to one
+  selection tone (`theme::NOTE_SELECTED`), whatever its colour.
+- Keys while the piano roll is the focused window (the topmost one): Delete/Backspace remove the
   selection; Ctrl+A selects all; Escape clears; Ctrl+C / Ctrl+X copy / cut;
   Ctrl+V pastes at the pointer; Ctrl+B duplicates the selection right after its
   end (rounded up to the snap); Shift+Up/Down move by one key, Shift+Left/Right
   by one snap step, and Ctrl+Up/Down by an octave (plain arrows do not move
   notes). Every operation is one undo step (`edit.batch`),
   with moves ordered so notes of the selection never overwrite each other.
-- Ctrl+scroll zooms horizontally.
+- Ctrl+scroll zooms horizontally. The scroll/zoom row above the ruler holds a
+  left chevron, a rail with a note overview and a thumb, a right chevron and
+  the vertical zoom box. The chevrons scroll by one bar (held: repeat); a
+  click on the bare rail pages one screen; dragging the thumb scrolls, and
+  dragging either end of it zooms horizontally with the other end fixed.
+  Dragging the zoom box up or down changes the key-row height (6 to 30
+  points); double-clicking it resets 14. A vertical scroll bar (chevrons,
+  rail, thumb) runs down the right of the ruler and grid.
+- Dragging with the middle button anywhere in the view pans it both ways,
+  with the grabbing hand as the pointer; it edits nothing.
+- The corner block above the keyboard shows the colour group of new notes
+  (the channel colour for group 1) with its number. Clicking it opens a 4 × 4
+  grid of the 16 groups. The Porta and Slide toggles sit on its right edge.
+  Right-clicking it offers "Apply this colour to the selected notes" (Alt+C),
+  which gives the selected notes that group as one undo step.
 - Notes have a pan, -100 to 100 (`note.set_pan`; `note.add` takes it as an
   optional sixth argument; `note.set_all` rows may carry it as a fifth value).
   It is applied as a balance on top of the channel pan.
-- The bottom lane edits velocity, pan, release, fine pitch, Mod X or Mod Y,
-  picked from the menu at its left. In centred modes (pan, fine pitch…)
+- The bottom lane edits velocity, pan, release, fine pitch, Mod A or Mod B,
+  picked from the menu at its left. The target's name is written faintly at
+  the lane's top left; the grid's bar, beat and step lines run through the
+  lane a step quieter. Each stem has a round head and a thin tail running
+  right for the note's length; selected notes' stems take the selection
+  tone, and other channels' notes show faint ghost stems behind. In centred modes (pan, fine pitch…)
   stems grow up or down from the centre and snap to centre within ±3.
+  Alt+click on a stem resets that note's value to the lane's default
+  (velocity 100, the rest neutral), or every selected note's when that note
+  is selected, as one undo step.
+- Double-clicking a note (Draw or Select tool) opens the **Note properties**
+  window, titled with its key ("Note properties — C5"): knobs for velocity,
+  release, pan, fine pitch, Mod A and Mod B (in that order; each shows its
+  value while hovered or dragged), Slide and Porta switches, the colour group
+  swatch (a click opens the 4 × 4 group grid), and the note's start and
+  length. When the note is one of several selected notes, every change
+  applies to all of them (the readouts are then hidden and the title says how
+  many). Each knob drag is one undo step. Reset puts every property back to
+  its default (velocity 100, the rest neutral, slide and porta off, group 1)
+  as one step; OK closes the window. It closes on its own when the note is
+  gone.
+- Alt+wheel over a note steps the lane's property of that note by a tenth
+  of its range per notch (Ctrl+Alt+wheel: a fiftieth), or of every selected
+  note when the note is selected; the view does not scroll meanwhile. A run
+  of notches over the same notes, less than a second apart, is one undo step.
 - The ruler marks the playhead with a triangle whenever it is inside the
   shown pattern (the loop position in pattern mode; in song mode, inside a
   clip of this pattern), and a line runs down the roll while playing.
-- The toolbar starts with an options menu (☰): zoom, quantize, the note
-  tools, transpose an octave up or down, and clear the channel's notes. The
-  toolbar wraps onto a second line in a narrow window.
+- Clicking the ruler seeks the playhead to the snapped position (in song
+  mode, the same place inside the first clip of this pattern). Dragging along the ruler makes a time selection: the ruler
+  shows it as a highlighted band, the grid gets a faint wash with two edge
+  lines, and the notes that overlap it are selected. Escape or a click on
+  the ruler clears it.
+- The header is one row: the window menu (☰), then three square buttons for the note tools, snap and scale, a chord
+  button, the tools, the title and a chevron that opens the channel list
+  (channels with notes in the pattern are ticked). Snap, scale and chord name
+  their value in the hint and tick it in their list; a dimmed glyph means
+  none is set. Right-clicking the snap button makes one snap step the
+  length of new notes (unless snap is off), and the wheel over it steps
+  through the snap list. In a narrow window the groups fold into the "more" button
+  instead of wrapping.
+- The window menu has submenus: **File** (export the song as a MIDI file),
+  **Edit** (Cut, Copy, Paste, Duplicate, Delete, move the selection one snap
+  step left or right, transpose it a semitone, transpose the channel an
+  octave, mute, unmute or apply the current colour to the selected notes
+  as one undo step, and clear the channel's notes in the danger tone), **Tools**
+  (Quantize and the note tools), **Chord** and **Snap** (the same lists as
+  the header buttons), **Select** (All, None, Invert, muted notes, notes of
+  the current colour), **View** (ghost notes and note labels on or off, and
+  Keyboard labels: C keys, white keys, all keys, keys of the scale or none;
+  every key but C needs rows at least 9 points tall) and **Zoom** (in, out,
+  fit the pattern to the window, zoom to the selection), then the new-note velocity field. The
+  Edit and Select items do exactly what their keys do, and show the keys.
+- The window opens over the right half of the workspace, about half its
+  width and height.
 - A velocity lane is pinned to the bottom of the view: one stem per note of the
   selected channel. Dragging vertically sets the velocity of the note under the
   pointer (the latest-starting one when notes overlap); one drag is one undo step.
+- A thin splitter with a grip sits between the grid and the lane. Dragging it
+  resizes the lane; double-clicking it, Shift+Enter or View › Property lane
+  hides or shows the lane (hidden, the grid runs to the bottom); right-click
+  restores the default height. Not saved with the project.
 - Clicking a key on the keyboard previews the note on the selected channel.
+  The hovered key is shaded (white keys darker, black keys lighter) and its
+  name shows in the hint. Ctrl+click on a key selects every note of that key,
+  and Ctrl+drag across keys selects every note of the keys crossed (Shift
+  adds them to the selection). Middle-drag on the keyboard zooms the key
+  rows (up grows them, down shrinks them, within the zoom box's range),
+  keeping the key first pressed under the pointer. Middle-drag elsewhere in
+  the view pans it. Right-clicking the keyboard offers the Keyboard labels
+  choices. These view choices are not saved with the project.
 
 ## Sources
 
+- The header's icon pickers, the corner block, the scroll/zoom row, the
+  vertical zoom box, the tool order and the selection tone: the interface
+  style guide, `docs/spec/style/piano-roll.md` (owner's 2026-10-21 decision
+  to follow the manual's layout). Glyphs, sizes and wording are our own.
 - Piano roll interaction (draw with left click, delete with right click, resize
   from the note edge) follows conventions described in the FL Studio online
   manual, "Piano roll" section, and common to most DAWs. Implementation and

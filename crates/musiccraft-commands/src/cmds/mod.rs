@@ -4,6 +4,7 @@ mod antiserum;
 mod automation;
 mod channel;
 mod clip_edit;
+pub(crate) mod control;
 mod controller;
 mod meter;
 mod mixer;
@@ -43,6 +44,7 @@ pub(crate) fn all() -> Vec<Box<dyn Command>> {
     commands.extend(playlist::commands());
     commands.extend(clip_edit::commands());
     commands.extend(automation::commands());
+    commands.extend(control::commands());
     commands.extend(controller::commands());
     commands.extend(plugin::commands());
     commands.extend(record::commands());

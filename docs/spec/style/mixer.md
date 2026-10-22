@@ -160,7 +160,7 @@ Proposed: with several tracks selected, the last one clicked is the source for t
 
 **Keys.** All mixer keys above are Proposed (needs `keymap.md` updated first). They are keymap entries, not code, and they act only while the pointer is over the mixer and no text field has focus. Two clash with existing bindings in `default.keymap` / `keymap.md` and are therefore mixer-local only: S (globally `ui.toggle_slide`) and Ctrl+L (`channel.route_free` over the channel rack). If a window-local override of a global key is not wanted, S stays unbound in the mixer and solo is reached by the menu and the enable light. Ctrl+A (select all tracks), F2, Ctrl+Enter, Alt+S, Alt+L and Alt+Left/Right are not bound today.
 
-**Multi-selection** (Proposed; today one track is selected at a time).
+**Multi-selection** (in `mixer.md`, except the range drag, see gaps).
 
 - A plain click on a number, name or meter selects only that track. Ctrl+Shift+click toggles a track in or out of the selection. Ctrl+Shift+drag across the number, name and meter area selects a range. Ctrl+A selects all.
 - A click on a fader or knob of an unselected track selects that track alone. A click on one that is already selected keeps the selection.
@@ -388,53 +388,32 @@ Tokens are in `crates/musiccraft-editors/src/theme.rs`. Names marked "new" are p
 
 Ordered by visual impact. File references are where the change lands. `docs/spec/mixer.md` ("Layout") and `docs/spec/window-layout.md` ("Mixer") describe today's strip order and must be updated first (spec before code).
 
-1. **Placement.** The mixer opens at the bottom of the workspace across its whole width (`default_pos` at `area.left_bottom()`, `default_width` the full workspace) with a fixed-height strip area (`STRIPS_HEIGHT`). The guide puts it top-right beside the channel rack, about two thirds of the width, with strips that stretch to the window's height. `crates/musiccraft-ui/src/mixer.rs` (`show`, `STRIPS_HEIGHT`). The screenshot `docs/screenshots/playlist-mixer.png` shows the bottom-docked mixer covering the playlist's lower half.
-2. **Strip anatomy and order.** Today's strip runs: coloured number, vertical name, an "ON" text button, the pan knob, the meter *beside* the fader, the separation knob, a dB readout, an "S" text button, the "N fx" count and the route arrow. Differences:
-   - The name and meter should share the upper block, side by side.
-   - The "ON" pill should become a round enable light. Proposed (needs `mixer.md` updated first): solo on right-click, dropping the "S" button; until then "S" stays under the light.
-   - Phase and swap should be small switches stacked on the strip, above the separation knob (today they are only in the name's right-click menu).
-   - The dB readout belongs only in Wide and Full.
-   - "N fx" should become a working bypass-all switch (today it is a label).
-   - An arm switch should be added.
-   Files: `crates/musiccraft-ui/src/mixer.rs` (`strip`, `led`, `vertical_name`).
-3. **Routing picture.**
-   - Arrows only appear on strips the selected insert *can* feed, and are invisible elsewhere. There is no inert (outlined) state and no incoming-route chevrons.
-   - The selected strip shows a text summary ("→ M, 3") instead of a source arrow.
+1. **Strip anatomy.** The strip now runs: tinted number cell, name beside the meter, round enable light with a tiny S light under it, pan, fader, then phase and swap switches, the separation knob and the effect count (the dB level is in the fader's hint). The light solos on Ctrl+click and from its right-click menu, and the effect count bypasses or enables all effects. Still missing: the arm switch. Files: `crates/musiccraft-ui/src/mixer.rs` (`strip`, `details`).
+2. **Routing picture.**
+   - Arrows now show three states: filled (routed), outlined (can be routed) and a faint inert outline; the selected strip shows an upward source arrow with its destinations in the hint.
+   - There are no incoming-route chevrons.
    - Send levels are sliders in the side panel, not knobs on the destination strips.
    - There are no cables at all.
    `crates/musiccraft-ui/src/mixer.rs` (`route_arrow`, `route_summary`, `routing`).
-4. **Slot panel.**
-   - It has its own heading ("Master" / "Insert 3 — Bass"); the guide puts the name only in the window title.
-   - Rows show a number, a square light *before* the name, inline ▲/▼ move buttons and a × remove button, and the mix knob. The guide wants a chevron, the name, the mix knob and a round light at the far right, with move and remove in the slot menu and on the wheel and drag.
-   - Empty rows read "empty" (guide: dim italic "Slot N"). Only the first free row offers "+ add effect" (guide: every empty row opens the add list; "Only loaded slots" packs them).
-   - A hint sentence sits under the slots, and the routing editor ("To master", "+ Send", send sliders) sits at the bottom of the panel. The guide moves routing onto the strips and into the output dropdown.
-   `crates/musiccraft-ui/src/mixer.rs` (`effects`, `slot_row`, `routing`, `output_row`).
-5. **Track EQ.** Today it is three small gain knobs labelled "low", "mid", "high", with the frequency only in a right-click number field. There is no response graph, no band faders and no frequency or bandwidth knobs. The model has no per-band bandwidth (the mid band's Q is fixed), so the "Q" row needs `mixer.set_eq` to take a width first. `crates/musiccraft-ui/src/mixer.rs` (`eq_row`); `musiccraft-project` `TrackEq`; `docs/spec/mixer.md` ("Track EQ and slot mix").
-6. **Header.**
-   - The top-left slot is a collapse arrow, not the shared window menu button, and collapse is not in the right-hand group (shared gap; `crates/musiccraft-ui/src/chrome.rs`). `window-layout.md` "Window header" and its "Mixer" line ("Header: arrow, title, …") change first.
-   - Today the title sits at the left, not over the slot panel.
-   - It has a text button "+ Insert" and a full instruction sentence ("Click a strip to select it · arrows under the strips…").
-   - There is no options menu, strip-details toggle, slot-panel toggle or layout selector.
-   `crates/musiccraft-ui/src/mixer.rs` (`show`); shared header in `crates/musiccraft-ui/src/chrome.rs`.
-7. **Docks.** The master is separated from the inserts only by a small extra gap, and everything scrolls together (the master scrolls out of view). There is no fixed left dock, no right dock, no divider and no height handle. Docking needs a stored per-track dock (a new undoable command, e.g. `mixer.set_dock <track> left|middle|right`). `crates/musiccraft-ui/src/mixer.rs` (`show`); `crates/musiccraft-project/src/model.rs` (`MixerTrack`).
-8. **Selection.** Only one track can be selected (`UiState::selected_track`). There is no Ctrl+Shift multi-selection, no ganged faders, no Ctrl+A, and no "menu target" highlight. `crates/musiccraft-ui/src/lib.rs`, `mixer.rs`.
-9. **Track colour and icon.** The number colour is computed from the index (`theme::palette(index + 3)`, master `HIGHLIGHT`) and the number is drawn as coloured text, not as a tinted cell. There is no stored colour, no icon, and no strip tint option. `crates/musiccraft-ui/src/mixer.rs` (`strip`); `MixerTrack` needs `color` and `icon` fields with undoable commands.
-10. **Layouts.** The strip width is fixed (`STRIP_WIDTH`), with no layout selector, no names-below variant and no Wide or Full arrangements. `crates/musiccraft-ui/src/mixer.rs`; sizes go into `docs/spec/window-layout.md`.
-11. **Fader states.** The cap has no selected or armed look. Clicking above or below the cap does nothing (it should glide). `crates/musiccraft-editors/src/widgets.rs` (`fader`).
-12. **Meter details.** There is no peak-hold line, no clip mark, no selected outline and no level strip with a scale. `crates/musiccraft-editors/src/widgets.rs` (`meter`), `mixer.rs`.
-13. **Missing commands behind the controls.**
-    - bypass or restore all effects of a track;
-    - move a track left or right ("Shift left" / "Shift right", Shift+wheel);
+3. **Slot panel.** The heading and hint sentence are gone, and slot rows have the chevron (slot menu with Open window, Bypass, Move up/down and Remove), the name or a dim "Slot n" that opens the add list, the mix knob and a round light. Slots can be dragged to reorder, and the input and output rows use glyphs. Still missing: wheel reordering, Replace, Rename, Presets and rack items in the slot menu, "Only loaded slots", and the output dropdown that replaces the "To master" and "+ Send" editor. `crates/musiccraft-ui/src/mixer.rs` (`effects`, `slot_row`, `routing`, `output_row`).
+4. **Track EQ.** Today it is three small gain knobs labelled "low", "mid", "high", with the frequency only in a right-click number field. There is no response graph, no band faders and no frequency or bandwidth knobs. The model has no per-band bandwidth (the mid band's Q is fixed), so the "Q" row needs `mixer.set_eq` to take a width first. `crates/musiccraft-ui/src/mixer.rs` (`eq_row`); `musiccraft-project` `TrackEq`; `docs/spec/mixer.md` ("Track EQ and slot mix").
+5. **Header.** The strip-details and slot-panel switches and the add-insert plus are in place, with View and Tracks in the window menu. The add-insert plus has its right-click menu (Add one, Add several ▸ 2, 4 or 8; adding from a saved track waits for saved tracks), and new inserts go after the last rather than after the selected track. Still missing: the layout selector, the View items Draw routes, names under the meters and Only loaded slots, and the Tracks menu's Icon… item. `crates/musiccraft-ui/src/mixer.rs` (`header_tools`, `window_menu`).
+6. **Docks.** The left dock (master plus inserts pinned left), the scrolling middle and the right dock exist, with dividers and Pin ▸ in the track menu (`mixer.set_dock`). Still missing: the height handle on the divider. `crates/musiccraft-ui/src/mixer.rs` (`show`, `dock_divider`).
+7. **Selection.** Ctrl+Shift+click, Ctrl+A and Esc select several tracks (`UiState::mixer_selection` beside the primary `selected_track`), and faders, pan and separation knobs, enable lights and the phase, swap and effects switches are ganged. The menu target lifts while its track menu is open. Still missing: Ctrl+Shift+drag range selection and a ganged arm switch (the strips have none yet). `crates/musiccraft-ui/src/mixer.rs` (`select`, `ganged`).
+8. **Track icon.** Tracks have a stored colour (`mixer.set_track_color`, Colour ▸ in the track menus) that tints the number cell. There is no icon and no strip tint option. `crates/musiccraft-ui/src/mixer.rs` (`strip`); `MixerTrack` needs an `icon` field with an undoable command.
+9. **Layouts.** The strip width is fixed (`STRIP_WIDTH`), with no layout selector, no names-below variant and no Wide or Full arrangements. `crates/musiccraft-ui/src/mixer.rs`; sizes go into `docs/spec/window-layout.md`.
+10. **Fader states.** Holding the rail glides the cap toward the pointer, but the cap has no selected or armed look. `crates/musiccraft-editors/src/widgets.rs` (`fader`).
+11. **Meter details.** Meters hold their peak as a thin line, show a clip mark for a few seconds and are outlined in the accent on the selected track, but there is no level strip with a scale. `crates/musiccraft-editors/src/widgets.rs` (`meter`), `mixer.rs`.
+12. **Missing commands behind the controls.**
     - gaps and groups;
     - "Play selected channels through this track" from the mixer side (proposed mixer-local Ctrl+L; today Ctrl+L is `channel.route_free` over the rack, `keymap.md`);
     - the "Feed" submenu's many-to-one and one-to-many sends, and "Make a bus from selected…";
     - lock mute;
     - mixer-track arming. Today audio recording arms *playlist* rows (`playlist.toggle_track_arm`, `docs/spec/playlist.md`, "Audio recording"), so the strip's arm switch needs the owner's decision before it is specified.
     `crates/musiccraft-commands`.
-14. **Drag and drop.** Nothing can be dropped on strips or slots, and slots cannot be dragged to reorder. `crates/musiccraft-ui/src/mixer.rs`; `crates/musiccraft-ui/src/browser.rs` (effects are not draggable today).
-15. **Scrolling.** The wheel over names does not step the strips by whole strips, and the scroll bar is egui's default rather than the shared thin rail with chevrons. `crates/musiccraft-ui/src/mixer.rs` (`ScrollArea::horizontal`).
-16. **Input row.** The input picker changes the one global input device (Settings › Audio) from whichever track is selected. The guide keeps that until per-track inputs exist, but the row should say so in its hint. The input glyph is decorative only. `crates/musiccraft-ui/src/mixer.rs` (`input_row`).
-17. **Specs to change first.** `docs/spec/mixer.md` ("Layout", "Routing") and `docs/spec/window-layout.md` ("Window header", "Mixer") for every layout and order change above; `docs/spec/mixer.md` for each item marked Proposed; `docs/spec/keymap.md` for the mixer-local keys. The main-window section's mixer-header gap ("only icons, the layout selector, the title and the window buttons") is consistent with this section: the add, strip-details and slot-panel buttons are icons.
+13. **Drag and drop.** Slots can be dragged onto each other to reorder, and browser effects can be dropped on a strip or the slot panel. Still missing: dropping onto a particular slot (it fills the first free one), and dropping sounds or generators on strips. `crates/musiccraft-ui/src/mixer.rs`.
+14. **Input row.** The input picker changes the one global input device (Settings › Audio) from whichever track is selected, and its hint now says so. The input glyph is decorative only. `crates/musiccraft-ui/src/mixer.rs` (`input_row`).
+15. **Specs to change first.** `docs/spec/mixer.md` ("Layout", "Routing") and `docs/spec/window-layout.md` ("Window header", "Mixer") for every layout and order change above; `docs/spec/mixer.md` for each item marked Proposed; `docs/spec/keymap.md` for the mixer-local keys. The main-window section's mixer-header gap ("only icons, the layout selector, the title and the window buttons") is consistent with this section: the add, strip-details and slot-panel buttons are icons.
 
 Deliberately left out (no matching MusicCraft feature): a waveform meter view, per-track latency offsets (including the strip's latency row between the effects switch and the arm switch) and input latency, a recording pickup point selector (before or after the effects) on the input row, a multi-touch toggle, and a utility track that processes whatever track is selected. The level strip keeps only that track's meter role.
 

@@ -72,14 +72,14 @@ pub(crate) fn show(
                 pos2(rect.center().x, rect.top() + 8.0),
                 egui::Align2::CENTER_TOP,
                 heading,
-                egui::FontId::proportional(28.0),
+                egui::FontId::proportional(theme::FONT_READOUT),
                 color,
             );
             painter.text(
                 pos2(rect.center().x, rect.top() + 44.0),
                 egui::Align2::CENTER_TOP,
                 format!("{hz:.1} Hz   {cents:+.0} ct"),
-                egui::FontId::proportional(12.0),
+                egui::FontId::monospace(theme::FONT_LABEL),
                 theme::TEXT,
             );
             let t = (cents / SPAN_CENTS).clamp(-1.0, 1.0);
@@ -98,7 +98,7 @@ pub(crate) fn show(
                 } else {
                     "bypassed"
                 },
-                egui::FontId::proportional(16.0),
+                egui::FontId::proportional(theme::FONT_DISPLAY),
                 theme::TEXT_DIM,
             );
         }
@@ -110,7 +110,7 @@ pub(crate) fn show(
             pos2(rect.center().x, rect.bottom() - 6.0),
             egui::Align2::CENTER_BOTTOM,
             format!("A = {reference:.0} Hz"),
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(theme::FONT_LABEL),
             theme::TEXT_DIM,
         );
     }
@@ -175,7 +175,7 @@ fn scale_strip(
             key.center(),
             egui::Align2::CENTER_CENTER,
             *name,
-            egui::FontId::proportional(10.0),
+            egui::FontId::proportional(theme::FONT_VALUE),
             text,
         );
     }

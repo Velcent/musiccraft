@@ -176,7 +176,11 @@ fn caption(name: &str) -> String {
     for (long, short) in words {
         text = text.replace(long, short);
     }
-    text
+    // Sentence case, like the other instruments' captions.
+    let mut chars = text.chars();
+    chars.next().map_or(text.clone(), |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 /// A spec's value as a knob position.
@@ -242,7 +246,7 @@ impl AntiserumEditor {
                 let from = current.map_or(if delta > 0 { -1 } else { 0 }, |c| c as isize);
                 ((from + delta).rem_euclid(n.max(1))) as usize
             };
-            if ui.small_button("◀").hint("Previous preset").clicked()
+            if crate::widgets::preset_arrow(ui, true, "antiserum-presets").clicked()
                 && let Some(p) = bank.get(step(-1))
             {
                 edits.push(AntiserumEdit::Preset(p.name.clone()));
@@ -285,7 +289,7 @@ impl AntiserumEditor {
                         }
                     }
                 });
-            if ui.small_button("▶").hint("Next preset").clicked()
+            if crate::widgets::preset_arrow(ui, false, "antiserum-presets").clicked()
                 && let Some(p) = bank.get(step(1))
             {
                 edits.push(AntiserumEdit::Preset(p.name.clone()));
@@ -698,7 +702,7 @@ impl AntiserumEditor {
                 rect.right_top() + vec2(-4.0, 4.0),
                 egui::Align2::RIGHT_TOP,
                 format!("{beats} beats"),
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(theme::FONT_VALUE),
                 theme::TEXT_DIM,
             );
         }
@@ -1114,7 +1118,7 @@ fn zones(ui: &mut Ui, cx: &mut Cx<'_, '_>, o: usize, zones: &[musiccraft_patch::
                 cx.edits
                     .push(AntiserumEdit::SetZone(o, z, keys[0], keys[1], keys[2]));
             }
-            if ui.small_button("✕").hint("Remove this zone").clicked() {
+            if ui.small_button("×").hint("Remove this zone").clicked() {
                 cx.edits.push(AntiserumEdit::RemoveZone(o, z));
             }
             ui.end_row();
@@ -1390,6 +1394,16 @@ mod tests {
     use super::*;
     use egui::{RawInput, Rect};
     use musiccraft_antiserum::index_of;
+
+    #[test]
+    fn knob_captions_are_sentence_case() {
+        let first = musiccraft_antiserum::params()
+            .iter()
+            .map(|spec| caption(spec.name))
+            .find(|c| !c.is_empty())
+            .unwrap();
+        assert!(first.starts_with(char::is_uppercase), "{first}");
+    }
 
     fn values(patch: &Patch) -> Box<[f32; PARAM_COUNT]> {
         musiccraft_antiserum_presets::values(patch)

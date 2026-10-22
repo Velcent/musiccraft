@@ -28,6 +28,10 @@ struct Harness {
     plugins: Plugins,
     /// Actions other than commands from the last frames.
     other: Vec<Action>,
+    /// The pointer shape the last frame asked for.
+    cursor: egui::CursorIcon,
+    /// What the engine reports to the views.
+    engine: EngineStatus,
 }
 
 impl Harness {
@@ -40,6 +44,8 @@ impl Harness {
         state.windows.channel_rack = false;
         state.windows.playlist = false;
         state.windows.browser = false;
+        state.windows.mixer = false;
+        state.windows.piano_roll = false;
         Self {
             ctx: egui::Context::default(),
             state,
@@ -48,6 +54,8 @@ impl Harness {
             modifiers: Modifiers::NONE,
             plugins: Plugins::default(),
             other: Vec::new(),
+            cursor: egui::CursorIcon::Default,
+            engine: EngineStatus::default(),
         }
     }
 
@@ -62,8 +70,12 @@ impl Harness {
             ..Default::default()
         };
         self.time += 1.0 / 60.0;
-        let engine = EngineStatus::default();
-        let history = History::default();
+        let (undo, redo) = self.session.history();
+        let history = History {
+            steps: undo.iter().take(15).map(ToString::to_string).collect(),
+            redo_steps: redo.iter().take(15).map(ToString::to_string).collect(),
+            ..History::default()
+        };
         let mut actions = Vec::new();
         {
             let Self {
@@ -71,11 +83,12 @@ impl Harness {
                 state,
                 session,
                 plugins,
+                engine,
                 ..
             } = self;
             let frame = Frame {
                 project: session.project(),
-                engine: &engine,
+                engine,
                 history: &history,
                 waveform: None,
                 waveform_seconds: None,
@@ -88,6 +101,7 @@ impl Harness {
             let mut output = ctx.run_ui(input, |ui| actions = show(ui, state, &frame));
             // No renderer here: acknowledge texture uploads.
             output.textures_delta.clear();
+            self.cursor = output.platform_output.cursor_icon;
         }
         let mut commands = Vec::new();
         for action in actions {
@@ -166,7 +180,10 @@ impl Harness {
 
     fn playlist_point(&self, tick: u32, track: u32) -> Pos2 {
         let (grid, clip) = self.state.playlist.last_view.expect("playlist drawn");
-        let p = pos2(grid.x(tick as f32), grid.y(track) + grid.row_height / 2.0);
+        let p = pos2(
+            grid.x(tick as f32),
+            grid.y(track) + grid.height_of(track) / 2.0,
+        );
         assert!(clip.contains(p), "{p:?} not visible in {clip:?}");
         p
     }
@@ -479,6 +496,25 @@ fn velocity_lane_drag_is_one_undo_step() {
     );
     h.session.run_line("edit.undo").unwrap();
     assert_eq!(h.session.project().current_pattern().notes[0].velocity, 100);
+}
+
+#[test]
+fn alt_click_on_a_lane_stem_resets_it_to_the_default() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C5 40"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let (grid, clip) = h.state.roll.last_view.unwrap();
+    let stem = pos2(grid.x(10.0), clip.bottom() - 20.0);
+    h.modifiers = Modifiers::ALT;
+    let out = h.click(stem, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["note.set_velocity 1 0t 60 100"]);
+    assert_eq!(h.session.project().current_pattern().notes[0].velocity, 100);
+    // Already at the default: nothing to do.
+    h.modifiers = Modifiers::ALT;
+    let out = h.click(stem, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert!(out.is_empty(), "{out:?}");
 }
 
 impl Harness {
@@ -825,6 +861,7 @@ fn plugin_channels_show_parameters_and_open_their_window() {
             name: "Keys".into(),
             vendor: "Example".into(),
             instrument: true,
+            format: "CLAP".into(),
         }],
         live: vec![LivePluginView {
             instance,
@@ -898,9 +935,13 @@ fn missing_plugins_explain_themselves_instead_of_showing_knobs() {
 fn hints_show_in_the_bar_and_settings_open_from_f10() {
     let mut h = Harness::new(&[]);
     h.settle();
-    // Hover along the toolbar until the play button's hint reaches the hint
-    // bar (it shows the next frame).
-    let found = (0..90).map(|i| pos2(8.0 + 8.0 * i as f32, 20.0)).any(|p| {
+    // Hover along both toolbar rows until the play button's hint reaches
+    // the hint bar (it shows the next frame).
+    let rows = [14.0, 38.0, 60.0];
+    let points = rows
+        .into_iter()
+        .flat_map(|y| (0..120).map(move |i| pos2(8.0 + 8.0 * i as f32, y)));
+    let found = points.into_iter().any(|p| {
         h.frame(vec![Event::PointerMoved(p)]);
         h.frame(vec![]);
         h.state
@@ -1336,4 +1377,2752 @@ fn the_picker_paints_audio_clips_at_their_length() {
         PointerButton::Primary,
     );
     assert_eq!(placed, ["playlist.add_audio_clip 1 2 384t 384t"]);
+}
+
+/// The outer rectangle of window `id`.
+fn window_rect(h: &Harness, id: &str) -> Rect {
+    h.ctx
+        .memory(|m| m.area_rect(egui::Id::new(id)))
+        .expect("window drawn")
+}
+
+/// The centre of header button `n`, counted from the right end (0 = close).
+fn header_button(h: &Harness, id: &str, n: f32) -> Pos2 {
+    let rect = window_rect(h, id);
+    pos2(rect.right() - 7.0 - 9.0 - 20.0 * n, rect.top() + 6.0 + 10.0)
+}
+
+#[test]
+fn window_buttons_collapse_maximize_restore_and_close() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let before = window_rect(&h, "channel-rack");
+    // Maximize fills the workspace; restore returns to the old rectangle.
+    h.click(
+        header_button(&h, "channel-rack", 1.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(crate::chrome::maximized(
+        &h.ctx,
+        egui::Id::new("channel-rack")
+    ));
+    let full = window_rect(&h, "channel-rack");
+    assert!(
+        (full.width() - h.state.workspace.width()).abs() < 2.0,
+        "{full:?}"
+    );
+    assert!(
+        (full.height() - h.state.workspace.height()).abs() < 2.0,
+        "{full:?}"
+    );
+    h.click(
+        header_button(&h, "channel-rack", 1.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(!crate::chrome::maximized(
+        &h.ctx,
+        egui::Id::new("channel-rack")
+    ));
+    let back = window_rect(&h, "channel-rack");
+    assert!(
+        (back.width() - before.width()).abs() < 2.0,
+        "{back:?} vs {before:?}"
+    );
+    assert!(
+        (back.left() - before.left()).abs() < 2.0,
+        "{back:?} vs {before:?}"
+    );
+    // Collapse rolls the window up to its header.
+    h.click(
+        header_button(&h, "channel-rack", 2.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(crate::chrome::collapsed(
+        &h.ctx,
+        egui::Id::new("channel-rack")
+    ));
+    assert!(window_rect(&h, "channel-rack").height() < 40.0);
+    // Close hides it.
+    h.click(
+        header_button(&h, "channel-rack", 0.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(!h.state.windows.channel_rack);
+}
+
+#[test]
+fn a_narrow_header_folds_its_tools_instead_of_wrapping() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    // Rolled up, the header is a single row however many tools it has.
+    h.click(header_button(&h, "piano-roll", 2.0), PointerButton::Primary);
+    h.settle();
+    assert!(crate::chrome::collapsed(
+        &h.ctx,
+        egui::Id::new("piano-roll")
+    ));
+    let rect = window_rect(&h, "piano-roll");
+    assert!(rect.height() < 40.0, "{rect:?}");
+}
+
+#[test]
+fn the_playlist_is_a_window_in_the_lower_part_of_the_workspace() {
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let rect = window_rect(&h, "playlist-window");
+    let area = h.state.workspace;
+    assert!(
+        rect.top() > area.center().y - area.height() * 0.2,
+        "{rect:?} in {area:?}"
+    );
+    assert!(
+        (rect.bottom() - area.bottom()).abs() < 8.0,
+        "{rect:?} in {area:?}"
+    );
+    assert!(rect.width() > area.width() - 16.0, "{rect:?} in {area:?}");
+    // Its header closes it like any other window.
+    h.click(
+        header_button(&h, "playlist-window", 0.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    assert!(!h.state.windows.playlist);
+}
+
+#[test]
+fn the_mixer_opens_at_the_top_beside_the_channel_rack() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_rack = true;
+    h.state.windows.mixer = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let mixer = window_rect(&h, "mixer-window");
+    let area = h.state.workspace;
+    assert!(mixer.left() >= rack.right(), "{mixer:?} beside {rack:?}");
+    assert!(
+        (mixer.right() - area.right()).abs() < 8.0,
+        "{mixer:?} in {area:?}"
+    );
+    assert!(mixer.top() - area.top() < 8.0, "{mixer:?} in {area:?}");
+    assert!(mixer.bottom() < area.center().y, "{mixer:?} in {area:?}");
+}
+
+#[test]
+fn the_count_in_toggle_sits_in_the_toolbar() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let before = h.session.project().record.count_in;
+    let spot = [14.0, 38.0]
+        .into_iter()
+        .flat_map(|y| (0..120).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Count-in"))
+        })
+        .expect("a count-in toggle in the toolbar");
+    h.click(spot, PointerButton::Primary);
+    h.settle();
+    assert_ne!(h.session.project().record.count_in, before);
+}
+
+#[test]
+fn the_piano_roll_opens_over_the_right_half_with_its_own_bars() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let roll = window_rect(&h, "piano-roll");
+    let area = h.state.workspace;
+    assert!(roll.left() >= area.center().x - 8.0, "{roll:?} in {area:?}");
+    assert!(roll.width() < area.width() * 0.6, "{roll:?} in {area:?}");
+
+    // Dragging the zoom box up makes key rows taller; a double-click resets.
+    let (grid, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let bar = crate::scrollbars::BAR;
+    let zoom = pos2(clip.right() + bar / 2.0, clip.top() - bar / 2.0);
+    h.drag(zoom, zoom - vec2(0.0, 40.0));
+    h.settle();
+    let taller = h.state.roll.last_view.unwrap().0.row_height;
+    assert!(taller > grid.row_height, "{taller} > {}", grid.row_height);
+    h.click(zoom, PointerButton::Primary);
+    h.click(zoom, PointerButton::Primary);
+    h.settle();
+    let reset = h.state.roll.last_view.unwrap().0.row_height;
+    assert!((reset - grid.row_height).abs() < 0.01, "{reset}");
+
+    // The corner block carries the Porta toggle at its top right.
+    assert!(!h.state.roll.porta);
+    let porta = pos2(clip.left() + 52.0 - 6.0, clip.top() - bar + 6.0);
+    h.click(porta, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.roll.porta);
+}
+
+#[test]
+fn the_playlist_zoom_box_sets_the_track_height() {
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.expect("playlist drawn");
+    let bar = crate::scrollbars::BAR;
+    let zoom = pos2(clip.right() + bar / 2.0, clip.top() - bar / 2.0);
+    h.drag(zoom, zoom - vec2(0.0, 60.0));
+    h.settle();
+    let taller = h.state.playlist.last_view.unwrap().0.row_height;
+    assert!(taller > grid.row_height, "{taller} > {}", grid.row_height);
+
+    // The right chevron scrolls the lanes one bar to the left.
+    let right = pos2(clip.right() - bar / 2.0, clip.top() - bar / 2.0);
+    let before = h.state.playlist.last_view.unwrap().0.origin.x;
+    h.click(right, PointerButton::Primary);
+    h.settle();
+    let after = h.state.playlist.last_view.unwrap().0.origin.x;
+    assert!(after < before, "{after} < {before}");
+}
+
+#[test]
+fn a_long_channel_rack_gets_the_plain_scroll_bar() {
+    let setup: Vec<&str> = std::iter::repeat_n("channel.add_sampler builtin:kick", 24).collect();
+    let mut h = Harness::new(&setup);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let bar = crate::scrollbars::BAR;
+    let hint_at = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    let x = (0..40)
+        .map(|i| rack.right() - 2.0 - i as f32)
+        .find(|x| hint_at(&mut h, pos2(*x, rack.center().y)).starts_with("Click to page"))
+        .expect("a vertical rail at the rack's right edge");
+    let down = (0..200)
+        .map(|i| pos2(x, rack.bottom() - i as f32 * 2.0))
+        .find(|p| hint_at(&mut h, *p) == "Scroll down")
+        .expect("a down chevron under the rail");
+    assert!(rack.right() - x < 4.0 * bar, "{x} near {rack:?}");
+    let offset =
+        |h: &Harness| crate::scrollbars::plain_offset(&h.ctx, egui::Id::new("rack-bars")).y;
+    assert_eq!(offset(&h), 0.0);
+    for _ in 0..3 {
+        h.click(down, PointerButton::Primary);
+    }
+    h.settle();
+    assert!(offset(&h) > 0.0, "the rows scrolled");
+}
+
+#[test]
+fn dragging_the_piano_roll_ruler_selects_a_time_range() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 1 60",
+        "note.add 1 2 1 62",
+        "note.add 1 8 1 64",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    let (grid, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let y = clip.top() + 8.0;
+    let at = |tick: u32| pos2(grid.x(tick as f32), y);
+    let ran = h.drag(at(step / 2), at(4 * step));
+    assert!(ran.is_empty(), "a time selection runs no commands: {ran:?}");
+    assert_eq!(h.state.roll.time_selection, Some((0, 4 * step)));
+    let selected: Vec<_> = h.state.roll.selection.iter().copied().collect();
+    assert_eq!(selected, [(0, 60), (2 * step, 62)]);
+    // A click on the ruler clears the range; Escape clears it too.
+    h.click(at(step), PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.roll.time_selection, None);
+}
+
+#[test]
+fn ctrl_clicking_a_key_selects_its_notes() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 1 60",
+        "note.add 1 4 1 60",
+        "note.add 1 8 1 64",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    let (_, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let key = pos2(clip.left() + 40.0, h.roll_point(0, 60).y);
+    h.modifiers = Modifiers::COMMAND;
+    let ran = h.click(key, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    assert!(ran.is_empty(), "{ran:?}");
+    let selected: Vec<_> = h.state.roll.selection.iter().copied().collect();
+    assert_eq!(selected, [(0, 60), (4 * step, 60)]);
+    assert!(h.state.roll.preview.is_none(), "no note was left sounding");
+}
+
+#[test]
+fn double_clicking_an_audio_clip_opens_its_channel_settings() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_sampler builtin:kick",
+        "playlist.add_audio_clip 2 1 0 2",
+    ]);
+    h.state.windows.playlist = true;
+    h.state.selected_channel = 0;
+    h.settle();
+    let at = h.playlist_point(musiccraft_project::params::PPQ * 2, 0);
+    h.click(at, PointerButton::Primary);
+    h.click(at, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.windows.channel_settings);
+    assert_eq!(h.state.selected_channel, 1);
+}
+
+#[test]
+fn dragging_a_browser_item_over_a_window_button_opens_that_window() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    assert!(!h.state.windows.mixer);
+    let spot = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..160).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Mixer (F9)"))
+        })
+        .expect("a mixer button in the toolbar");
+    assert!(!h.state.windows.mixer, "hovering alone opens nothing");
+    egui::DragAndDrop::set_payload(
+        &h.ctx,
+        crate::browser::Dragged::Sample("kick.wav".to_owned()),
+    );
+    h.frame(vec![Event::PointerMoved(spot + vec2(1.0, 0.0))]);
+    h.frame(vec![]);
+    assert!(h.state.windows.mixer);
+}
+
+#[test]
+fn enter_maximizes_the_playlist_and_ctrl_shift_h_restores_the_default_layout() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let key = |key, modifiers| Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    let playlist = egui::Id::new("playlist-window");
+    h.frame(vec![key(egui::Key::Enter, Modifiers::NONE)]);
+    h.settle();
+    assert!(h.state.windows.playlist, "Enter opens the playlist");
+    assert!(crate::chrome::maximized(&h.ctx, playlist));
+    let maximized = window_rect(&h, "playlist-window");
+    assert!(maximized.width() > 1300.0, "{maximized:?}");
+
+    let layout = Modifiers::COMMAND | Modifiers::SHIFT;
+    h.modifiers = layout;
+    h.frame(vec![key(egui::Key::H, layout)]);
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    let w = &h.state.windows;
+    assert!(w.playlist && w.channel_rack && w.mixer && w.piano_roll && w.browser);
+    assert!(!crate::chrome::maximized(&h.ctx, playlist));
+    let rack = window_rect(&h, "channel-rack");
+    let list = window_rect(&h, "playlist-window");
+    assert!(rack.bottom() <= list.top() + 1.0, "{rack:?} over {list:?}");
+}
+
+#[test]
+fn window_keys_follow_the_focused_window_not_the_pointer() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let one = Event::Key {
+        key: egui::Key::Num1,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let rack = window_rect(&h, "channel-rack");
+    h.click(
+        rack.left_top() + vec2(rack.width() / 2.0, 8.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    // The pointer leaves the rack; its keys still go to it.
+    h.frame(vec![Event::PointerMoved(pos2(1390.0, 890.0))]);
+    assert_eq!(h.frame(vec![one.clone()]), ["channel.toggle_mute 1"]);
+
+    // Another window in front takes the keys.
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let roll = window_rect(&h, "piano-roll");
+    h.click(
+        roll.left_top() + vec2(roll.width() / 2.0, 8.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    h.frame(vec![Event::PointerMoved(rack.center())]);
+    let out = h.frame(vec![one]);
+    assert!(
+        !out.iter().any(|c| c.starts_with("channel.toggle_mute")),
+        "{out:?}"
+    );
+}
+
+#[test]
+fn esc_closes_the_focused_window_and_f12_hides_them_all() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C5"]);
+    h.state.windows.channel_rack = true;
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let key = |key, modifiers| Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    let roll = window_rect(&h, "piano-roll");
+    h.click(
+        roll.left_top() + vec2(roll.width() / 2.0, 8.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    // A selection takes Esc first.
+    h.state.roll.selection.insert((0, 72));
+    h.frame(vec![key(egui::Key::Escape, Modifiers::NONE)]);
+    assert!(h.state.roll.selection.is_empty());
+    assert!(h.state.windows.piano_roll);
+    // Then Esc closes the focused window only.
+    h.frame(vec![Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    h.frame(vec![key(egui::Key::Escape, Modifiers::NONE)]);
+    assert!(!h.state.windows.piano_roll);
+    assert!(h.state.windows.channel_rack);
+
+    h.state.windows.mixer = true;
+    h.settle();
+    h.frame(vec![key(egui::Key::F12, Modifiers::NONE)]);
+    let w = &h.state.windows;
+    assert!(!w.channel_rack && !w.mixer && !w.piano_roll && !w.playlist);
+}
+
+#[test]
+fn right_clicking_the_empty_workspace_opens_the_window_menu() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    h.click(rack.center(), PointerButton::Secondary);
+    h.settle();
+    assert!(
+        !egui::Popup::is_any_open(&h.ctx),
+        "a window takes its own clicks"
+    );
+    h.click(pos2(1200.0, 800.0), PointerButton::Secondary);
+    h.settle();
+    assert!(egui::Popup::is_any_open(&h.ctx));
+}
+
+#[test]
+fn pressing_a_note_makes_its_length_and_velocity_the_defaults() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 8 C5 64"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let note = *h.session.project().current_pattern().notes.first().unwrap();
+    assert_ne!(h.state.roll.last_length, note.length);
+    let p = h.roll_point(note.start + 10, note.key);
+    h.click(p, PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.roll.last_length, note.length);
+    assert_eq!(h.state.roll.velocity, 64);
+}
+
+#[test]
+fn piano_roll_cursors_follow_the_tool() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 8 C5"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let note = *h.session.project().current_pattern().notes.first().unwrap();
+    let body = h.roll_point(note.start + 10, note.key);
+    let empty = h.roll_point(note.start + 10, note.key - 5);
+    h.frame(vec![Event::PointerMoved(body)]);
+    assert_eq!(h.cursor, egui::CursorIcon::Move);
+    h.frame(vec![Event::PointerMoved(empty)]);
+    assert_eq!(h.cursor, egui::CursorIcon::Crosshair);
+    h.state.roll.tool = crate::piano_roll::Tool::Delete;
+    h.frame(vec![Event::PointerMoved(body)]);
+    assert_eq!(h.cursor, egui::CursorIcon::Default);
+}
+
+#[test]
+fn double_clicking_the_tempo_display_types_a_tempo() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let spot = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..160).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Tempo "))
+        })
+        .expect("a tempo display in the toolbar");
+    h.click(spot, PointerButton::Primary);
+    h.click(spot, PointerButton::Primary);
+    h.settle();
+    h.frame(vec![Event::Key {
+        key: egui::Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::COMMAND,
+    }]);
+    h.frame(vec![Event::Text("98.5".to_owned())]);
+    let out = h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(out, ["project.set_tempo 98.500"]);
+    assert!(!h.state.windows.playlist, "Enter stays in the field");
+}
+
+#[test]
+fn mixer_strips_step_by_whole_strips() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let bars = egui::Id::new("mixer-strip-bars");
+    let offset = |h: &Harness| crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    let before = offset(&h);
+    // What one wheel notch over a strip's name asks for.
+    crate::scrollbars::plain_step(&h.ctx, bars, vec2(42.0, 0.0));
+    h.settle();
+    assert!(
+        (offset(&h) - before - 42.0).abs() < 0.5,
+        "{before} → {}",
+        offset(&h)
+    );
+}
+
+#[test]
+fn a_strip_lifts_while_its_track_menu_is_open() {
+    let mut h = Harness::new(&["mixer.rename 2 Bass"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let name = (0..100)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| mixer.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Bass — click"))
+        })
+        .expect("insert 2's name");
+    assert_eq!(crate::mixer::menu_target(&h.ctx), None);
+    h.click(name, PointerButton::Secondary);
+    h.settle();
+    assert_eq!(crate::mixer::menu_target(&h.ctx), Some(2));
+    h.key(egui::Key::Escape, Modifiers::NONE);
+    h.settle();
+    assert_eq!(crate::mixer::menu_target(&h.ctx), None);
+}
+
+#[test]
+fn the_mixer_plus_adds_an_insert_and_selects_it() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let plus = (0..200)
+        .map(|i| mixer.left_top() + vec2(4.0 + 3.0 * i as f32, 11.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Add an insert track"))
+        })
+        .expect("the add-insert button");
+    let before = h.session.project().mixer.len();
+    assert_eq!(h.click(plus, PointerButton::Primary), ["mixer.add_track"]);
+    assert_eq!(h.session.project().mixer.len(), before + 1);
+    assert_eq!(h.state.selected_track, before);
+    // Right-click opens the menu instead of adding.
+    let out = h.click(plus, PointerButton::Secondary);
+    assert!(out.is_empty(), "{out:?}");
+}
+
+#[test]
+fn the_wheel_over_empty_strip_space_steps_the_strips() {
+    let mut h = Harness::new(&["mixer.rename 2 Bass"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let hint_at = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone()
+    };
+    let name = (0..100)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| mixer.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| hint_at(&mut h, *p).is_some_and(|t| t.starts_with("Bass — click")))
+        .expect("insert 2's name");
+    // Somewhere in insert 2's strip with no control under the pointer.
+    let space = (0..120)
+        .flat_map(|j| (-4..8).map(move |i| (i, j)))
+        .map(|(i, j)| name + vec2(3.0 * i as f32, 3.0 * j as f32))
+        .find(|p| hint_at(&mut h, *p).is_none())
+        .expect("empty strip space");
+    let bars = egui::Id::new("mixer-strip-bars");
+    let before = crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    let out = h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    }]);
+    h.settle();
+    assert!(out.is_empty(), "{out:?}");
+    let after = crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    assert!(after > before + 20.0, "{before} → {after} at {space:?}");
+    // The wheel over a name steps too (a step asked for from inside the
+    // strips is not lost).
+    h.frame(vec![Event::PointerMoved(name)]);
+    h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, 1.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    }]);
+    h.settle();
+    let back = crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    assert!(back < after - 20.0, "{after} → {back}");
+    // Over a knob the wheel turns the knob and the strips stay put.
+    let knob = (0..200)
+        .flat_map(|j| (-4..8).map(move |i| (i, j)))
+        .map(|(i, j)| name + vec2(3.0 * i as f32, 3.0 * j as f32))
+        .find(|p| hint_at(&mut h, *p).is_some_and(|t| t.starts_with("Pan ")))
+        .expect("a pan knob");
+    h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    }]);
+    h.settle();
+    let still = crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    assert!((still - back).abs() < 0.5, "{back} → {still} at {knob:?}");
+}
+
+#[test]
+fn ctrl_clicking_a_mute_light_solos_the_channel() {
+    let mut h = Harness::new(&["channel.add_synth", "channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let light = (0..40)
+        .flat_map(|j| (0..40).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 3.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Mute · Ctrl+click"))
+        })
+        .expect("a mute light");
+    h.modifiers = Modifiers::COMMAND;
+    let out = h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["channel.solo 1"]);
+}
+
+#[test]
+fn shift_clicking_a_mute_light_keeps_the_channel_out_of_solo() {
+    let mut h = Harness::new(&["channel.add_synth", "channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let light = (0..40)
+        .flat_map(|j| (0..40).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 3.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Mute · Ctrl+click"))
+        })
+        .expect("a mute light");
+    h.modifiers = Modifiers::SHIFT;
+    let out = h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["channel.set_solo_lock 1 on"]);
+    assert!(h.session.project().channels[0].solo_lock);
+    h.frame(vec![Event::PointerMoved(light)]);
+    h.frame(vec![]);
+    let hint = h.state.hint.clone().unwrap_or_default();
+    assert!(hint.starts_with("Mute (kept out of solo)"), "{hint}");
+}
+
+#[test]
+fn alt_clicking_a_mute_light_mutes_or_solos_the_whole_group() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.set_group 1 Drums",
+        "channel.set_group 2 Drums",
+    ]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let light = (0..40)
+        .flat_map(|j| (0..40).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 3.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Mute · Ctrl+click"))
+        })
+        .expect("a mute light");
+    let states = |h: &Harness| {
+        h.session
+            .project()
+            .channels
+            .iter()
+            .map(|c| (c.mute, c.solo))
+            .collect::<Vec<_>>()
+    };
+    h.modifiers = Modifiers::ALT;
+    h.click(light, PointerButton::Primary);
+    assert_eq!(
+        states(&h)[..3],
+        [(true, false), (true, false), (false, false)]
+    );
+    h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::ALT | Modifiers::COMMAND;
+    h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(
+        states(&h)[..3],
+        [(false, true), (false, true), (false, false)]
+    );
+}
+
+#[test]
+fn shift_wheel_over_the_rack_header_steps_patterns() {
+    let mut h = Harness::new(&["pattern.add", "pattern.add"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let wheel = Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::SHIFT,
+    };
+    h.modifiers = Modifiers::SHIFT;
+    let stepped = (0..60)
+        .map(|i| rack.left_top() + vec2(30.0 + 6.0 * i as f32, 11.0))
+        .any(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![wheel.clone()])
+                .iter()
+                .any(|c| c == "pattern.next")
+        });
+    h.modifiers = Modifiers::NONE;
+    assert!(stepped, "no header spot stepped the pattern");
+}
+
+#[test]
+fn automated_controls_name_their_source_in_the_hint() {
+    let mut h = Harness::new(&["channel.add_synth", "automation.create channel:1:pan"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let hints: Vec<String> = (0..40)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 3.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .filter_map(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            h.state.hint.clone()
+        })
+        .collect();
+    let pan = hints
+        .iter()
+        .find(|t| t.starts_with("Pan "))
+        .expect("the pan knob's hint");
+    assert!(pan.contains(" · automated (clip '"), "{pan}");
+    let volume = hints
+        .iter()
+        .find(|t| t.starts_with("Volume") || t.starts_with("Level"))
+        .expect("the volume knob's hint");
+    assert!(!volume.contains("automated"), "{volume}");
+}
+
+#[test]
+fn the_type_in_box_sets_a_control_and_esc_cancels() {
+    let key = |key: egui::Key, modifiers: Modifiers| Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    let release = |key: egui::Key| Event::Key {
+        key,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let mut h = Harness::new(&[]);
+    let open = |h: &mut Harness| {
+        crate::type_in::open(
+            &mut h.state,
+            h.session.project(),
+            "mixer:0:pan",
+            egui::pos2(200.0, 200.0),
+        );
+        h.settle();
+    };
+    open(&mut h);
+    assert!(h.state.type_in.is_some());
+    h.frame(vec![key(egui::Key::A, Modifiers::COMMAND)]);
+    h.frame(vec![Event::Text("25".to_owned())]);
+    let out = h.frame(vec![key(egui::Key::Enter, Modifiers::NONE)]);
+    assert_eq!(out, ["control.set mixer:0:pan 0.25"]);
+    assert!(h.state.type_in.is_none());
+    h.frame(vec![release(egui::Key::Enter)]);
+    open(&mut h);
+    let out = h.frame(vec![key(egui::Key::Escape, Modifiers::NONE)]);
+    assert!(out.is_empty(), "{out:?}");
+    assert!(h.state.type_in.is_none());
+}
+
+#[test]
+fn double_clicking_a_channel_name_renames_it_in_place() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let name = (0..40)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some("Synth")
+        })
+        .expect("the channel's name");
+    h.click(name, PointerButton::Primary);
+    h.click(name, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.renaming.is_some(), "a double-click opens the field");
+    assert!(h.state.windows.channel_settings, "the settings stay open");
+    h.frame(vec![Event::Text("Lead".to_owned())]);
+    let out = h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(out, ["channel.rename 1 Lead"]);
+    assert!(h.state.renaming.is_none());
+}
+
+#[test]
+fn dropping_a_sound_on_a_sampler_row_replaces_its_sample() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick", "channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let span = |h: &Harness, index: usize| {
+        h.state
+            .rack_rows
+            .iter()
+            .find(|(i, _)| *i == index)
+            .map(|(_, span)| span.center())
+            .expect("the row is drawn")
+    };
+    let drop_at = |h: &mut Harness, y: f32| {
+        egui::DragAndDrop::set_payload(
+            &h.ctx,
+            crate::browser::Dragged::Sample("builtin:clap".to_owned()),
+        );
+        let at = pos2(rack.center().x, y);
+        h.frame(vec![Event::PointerMoved(at)]);
+        h.frame(vec![Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed: false,
+            modifiers: Modifiers::NONE,
+        }])
+    };
+    let sampler = span(&h, 0);
+    assert_eq!(
+        drop_at(&mut h, sampler),
+        ["channel.set_sample 1 builtin:clap"]
+    );
+    // Over the synth's row it is added as a new channel instead.
+    let synth = span(&h, 1);
+    assert_eq!(drop_at(&mut h, synth), ["channel.add_sampler builtin:clap"]);
+}
+
+#[test]
+fn mixer_strip_lights_solo_on_ctrl_click() {
+    let mut h = Harness::new(&["mixer.add_effect 1 delay"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let find = |h: &mut Harness, prefix: &str| {
+        (0..100)
+            .flat_map(|j| (0..60).map(move |i| (i, j)))
+            .map(|(i, j)| mixer.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with(prefix))
+            })
+    };
+    let light =
+        find(&mut h, "Enable (on) · click to mute or unmute · Ctrl").expect("insert 1's light");
+    h.modifiers = Modifiers::COMMAND;
+    let out = h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["mixer.toggle_solo 1"]);
+}
+
+#[test]
+fn shift_wheel_over_a_mixer_strip_name_moves_the_track() {
+    let mut h = Harness::new(&["mixer.rename 2 Bass"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let name = (0..100)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| mixer.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Bass — click"))
+        })
+        .expect("insert 2's name");
+    h.click(name, PointerButton::Primary);
+    assert_eq!(h.state.selected_track, 2);
+    h.modifiers = Modifiers::SHIFT;
+    let out = h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        modifiers: Modifiers::SHIFT,
+        phase: egui::TouchPhase::Move,
+    }]);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["mixer.move_track 2 right"]);
+    assert_eq!(h.session.project().mixer[3].name, "Bass");
+    assert_eq!(h.state.selected_track, 3, "the selection follows");
+}
+
+#[test]
+fn the_piano_roll_play_button_plays_the_pattern() {
+    let mut h = Harness::new(&["channel.add_synth", "transport.set_mode song"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let roll = window_rect(&h, "piano-roll");
+    let button = (0..120)
+        .map(|i| roll.left_top() + vec2(4.0 + 4.0 * i as f32, 11.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Play the pattern"))
+        })
+        .expect("a play button in the piano roll header");
+    let out = h.click(button, PointerButton::Primary);
+    assert_eq!(out, ["transport.set_mode pattern", "transport.play"]);
+}
+
+#[test]
+fn the_playlist_play_button_plays_the_song() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let window = window_rect(&h, "playlist-window");
+    let button = (0..200)
+        .map(|i| window.left_top() + vec2(4.0 + 3.0 * i as f32, 11.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Play the song"))
+        })
+        .expect("a play button in the playlist header");
+    let out = h.click(button, PointerButton::Primary);
+    assert_eq!(out, ["transport.set_mode song", "transport.play"]);
+}
+
+#[test]
+fn double_clicking_stop_silences_every_sound() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let stop = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..170).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Stop and return"))
+        })
+        .expect("a stop button in the toolbar");
+    let mut out = h.click(stop, PointerButton::Primary);
+    out.extend(h.click(stop, PointerButton::Primary));
+    assert_eq!(out, ["transport.stop", "transport.panic"]);
+}
+
+#[test]
+fn the_channel_strip_switches_pages_mutes_and_routes_to_a_free_track() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let find = |h: &mut Harness, prefix: &str| -> Pos2 {
+        (0..14)
+            .flat_map(|j| (0..80).map(move |i| (i, j)))
+            .map(|(i, j)| window.left_top() + vec2(4.0 + 6.0 * i as f32, 24.0 + 5.0 * j as f32))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("no strip control hinted {prefix:?}"))
+    };
+    let functions = find(&mut h, "Functions —");
+    h.click(functions, PointerButton::Primary);
+    h.settle();
+    assert_eq!(
+        h.state.channel_tab,
+        crate::channel_settings::ChannelTab::Functions
+    );
+    let on = find(&mut h, "On:");
+    h.click(on, PointerButton::Primary);
+    h.settle();
+    assert!(h.session.project().channels[0].mute);
+    let before = h.session.project().channels[0].mixer_track;
+    let caption = find(&mut h, "Click to route this channel to a free mixer track");
+    h.click(caption, PointerButton::Primary);
+    h.settle();
+    assert_ne!(h.session.project().channels[0].mixer_track, before);
+}
+
+#[test]
+fn the_effect_window_strip_bypasses_and_its_header_steps_presets() {
+    let mut h = Harness::new(&["mixer.add_effect 1 delay"]);
+    h.state.effect_windows.push((1, 0));
+    h.settle();
+    let window = h
+        .ctx
+        .memory(|m| m.area_rect(egui::Id::new(("effect-window", 1usize, 0usize))))
+        .expect("effect window drawn");
+    let find = |h: &mut Harness, prefix: &str| -> Pos2 {
+        (0..12)
+            .flat_map(|j| (0..80).map(move |i| (i, j)))
+            .map(|(i, j)| window.left_top() + vec2(4.0 + 5.0 * i as f32, 8.0 + 5.0 * j as f32))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("nothing hinted {prefix:?}"))
+    };
+    let light = find(&mut h, "Effect on");
+    h.click(light, PointerButton::Primary);
+    h.settle();
+    assert!(!h.session.project().mixer[1].effects[0].enabled);
+    let before = h.session.project().mixer[1].effects[0].values;
+    // The default delay also matches its second preset, so step backwards
+    // (to the last one) to see a change.
+    let previous = find(&mut h, "Previous preset");
+    h.click(previous, PointerButton::Primary);
+    h.settle();
+    assert_ne!(h.session.project().mixer[1].effects[0].values, before);
+    // Right-clicking an arrow opens the preset list instead of stepping.
+    let stepped = h.session.project().mixer[1].effects[0].values;
+    let next = find(&mut h, "Next preset");
+    assert!(!egui::Popup::is_any_open(&h.ctx));
+    h.click(next, PointerButton::Secondary);
+    h.settle();
+    assert!(egui::Popup::is_any_open(&h.ctx), "the preset list opened");
+    assert_eq!(h.session.project().mixer[1].effects[0].values, stepped);
+}
+
+#[test]
+fn instrument_presets_step_from_the_channel_window_header() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let previous = (0..80)
+        .map(|i| window.left_top() + vec2(4.0 + 4.0 * i as f32, 16.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Previous preset"))
+        })
+        .expect("the header's previous-preset chevron");
+    let before = h.session.project().channels[0].params;
+    h.click(previous, PointerButton::Primary);
+    h.settle();
+    assert_ne!(h.session.project().channels[0].params, before);
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.session.project().channels[0].params, before);
+}
+
+#[test]
+fn midi_output_and_stack_windows_show_a_short_strip() {
+    let mut h = Harness::new(&["channel.add_midi_out", "channel.add_layer"]);
+    h.state.windows.channel_settings = true;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Functions;
+    h.settle();
+    // MIDI output: only the Sound page, and the strip carries the MIDI channel.
+    assert_eq!(
+        h.state.channel_tab,
+        crate::channel_settings::ChannelTab::Sound
+    );
+    let window = window_rect(&h, "channel-settings");
+    let hints: Vec<String> = (0..12)
+        .flat_map(|j| (0..80).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 6.0 * i as f32, 24.0 + 5.0 * j as f32))
+        .filter_map(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            h.state.hint.clone()
+        })
+        .collect();
+    assert!(
+        hints
+            .iter()
+            .any(|t| t.starts_with("The MIDI channel (1–16)"))
+    );
+    assert!(hints.iter().any(|t| t.starts_with("On:")));
+    assert!(!hints.iter().any(|t| t.starts_with("Functions —")));
+    assert!(!hints.iter().any(|t| t.starts_with("Mixer track:")));
+    // A channel stack keeps the Sound page too.
+    h.state.selected_channel = 1;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Functions;
+    h.settle();
+    assert_eq!(
+        h.state.channel_tab,
+        crate::channel_settings::ChannelTab::Sound
+    );
+}
+
+#[test]
+fn dragging_the_envelope_peak_sets_the_attack_in_one_step() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_settings = true;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Envelope;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let handle = (0..40)
+        .flat_map(|j| (0..100).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 4.0 * i as f32, 60.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some("Attack: drag across")
+        })
+        .expect("the attack handle");
+    let attack = |h: &Harness| {
+        h.session.project().channels[0]
+            .params
+            .get(musiccraft_project::params::inst::ATTACK)
+    };
+    let before = attack(&h);
+    h.drag(handle, handle + vec2(40.0, 0.0));
+    h.settle();
+    assert!(attack(&h) > before + 0.01, "{} → {}", before, attack(&h));
+    h.session.run_line("edit.undo").unwrap();
+    assert!((attack(&h) - before).abs() < 1e-6);
+}
+
+#[test]
+fn right_clicking_the_keyboard_strip_sets_the_root_key() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_settings = true;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Functions;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let (key, at) = (0..120)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(10.0 + 6.0 * i as f32, 100.0 + 5.0 * j as f32))
+        .find_map(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            let hint = h.state.hint.clone()?;
+            let name =
+                hint.strip_suffix(" · click to hear it · right-click to make it the root key")?;
+            (name != "C5").then(|| (name.to_owned(), p))
+        })
+        .expect("a key on the keyboard strip");
+    h.click(at, PointerButton::Secondary);
+    h.settle();
+    let root = h.session.project().channels[0]
+        .params
+        .get(musiccraft_project::params::inst::ROOT_KEY) as u8;
+    assert_eq!(musiccraft_editors::instrument::key_name(root), key);
+}
+
+#[test]
+fn dragging_an_effect_slot_reorders_the_chain() {
+    let mut h = Harness::new(&["mixer.add_effect 1 delay", "mixer.add_effect 1 reverb"]);
+    h.state.windows.mixer = true;
+    h.state.selected_track = 1;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    // Find the slot panel's column first, then walk down it.
+    let hint = "Open or close this effect's window · drag to reorder";
+    let x = (0..120)
+        .map(|i| window.right() - 8.0 - 4.0 * i as f32)
+        .find(|x| {
+            (0..40).any(|j| {
+                let p = pos2(*x, window.top() + 30.0 + 4.0 * j as f32);
+                h.frame(vec![Event::PointerMoved(p)]);
+                h.frame(vec![]);
+                h.state.hint.as_deref() == Some(hint)
+            })
+        })
+        .expect("the slot panel");
+    // Each run of hinted points down the column is one slot's name.
+    let mut names: Vec<Pos2> = Vec::new();
+    let mut inside = false;
+    for j in 0..120 {
+        let y = window.top() + 30.0 + 2.0 * j as f32;
+        // Names differ in length: try a few points from the column leftwards.
+        let hit = (0..12).map(|i| pos2(x - 6.0 * i as f32, y)).find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some(hint)
+        });
+        if let Some(p) = hit.filter(|_| !inside) {
+            names.push(p + vec2(0.0, 3.0));
+        }
+        inside = hit.is_some();
+    }
+    assert!(names.len() >= 2, "found {names:?}");
+    h.drag(names[0], names[1]);
+    h.settle();
+    let kinds: Vec<_> = h.session.project().mixer[1]
+        .effects
+        .iter()
+        .map(|e| e.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            musiccraft_project::params::EffectKind::Reverb,
+            musiccraft_project::params::EffectKind::Delay
+        ]
+    );
+}
+
+#[test]
+fn an_effect_dropped_on_a_mixer_strip_goes_into_that_track() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    let name = h.session.project().mixer[2].name.clone();
+    let strip = (0..40)
+        .flat_map(|j| (0..120).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 5.0 * i as f32, 24.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with(&format!("{name} — click")))
+        })
+        .expect("track 2's number cell");
+    // Hover reaches a few points past a widget's edge: step well inside.
+    let strip = strip + vec2(8.0, 0.0);
+    egui::DragAndDrop::set_payload(
+        &h.ctx,
+        crate::browser::Dragged::Effect {
+            label: "Delay".to_owned(),
+            command: "mixer.add_effect".to_owned(),
+            args: vec!["delay".to_owned()],
+        },
+    );
+    h.frame(vec![Event::PointerMoved(strip)]);
+    let ran = h.frame(vec![Event::PointerButton {
+        pos: strip,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(ran, ["mixer.add_effect 2 delay"]);
+}
+
+#[test]
+fn fitting_to_the_scale_draws_on_its_keys() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.piano_roll = true;
+    h.state.roll.scale = Some((0, 0));
+    h.settle();
+    // Off: the clicked key is used as it is.
+    let added = h.click(h.roll_point(5, 61), PointerButton::Primary);
+    assert_eq!(added, ["note.add 1 0t 24t 61 100"]);
+    h.session.run_line("edit.undo").unwrap();
+    h.settle();
+    // On: C# in C major lands on C.
+    h.state.roll.fit_scale = true;
+    h.settle();
+    let added = h.click(h.roll_point(5, 61), PointerButton::Primary);
+    assert_eq!(added, ["note.add 1 0t 24t 60 100"]);
+}
+
+#[test]
+fn piano_roll_zoom_keys_step_and_fit() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 1 60"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let before = h.state.roll.px_per_step;
+    h.key(egui::Key::PageUp, Modifiers::NONE);
+    assert!((h.state.roll.px_per_step - before * 1.5).abs() < 1e-3);
+    h.key(egui::Key::Num1, Modifiers::SHIFT);
+    assert!((h.state.roll.px_per_step - 12.0).abs() < 1e-3);
+    h.key(egui::Key::Num4, Modifiers::SHIFT);
+    let (_, clip) = h.state.roll.last_view.expect("roll drawn");
+    let steps = h.session.project().current_pattern().length_steps as f32;
+    let (low, high) = crate::piano_roll::STEP_WIDTH_RANGE;
+    let fit = ((clip.width() - crate::piano_roll::KEYS_WIDTH) / steps).clamp(low, high);
+    assert!((h.state.roll.px_per_step - fit).abs() < 1e-3);
+}
+
+#[test]
+fn playlist_keys_zoom_nudge_and_move_tracks() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    let clip = |h: &Harness| {
+        let c = h.session.project().playlist.clips[0];
+        (c.track, c.start)
+    };
+    h.click(h.playlist_point(bar + 40, 0), PointerButton::Primary);
+    assert_eq!(h.state.playlist.selection.len(), 1);
+
+    // Shift+arrows nudge one snap step (a bar) and move one track, keeping
+    // the selection on the clip.
+    h.key(egui::Key::ArrowRight, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (0, 2 * bar));
+    h.key(egui::Key::ArrowDown, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (1, 2 * bar));
+    h.key(egui::Key::ArrowLeft, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (1, bar));
+    h.key(egui::Key::ArrowUp, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (0, bar));
+    h.key(egui::Key::ArrowUp, Modifiers::SHIFT);
+    assert_eq!(clip(&h), (0, bar), "the top track stops the move");
+    assert_eq!(h.state.playlist.selection, BTreeSet::from([(0, bar)]));
+
+    // Page Up zooms in; Shift+1 picks a preset; Shift+4 goes all the way out
+    // and back.
+    let before = h.state.playlist.px_per_bar;
+    h.key(egui::Key::PageUp, Modifiers::NONE);
+    assert!((h.state.playlist.px_per_bar - before * 1.5).abs() < 1e-3);
+    h.key(egui::Key::Num1, Modifiers::SHIFT);
+    assert!((h.state.playlist.px_per_bar - 32.0).abs() < 1e-3);
+    h.key(egui::Key::Num4, Modifiers::SHIFT);
+    assert!((h.state.playlist.px_per_bar - 16.0).abs() < 1e-3);
+    h.key(egui::Key::Num4, Modifiers::SHIFT);
+    assert!((h.state.playlist.px_per_bar - 32.0).abs() < 1e-3);
+}
+
+#[test]
+fn the_toolbar_pattern_field_steps_renames_and_reveals() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 2 1 6"]);
+    h.state.windows.playlist = false;
+    h.settle();
+    let field = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..170).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Pattern: click"))
+        })
+        .expect("the pattern field in the toolbar");
+    let wheel = |y: f32| Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, y),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(h.session.project().current_pattern, 1);
+    assert_eq!(h.frame(vec![wheel(1.0)]), ["pattern.prev"]);
+    assert_eq!(h.frame(vec![wheel(-1.0)]), ["pattern.next"]);
+    assert_eq!(h.session.project().current_pattern, 1);
+
+    // Double-click renames in place; Esc cancels.
+    h.click(field, PointerButton::Primary);
+    h.click(field, PointerButton::Primary);
+    assert!(h.state.renaming.is_some());
+    h.key(egui::Key::Escape, Modifiers::NONE);
+    h.settle();
+    assert!(h.state.renaming.is_none());
+
+    // Ctrl+click opens the playlist at the pattern's first clip.
+    h.modifiers = Modifiers::COMMAND;
+    h.click(field, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert!(h.state.windows.playlist);
+    h.settle();
+    let offset = h.state.playlist.offset;
+    assert!(offset.x > 0.0, "scrolled to bar 7: {offset:?}");
+}
+
+#[test]
+fn right_clicking_the_piano_roll_button_opens_it_maximized() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.piano_roll = false;
+    h.settle();
+    let find = |h: &mut Harness, prefix: &str| {
+        [14.0, 38.0, 60.0]
+            .into_iter()
+            .flat_map(|y| (0..170).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|hint| hint.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("{prefix:?} in the toolbar"))
+    };
+    let roll = find(&mut h, "Piano roll (F7)");
+    h.click(roll, PointerButton::Secondary);
+    h.settle();
+    assert!(h.state.windows.piano_roll);
+    assert!(crate::chrome::maximized(
+        &h.ctx,
+        egui::Id::new("piano-roll")
+    ));
+
+    // The layout button's first item puts every window back.
+    let layout = find(&mut h, "Window layout");
+    h.click(layout, PointerButton::Primary);
+    h.settle();
+    let item = (0..40)
+        .map(|j| layout + vec2(20.0, 12.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.ctx
+                .memory(|m| m.layer_id_at(*p))
+                .is_some_and(|l| l.order == egui::Order::Foreground)
+        });
+    let item = item.expect("the layout menu") + vec2(0.0, 10.0);
+    h.click(item, PointerButton::Primary);
+    h.settle();
+    assert!(!crate::chrome::maximized(
+        &h.ctx,
+        egui::Id::new("piano-roll")
+    ));
+}
+
+#[test]
+fn the_playlist_follows_the_playhead_unless_turned_off() {
+    let mut h = Harness::new(&["transport.toggle_mode"]);
+    assert_eq!(
+        h.session.project().play_mode,
+        musiccraft_project::PlayMode::Song
+    );
+    h.state.windows.playlist = true;
+    h.state.playlist.view.follow = false;
+    h.engine.playing = true;
+    h.engine.position_ticks = f64::from(40 * TICKS_PER_BAR);
+    h.settle();
+    assert_eq!(h.state.playlist.offset.x, 0.0, "stays put");
+    h.state.playlist.view.follow = true;
+    h.settle();
+    assert!(h.state.playlist.offset.x > 0.0, "pages to the playhead");
+}
+
+#[test]
+fn playlist_copy_and_paste_use_the_desktop_clipboard_events() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    h.click(h.playlist_point(bar + 40, 0), PointerButton::Primary);
+    // Ctrl+C arrives as a copy event, Ctrl+V as a paste of the system text.
+    h.frame(vec![Event::Copy]);
+    h.engine.position_ticks = f64::from(4 * bar + 100);
+    h.frame(vec![]);
+    let pasted = h.frame(vec![Event::Paste("MusicCraft: clips".to_owned())]);
+    assert_eq!(pasted.len(), 1, "{pasted:?}");
+    let starts: Vec<(u32, u32)> = h
+        .session
+        .project()
+        .playlist
+        .clips
+        .iter()
+        .map(|c| (c.track, c.start))
+        .collect();
+    assert_eq!(starts, [(0, bar), (0, 4 * bar)]);
+    assert_eq!(h.state.playlist.selection, BTreeSet::from([(0, 4 * bar)]));
+    // Cut removes the pasted copy again.
+    h.frame(vec![Event::Cut]);
+    assert_eq!(h.session.project().playlist.clips.len(), 1);
+}
+
+#[test]
+fn rack_keys_copy_steps_toggle_the_graph_and_step_groups() {
+    let mut h = Harness::new(&[
+        "channel.add_sampler builtin:kick",
+        "channel.add_sampler builtin:hat",
+        "step.toggle 1 1",
+        "step.toggle 1 5",
+        "step.toggle 2 3",
+        "channel.set_group 2 Drums",
+    ]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    h.frame(vec![Event::PointerMoved(rack.center())]);
+    let steps = |h: &Harness, channel: usize| -> Vec<u32> {
+        let project = h.session.project();
+        let id = project.channels[channel].id;
+        project
+            .current_pattern()
+            .notes_of(id)
+            .map(|n| n.start / TICKS_PER_STEP)
+            .collect()
+    };
+    // Copy channel 1's steps onto channel 2 (as the desktop sends Ctrl+C/V).
+    h.state.selected_channel = 0;
+    h.frame(vec![Event::Copy]);
+    h.state.selected_channel = 1;
+    let pasted = h.frame(vec![Event::Paste("MusicCraft: steps".to_owned())]);
+    assert_eq!(pasted.len(), 1, "one undo step: {pasted:?}");
+    assert_eq!(steps(&h, 1), steps(&h, 0));
+    assert_eq!(steps(&h, 1).len(), 2);
+    h.frame(vec![Event::Cut]);
+    assert!(steps(&h, 1).is_empty());
+
+    h.key(egui::Key::K, Modifiers::COMMAND);
+    assert!(h.state.graph.is_some());
+    h.key(egui::Key::K, Modifiers::COMMAND);
+    assert!(h.state.graph.is_none());
+
+    // Page Down steps All → Drums → No group → All.
+    h.key(egui::Key::PageDown, Modifiers::NONE);
+    assert_eq!(h.state.rack_group.as_deref(), Some("Drums"));
+    h.key(egui::Key::PageUp, Modifiers::NONE);
+    assert_eq!(h.state.rack_group, None);
+    h.key(egui::Key::PageUp, Modifiers::NONE);
+    assert_eq!(h.state.rack_group.as_deref(), Some(""));
+
+    h.key(egui::Key::M, Modifiers::ALT);
+    assert!(h.state.rack_hide_tracks);
+    h.key(egui::Key::F2, Modifiers::NONE);
+    assert!(
+        format!("{:?}", h.state.dialog).contains("RenameChannel"),
+        "F2 over the rack renames the selected channel"
+    );
+}
+
+#[test]
+fn f2_elsewhere_renames_the_selected_pattern() {
+    let mut h = Harness::new(&["pattern.add Verse"]);
+    h.settle();
+    h.frame(vec![Event::PointerMoved(pos2(700.0, 600.0))]);
+    h.key(egui::Key::F2, Modifiers::NONE);
+    let dialog = format!("{:?}", h.state.dialog);
+    assert!(dialog.contains("RenamePattern(1)"), "{dialog}");
+    assert!(dialog.contains("Verse"), "{dialog}");
+}
+
+#[test]
+fn shift_down_in_the_browser_sends_the_next_sound_to_the_selected_sampler() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.selected_channel = h.session.project().channels.len() - 1;
+    let channel = h.state.selected_channel + 1;
+    h.state.windows.browser = true;
+    h.settle();
+    h.frame(vec![Event::PointerMoved(pos2(60.0, 300.0))]);
+    let selected = |h: &Harness| {
+        h.ctx
+            .data(|d| d.get_temp::<String>(egui::Id::new("browser-selected-row")))
+            .unwrap_or_default()
+    };
+    h.key(egui::Key::ArrowDown, Modifiers::NONE);
+    for _ in 0..1500 {
+        let key = selected(&h);
+        if key.starts_with("sound:") {
+            break;
+        }
+        h.key(egui::Key::ArrowRight, Modifiers::NONE);
+        if selected(&h) == key {
+            h.key(egui::Key::ArrowDown, Modifiers::NONE);
+        }
+    }
+    let first = selected(&h);
+    assert!(first.starts_with("sound:"), "{first}");
+    h.other.clear();
+    let out = h.key(egui::Key::ArrowDown, Modifiers::SHIFT);
+    let next = selected(&h);
+    let sample = next.strip_prefix("sound:").expect("the next sound");
+    assert_ne!(next, first);
+    assert_eq!(out, [format!("channel.set_sample {channel} {sample}")]);
+    assert!(
+        h.other
+            .iter()
+            .any(|a| matches!(a, Action::PreviewSample(s) if s == sample))
+    );
+    // Back up again: the two sends are one undo step.
+    h.key(egui::Key::ArrowUp, Modifiers::SHIFT);
+    assert_eq!(selected(&h), first);
+    h.session.run_line("edit.undo").unwrap();
+    let plays = |h: &Harness| match &h.session.project().channels[channel - 1].instrument {
+        musiccraft_project::Instrument::Sampler { sample } => sample.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(plays(&h), "builtin:kick");
+}
+
+#[test]
+fn backspace_in_the_browser_goes_back_and_forward_through_opened_folders() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.browser = true;
+    h.settle();
+    h.frame(vec![Event::PointerMoved(pos2(60.0, 300.0))]);
+    let selected = |h: &Harness| {
+        h.ctx
+            .data(|d| d.get_temp::<String>(egui::Id::new("browser-selected-row")))
+            .unwrap_or_default()
+    };
+    // Open two folders with Right.
+    let mut opened = Vec::new();
+    h.key(egui::Key::ArrowDown, Modifiers::NONE);
+    for _ in 0..40 {
+        let key = selected(&h);
+        h.key(egui::Key::ArrowRight, Modifiers::NONE);
+        if h.state.browser.open.get(&key) == Some(&true) && !opened.contains(&key) {
+            opened.push(key);
+            if opened.len() == 2 {
+                break;
+            }
+        } else {
+            h.key(egui::Key::ArrowDown, Modifiers::NONE);
+        }
+    }
+    assert_eq!(opened.len(), 2, "{opened:?}");
+    h.key(egui::Key::Backspace, Modifiers::NONE);
+    assert_eq!(selected(&h), opened[1]);
+    assert_eq!(h.state.browser.open.get(&opened[1]), Some(&false));
+    h.key(egui::Key::Backspace, Modifiers::NONE);
+    assert_eq!(selected(&h), opened[0]);
+    h.key(egui::Key::Backspace, Modifiers::SHIFT);
+    assert_eq!(selected(&h), opened[0]);
+    assert_eq!(h.state.browser.open.get(&opened[0]), Some(&true));
+}
+
+#[test]
+fn the_browser_walks_its_tree_with_the_arrow_keys_and_enter_adds_an_effect() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.browser = true;
+    h.settle();
+    h.frame(vec![Event::PointerMoved(pos2(60.0, 300.0))]);
+    let selected = |h: &Harness| {
+        h.ctx
+            .data(|d| d.get_temp::<String>(egui::Id::new("browser-selected-row")))
+    };
+    h.key(egui::Key::ArrowDown, Modifiers::NONE);
+    let first = selected(&h).expect("Down selects the first row");
+    // Right opens folders and steps in; Down moves on; stop at an effect.
+    let mut out = Vec::new();
+    for _ in 0..80 {
+        let key = selected(&h).unwrap_or_default();
+        if key.starts_with("plugin:") {
+            out = h.key(egui::Key::Enter, Modifiers::NONE);
+            break;
+        }
+        h.key(egui::Key::ArrowRight, Modifiers::NONE);
+        if selected(&h).unwrap_or_default() == key {
+            h.key(egui::Key::ArrowDown, Modifiers::NONE);
+        }
+    }
+    assert!(
+        out.iter().any(|c| c.starts_with("mixer.add_effect")),
+        "Enter on an effect adds it: {out:?}"
+    );
+    // Left steps out to the parent folder; Up at the top stays.
+    h.key(egui::Key::ArrowLeft, Modifiers::NONE);
+    assert_eq!(selected(&h).as_deref(), Some("plugins/effects"));
+    for _ in 0..80 {
+        h.key(egui::Key::ArrowUp, Modifiers::NONE);
+    }
+    assert_eq!(selected(&h), Some(first));
+}
+
+#[test]
+fn this_projects_history_rows_undo_and_redo_to_a_step() {
+    let mut h = Harness::new(&[]);
+    for line in [
+        "project.set_tempo 100",
+        "project.set_tempo 110",
+        "project.set_tempo 120",
+    ] {
+        h.session.run_line(line).unwrap();
+    }
+    h.state.windows.browser = true;
+    h.state.browser.tab = crate::browser::Tab::Project;
+    h.state
+        .browser
+        .open
+        .insert("project/history".to_owned(), true);
+    h.settle();
+    let row_with = |h: &mut Harness, hint: &str| {
+        (0..250)
+            .map(|j| pos2(80.0, 40.0 + 3.0 * j as f32))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state.hint.as_deref().is_some_and(|t| t.starts_with(hint))
+            })
+    };
+    // The undo rows run newest first; the third is the first tempo change.
+    let first = row_with(&mut h, "Click to undo").expect("an undo row");
+    let rows: Vec<Pos2> = (0..60)
+        .map(|j| first + vec2(0.0, 3.0 * j as f32))
+        .filter(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Click to undo"))
+        })
+        .collect();
+    let last = *rows.last().unwrap();
+    let out = h.click(last, PointerButton::Primary);
+    assert_eq!(
+        out,
+        ["edit.undo", "edit.undo"],
+        "back to just after the first"
+    );
+    assert!((h.session.project().tempo_bpm() - 100.0).abs() < 0.01);
+    h.settle();
+    let redo = row_with(&mut h, "Click to redo").expect("a redo row");
+    let out = h.click(redo, PointerButton::Primary);
+    assert!(
+        !out.is_empty() && out.iter().all(|c| c == "edit.redo"),
+        "{out:?}"
+    );
+    assert!(h.session.project().tempo_bpm() > 100.0);
+}
+
+#[test]
+fn dragging_a_track_divider_resizes_that_track_alone() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.unwrap();
+    let row_h = grid.row_height;
+    let edge = pos2(clip.left() + 40.0, grid.y(1) - 1.0);
+    let ran = h.drag(edge, edge + vec2(0.0, row_h));
+    assert_eq!(ran, ["playlist.set_track_height 1 200"]);
+    h.settle();
+    let (grid, _) = h.state.playlist.last_view.unwrap();
+    assert!((grid.height_of(0) - 2.0 * row_h).abs() < 0.5);
+    assert!(
+        (grid.height_of(1) - row_h).abs() < 0.5,
+        "the next track keeps its height"
+    );
+    // Alt+click on the divider returns the track to the global height.
+    h.modifiers = Modifiers::ALT;
+    let edge = pos2(clip.left() + 40.0, grid.y(1) - 1.0);
+    let ran = h.click(edge, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(ran, ["playlist.set_track_height 1 reset"]);
+    assert!(h.session.project().playlist.track_heights.is_empty());
+}
+
+#[test]
+fn track_headers_select_a_track_and_take_dropped_sounds() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.unwrap();
+    let header = |row: u32| pos2(clip.left() + 30.0, grid.y(row) + 8.0);
+    h.click(header(2), PointerButton::Primary);
+    assert_eq!(h.state.playlist.track, 2);
+    h.key(egui::Key::ArrowDown, Modifiers::COMMAND);
+    assert_eq!(h.state.playlist.track, 3);
+    h.key(egui::Key::ArrowUp, Modifiers::COMMAND);
+    h.key(egui::Key::ArrowUp, Modifiers::COMMAND);
+    assert_eq!(h.state.playlist.track, 1);
+    // A sound dropped on a header lands at the start of the view on that
+    // track, which takes the sound's name.
+    egui::DragAndDrop::set_payload(
+        &h.ctx,
+        crate::browser::Dragged::Sample("builtin:clap".to_owned()),
+    );
+    let at = header(1);
+    h.frame(vec![Event::PointerMoved(at)]);
+    let ran = h.frame(vec![Event::PointerButton {
+        pos: at,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert!(
+        h.other.iter().any(|a| matches!(
+            a,
+            Action::DropAudio { track: 1, start: 0, sample } if sample == "builtin:clap"
+        )),
+        "the sound goes to track 2 at the view's start"
+    );
+    assert!(
+        ran.contains(&"playlist.rename_track 2 clap".to_owned()),
+        "{ran:?}"
+    );
+}
+
+#[test]
+fn a_track_pinned_right_sits_after_the_scrolling_strips() {
+    let mut h = Harness::new(&["mixer.set_dock 3 right"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    let mut hint_at = |p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    let row = (0..40)
+        .map(|j| window.top() + 24.0 + 3.0 * j as f32)
+        .find(|&y| hint_at(pos2(window.left() + 20.0, y)).starts_with("Master — click"))
+        .expect("the master's number cell, at the left");
+    let mut strips = Vec::new();
+    let mut x = window.left() + 4.0;
+    while x < window.right() {
+        let hint = hint_at(pos2(x, row));
+        if let Some((name, _)) = hint.split_once(" — click") {
+            if strips.last() != Some(&name.to_owned()) {
+                strips.push(name.to_owned());
+            }
+        }
+        x += 6.0;
+    }
+    let names: Vec<String> = h
+        .session
+        .project()
+        .mixer
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    let at = |n: usize| strips.iter().position(|s| *s == names[n]);
+    assert_eq!(at(0), Some(0), "{strips:?}");
+    assert_eq!(at(1), Some(1), "{strips:?}");
+    assert!(at(2) < at(4), "{strips:?}");
+    assert_eq!(
+        at(3),
+        Some(strips.len() - 1),
+        "track 3 is pinned right: {strips:?}"
+    );
+}
+
+#[test]
+fn a_saved_window_layout_comes_back_on_the_next_start() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let mut layout = crate::window_layout(&h.ctx, &h.state);
+    assert!(layout.open.contains(&"mixer".to_owned()), "{layout:?}");
+    // Next start: the mixer was moved and folded, the piano roll closed.
+    layout.open.retain(|n| n != "piano_roll");
+    for (name, rect) in &mut layout.rects {
+        if name == "mixer" {
+            *rect = [300.0, 160.0, 500.0, 320.0];
+        }
+    }
+    layout.folded.push("mixer".to_owned());
+    let mut next = Harness::new(&[]);
+    crate::restore_window_layout(&next.ctx, &mut next.state, &layout);
+    next.settle();
+    assert!(!next.state.windows.piano_roll);
+    assert!(next.state.windows.mixer);
+    let mixer = window_rect(&next, "mixer-window");
+    assert!(
+        (mixer.left() - 300.0).abs() < 1.0 && (mixer.top() - 160.0).abs() < 1.0,
+        "{mixer:?}"
+    );
+    assert!(crate::chrome::collapsed(
+        &next.ctx,
+        egui::Id::new("mixer-window")
+    ));
+    let again = crate::window_layout(&next.ctx, &next.state);
+    assert!(again.folded.contains(&"mixer".to_owned()));
+    assert!(!again.open.contains(&"piano_roll".to_owned()));
+}
+
+#[test]
+fn alt_clicking_a_channel_name_opens_another_channel_window() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.rename 2 Pad",
+    ]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    // Name buttons hint their kind; the second row's is below the first.
+    let find = |h: &mut Harness, below: f32| {
+        (0..40)
+            .flat_map(|j| (0..60).map(move |i| (i, j)))
+            .map(|(i, j)| rack.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 3.0 * j as f32))
+            .filter(|p| p.y > below)
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state.hint.as_deref() == Some("Synth")
+            })
+            .expect("a channel's name")
+    };
+    let synth = find(&mut h, 0.0);
+    let pad = find(&mut h, synth.y + 28.0);
+    h.click(synth, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.windows.channel_settings);
+    h.modifiers = Modifiers::ALT;
+    h.click(pad, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    assert_eq!(
+        h.state.selected_channel, 0,
+        "the first window keeps its channel"
+    );
+    let pad_id = h.session.project().channels[1].id;
+    assert_eq!(h.state.kept_channels.len(), 1);
+    assert_eq!(h.state.kept_channels[0].0, pad_id);
+    let kept = h
+        .ctx
+        .memory(|m| m.area_rect(egui::Id::new(("channel-settings", pad_id.0))));
+    assert!(kept.is_some(), "the second window is drawn");
+    // Alt+clicking the same channel again opens no third window.
+    h.modifiers = Modifiers::ALT;
+    h.click(pad, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(h.state.kept_channels.len(), 1);
+}
+
+#[test]
+fn the_toolbar_utilities_open_help_and_the_sample_editor() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let find = |h: &mut Harness, prefix: &str| {
+        [14.0, 38.0, 60.0]
+            .into_iter()
+            .flat_map(|y| (0..170).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|hint| hint.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("no toolbar button hinted {prefix:?}"))
+    };
+    let help = find(&mut h, "Help: keyboard shortcuts");
+    h.click(help, PointerButton::Primary);
+    assert!(h.state.windows.shortcuts);
+    h.frame(vec![Event::PointerMoved(pos2(700.0, 500.0))]);
+    let sample = find(&mut h, "Sample editor");
+    h.click(sample, PointerButton::Primary);
+    assert!(h.state.windows.channel_settings);
+}
+
+#[test]
+fn right_clicking_the_snap_button_sets_the_new_note_length() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let window = window_rect(&h, "piano-roll");
+    let snap = (0..60)
+        .map(|i| window.left_top() + vec2(4.0 + 6.0 * i as f32, 12.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Snap:"))
+        })
+        .expect("the snap button");
+    h.state.roll.snap = crate::geometry::Snap::Beat;
+    h.state.roll.last_length = 1;
+    h.click(snap, PointerButton::Secondary);
+    assert_eq!(
+        h.state.roll.last_length,
+        crate::geometry::Snap::Beat.ticks_at(0, &h.state.roll.meter)
+    );
+}
+
+#[test]
+fn ctrl_shift_clicks_select_several_mixer_tracks_and_their_faders_move_together() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    let names: Vec<String> = h
+        .session
+        .project()
+        .mixer
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    let hint_at = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    let row = (0..40)
+        .map(|j| window.top() + 24.0 + 3.0 * j as f32)
+        .find(|&y| hint_at(&mut h, pos2(window.left() + 20.0, y)).starts_with("Master — click"))
+        .expect("the master's number cell");
+    // The middle of the run of points whose hint names the track.
+    let column = |h: &mut Harness, track: usize| {
+        let wanted = format!("{} — click", names[track]);
+        let xs: Vec<f32> = (0..)
+            .map(|j| window.left() + 4.0 + 2.0 * j as f32)
+            .take_while(|&x| x < window.right())
+            .filter(|&x| hint_at(h, pos2(x, row)).starts_with(&wanted))
+            .collect();
+        assert!(!xs.is_empty(), "no strip for track {track}");
+        (xs[0] + xs[xs.len() - 1]) / 2.0
+    };
+    let (one, two) = (column(&mut h, 1), column(&mut h, 2));
+    // Rest the pointer, so the scan's motion does not fling the strips
+    // sideways when the button is released.
+    let rest = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        for _ in 0..30 {
+            h.frame(vec![]);
+        }
+    };
+    rest(&mut h, pos2(one, row));
+    h.click(pos2(one, row), PointerButton::Primary);
+    rest(&mut h, pos2(two, row));
+    h.modifiers = Modifiers::COMMAND | Modifiers::SHIFT;
+    h.click(pos2(two, row), PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(h.state.selected_track, 2, "the last click is the primary");
+    assert_eq!(
+        h.state.mixer_selection.iter().copied().collect::<Vec<_>>(),
+        [1]
+    );
+
+    let fader = (0..200)
+        .map(|j| row + 60.0 + 2.0 * j as f32)
+        .find(|&y| hint_at(&mut h, pos2(two, y)).starts_with("Level"))
+        .expect("track 2's fader")
+        + 30.0;
+    rest(&mut h, pos2(two, fader));
+    let before: Vec<f32> = h.session.project().mixer.iter().map(|t| t.volume).collect();
+    let ran = h.drag(pos2(two, fader), pos2(two, fader + 40.0));
+    assert!(ran.iter().any(|c| c.starts_with("edit.batch")), "{ran:?}");
+    let after: Vec<f32> = h.session.project().mixer.iter().map(|t| t.volume).collect();
+    assert!(after[2] != before[2], "{before:?} → {after:?}");
+    assert!((after[1] - after[2]).abs() < 1e-3, "{after:?}");
+    assert_eq!(after[3], before[3], "unselected tracks stay");
+    h.session.undo().unwrap();
+    let undone: Vec<f32> = h.session.project().mixer.iter().map(|t| t.volume).collect();
+    assert_eq!(undone, before, "the drag is one undo step");
+
+    h.key(egui::Key::A, Modifiers::COMMAND);
+    assert_eq!(h.state.mixer_selection.len() + 1, names.len());
+    h.key(egui::Key::Escape, Modifiers::NONE);
+    assert!(h.state.mixer_selection.is_empty());
+    assert_eq!(h.state.selected_track, 2);
+    rest(&mut h, pos2(one, row));
+    h.click(pos2(one, row), PointerButton::Primary);
+    assert_eq!(h.state.selected_track, 1);
+}
+
+#[test]
+fn alt_p_hides_the_playlist_clip_list_and_the_lanes_take_its_width() {
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let lanes = |h: &Harness| h.state.playlist.last_view.expect("playlist drawn").1;
+    let shown = lanes(&h);
+    h.click(h.playlist_point(0, 0), PointerButton::Primary);
+    h.key(egui::Key::P, Modifiers::ALT);
+    h.settle();
+    assert!(!h.state.playlist.view.clip_list);
+    let hidden = lanes(&h);
+    assert!(
+        hidden.left() < shown.left() - 100.0,
+        "{shown:?} → {hidden:?}"
+    );
+    h.key(egui::Key::P, Modifiers::ALT);
+    h.settle();
+    assert!(h.state.playlist.view.clip_list);
+    assert_eq!(lanes(&h).left(), shown.left());
+}
+
+#[test]
+fn the_playlist_clip_list_can_sit_on_the_right_and_change_width() {
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let lanes = |h: &Harness| h.state.playlist.last_view.expect("playlist drawn").1;
+    let left = lanes(&h);
+    h.state.playlist.view.list_width = 2;
+    h.settle();
+    assert!(
+        (lanes(&h).left() - left.left() - 50.0).abs() < 1.0,
+        "wide adds 50 points"
+    );
+    h.state.playlist.view.list_width = 1;
+    h.state.playlist.view.list_right = true;
+    h.settle();
+    let right = lanes(&h);
+    assert!(right.left() < left.left() - 100.0, "{left:?} → {right:?}");
+    assert!(right.right() < left.right() - 100.0, "{left:?} → {right:?}");
+    // The list still works from its new side: its kind switches are there.
+    let window = window_rect(&h, "playlist-window");
+    let hint = (0..60)
+        .map(|j| pos2(right.right() + 10.0 + 2.0 * j as f32, window.top() + 40.0))
+        .filter(|&p| p.x < window.right())
+        .find_map(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .clone()
+                .filter(|t| t.starts_with("Patterns: show only"))
+        });
+    assert!(hint.is_some(), "the kind switches sit right of the lanes");
+}
+
+#[test]
+fn middle_dragging_pans_the_piano_roll_and_the_playlist() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0t 24t 60 100"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let origin = |h: &Harness| h.state.roll.last_view.expect("piano roll drawn").0.origin;
+    let before = origin(&h);
+    let from = h.roll_point(48, 60);
+    h.drag_with(from, from - vec2(0.0, 120.0), PointerButton::Middle);
+    h.settle();
+    assert!(
+        origin(&h).y < before.y - 60.0,
+        "{before:?} → {:?}",
+        origin(&h)
+    );
+    assert_eq!(h.roll_notes(), [(0, 60)], "panning leaves the notes alone");
+
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let origin = |h: &Harness| h.state.playlist.last_view.expect("playlist drawn").0.origin;
+    let before = origin(&h);
+    let from = h.playlist_point(TICKS_PER_BAR, 3);
+    let ran = h.drag_with(from, from - vec2(0.0, 80.0), PointerButton::Middle);
+    h.settle();
+    assert!(ran.is_empty(), "{ran:?}");
+    assert!(
+        origin(&h).y < before.y - 40.0,
+        "{before:?} → {:?}",
+        origin(&h)
+    );
+}
+
+#[test]
+fn ctrl_dragging_keys_selects_a_range_and_middle_dragging_them_zooms() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 1 60",
+        "note.add 1 4 1 62",
+        "note.add 1 8 1 64",
+        "note.add 1 12 1 67",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    let (_, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let key = |h: &Harness, k: u8| pos2(clip.left() + 40.0, h.roll_point(0, k).y);
+    h.modifiers = Modifiers::COMMAND;
+    let ran = h.drag(key(&h, 60), key(&h, 64));
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    assert!(ran.is_empty(), "{ran:?}");
+    let selected: Vec<_> = h.state.roll.selection.iter().copied().collect();
+    assert_eq!(selected, [(0, 60), (4 * step, 62), (8 * step, 64)]);
+    assert!(h.state.roll.preview.is_none());
+
+    let row = |h: &Harness| {
+        h.state
+            .roll
+            .last_view
+            .expect("piano roll drawn")
+            .0
+            .row_height
+    };
+    let before = row(&h);
+    let at = key(&h, 62);
+    h.drag_with(at, at - vec2(0.0, 40.0), PointerButton::Middle);
+    h.settle();
+    assert!(row(&h) > before, "{before} → {}", row(&h));
+    // The key first pressed stays under the press point.
+    let (grid, _) = h.state.roll.last_view.expect("piano roll drawn");
+    let held = grid.row_at(at.y).map(crate::piano_roll::key_of_row);
+    assert_eq!(held, Some(62));
+}
+
+#[test]
+fn the_piano_roll_splitter_resizes_hides_and_restores_the_property_lane() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 1 60"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let (_, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let x = clip.center().x;
+    let split = |h: &Harness| clip.bottom() - h.state.roll.lane_height - 2.0;
+    h.state.hint = None;
+    h.frame(vec![Event::PointerMoved(pos2(x, split(&h)))]);
+    h.frame(vec![]);
+    assert!(
+        h.state
+            .hint
+            .clone()
+            .unwrap_or_default()
+            .starts_with("Drag to resize the property lane"),
+        "{:?}",
+        h.state.hint
+    );
+    let from = pos2(x, split(&h));
+    let ran = h.drag(from, from - vec2(0.0, 60.0));
+    assert!(ran.is_empty(), "{ran:?}");
+    assert!(
+        (h.state.roll.lane_height - 156.0).abs() < 4.0,
+        "{}",
+        h.state.roll.lane_height
+    );
+
+    let at = pos2(x, split(&h));
+    h.click(at, PointerButton::Primary);
+    h.click(at, PointerButton::Primary);
+    assert!(!h.state.roll.lane_shown, "double-click hides the lane");
+    h.click(h.roll_point(96, 60), PointerButton::Primary);
+    h.key(egui::Key::Enter, Modifiers::SHIFT);
+    assert!(h.state.roll.lane_shown, "Shift+Enter shows it again");
+    h.settle();
+    h.click(pos2(x, split(&h)), PointerButton::Secondary);
+    assert_eq!(
+        h.state.roll.lane_height, 96.0,
+        "right-click restores the default"
+    );
+}
+
+#[test]
+fn the_mixer_slot_panel_can_sit_left_of_the_strips() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    let master_at = |h: &mut Harness| {
+        let mut hint_at = |p: Pos2| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            h.state.hint.clone().unwrap_or_default()
+        };
+        (0..40)
+            .flat_map(|j| (0..120).map(move |i| (i, j)))
+            .map(|(i, j)| {
+                pos2(
+                    window.left() + 4.0 + 6.0 * i as f32,
+                    window.top() + 24.0 + 3.0 * j as f32,
+                )
+            })
+            .find(|&p| hint_at(p).starts_with("Master — click"))
+            .expect("the master's number cell")
+            .x
+    };
+    let right = master_at(&mut h);
+    assert!(right < window.left() + 40.0, "{right} {window:?}");
+    h.state.mixer_panel_left = true;
+    h.settle();
+    let left = master_at(&mut h);
+    assert!(
+        left > right + 200.0,
+        "the panel now comes first: {right} → {left}"
+    );
+}
+
+#[test]
+fn the_tempo_chevrons_step_it_one_bpm_a_click() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let hint_at = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    let x = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..340).map(move |i| pos2(8.0 + 4.0 * i as f32, y)))
+        .find(|&p| hint_at(&mut h, p).starts_with("Tempo up or down"))
+        .expect("the tempo chevrons")
+        .x;
+    let ys: Vec<f32> = (0..40)
+        .map(|j| 2.0 * j as f32)
+        .filter(|&y| hint_at(&mut h, pos2(x, y)).starts_with("Tempo up or down"))
+        .collect();
+    let mid = (ys[0] + ys[ys.len() - 1]) / 2.0;
+    let xs: Vec<f32> = (-8..8)
+        .map(|i| x + i as f32)
+        .filter(|&x| hint_at(&mut h, pos2(x, mid)).starts_with("Tempo up or down"))
+        .collect();
+    let x = (xs[0] + xs[xs.len() - 1]) / 2.0;
+    let (top, bottom) = (mid - 7.0, mid + 7.0);
+    let tempo = |h: &Harness| h.session.project().tempo_bpm();
+    let start = tempo(&h);
+    h.click(pos2(x, top), PointerButton::Primary);
+    assert!(
+        (tempo(&h) - start - 1.0).abs() < 1e-6,
+        "{start} → {}",
+        tempo(&h)
+    );
+    h.click(pos2(x, bottom), PointerButton::Primary);
+    h.frame(vec![]);
+    h.click(pos2(x, bottom), PointerButton::Primary);
+    assert!(
+        (tempo(&h) - start + 1.0).abs() < 1e-6,
+        "{start} → {}",
+        tempo(&h)
+    );
+    h.session.undo().unwrap();
+    assert!(
+        (tempo(&h) - start).abs() < 1e-6,
+        "each click is its own undo step"
+    );
+}
+
+#[test]
+fn ctrl_pressing_a_channel_name_previews_it_and_shift_wheel_moves_it() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.rename 2 Pad",
+    ]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let synth = (0..40)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(8.0 + 4.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some("Synth")
+        })
+        .expect("a channel's name")
+        + vec2(6.0, 4.0);
+    let at = |h: &Harness, name: &str| {
+        h.session
+            .project()
+            .channels
+            .iter()
+            .position(|c| c.name == name)
+    };
+    let first = h.session.project().channels[at(&h, "Pad").unwrap() - 1]
+        .name
+        .clone();
+
+    h.modifiers = Modifiers::COMMAND;
+    h.press(synth, PointerButton::Primary);
+    h.release(synth, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    let previews: Vec<bool> = h
+        .other
+        .iter()
+        .filter_map(|a| match a {
+            Action::Preview { on, .. } => Some(*on),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(previews, [true, false], "{:?}", h.other);
+    assert!(
+        !h.state.windows.channel_settings,
+        "Ctrl+click only previews"
+    );
+
+    // Shift+wheel down over the first synth's name moves it below Pad.
+    let before = at(&h, &first).unwrap();
+    h.modifiers = Modifiers::SHIFT;
+    h.frame(vec![
+        Event::PointerMoved(synth),
+        Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: vec2(0.0, -1.0),
+            modifiers: Modifiers::SHIFT,
+            phase: egui::TouchPhase::Move,
+        },
+    ]);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(at(&h, &first), Some(before + 1), "moved down a row");
+}
+
+#[test]
+fn the_tap_tempo_pad_sets_the_tempo_in_one_undo_step() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.tap_tempo = true;
+    h.settle();
+    let window = window_rect(&h, "tap-tempo");
+    let pad = (0..60)
+        .map(|j| window.left_top() + vec2(window.width() / 2.0, 4.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Tap the beat here"))
+        })
+        .expect("the tap pad");
+    let before = h.session.project().tempo_bpm();
+    for _ in 0..3 {
+        h.press(pad, PointerButton::Primary);
+        h.release(pad, PointerButton::Primary);
+        h.time += 0.5 - 2.0 / 60.0;
+    }
+    assert!((h.session.project().tempo_bpm() - 120.0).abs() < 0.5);
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.session.project().tempo_bpm(), before);
+}
+
+#[test]
+fn the_edit_menu_copy_and_paste_reach_the_focused_editor() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    h.click(h.playlist_point(bar + 40, 0), PointerButton::Primary);
+    crate::request_clipboard(&h.ctx, crate::ClipboardKey::Copy);
+    h.frame(vec![]);
+    h.engine.position_ticks = f64::from(4 * bar + 100);
+    crate::request_clipboard(&h.ctx, crate::ClipboardKey::Paste);
+    let pasted = h.frame(vec![]);
+    assert_eq!(pasted.len(), 1, "{pasted:?}");
+    assert_eq!(h.session.project().playlist.clips.len(), 2);
+    // A request no editor takes lapses at the end of the frame.
+    h.state.windows.playlist = false;
+    h.settle();
+    crate::request_clipboard(&h.ctx, crate::ClipboardKey::Paste);
+    h.frame(vec![]);
+    h.state.windows.playlist = true;
+    h.settle();
+    assert_eq!(h.session.project().playlist.clips.len(), 2);
+}
+
+#[test]
+fn dragging_a_clips_left_edge_trims_its_start() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 1 2"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    let edge = h.playlist_point(bar, 0) + vec2(2.0, 0.0);
+    // The default snap is a bar.
+    let out = h.drag(edge, h.playlist_point(2 * bar - 20, 0));
+    assert_eq!(out, [format!("playlist.trim_clip 1 {bar}t {}t", 2 * bar)]);
+    let c = h.session.project().playlist.clips[0];
+    assert_eq!((c.start, c.length, c.offset), (2 * bar, bar, bar));
+    assert_eq!(h.state.playlist.selection, BTreeSet::from([(0, 2 * bar)]));
+    // Back out to the source's start, and no further.
+    let edge = h.playlist_point(2 * bar, 0) + vec2(2.0, 0.0);
+    h.drag(edge, h.playlist_point(0, 0) + vec2(4.0, 0.0));
+    let c = h.session.project().playlist.clips[0];
+    assert_eq!((c.start, c.length, c.offset), (bar, 2 * bar, 0));
+}
+
+#[test]
+fn the_wheel_over_the_snap_button_steps_it_and_right_click_resets_it() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let window = window_rect(&h, "playlist-window");
+    let button = (0..200)
+        .map(|i| window.left_top() + vec2(4.0 + 3.0 * i as f32, 11.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Snap: "))
+        })
+        .expect("the snap button");
+    let snap = |h: &mut Harness| {
+        h.frame(vec![]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    assert!(snap(&mut h).starts_with("Snap: Bar "));
+    h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    }]);
+    assert!(snap(&mut h).starts_with("Snap: Beat "), "down is finer");
+    h.click(button, PointerButton::Secondary);
+    assert!(snap(&mut h).starts_with("Snap: Bar "));
+}
+
+#[test]
+fn the_clip_lists_plus_button_adds_a_pattern() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let window = window_rect(&h, "playlist-window");
+    let plus = (0..120)
+        .flat_map(|j| (0..40).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("New pattern (F4"))
+        })
+        .expect("the + button");
+    let before = h.session.project().patterns.len();
+    assert_eq!(h.click(plus, PointerButton::Primary), ["pattern.add"]);
+    assert_eq!(h.session.project().patterns.len(), before + 1);
+}
+
+#[test]
+fn clicking_a_clips_glyph_selects_it_and_opens_the_clip_menu() {
+    let mut h = Harness::new(&[
+        "pattern.add",
+        "playlist.add_clip 1 1 1",
+        "playlist.add_clip 1 1 3",
+    ]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    let menu = egui::Id::new("playlist-clip-glyph-menu");
+    let (grid, _) = h.state.playlist.last_view.unwrap();
+    let glyph = pos2(grid.x((3 * bar) as f32) + 5.0, grid.y(0) + 5.0);
+    let out = h.click(glyph, PointerButton::Primary);
+    assert!(out.is_empty(), "{out:?}");
+    h.settle();
+    assert_eq!(h.state.playlist.selection, BTreeSet::from([(0, 3 * bar)]));
+    assert!(egui::Popup::is_id_open(&h.ctx, menu));
+    // The first item, Slice at playhead, cuts the clicked clip.
+    let at = 3 * bar + bar / 2;
+    h.engine.position_ticks = f64::from(at);
+    h.frame(vec![]);
+    let area = h.ctx.memory(|m| m.area_rect(menu)).expect("the menu");
+    let out = h.click(area.left_top() + vec2(30.0, 12.0), PointerButton::Primary);
+    assert_eq!(out, [format!("playlist.slice_clip 1 {at}t")]);
+    h.settle();
+    assert!(!egui::Popup::is_id_open(&h.ctx, menu));
+    // The rest of the clip still works as before: a click on its body with
+    // the Draw tool does not open the menu.
+    h.click(h.playlist_point(bar + bar / 2, 0), PointerButton::Primary);
+    h.settle();
+    assert!(!egui::Popup::is_id_open(&h.ctx, menu));
+}
+
+#[test]
+fn dragging_a_marker_label_moves_it_and_double_click_renames_it() {
+    let mut h = Harness::new(&["playlist.add_marker 2 Drop"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.unwrap();
+    let on_ruler = |tick: u32| pos2(grid.x(tick as f32), clip.top() + 10.0);
+    let bar = TICKS_PER_BAR;
+    let out = h.drag(
+        on_ruler(2 * bar) + vec2(12.0, 0.0),
+        on_ruler(4 * bar) + vec2(4.0, 0.0),
+    );
+    assert_eq!(
+        out,
+        [format!("playlist.move_marker {}t {}t", 2 * bar, 4 * bar)]
+    );
+    assert_eq!(h.session.project().playlist.markers[0].tick, 4 * bar);
+    h.frame(vec![]);
+    let label = on_ruler(4 * bar) + vec2(12.0, 0.0);
+    h.click(label, PointerButton::Primary);
+    h.click(label, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.renaming.is_some(), "a double-click opens the field");
+    h.frame(vec![Event::Text("Build".to_owned())]);
+    let out = h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(out, [format!("playlist.add_marker {}t Build", 4 * bar)]);
+}
+
+#[test]
+fn alt_wheel_over_a_note_steps_its_velocity_in_one_undo_step() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C5 64"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let note = h.roll_point(24, 60);
+    let origin = |h: &Harness| {
+        let (grid, _) = h.state.roll.last_view.unwrap();
+        (grid.x(0.0), grid.y(0))
+    };
+    let before = origin(&h);
+    let wheel = |up: f32| Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, up),
+        modifiers: Modifiers::ALT,
+        phase: egui::TouchPhase::Move,
+    };
+    h.modifiers = Modifiers::ALT;
+    h.frame(vec![Event::PointerMoved(note)]);
+    h.frame(vec![wheel(1.0)]);
+    h.frame(vec![wheel(1.0)]);
+    // egui spreads a wheel notch over a few frames; Alt is still held.
+    for _ in 0..40 {
+        h.frame(vec![]);
+    }
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    let velocity = h.session.project().current_pattern().notes[0].velocity;
+    assert!(velocity > 85, "two notches up from 64 reach {velocity}");
+    assert_eq!(origin(&h), before, "the view stays put");
+    assert_eq!(h.session.undo_depth(), 3, "two setup commands plus one run");
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.session.project().current_pattern().notes[0].velocity, 64);
+}
+
+#[test]
+fn double_clicking_a_note_opens_its_properties_and_reset_restores_them() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 4 C5 40",
+        "note.set_pan 1 0 C5 -50",
+        "note.set_prop 1 0 C5 porta on",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let note = h.roll_point(24, 60);
+    h.click(note, PointerButton::Primary);
+    h.click(note, PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.roll.props_note, Some((0, 60)));
+    let window = window_rect(&h, "note-properties");
+    let reset = (0..60)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Every property back"))
+        })
+        .expect("the Reset button");
+    h.click(reset, PointerButton::Primary);
+    let n = h.session.project().current_pattern().notes[0];
+    assert_eq!((n.velocity, n.pan, n.props.porta), (100, 0, false));
+    h.session.run_line("edit.undo").unwrap();
+    let n = h.session.project().current_pattern().notes[0];
+    assert_eq!(
+        (n.velocity, n.pan, n.props.porta),
+        (40, -50, true),
+        "one undo step"
+    );
+    // Deleting the note closes the window.
+    h.session.run_line("note.remove 1 0 C5").unwrap();
+    h.settle();
+    assert_eq!(h.state.roll.props_note, None);
 }

@@ -17,7 +17,7 @@ can be driven from the GUI, scripts, the CLI, or an AI agent over MCP.
     <td align="center">Piano roll</td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/synth-and-eq.png" alt="Built-in synth editor with presets, and the equalizer window with its response curve"></td>
+    <td colspan="2"><img src="docs/screenshots/synth-and-eq.png" alt="Built-in synth editor with presets, and the equaliser window with its response curve"></td>
   </tr>
   <tr>
     <td colspan="2" align="center">Synth editor and an effect window</td>
@@ -116,7 +116,7 @@ Hover any control and the hint bar at the top says what it does.
   effect chain, beat shaper, scratch, multiband limiter, mid-chain send, band
   splitter and an effect rack (parallel chains of effects in one slot). Click an effect to open its window: presets, and
   a graph you can drag (EQ points, crossovers, compressor knee, delay taps…).
-  View → Spectrum analyzer (or click the toolbar scope) shows the master
+  View → Spectrum analyser (or click the toolbar scope) shows the master
   output by frequency. `docs/builtin-coverage.md` compares the built-ins with
   a typical pattern-based DAW's stock plugins.
 - **Automation**: right-click any knob or fader → Create automation clip;

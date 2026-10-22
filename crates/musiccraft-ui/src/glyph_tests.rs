@@ -101,6 +101,7 @@ fn every_interface_character_has_a_glyph() {
     let mut chars = Vec::new();
     literal_chars(&root.join("src"), &mut chars);
     literal_chars(&root.join("../musiccraft-app/src"), &mut chars);
+    literal_chars(&root.join("../musiccraft-editors/src"), &mut chars);
     assert!(
         chars.iter().any(|(c, _)| *c == '…'),
         "the sources were read"

@@ -88,7 +88,8 @@
   folder.
 - Closing the window, File → New and File → Open ask whether to save unsaved
   changes first (Save, Don't save, Cancel). "Unsaved" means the project differs
-  from what was last saved, loaded or created.
+  from what was last saved, loaded or created. Save is the default button,
+  drawn with an accent edge: Enter saves and Esc cancels.
 
 ## Sources
 

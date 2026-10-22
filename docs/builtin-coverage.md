@@ -82,7 +82,7 @@ Status:
 | Fruity Scratcher | `scratch` (held span, automatable position, scratch patterns) | covered | Scratches the insert's own audio rather than a loaded sample |
 | Frequency Splitter | `band_split` (three bands to separate inserts) | covered | |
 | Fruity Send, Fruity Mute 2 | `send` effect (mid-chain send with dry control), mixer sends and mute | covered | |
-| Fruity Spectroman, Wave Candy | Spectrum analyzer, toolbar oscilloscope | covered | |
+| Fruity Spectroman, Wave Candy | Spectrum analyser, toolbar oscilloscope | covered | |
 | Fruity dB Meter | Mixer meters | covered | |
 | Tuner | `tuner` | covered | |
 | Edison | Sample editor (`sample.edit`: trim, cut, silence, fades, gain, normalize, reverse, stretch, pitch, tune), recording to audio clips | partial | Edits write new files; no spectral view or noise reduction |

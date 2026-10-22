@@ -26,10 +26,14 @@ pub enum Purpose {
     RenameTrack(usize),
     RenamePlaylistTrack(u32),
     ChannelGroup(usize),
+    /// Rename the channel group with this name.
+    RenameGroup(String),
     AddFolder,
     AddPluginFolder,
     RenameAutomation(usize),
     AddMarker(u32),
+    /// A signature change at this tick (`none` removes it).
+    TimeSignature(u32),
     SavePatch(usize),
     OpenPatch(usize),
     /// Antiserum channel and oscillator (0-based).
@@ -143,6 +147,16 @@ impl Dialog {
         Self::new(Purpose::AddMarker(tick), String::new())
     }
 
+    /// Puts a time signature change at `tick`, starting from `current`.
+    pub fn time_signature(tick: u32, current: &str) -> Self {
+        Self::new(Purpose::TimeSignature(tick), current.to_owned())
+    }
+
+    /// Renames the marker at `tick` (re-adding a marker keeps its action).
+    pub fn rename_marker(tick: u32, current: &str) -> Self {
+        Self::new(Purpose::AddMarker(tick), current.to_owned())
+    }
+
     pub fn add_folder() -> Self {
         let home = std::env::var("HOME")
             .map(|h| format!("{h}/"))
@@ -159,6 +173,10 @@ impl Dialog {
 
     pub fn channel_group(channel: usize, current: &str) -> Self {
         Self::new(Purpose::ChannelGroup(channel), current.to_owned())
+    }
+
+    pub fn rename_group(group: &str) -> Self {
+        Self::new(Purpose::RenameGroup(group.to_owned()), group.to_owned())
     }
 
     pub fn rename_playlist_track(track: u32, current: &str) -> Self {
@@ -207,10 +225,12 @@ impl Dialog {
             Purpose::RenameTrack(_) => "Rename mixer track",
             Purpose::RenamePlaylistTrack(_) => "Rename playlist track",
             Purpose::ChannelGroup(_) => "Channel group (empty: none)",
+            Purpose::RenameGroup(_) => "Group name (empty: remove the group)",
             Purpose::AddFolder => "Add folder to the browser",
             Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
             Purpose::AddMarker(_) => "Marker name",
+            Purpose::TimeSignature(_) => "Time signature from here (n/d; none removes the change)",
             Purpose::SavePatch(_) => "Save Antiserum patch (.json)",
             Purpose::OpenPatch(_) => "Open Antiserum patch (.json)",
             Purpose::AntiserumSample(_, _) => {
@@ -266,6 +286,13 @@ impl Dialog {
                 }
                 Invocation::new("channel.set_group", args)
             }
+            Purpose::RenameGroup(ref group) => {
+                let mut args = vec![group.clone()];
+                if !text.is_empty() {
+                    args.push(text);
+                }
+                Invocation::new("channel.rename_group", args)
+            }
             Purpose::RenamePlaylistTrack(track) => {
                 Invocation::new("playlist.rename_track", [(track + 1).to_string(), text])
             }
@@ -273,6 +300,9 @@ impl Dialog {
             Purpose::AddPluginFolder => Invocation::new("ui.add_plugin_folder", [text]),
             Purpose::AddMarker(tick) => {
                 Invocation::new("playlist.add_marker", [format!("{tick}t"), text])
+            }
+            Purpose::TimeSignature(tick) => {
+                Invocation::new("playlist.set_time_signature", [format!("{tick}t"), text])
             }
             Purpose::RenameAutomation(automation) => {
                 Invocation::new("automation.rename", [(automation + 1).to_string(), text])
@@ -300,6 +330,83 @@ impl UiState {
     pub(crate) fn open_dialog(&mut self, dialog: Dialog) {
         self.dialog = Some(dialog);
     }
+
+    /// Turns the name drawn in `rect` into a text field there, for a rename
+    /// that `dialog` describes (`docs/spec/controls.md`, "Rename in place").
+    pub(crate) fn rename_in_place(&mut self, dialog: Dialog, rect: egui::Rect) {
+        self.renaming = Some(InPlace {
+            dialog,
+            rect,
+            opened: false,
+        });
+    }
+}
+
+/// A name being edited where it is drawn.
+#[derive(Debug, Clone)]
+pub(crate) struct InPlace {
+    dialog: Dialog,
+    rect: egui::Rect,
+    /// Whether the field has been shown once (its text is then selected).
+    opened: bool,
+}
+
+/// Draws the in-place rename field. Enter or a click elsewhere renames as
+/// one undo step; Esc, or an empty name, leaves the name as it was.
+pub(crate) fn show_in_place(ctx: &egui::Context, state: &mut UiState, actions: &mut Vec<Action>) {
+    let Some(mut open) = state.renaming.take() else {
+        return;
+    };
+    let id = egui::Id::new("rename-in-place");
+    let field_id = id.with("field");
+    let area = egui::Area::new(id)
+        .order(egui::Order::Foreground)
+        .fixed_pos(open.rect.min)
+        .show(ctx, |ui| {
+            let field = ui.add_sized(
+                open.rect.size(),
+                egui::TextEdit::singleline(&mut open.dialog.text)
+                    .id(field_id)
+                    .font(egui::FontId::proportional(theme::FONT_LABEL))
+                    .margin(egui::vec2(4.0, 2.0)),
+            );
+            if !open.opened {
+                field.request_focus();
+                let all = egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(open.dialog.text.chars().count()),
+                );
+                let mut text_state =
+                    egui::TextEdit::load_state(ui.ctx(), field_id).unwrap_or_default();
+                text_state.cursor.set_char_range(Some(all));
+                text_state.store(ui.ctx(), field_id);
+                open.opened = true;
+            }
+            field
+        });
+    let (enter, escape) = ctx.input_mut(|i| {
+        (
+            i.consume_key(egui::Modifiers::NONE, Key::Enter),
+            i.consume_key(egui::Modifiers::NONE, Key::Escape),
+        )
+    });
+    let field = area.inner;
+    let clicked_outside = ctx.input(|i| {
+        i.pointer.any_pressed()
+            && i.pointer
+                .interact_pos()
+                .is_some_and(|p| !area.response.rect.contains(p))
+    });
+    if escape {
+        return;
+    }
+    if enter || clicked_outside || field.lost_focus() {
+        if !open.dialog.text.trim().is_empty() {
+            actions.push(Action::Run(open.dialog.invocation()));
+        }
+        return;
+    }
+    state.renaming = Some(open);
 }
 
 pub fn show(
@@ -314,6 +421,7 @@ pub fn show(
     let mut close = false;
     let mut confirm = false;
     egui::Window::new(dialog.title())
+        .frame(theme::dialog_frame())
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0])
@@ -379,23 +487,43 @@ pub fn show(
 
 pub fn shortcuts(ctx: &egui::Context, state: &mut UiState) {
     let mut open = state.windows.shortcuts;
-    egui::Window::new("Keyboard shortcuts")
-        .open(&mut open)
-        .default_width(320.0)
+    if !open {
+        return;
+    }
+    let id = egui::Id::new("keyboard-shortcuts");
+    let area = state.workspace;
+    let default = egui::Rect::from_min_size(
+        area.left_top() + egui::vec2(80.0, 40.0),
+        egui::vec2(320.0, 0.0),
+    );
+    crate::chrome::window(ctx, id, "Keyboard shortcuts", area, default, true)
+        .default_height((area.height() - 80.0).max(200.0))
         .show(ctx, |ui| {
-            egui::Grid::new("shortcut-grid")
-                .striped(true)
-                .show(ui, |ui| {
-                    for (chord, invocation) in state.keymap.iter() {
-                        ui.label(
-                            RichText::new(chord.to_string())
-                                .monospace()
-                                .color(theme::ACCENT),
-                        );
-                        ui.label(invocation.to_string());
-                        ui.end_row();
-                    }
-                });
+            let folded = crate::chrome::Header::new(id, "Keyboard shortcuts").show(
+                ui,
+                &mut open,
+                &mut (),
+                |_, _| {},
+                |_, _| {},
+            );
+            if folded {
+                return;
+            }
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::Grid::new("shortcut-grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (chord, invocation) in state.keymap.iter() {
+                            ui.label(
+                                RichText::new(chord.to_string())
+                                    .monospace()
+                                    .color(theme::ACCENT),
+                            );
+                            ui.label(invocation.to_string());
+                            ui.end_row();
+                        }
+                    });
+            });
         });
     state.windows.shortcuts = open;
 }
@@ -403,6 +531,23 @@ pub fn shortcuts(ctx: &egui::Context, state: &mut UiState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_time_signature_prompt_sets_a_change_at_its_bar() {
+        let mut dialog = Dialog::time_signature(7680, "4/4");
+        assert_eq!(dialog.text, "4/4");
+        dialog.text = "7/8".into();
+        assert_eq!(
+            dialog.invocation().to_string(),
+            "playlist.set_time_signature 7680t 7/8"
+        );
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        session.run(&dialog.invocation()).unwrap();
+        assert_eq!(session.project().playlist.markers.len(), 1);
+    }
 
     #[test]
     fn prompts_build_quoted_invocations() {
@@ -435,6 +580,21 @@ mod tests {
                 .invocation()
                 .to_string(),
             "project.save Untitled.mcproj"
+        );
+    }
+
+    #[test]
+    fn the_group_prompt_renames_or_removes_the_group() {
+        let mut dialog = Dialog::rename_group("Drums");
+        dialog.text = "Kit one".into();
+        assert_eq!(
+            dialog.invocation().to_string(),
+            "channel.rename_group Drums \"Kit one\""
+        );
+        dialog.text = "  ".into();
+        assert_eq!(
+            dialog.invocation().to_string(),
+            "channel.rename_group Drums"
         );
     }
 }

@@ -88,6 +88,15 @@ impl Session {
         self.undo_stack.last().map(|e| &e.command)
     }
 
+    /// The commands that `edit.undo` would reverse, newest first, and those
+    /// `edit.redo` would re-run, next first.
+    #[must_use]
+    pub fn history(&self) -> (Vec<&Invocation>, Vec<&Invocation>) {
+        let undo = self.undo_stack.iter().rev().map(|e| &e.command).collect();
+        let redo = self.redo_stack.iter().rev().map(|e| &e.command).collect();
+        (undo, redo)
+    }
+
     /// Counter that increases whenever a command succeeds. Front ends use it to
     /// notice that the project may have changed.
     #[must_use]
@@ -278,6 +287,27 @@ mod tests {
 
     fn session() -> Session {
         Session::new(Project::default(), Registry::with_builtin())
+    }
+
+    #[test]
+    fn history_lists_undo_steps_newest_first_and_redo_steps_next_first() {
+        let mut s = session();
+        for line in [
+            "project.set_tempo 100",
+            "project.set_tempo 110",
+            "project.set_tempo 120",
+        ] {
+            s.run_line(line).unwrap();
+        }
+        s.undo().unwrap();
+        s.undo().unwrap();
+        let (undo, redo) = s.history();
+        let names = |v: Vec<&Invocation>| v.iter().map(ToString::to_string).collect::<Vec<_>>();
+        assert_eq!(names(undo), ["project.set_tempo 100"]);
+        assert_eq!(
+            names(redo),
+            ["project.set_tempo 110", "project.set_tempo 120"]
+        );
     }
 
     fn run(session: &mut Session, line: &str) -> Result<Outcome, CommandError> {

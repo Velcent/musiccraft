@@ -26,6 +26,30 @@
   `mixer.toggle_solo`, `mixer.set_send`, `mixer.route_to_master`, `mixer.add_effect`, `mixer.remove_effect`,
   `mixer.move_effect`, `mixer.set_effect_param`, `mixer.set_effect_enabled`,
   `mixer.toggle_effect`. Effect slots are numbered from 1. All are undoable.
+- **Track colour**: `mixer.set_track_color <track> <1-16|none>` (undoable,
+  saved as `"color"`, 0-based). Without one, the master uses the highlight
+  tone and each insert a palette colour by position. UI: the track menu
+  (right-click the number or name) and the window menu's Tracks → Colour ▸
+  (the shared colour grid). The colour tints the number cell. While a
+  track menu is open, its strip lifts one tone (`RAISED_HOVER`) so it is
+  clear which track the menu acts on.
+- **Docks**: the strips sit in three docks, left to right: a fixed left dock
+  (the master, then inserts pinned left), the scrolling middle (every other
+  insert), and a fixed right dock (inserts pinned right; absent until one
+  is). Each dock lists its tracks in number order, and darker dividers about
+  a quarter strip wide separate the docks. `mixer.set_dock <track>
+  <left|middle|right>` (undoable, saved as `"dock"`, inserts only); UI: the
+  track menu's Pin ▸ Left side / Scrolling area / Right side. Track numbers
+  never change with the dock.
+- **Moving a track**: `mixer.move_track <track> <left|right>` (undoable, inserts
+  only) swaps an insert with its neighbour, so the two trade numbers. Every
+  reference follows the moved tracks: channel routing, sends, sidechain and
+  send-effect sources, peak controllers and automation targets. Moving insert 1
+  left or the last insert right is refused, and so is swapping two inserts
+  joined by a send (sends always go to a higher number). UI: the track menu's Shift left and
+  Shift right, Alt+Left / Alt+Right over the mixer (the primary track), and
+  Shift+wheel over a strip's number cell or name (down or towards you moves
+  it right); the selection follows the moved track.
 - **Track stereo options** (undoable, saved; right-click a strip's name):
   `mixer.set_separation <track> <-1..1>` (-1 folds the track to mono, 0
   leaves it, 1 doubles the side signal), `mixer.set_phase_invert <track>
@@ -114,7 +138,7 @@ a generated room (`ir:room`, `ir:chamber`, `ir:plate`, `ir:hall`,
 unit energy, so swapping rooms keeps the level. The convolution adds 512
 samples of latency to the wet signal. Undoable.
 
-The **spectrum analyzer** (View menu, or click the toolbar oscilloscope) shows
+The **spectrum analyser** (View menu, or click the toolbar oscilloscope) shows
 the master output's last 2048 samples by frequency (Hann window, log frequency
 axis, 0 to −90 dB) with a slowly falling peak line.
 
@@ -139,21 +163,94 @@ Ranges and defaults are defined in `musiccraft-params`.
 
 ## Layout
 
-- The mixer window opens across the whole workspace. Each strip is narrow and
-  shows, top to bottom: number, name (written vertically), the ON switch, the
-  pan knob, the peak meter beside the fader, the stereo separation knob, the
-  level readout in dB, the S button, the effect count and the route arrow
-  (sizes in `window-layout.md`).
+- The mixer is an editor window. The first time it opens it sits at the top
+  of the workspace, to the right of the channel rack, reaching the right
+  edge: about two thirds of the width and a little under half the height.
+  Strips fill the height of the window; the fader takes the spare height.
+- Header: window menu, the strip-details switch, the slot-panel switch and
+  the add-insert button (a plus: adds an insert after the last and selects
+  it; right-click offers Add one and Add several ▸ 2, 4 or 8 inserts, one
+  undo step, the first new one selected), then the
+  title (`Mixer — <track>`) at the right end before the window buttons. The
+  window menu holds View (Strip details, Slot panel, Slot panel on the left,
+  Hairlines between strips, and Strip colour ▸ Off, Faint, Medium or Strong:
+  how much of each insert's colour tints its strip, Faint by default; the
+  master is never tinted; none of these is saved with the project) and
+  Tracks (Rename…
+  and Colour ▸ for the primary track; Reset selected tracks, which returns
+  each to its defaults with `mixer.reset_track <track>`; Delete selected
+  tracks, in the danger tone; Clear out idle inserts, which deletes every
+  insert with no channel routed to it, no send into it and every setting but
+  its name at the default), then the common items. Each item is one undo
+  step. `mixer.reset_track` is refused while an automation drives one of the
+  track's effects; its undo is `mixer.set_track <track> <json>`.
+- The selected strip is lifted to the raised tone with a thin accent edge
+  around the whole strip, and its meter well is outlined in the accent.
+- Several tracks can be selected. Ctrl+Shift+click on a number cell, name or
+  meter adds the track to the selection or takes it out; Ctrl+A over the
+  mixer selects every track and Esc goes back to one. A plain click on a
+  number, name or meter selects that track alone. The last track clicked is
+  the primary one: the slot panel, the title and the routing arrows follow
+  it, and only it gets the accent edge; the others are lifted and have their
+  meter outlined. Clicking a fader, knob or light of a track outside the
+  selection selects that track alone; one inside keeps the selection.
+- Faders, pan and separation knobs, enable lights and the track switches
+  are ganged across the selection. Dragging a selected fader moves every
+  selected fader by the same share of its travel, and a pan or separation
+  knob moves every selected one by the same amount, each clamped to its
+  range; the whole drag is one undo step. Clicking a selected track's enable
+  light mutes or unmutes every selected track to match it
+  (`mixer.set_mute`); its phase or swap switch sets every selected track to
+  match it; its effect count bypasses or enables the effects of every
+  selected track that has any. Each click is one undo step.
+- Each strip is narrow and shows, top to bottom: the number cell (the number,
+  or M for the master, on a cell tinted with the track's colour), the name
+  written vertically beside the peak meter, a round enable light (lit while
+  the track is heard; click mutes, Ctrl+click solos, right-click offers Mute
+  and Solo; a soloed track's light gains a ring in the highlight tone, and a
+  track silenced by another track's solo shows its light in the dim accent),
+  the S (solo) switch as a tiny round light
+  under it (not on the master), the pan knob, the fader, then the track
+  switches: invert phase, swap left and right, the stereo separation knob and
+  the effect count, lit while any effect runs; clicking it bypasses all the
+  track's effects, or enables them all again
+  (`mixer.set_effects_enabled <track> <on|off>`, one undo step). Its
+  right-click menu offers "Open all effect windows", which opens the window
+  of every effect on the track (windows already open stay open). A click
+  anywhere on a strip selects it, without taking the click from the light or
+  switch under the pointer. The wheel over the number cell or the name steps
+  the strips sideways by whole strips. The strip-details switch hides the track switches. The
+  level in dB is in the fader's hint. The route arrow is at the bottom.
 - **Routing**: the arrow under every strip the selected insert may feed shows
-  whether it does and toggles it. The selected strip itself shows where it
-  goes (`→ M`, `→ 3`, or `→ M, 3, 5`). With the master selected no arrows
-  apply, as the master feeds nothing.
-- The panel beside the strips shows, for the selected track: its **input**
-  (the audio input device, as in Settings → Audio, for recording), the ten
-  effect slots (each with an enable switch, its name and a mix knob), the
-  track EQ (three gain knobs; right-click one to set its frequency), and its
-  **output** (inserts: where they route; the master: the
-  audio output device).
+  whether it does (filled in the highlight tone) or not (an outline) and
+  toggles it. Strips it may not feed show a faint, inert outline. The
+  selected strip itself shows an upward source arrow whose hint says where
+  it goes ("This insert goes to M", "… to 3" or "… to M, 3, 5"). With the
+  master selected no arrows apply, as the master feeds nothing. The slot
+  panel's Out row and each send row draw the output glyph (a small circle
+  with an arrow leaving it) before the destination, never a text arrow.
+- The slot panel beside the strips shows, for the selected track (it has no
+  heading; the title names the track): its **input** (the audio input device,
+  as in Settings → Audio, for recording), the ten effect slots, the track EQ
+  (three gain knobs; right-click one to set its frequency), its **output**
+  (inserts: where they route; the master: the audio output device) and, for
+  inserts, To master and the sends.
+- A slot row, left to right: a chevron that opens the slot menu, the name
+  (empty slots show a dim "Slot 3"), the mix knob and a round light at the
+  right edge (click: bypass or restore). Clicking a loaded name opens or
+  closes its window; clicking an empty slot's name or chevron opens the add
+  list (built-in effects, then plugin effects), and the effect goes into the
+  first free slot. A loaded slot's menu has
+  Open window, Bypass (or Enable), Move up, Move down and Remove. Dragging a
+  loaded slot's name onto another loaded slot moves the effect there
+  (`mixer.move_effect`, one undo step); an accent line shows where it will
+  land.
+- The input and output rows start with small glyphs (a circle with an arrow
+  entering it; one leaving it) instead of the words "In" and "Out".
+- The mouse wheel over a strip's number, name or meter moves the strips one
+  whole strip per notch, and so does the wheel over the strips' empty space (between the
+  controls and after the last strip). Over a knob or fader the wheel adjusts
+  that control instead.
 
 ## Effect rack
 
@@ -202,8 +299,15 @@ Ranges and defaults are defined in `musiccraft-params`.
 
 - Clicking an effect's name in a slot opens its window (again closes it).
   Windows of removed slots close.
-- Each built-in effect window has a bypass button, a preset bar (previous,
-  list, next; "(custom)" when no preset matches) and a graph:
+- Every effect window's header holds the window menu (the slot's own items:
+  Bypass or Enable, Move up, Move down, Remove), and for built-in effects the
+  presets: previous, list, next; "(custom)" when no preset matches, and
+  right-click on an arrow opens the list. Under the
+  header a slim strip shows, flush right, the On light (bypass,
+  `mixer.toggle_effect`) and the Mix knob (`mixer.set_effect_mix`, the same
+  value as the slot's knob). (The plugin editors keep a bypass dot and the
+  presets in their first row, as they have no header.)
+- Each built-in effect window then has a graph:
   - filter and EQ: the frequency response; drag the filter's point for cutoff
     (across) and resonance (up), drag an EQ band's point for its frequency and
     gain, scroll on the middle band for its width;
@@ -233,6 +337,12 @@ Ranges and defaults are defined in `musiccraft-params`.
 - The engine publishes a peak level per track; the UI shows it decaying.
 
 ## Sources
+
+- The mixer's placement, header, strip order (number cell, name beside the
+  meter, enable light, pan, fader, track switches) and the slot rows
+  (chevron, name, mix knob, light): the interface style guide,
+  `docs/spec/style/mixer.md` (owner's 2026-10-21 decision to follow the
+  manual's layout). Glyphs and wording are our own.
 
 - The track EQ, slot mix knobs and the input/output pickers beside the slots
   follow the mixer layout described in the FL Studio online manual, "Mixer"
