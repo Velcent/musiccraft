@@ -63,7 +63,7 @@ Slots 1, 5 and the window buttons are the shared header (main-window section, C)
    - It shows the pattern's length in steps (existing).
    - Drag vertically to change it, or double-click to type a value (existing).
    - Range: 1 step up to `MAX_PATTERN_STEPS`. This limit is our own; the reference stops lower.
-   - **Proposed (needs `channel-rack.md` updated first):** "auto", where the length follows the end of the last bar that has notes; right-click offers Auto plus whole-bar presets (1, 2, 4, 8, 16 and 32 bars, in the pattern's time signature).
+   - "Auto", where the length follows the end of the last bar that has notes; right-click offers Auto plus whole-bar presets (1, 2, 4, 8, 16 and 32 bars, in the pattern's time signature).
 9. **Graph editor toggle** (right-hand item). An icon toggle that opens and closes the graph editor for the focused channel (existing as a text toggle). It is lit while the graph editor is open. **Proposed (needs `keymap.md` updated first):** Ctrl+K does the same (window-local; Ctrl+K is unbound today).
 10. **Piano-roll view toggle** (right-hand item). **Proposed (needs `channel-rack.md` updated first):** an icon toggle. When it is on, every row shows a miniature note preview instead of step buttons, including step-only channels, whose steps appear as short ticks. It is lit while on.
 11. **Collapse, maximize/restore, close** (shared slots 7–9). As in the main-window section. Close hides the window; F6 brings it back.
@@ -428,13 +428,11 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
 10. **Group filter.**
     - Right-click new, rename and remove are in, and Page Up/Down cycle the groups. The filter is still an egui drop-down rather than our styled field.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`header`, `add_menu`).
-11. **Pattern length.** The length box takes 1–1024 steps and offers whole-bar lengths on right-click, but there is no "auto" length.
-    - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`).
-12. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
+11. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
     - File: `crates/musiccraft-ui/src/channel_rack.rs`.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`).
-13. **Keymap.** Ctrl+K, Alt+M, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M hides the mixer-track column. Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
-14. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
+12. **Keymap.** Ctrl+K, Alt+M, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M hides the mixer-track column. Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
+13. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
 
 ## Sources
 

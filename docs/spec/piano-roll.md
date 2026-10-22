@@ -190,7 +190,9 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 ## Pattern length
 
 - A pattern has a minimum length in steps (default 16). When notes start past it,
-  the pattern extends to whole bars to fit them.
+  the pattern extends to whole bars to fit them. An auto-length pattern has no
+  minimum beyond one bar: it is whole bars up to its last note (see
+  `channel-rack.md`); step fill and shift then work over that length.
 
 ## Synth
 

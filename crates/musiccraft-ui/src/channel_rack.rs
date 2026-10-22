@@ -231,14 +231,18 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
             run(actions, "project.set_swing", [format!("{swing}")]);
         }
         ui.label(RichText::new("steps").color(theme::TEXT_DIM));
-        let mut steps = pattern.length_steps;
-        let response = ui.add(
-            egui::DragValue::new(&mut steps)
-                .range(1..=musiccraft_project::MAX_PATTERN_STEPS)
-                .speed(0.2),
-        );
+        // An auto length shows the steps it comes to; dragging fixes it.
+        let shown = pattern.step_span();
+        let mut steps = shown;
+        let mut field = egui::DragValue::new(&mut steps)
+            .range(1..=musiccraft_project::MAX_PATTERN_STEPS)
+            .speed(0.2);
+        if pattern.auto_length {
+            field = field.suffix(" auto");
+        }
+        let response = ui.add(field);
         let pattern_number = (project.current_pattern + 1).to_string();
-        if response.changed() && steps != pattern.length_steps {
+        if response.changed() && steps != shown {
             run(
                 actions,
                 "pattern.set_length",
@@ -248,9 +252,19 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
         // Right-click: whole-bar lengths in the pattern's own metre.
         let bar = pattern.time_signature.bar_steps();
         response
-            .hint("Pattern length in steps · drag, or right-click for whole bars")
+            .hint("Pattern length in steps · drag, or right-click for auto and whole bars")
             .context_menu(|ui| {
-                for bars in [1, 2, 4, 8, 16] {
+                let auto = egui::Button::selectable(pattern.auto_length, "Auto (follows the notes)");
+                if ui.add(auto).clicked() {
+                    run(
+                        actions,
+                        "pattern.set_length",
+                        [pattern_number.clone(), "auto".to_owned()],
+                    );
+                    ui.close();
+                }
+                ui.separator();
+                for bars in [1, 2, 4, 8, 16, 32] {
                     let length = bar * bars;
                     if length > musiccraft_project::MAX_PATTERN_STEPS {
                         break;
@@ -260,7 +274,7 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                     } else {
                         format!("{bars} bars")
                     };
-                    let current = length == pattern.length_steps;
+                    let current = !pattern.auto_length && length == pattern.length_steps;
                     if ui.selectable_label(current, label).clicked() {
                         run(
                             actions,

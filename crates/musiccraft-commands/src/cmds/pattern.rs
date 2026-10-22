@@ -69,8 +69,8 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         ),
         cmd(
             "pattern.set_length",
-            "pattern.set_length <pattern> <steps>",
-            "Set a pattern's length in steps.",
+            "pattern.set_length <pattern> <steps|auto>",
+            "Set a pattern's length in steps, or auto: whole bars up to its last note.",
             set_length,
         ),
     ]
@@ -276,17 +276,37 @@ fn set_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
 fn set_length(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(2, 2)?;
     let index = pattern_arg(project, args, 0)?;
+    let number = (index + 1).to_string();
+    let pattern = &mut project.patterns[index];
+    let (was_auto, previous) = (pattern.auto_length, pattern.length_steps);
+    let restore = |name: &str| {
+        let steps = Invocation::new(name, [number.clone(), previous.to_string()]);
+        if was_auto {
+            let auto = Invocation::new(name, [number.clone(), "auto".to_owned()]);
+            Invocation::new(BATCH, [steps.to_string(), auto.to_string()])
+        } else {
+            steps
+        }
+    };
+    if args.str(1)?.eq_ignore_ascii_case("auto") {
+        pattern.auto_length = true;
+        let message = format!("pattern {number} follows its notes");
+        if was_auto {
+            return Ok(Outcome::done(message));
+        }
+        return Ok(Outcome::undoable(message, restore(args.name())));
+    }
     let steps: u32 = args.parse(1, "step count")?;
     if !(1..=MAX_PATTERN_STEPS).contains(&steps) {
-        return Err(args.invalid(format!("length must be 1 to {MAX_PATTERN_STEPS} steps")));
+        return Err(args.invalid(format!(
+            "length must be 1 to {MAX_PATTERN_STEPS} steps or auto"
+        )));
     }
-    let previous = std::mem::replace(&mut project.patterns[index].length_steps, steps);
-    let message = format!("pattern {} is {steps} steps", index + 1);
-    if previous == steps {
+    pattern.length_steps = steps;
+    pattern.auto_length = false;
+    let message = format!("pattern {number} is {steps} steps");
+    if previous == steps && !was_auto {
         return Ok(Outcome::done(message));
     }
-    Ok(Outcome::undoable(
-        message,
-        Invocation::new(args.name(), [(index + 1).to_string(), previous.to_string()]),
-    ))
+    Ok(Outcome::undoable(message, restore(args.name())))
 }

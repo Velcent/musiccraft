@@ -2104,3 +2104,33 @@ fn renaming_a_channel_group_moves_its_channels_and_undoes_in_one_step() {
     assert_eq!(groups(&s), ["", ""]);
     assert!(s.run_line("channel.rename_group Nothing Else").is_err());
 }
+
+#[test]
+fn an_auto_pattern_length_follows_its_notes_in_whole_bars() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    let n = s.project().channels.len();
+    run(&mut s, "pattern.set_length 1 32");
+    run(&mut s, "pattern.set_length 1 auto");
+    let bar = s.project().current_pattern().time_signature.bar_ticks();
+    let length = |s: &Session| s.project().current_pattern().length_ticks();
+    assert_eq!(length(&s), bar, "an empty auto pattern is one bar");
+    run(&mut s, &format!("note.add {n} {}t 24t 60 100", bar + 10));
+    assert_eq!(length(&s), 2 * bar, "a note in bar 2 makes two bars");
+    assert!(
+        s.project()
+            .to_json()
+            .unwrap()
+            .contains("\"auto_length\": true"),
+        "saved with the project"
+    );
+    run(&mut s, "pattern.set_length 1 8");
+    assert!(!s.project().current_pattern().auto_length);
+    run(&mut s, "edit.undo");
+    assert!(s.project().current_pattern().auto_length);
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    let pattern = s.project().current_pattern();
+    assert!(!pattern.auto_length && pattern.length_steps == 32);
+    assert!(s.run_line("pattern.set_length 1 automatic").is_err());
+}

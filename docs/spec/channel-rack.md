@@ -90,8 +90,12 @@
   and Unmute all. Lit: the channel plays. Dark: muted. A soloed channel's
   light has a ring in the highlight tone; a channel silenced by another's
   solo shows its light at reduced strength.
-  The pattern length box takes 1 to 1024 steps; right-click it for 1, 2, 4, 8
-  or 16 whole bars in the pattern's time signature.
+  The pattern length box takes 1 to 1024 steps; right-click it for Auto, or
+  1, 2, 4, 8, 16 or 32 whole bars in the pattern's time signature. With Auto
+  (`pattern.set_length <pattern> auto`, saved as `"auto_length"`) the length
+  is whole bars up to the last bar with a note starting in it, at least one
+  bar, and the box shows the steps that comes to with "auto" after them.
+  Dragging the box or picking a bar length turns Auto off.
 - **Row layout** (UI), left to right: mute dot, pan knob, volume knob, the
   mixer track box, the name button, the steps (or a miniature roll), and a
   **selection switch** that selects the channel without opening its

@@ -475,6 +475,11 @@ pub struct Pattern {
     pub name: String,
     /// Minimum length in steps; notes past the end extend the pattern by bars.
     pub length_steps: u32,
+    /// The length follows the notes instead: whole bars up to the last bar
+    /// with a note in it, at least one bar. `length_steps` is kept for when
+    /// this is turned off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auto_length: bool,
     /// Notes, kept sorted by (channel, start, key).
     #[serde(default)]
     pub notes: Vec<Note>,
@@ -516,6 +521,7 @@ impl Pattern {
             id,
             name: name.into(),
             length_steps: sig.bar_steps(),
+            auto_length: false,
             notes: Vec::new(),
             legacy_swing: 0.0,
             automation: Vec::new(),
@@ -572,18 +578,33 @@ impl Pattern {
     /// Length in ticks: the step length, extended to whole bars to fit every note.
     #[must_use]
     pub fn length_ticks(&self) -> u32 {
-        let steps = self.length_steps.max(1) * musiccraft_params::TICKS_PER_STEP;
+        let minimum = if self.auto_length {
+            1
+        } else {
+            self.length_steps.max(1)
+        };
+        let steps = minimum * musiccraft_params::TICKS_PER_STEP;
         let last = self
             .notes
             .iter()
             .map(|n| n.start.saturating_add(1))
             .max()
             .unwrap_or(0);
-        if last > steps {
-            let bar = self.time_signature.bar_ticks().max(1);
+        let bar = self.time_signature.bar_ticks().max(1);
+        if last > steps || self.auto_length {
             last.div_ceil(bar).max(1) * bar
         } else {
             steps
+        }
+    }
+
+    /// The length in whole steps that step tools (fill, shift) work over.
+    #[must_use]
+    pub fn step_span(&self) -> u32 {
+        if self.auto_length {
+            self.length_ticks() / musiccraft_params::TICKS_PER_STEP
+        } else {
+            self.length_steps
         }
     }
 }
