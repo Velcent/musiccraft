@@ -637,53 +637,51 @@ fn upper_rack(
 /// The song position: bar.beat.step (last field smaller) or minutes and
 /// seconds; COUNT-IN or WAITING while recording waits to start.
 fn time_display(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) {
+    use crate::TimeMode;
     let project = frame.project;
     let ticks = frame.engine.position_ticks.max(0.0);
     let seconds = ticks / f64::from(musiccraft_project::params::PPQ) * 60.0 / project.tempo_bpm();
     let time = format!("{}:{:05.2}", (seconds / 60.0) as u32, seconds % 60.0);
-    let bars = position_label(ticks, &project.playing_meter());
-    let bars = bars.trim();
-    let (digits, caption) = if frame.engine.counting_in {
-        (("COUNT-IN", ""), "REC")
-    } else if frame.engine.waiting {
-        (("WAITING", ""), "REC")
-    } else if state.show_seconds {
-        (
-            time.rsplit_once('.')
-                .map_or((time.as_str(), ""), |(a, _)| (a, "")),
-            "TIME",
-        )
-    } else {
-        (
-            bars.rsplit_once('.').map_or((bars, ""), |(a, _)| (a, "")),
-            "BARS",
-        )
+    let meter = project.playing_meter();
+    let bars = position_label(ticks, &meter);
+    let mode = state.time_mode;
+    let (text, caption, sep) = match mode {
+        TimeMode::Bars => (bars.clone(), "BARS", '.'),
+        TimeMode::Time => (time.clone(), "TIME", '.'),
+        TimeMode::Ticks => (crate::geometry::tick_label(ticks, &meter), "TICKS", '.'),
     };
     // The least-significant field, drawn smaller.
-    let tail = if frame.engine.counting_in || frame.engine.waiting {
-        String::new()
-    } else if state.show_seconds {
-        time.rsplit_once('.')
-            .map(|(_, b)| format!(".{b}"))
-            .unwrap_or_default()
+    let (digits, tail, caption) = if frame.engine.counting_in {
+        ("COUNT-IN".to_owned(), String::new(), "REC")
+    } else if frame.engine.waiting {
+        ("WAITING".to_owned(), String::new(), "REC")
     } else {
-        bars.rsplit_once('.')
-            .map(|(_, b)| format!(".{b}"))
-            .unwrap_or_default()
+        let (head, last) = text.rsplit_once(sep).unwrap_or((text.as_str(), ""));
+        (head.to_owned(), format!("{sep}{last}"), caption)
     };
-    let position = icons::display(ui, 100.0, (digits.0, &tail), caption, egui::Sense::click())
-        .hint(format!(
-            "Song position ({}) · click to show {}",
-            if state.show_seconds { bars } else { &time },
-            if state.show_seconds {
-                "bars and beats"
-            } else {
-                "minutes and seconds"
-            }
-        ));
+    let other = if mode == TimeMode::Time { &bars } else { &time };
+    let position = icons::display(ui, 100.0, (&digits, &tail), caption, egui::Sense::click()).hint(
+        format!("Song position ({other}) · click to switch bars and time · right-click for modes"),
+    );
     if position.clicked() {
-        state.show_seconds = !state.show_seconds;
+        state.time_mode = if mode == TimeMode::Time {
+            TimeMode::Bars
+        } else {
+            TimeMode::Time
+        };
     }
+    position.context_menu(|ui| {
+        for (choice, label) in [
+            (TimeMode::Bars, "Bars, beats and steps"),
+            (TimeMode::Time, "Minutes and seconds"),
+            (TimeMode::Ticks, "Bars, beats and ticks"),
+        ] {
+            if ui.radio(state.time_mode == choice, label).clicked() {
+                state.time_mode = choice;
+                ui.close();
+            }
+        }
+    });
 }
 
 /// The master knob, the mode switch and transport, tempo, signature and the

@@ -396,16 +396,15 @@ Ordered by visual impact. Per `CLAUDE.md`, update the specs (`docs/spec/window-l
 4. **The output monitor lacks details.** Scope and horizontal peak bars share one well, but there is no clip hold, no right-click mode menu and no separate analyser button (the whole well opens the analyser). File: `crates/musiccraft-ui/src/icons.rs` (`output_monitor`).
 5. **No utility shortcuts.** Undo/history, sample editor, record audio, help, save and export have no toolbar buttons. File: `crates/musiccraft-ui/src/toolbar.rs`.
 6. **Tempo display extras.** Whole digits and decimals drag separately, each wheel notch is 1 BPM, double-click types a tempo, and the right-click menu has Enter a tempo…, round tempos, Copy and Reset. Still missing: the step chevrons, Paste, Tap tempo, the half-speed preview and the automation items. File: `crates/musiccraft-ui/src/toolbar.rs` (`tempo`).
-7. **The time display has no mode menu.** The least-significant field is smaller and the caption sits in the corner, but there is no right-click mode menu and no ticks mode, and `position_label` still pads with leading spaces that the toolbar trims. Files: `crates/musiccraft-ui/src/toolbar.rs` (`time_display`), `crates/musiccraft-ui/src/geometry.rs` (`position_label`).
-8. **No global snap, and a short snap list.** Only the playlist and piano roll have their own snap lists. There is no Global choice and no toolbar snap panel. Our `Snap` values stop at None, 1/4 step, 1/2 step, Step, Beat and Bar: there is no snap to the nearest grid line, no snap to the start of the grid cell, no beat fractions, and no thirds or sixths for triplets. Files: `crates/musiccraft-ui/src/geometry.rs` (`Snap`), `crates/musiccraft-ui/src/playlist.rs`, `crates/musiccraft-ui/src/piano_roll.rs`.
-9. **The pattern panel is a plain combo box.** It is a combo box plus `+`. There is no options chevron with the pattern-management menu, no step chevrons, no scroll-to-step, no double-click rename and no reveal-in-playlist. File: `crates/musiccraft-ui/src/toolbar.rs`.
-10. **Transport details are missing.**
+7. **No global snap, and a short snap list.** Only the playlist and piano roll have their own snap lists. There is no Global choice and no toolbar snap panel. Our `Snap` values stop at None, 1/4 step, 1/2 step, Step, Beat and Bar: there is no snap to the nearest grid line, no snap to the start of the grid cell, no beat fractions, and no thirds or sixths for triplets. Files: `crates/musiccraft-ui/src/geometry.rs` (`Snap`), `crates/musiccraft-ui/src/playlist.rs`, `crates/musiccraft-ui/src/piano_roll.rs`.
+8. **The pattern panel is a plain combo box.** It is a combo box plus `+`. There is no options chevron with the pattern-management menu, no step chevrons, no scroll-to-step, no double-click rename and no reveal-in-playlist. File: `crates/musiccraft-ui/src/toolbar.rs`.
+9. **Transport details are missing.**
     - Stop has no double-click panic and no "restart from the set position" option.
     - Record has no Alt+click "What to record" popup and no what-to-record choices or record-quantize options.
     - Files: `crates/musiccraft-ui/src/toolbar.rs`, `docs/spec/transport.md`, `docs/spec/recording.md`.
-11. **The toolbar knob changes the master insert volume, which is exported.** The target is a listening-only volume plus a master pitch knob (Proposed, D1). Master pitch is reachable only from Settings → Project today, and `transport.md` does not say whether audio clips follow it. File: `crates/musiccraft-ui/src/toolbar.rs` (master `knob`).
-12. **The performance panel is partial.** It shows CPU and the voice count, but there is no history graph, no memory figure and no double-click load monitor. File: `crates/musiccraft-ui/src/icons.rs` (`performance`).
-13. **Menu contents are thin or misplaced.**
+10. **The toolbar knob changes the master insert volume, which is exported.** The target is a listening-only volume plus a master pitch knob (Proposed, D1). Master pitch is reachable only from Settings → Project today, and `transport.md` does not say whether audio clips follow it. File: `crates/musiccraft-ui/src/toolbar.rs` (master `knob`).
+11. **The performance panel is partial.** It shows CPU and the voice count, but there is no history graph, no memory figure and no double-click load monitor. File: `crates/musiccraft-ui/src/icons.rs` (`performance`).
+12. **Menu contents are thin or misplaced.**
     - Edit lacks cut, copy, paste and history.
     - Patterns lacks first empty, reveal, colour, transpose, move, one-pattern-per-channel and render.
     - View lacks the Toolbar and Windows layout submenus and the Plugins window.
@@ -414,9 +413,9 @@ Ordered by visual impact. Per `CLAUDE.md`, update the specs (`docs/spec/window-l
     - Help lacks the user guide and What's new.
     - "Record audio input" sits in File instead of Options.
     - File: `crates/musiccraft-ui/src/toolbar.rs` (`file_menu` … `help_menu`).
-14. **No toolbar context menu or customising.** There are no dividers toggle, layouts, hide (Ctrl+F11) or narrow-width reflow beyond the one-band/two-band switch. Files: `crates/musiccraft-ui/src/toolbar.rs`, `docs/spec/window-layout.md`.
-15. **Keymap gaps.** The default keymap has no F1, F2, F8, F11, Shift+F4, Ctrl+F11, Shift+F12, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+F or Alt+1…Alt+0. All are proposed new bindings; none clashes with an existing one. (F12, Alt+F12, Ctrl+F12 and Ctrl+Shift+H are now bound, main-window section.) Files: `crates/musiccraft-ui/keymap/default.keymap`, `docs/spec/keymap.md`.
-16. **A shared submenu to agree on.** Menu titles are sentence case, the mode switch reads Ptn over Song, and the typing-keyboard and hint-bar items use our wording. The main-window draft calls the layout submenu "Arrange windows" with different items; both sections should use this section's *Windows layout* name and item list. File: `crates/musiccraft-ui/src/toolbar.rs` (`view_menu`).
+13. **No toolbar context menu or customising.** There are no dividers toggle, layouts, hide (Ctrl+F11) or narrow-width reflow beyond the one-band/two-band switch. Files: `crates/musiccraft-ui/src/toolbar.rs`, `docs/spec/window-layout.md`.
+14. **Keymap gaps.** The default keymap has no F1, F2, F8, F11, Shift+F4, Ctrl+F11, Shift+F12, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+F or Alt+1…Alt+0. All are proposed new bindings; none clashes with an existing one. (F12, Alt+F12, Ctrl+F12 and Ctrl+Shift+H are now bound, main-window section.) Files: `crates/musiccraft-ui/keymap/default.keymap`, `docs/spec/keymap.md`.
+15. **A shared submenu to agree on.** Menu titles are sentence case, the mode switch reads Ptn over Song, and the typing-keyboard and hint-bar items use our wording. The main-window draft calls the layout submenu "Arrange windows" with different items; both sections should use this section's *Windows layout* name and item list. File: `crates/musiccraft-ui/src/toolbar.rs` (`view_menu`).
 
 ## Sources
 

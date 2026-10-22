@@ -375,6 +375,18 @@ fn arrange(ctx: &egui::Context, state: &mut UiState) {
     }
 }
 
+/// What the toolbar's time display shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TimeMode {
+    /// `bar.beat.step`.
+    #[default]
+    Bars,
+    /// `minutes:seconds.hundredths`.
+    Time,
+    /// `bar.beat.tick`, for fine work.
+    Ticks,
+}
+
 /// A status line message.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StatusLine {
@@ -429,9 +441,8 @@ pub struct UiState {
     pub taps: Vec<f64>,
     /// The custom time signature being entered in a signature menu.
     pub sig_draft: (u32, u32),
-    /// The toolbar's position display shows minutes and seconds instead of
-    /// bars and beats.
-    pub show_seconds: bool,
+    /// What the toolbar's position display shows.
+    pub time_mode: TimeMode,
     /// Text being typed in Settings → Folders: FL factory and user data
     /// folders, and a drive mapping's prefix and folder.
     pub path_drafts: [String; 4],
@@ -533,7 +544,7 @@ impl UiState {
             taps: Vec::new(),
             sig_draft: (4, 4),
             channel_tab: channel_settings::ChannelTab::default(),
-            show_seconds: false,
+            time_mode: TimeMode::Bars,
             path_drafts: Default::default(),
             rack_group: None,
             graph: None,

@@ -176,7 +176,22 @@ pub fn hit_test(boxes: impl DoubleEndedIterator<Item = (usize, Rect)>, pos: Pos2
 #[must_use]
 pub fn position_label(ticks: f64, meter: &Meter) -> String {
     let p = meter.position(ticks.max(0.0) as u32);
-    format!("{:>3}.{}.{}", p.bar, p.beat, p.step)
+    format!("{}.{}.{}", p.bar, p.beat, p.step)
+}
+
+/// `bar.beat.tick`: the tick within the beat in place of the step.
+#[must_use]
+pub fn tick_label(ticks: f64, meter: &Meter) -> String {
+    let tick = ticks.max(0.0) as u32;
+    let p = meter.position(tick);
+    let bar = meter.bar(tick);
+    let into = tick - bar.start.min(tick);
+    format!(
+        "{}.{}.{:02}",
+        p.bar,
+        p.beat,
+        into % bar.sig.beat_ticks().max(1)
+    )
 }
 
 #[cfg(test)]
@@ -246,9 +261,11 @@ mod tests {
     #[test]
     fn position_labels() {
         let m = Meter::default();
-        assert_eq!(position_label(0.0, &m), "  1.1.1");
-        assert_eq!(position_label(f64::from(384 + 96 + 24), &m), "  2.2.2");
+        assert_eq!(position_label(0.0, &m), "1.1.1");
+        assert_eq!(position_label(f64::from(384 + 96 + 24), &m), "2.2.2");
+        assert_eq!(tick_label(f64::from(384 + 96 + 30), &m), "2.2.30");
+        assert_eq!(tick_label(f64::from(384 + 5), &m), "2.1.05");
         let m = Meter::new("7/8".parse().unwrap());
-        assert_eq!(position_label(f64::from(336 + 48), &m), "  2.2.1");
+        assert_eq!(position_label(f64::from(336 + 48), &m), "2.2.1");
     }
 }

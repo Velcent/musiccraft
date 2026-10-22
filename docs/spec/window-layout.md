@@ -103,8 +103,10 @@ stay our own. The full target look, window by window, is the style guide in
     and a plus) and the window buttons (Playlist, Channel rack, Piano roll,
     Browser, Mixer).
 - Option toggles all light the same way: an accent fill with a dark glyph.
-- The time display's digits read bar.beat.step with the last field smaller;
-  while counting in or waiting for the first note they read COUNT-IN or
+- The time display shows bar.beat.step, minutes:seconds.hundredths or
+  bar.beat.tick, with the last field smaller and the mode (BARS, TIME, TICKS)
+  as its caption. A click switches bars and time; right-click lists the three
+  modes. While counting in or waiting for the first note it reads COUNT-IN or
   WAITING instead. The tempo display shows whole BPM large and three
   decimals smaller. Each display has a tiny caption in its top-right corner.
 - Tempo display: dragging up or down on the whole digits steps 1 BPM every
