@@ -348,8 +348,8 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   as a number box (drag or type; `channel.route`).
 - Below it, **tabs**: *Sound* (the instrument's own sections: sample, oscillators,
   operators, plugin parameters…), *Envelope* (the amplitude envelope, for
-  instruments that use it) and *Functions* (voices, timing with swing, choke,
-  arpeggiator, echo). Only the tab's contents scroll. The last tab used stays
+  instruments that use it) and *Functions* (boxes tiled two to a row:
+  VOICES | TIMING with swing, ARPEGGIATOR full width, CHOKE | ECHO). Only the tab's contents scroll. The last tab used stays
   selected while the window is open.
 - MIDI Out channels have no sound settings: the window shows their MIDI page
   only.

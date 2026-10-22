@@ -237,9 +237,10 @@ How the tabs behave:
 **C6. Functions.** Tiled boxes, then the keyboard strip. Captions are listed under Labels and wording (existing):
 
 - **Row 1:** VOICES (Max, Poly/Mono, the plugin's own voice controls) | TIMING (Delay and Length, plus the Swing knob and its Delay/Shorten choice) | a narrow box for any controls the instrument adds.
-- **Row 2:** CHOKE (Group, Silenced by, plus a small "Self-choke" button that sets both to the same group, *new*) | ARPEGGIATOR (direction choice row across the top, then rate, Octaves, Gate) | ECHO (Repeats, Time, Feedback, Pitch step).
+- **Row 2:** ARPEGGIATOR across the full width (direction choice row, then rate, Octaves, Gate). Its five-way direction row does not fit a third of the window, so it gets its own row (own design).
+- **Row 3:** CHOKE (Group, Silenced by, plus a small "Self-choke" button that sets both to the same group) | ECHO (Repeats, Time, Feedback, Pitch step; wraps onto a second line when narrow).
 - **Bottom:** the keyboard strip (C7).
-- When Antiserum hides the arpeggiator (it has its own), ECHO widens to fill the row.
+- When Antiserum hides the arpeggiator (it has its own), row 2 is left out.
 
 **C7. Keyboard strip** (bottom of Envelope and Functions; *new*):
 
@@ -424,7 +425,7 @@ Ordered by visual impact.
 
 1. **Three chrome bands instead of two.** In `channel_settings.rs` (`contents`, `header`) the name row, the knob row and a separate row of text tabs (`selectable_value`) with a separator line all sit above the page. The guide puts the tabs as icon cells at the left of the same strip as the knobs (B). `docs/spec/channel-rack.md` ("Channel settings window") describes today's fixed header and tabs and changes first.
 2. **Effect windows have no strip, and the preset row sits in the body.** `crates/musiccraft-ui/src/effect_window.rs` (`show_all`) now uses the shared header ("Effect — Track") but has no strip under it. `crates/musiccraft-editors/src/effect.rs` (`preset_bar`) draws a bypass dot, ◀, a preset drop-down and ▶ as the first body row. The window has no Mix knob: it is only on the slot, in `crates/musiccraft-ui/src/mixer.rs` (`slot_row`). The guide moves presets into the header and puts the On light and Mix knob in a slim strip (D).
-3. **Pages stack full-width sections instead of tiling boxes.** `crates/musiccraft-editors/src/instrument.rs` (`section`, `functions_with`, `envelope`) gives each section the full width, one under another, so the Functions page is five stacked bands (VOICES, TIMING, CHOKE, ARPEGGIATOR, ECHO) in C6 order. The guide tiles two to four boxes per row (C, C6). The sampler page in `channel_settings.rs` (`sampler`) has the waveform in the middle of its section, not full width at the bottom (C2).
+3. **Pages stack full-width sections instead of tiling boxes.** `crates/musiccraft-editors/src/instrument.rs` (`section`, `envelope`) still gives the Envelope page and the instruments' Sound pages full-width sections, one under another. The guide tiles two to four boxes per row (C). The Functions page now tiles (`functions_with`): VOICES | TIMING, then ARPEGGIATOR across the full width, then CHOKE | ECHO. The sampler page in `channel_settings.rs` (`sampler`) has the waveform in the middle of its section, not full width at the bottom (C2).
 4. **The strip's controls differ in order and kind.** `channel_settings.rs` (`header`) has these differences from B:
    - It shows Volume, Pan, Pitch, then a "Mute" checkbox and a plain "Track" number field (0 for master). The guide's order is On light, Pan, Volume, Pitch, (Range), gap, Track box.
    - The Track field has no "M", no clickable caption for a free mixer track, and no double-click to open the mixer.

@@ -392,31 +392,24 @@ impl<'a> InstrumentEditor<'a> {
     /// [`Self::functions`] with `extra` drawn in the timing ("swing") and
     /// voices rows (a plugin's own swing amount and voice controls).
     pub fn functions_with(&mut self, ui: &mut Ui, extra: &mut dyn FnMut(&mut Ui, &str)) {
-        section(ui, "VOICES", |ui| {
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::POLY_MAX, "Max");
-                self.choice(ui, inst::MONO, &["Poly", "Mono"]);
-                extra(ui, "voices");
+        ui.columns(2, |row| {
+            section(&mut row[0], "VOICES", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.knob(ui, inst::POLY_MAX, "Max");
+                    self.choice(ui, inst::MONO, &["Poly", "Mono"]);
+                    extra(ui, "voices");
+                });
             });
-        });
-        ui.add_space(6.0);
-        section(ui, "TIMING", |ui| {
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::TIME_SHIFT, "Delay");
-                self.knob(ui, inst::GATE, "Length");
-            });
-            ui.horizontal(|ui| {
-                extra(ui, "swing");
-                self.knob(ui, inst::SWING_MIX, "Swing");
-                self.choice(ui, inst::SWING_TRUNCATE, &["Delay", "Shorten"]);
-            });
-        });
-        ui.add_space(6.0);
-        section(ui, "CHOKE", |ui| {
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::CUT_GROUP, "Group");
-                self.knob(ui, inst::CUT_BY, "Silenced by");
-                self.self_choke(ui);
+            section(&mut row[1], "TIMING", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.knob(ui, inst::TIME_SHIFT, "Delay");
+                    self.knob(ui, inst::GATE, "Length");
+                    extra(ui, "swing");
+                    self.knob(ui, inst::SWING_MIX, "Swing");
+                });
+                ui.horizontal_wrapped(|ui| {
+                    self.choice(ui, inst::SWING_TRUNCATE, &["Delay", "Shorten"]);
+                });
             });
         });
         ui.add_space(6.0);
@@ -424,12 +417,21 @@ impl<'a> InstrumentEditor<'a> {
             self.arpeggiator_section(ui);
             ui.add_space(6.0);
         }
-        section(ui, "ECHO", |ui| {
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::ECHO_COUNT, "Repeats");
-                self.knob(ui, inst::ECHO_TIME, "Time");
-                self.knob(ui, inst::ECHO_FEED, "Feedback");
-                self.knob(ui, inst::ECHO_PITCH, "Pitch step");
+        ui.columns(2, |row| {
+            section(&mut row[0], "CHOKE", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.knob(ui, inst::CUT_GROUP, "Group");
+                    self.knob(ui, inst::CUT_BY, "Silenced by");
+                });
+                self.self_choke(ui);
+            });
+            section(&mut row[1], "ECHO", |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.knob(ui, inst::ECHO_COUNT, "Repeats");
+                    self.knob(ui, inst::ECHO_TIME, "Time");
+                    self.knob(ui, inst::ECHO_FEED, "Feedback");
+                    self.knob(ui, inst::ECHO_PITCH, "Pitch step");
+                });
             });
         });
     }
