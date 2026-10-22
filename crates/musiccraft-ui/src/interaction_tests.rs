@@ -3639,3 +3639,38 @@ fn dragging_a_marker_label_moves_it_and_double_click_renames_it() {
     }]);
     assert_eq!(out, [format!("playlist.add_marker {}t Build", 4 * bar)]);
 }
+
+#[test]
+fn alt_wheel_over_a_note_steps_its_velocity_in_one_undo_step() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C5 64"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let note = h.roll_point(24, 60);
+    let origin = |h: &Harness| {
+        let (grid, _) = h.state.roll.last_view.unwrap();
+        (grid.x(0.0), grid.y(0))
+    };
+    let before = origin(&h);
+    let wheel = |up: f32| Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, up),
+        modifiers: Modifiers::ALT,
+        phase: egui::TouchPhase::Move,
+    };
+    h.modifiers = Modifiers::ALT;
+    h.frame(vec![Event::PointerMoved(note)]);
+    h.frame(vec![wheel(1.0)]);
+    h.frame(vec![wheel(1.0)]);
+    // egui spreads a wheel notch over a few frames; Alt is still held.
+    for _ in 0..40 {
+        h.frame(vec![]);
+    }
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    let velocity = h.session.project().current_pattern().notes[0].velocity;
+    assert!(velocity > 85, "two notches up from 64 reach {velocity}");
+    assert_eq!(origin(&h), before, "the view stays put");
+    assert_eq!(h.session.undo_depth(), 3, "two setup commands plus one run");
+    h.session.run_line("edit.undo").unwrap();
+    assert_eq!(h.session.project().current_pattern().notes[0].velocity, 64);
+}

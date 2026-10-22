@@ -298,6 +298,10 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   right for the note's length; selected notes' stems take the selection
   tone, and other channels' notes show faint ghost stems behind. In centred modes (pan, fine pitch…)
   stems grow up or down from the centre and snap to centre within ±3.
+- Alt+wheel over a note steps the lane's property of that note by a tenth
+  of its range per notch (Ctrl+Alt+wheel: a fiftieth), or of every selected
+  note when the note is selected; the view does not scroll meanwhile. A run
+  of notches over the same notes, less than a second apart, is one undo step.
 - The ruler marks the playhead with a triangle whenever it is inside the
   shown pattern (the loop position in pattern mode; in song mode, inside a
   clip of this pattern), and a line runs down the roll while playing.

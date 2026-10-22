@@ -1181,6 +1181,13 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
     ui.advance_cursor_after_rect(body);
     let view_rect = crate::scrollbars::view_rect(body);
     let mut view_ui = ui.new_child(egui::UiBuilder::new().max_rect(view_rect));
+    // Alt+wheel edits the note under the pointer (`alt_wheel`), so the view
+    // must not scroll with it.
+    let over = ui.input(|i| i.pointer.hover_pos().is_some_and(|p| view_rect.contains(p)));
+    if over && ui.input(|i| i.modifiers.alt) {
+        ui.ctx()
+            .input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
+    }
     let mut scroll = egui::ScrollArea::both()
         .id_salt("roll-scroll")
         .auto_shrink([false, false])
@@ -1468,7 +1475,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             (channel_index, crate::channel_color(project, channel_index)),
             actions,
         );
-        if response.hovered() {
+        if response.hovered() && !ui.input(|i| i.modifiers.alt) {
             let zoom = ui.input(|i| i.zoom_delta());
             if zoom != 1.0 {
                 state.roll.px_per_step =
@@ -2534,6 +2541,70 @@ fn tool_stroke(
     }
 }
 
+/// Alt+wheel over a note steps the property lane's value of that note (or
+/// of every selected note, when it is one of them) by a tenth of the range
+/// per notch, Ctrl+Alt+wheel by a fiftieth. A run of notches over the same
+/// notes is one undo step.
+fn alt_wheel(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    pos: Pos2,
+    (notes, boxes): (&[&Note], &[(usize, Rect)]),
+    channel: usize,
+    actions: &mut Vec<Action>,
+) {
+    let modifiers = ui.input(|i| i.modifiers);
+    if !modifiers.alt {
+        return;
+    }
+    let notches = crate::scrollbars::wheel_notches(ui);
+    let hovered = match hit_test(boxes.iter().copied(), pos) {
+        Hit::Body(i) | Hit::Edge(i) => notes.get(i).copied(),
+        Hit::Empty => None,
+    };
+    let Some(hovered) = hovered.filter(|_| notches != 0.0) else {
+        return;
+    };
+    let step = if modifiers.command {
+        1.0 / 50.0
+    } else {
+        1.0 / 10.0
+    };
+    let targets: Vec<&Note> = if state.roll.selection.contains(&(hovered.start, hovered.key)) {
+        notes
+            .iter()
+            .copied()
+            .filter(|n| state.roll.selection.contains(&(n.start, n.key)))
+            .collect()
+    } else {
+        vec![hovered]
+    };
+    let mode = state.roll.lane_mode;
+    let lines: Vec<Invocation> = targets
+        .iter()
+        .filter_map(|n| {
+            let value = (mode.value(n) + notches * step).clamp(0.0, 1.0);
+            mode.invocation(channel, n, value)
+        })
+        .collect();
+    if lines.is_empty() {
+        return;
+    }
+    let key = egui::Id::new("roll-alt-wheel");
+    let now = ui.input(|i| i.time);
+    let ids: Vec<(u32, u8)> = targets.iter().map(|n| (n.start, n.key)).collect();
+    let last = ui.data(|d| d.get_temp::<(f64, Vec<(u32, u8)>)>(key));
+    if last.is_none_or(|(t, was)| now - t > 1.0 || was != ids) {
+        state.begin_gesture();
+    }
+    ui.data_mut(|d| d.insert_temp(key, (now, ids)));
+    let batch = Invocation::new(
+        musiccraft_commands::BATCH,
+        lines.iter().map(ToString::to_string),
+    );
+    actions.push(Action::Coalesced(batch, state.gesture()));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn edit(
     ui: &egui::Ui,
@@ -2823,6 +2894,7 @@ fn edit(
         }
     }
     if let Some(pos) = response.hover_pos().filter(|p| editable(*p)) {
+        alt_wheel(ui, state, pos, (notes, boxes), channel, actions);
         let moving = state.roll.drag.is_some_and(|d| d.kind == DragKind::Move);
         let cursor = match (tool, hit_test(boxes.iter().copied(), pos)) {
             (Tool::Delete | Tool::Mute | Tool::Slice | Tool::Play | Tool::Zoom, _) => {

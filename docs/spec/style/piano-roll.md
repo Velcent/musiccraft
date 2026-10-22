@@ -443,7 +443,7 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 9. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
 10. **No tall-row property view.** Note labels are cut with an ellipsis, but the label size is fixed. `draw_note()`.
 11. **Window menu is incomplete.** It now has File, Edit, Tools, Chord, Snap, Select and Zoom submenus and the velocity field (`options_menu()`). Edit has Mute, Unmute and Apply the current colour, Select has muted notes and notes of the current colour, and Zoom has Zoom to selection. View has ghost notes, keyboard labels, note labels and the property lane. Still missing: MIDI import, View's other items (ghosts from overlapping clips, scale highlighting, bar-group shading, follow playhead), the Markers submenu, and the Channel and Lane submenus.
-12. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
+12. **No note-properties window on double-click** (L5). Alt+wheel and Ctrl+Alt+wheel step the lane property of the note under the pointer (or of the selection).
 13. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
 14. **Keymap**: Page Up/Down and Shift+1–5 are bound (`keymap.md`, "Over the piano roll"). Alt+C applies the current colour and Shift+Enter hides the lane. Still unbound: Alt+V, Shift+F, N and I, which wait for the features they drive (ghost panel, lane targets, Paint steps, Ramp).
 
