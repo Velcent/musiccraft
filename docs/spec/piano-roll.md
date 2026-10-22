@@ -59,6 +59,10 @@
   The piano roll's Mute tool toggles muting on the notes it clicks or sweeps.
 - The bottom lane edits velocity, pan, release, fine pitch, Mod A or Mod B
   (the note properties `mod_x` and `mod_y`).
+- Pointer shapes: a crosshair over empty grid (a cell cursor with Ctrl or the
+  Select tool), a four-way move cursor over a note body (grabbing while a
+  move drags), horizontal resize over a note's right end, and the plain
+  pointer for the Delete, Mute, Slice, Play and Zoom tools.
 - Pressing a note with the Draw or Paint tool makes its length and velocity
   the ones the next new notes take.
 - New notes take the toolbar's colour and Portamento setting. Fine pitch,

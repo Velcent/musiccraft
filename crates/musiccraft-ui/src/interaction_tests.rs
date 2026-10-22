@@ -28,6 +28,8 @@ struct Harness {
     plugins: Plugins,
     /// Actions other than commands from the last frames.
     other: Vec<Action>,
+    /// The pointer shape the last frame asked for.
+    cursor: egui::CursorIcon,
 }
 
 impl Harness {
@@ -50,6 +52,7 @@ impl Harness {
             modifiers: Modifiers::NONE,
             plugins: Plugins::default(),
             other: Vec::new(),
+            cursor: egui::CursorIcon::Default,
         }
     }
 
@@ -90,6 +93,7 @@ impl Harness {
             let mut output = ctx.run_ui(input, |ui| actions = show(ui, state, &frame));
             // No renderer here: acknowledge texture uploads.
             output.textures_delta.clear();
+            self.cursor = output.platform_output.cursor_icon;
         }
         let mut commands = Vec::new();
         for action in actions {
@@ -1825,4 +1829,21 @@ fn pressing_a_note_makes_its_length_and_velocity_the_defaults() {
     h.settle();
     assert_eq!(h.state.roll.last_length, note.length);
     assert_eq!(h.state.roll.velocity, 64);
+}
+
+#[test]
+fn piano_roll_cursors_follow_the_tool() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 8 C5"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let note = *h.session.project().current_pattern().notes.first().unwrap();
+    let body = h.roll_point(note.start + 10, note.key);
+    let empty = h.roll_point(note.start + 10, note.key - 5);
+    h.frame(vec![Event::PointerMoved(body)]);
+    assert_eq!(h.cursor, egui::CursorIcon::Move);
+    h.frame(vec![Event::PointerMoved(empty)]);
+    assert_eq!(h.cursor, egui::CursorIcon::Crosshair);
+    h.state.roll.tool = crate::piano_roll::Tool::Delete;
+    h.frame(vec![Event::PointerMoved(body)]);
+    assert_eq!(h.cursor, egui::CursorIcon::Default);
 }

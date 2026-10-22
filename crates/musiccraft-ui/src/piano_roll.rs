@@ -2313,11 +2313,17 @@ fn edit(
         }
     }
     if let Some(pos) = response.hover_pos().filter(|p| editable(*p)) {
-        let cursor = match hit_test(boxes.iter().copied(), pos) {
-            Hit::Edge(_) => egui::CursorIcon::ResizeHorizontal,
-            Hit::Body(_) => egui::CursorIcon::Grab,
-            Hit::Empty if ctrl => egui::CursorIcon::Cell,
-            Hit::Empty => egui::CursorIcon::Crosshair,
+        let moving = state.roll.drag.is_some_and(|d| d.kind == DragKind::Move);
+        let cursor = match (tool, hit_test(boxes.iter().copied(), pos)) {
+            (Tool::Delete | Tool::Mute | Tool::Slice | Tool::Play | Tool::Zoom, _) => {
+                egui::CursorIcon::Default
+            }
+            (_, Hit::Edge(_)) => egui::CursorIcon::ResizeHorizontal,
+            _ if moving => egui::CursorIcon::Grabbing,
+            (_, Hit::Body(_)) => egui::CursorIcon::Move,
+            (Tool::Select, Hit::Empty) => egui::CursorIcon::Cell,
+            (_, Hit::Empty) if ctrl => egui::CursorIcon::Cell,
+            (_, Hit::Empty) => egui::CursorIcon::Crosshair,
         };
         ui.ctx().set_cursor_icon(cursor);
     }
