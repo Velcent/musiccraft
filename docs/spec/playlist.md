@@ -53,6 +53,10 @@
 - Commands: `playlist.add_clip <pattern> <track> <start> [length]` (default length:
   the pattern's length), `playlist.remove_clip <track> <at>` and
   `playlist.move_clip`/`playlist.resize_clip` (the clip covering a position),
+  `playlist.trim_clip <track> <at> <new start>` (moves the clip's start and
+  keeps its end, so the clip shows a later or earlier part of its source;
+  refused before the source's start, at or past the clip's end, or over
+  another clip),
   `playlist.set_track_mute`, `playlist.toggle_track_mute`, `playlist.clear`,
   `playlist.set_clips` (used by undo). All are undoable.
 - In song mode the song length is the end of the last clip rounded up to whole
@@ -248,7 +252,9 @@
   out). Keys P, B, D, E, T, C, Y, Z pick them.
 
 - Left-click on an empty cell places the selected pattern at the snapped bar;
-  dragging a clip moves it; dragging its right edge resizes it; right-click
+  dragging a clip moves it; dragging its right edge resizes it and dragging
+  its left edge trims its start (`playlist.trim_clip`; with several clips
+  selected, all of them by the same amount); right-click
   deletes. The pattern list next to the playlist selects the pattern to paint.
 - **Pattern miniatures**: the picker shows each pattern as a small clip, so
   patterns are told apart by their content even when they keep their default

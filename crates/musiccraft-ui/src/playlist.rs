@@ -29,6 +29,8 @@ const LIST_WIDTHS: [(&str, f32); 3] = [("Narrow", 100.0), ("Normal", 130.0), ("W
 enum DragKind {
     Move,
     Resize,
+    /// The left edge: the start moves and the end stays.
+    Trim,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -187,6 +189,10 @@ fn finish(drag: &ClipDrag) -> Option<Invocation> {
         DragKind::Resize if drag.length != o.length => Some(Invocation::new(
             "playlist.resize_clip",
             [(o.track + 1).to_string(), t(o.start), t(drag.length)],
+        )),
+        DragKind::Trim if drag.start != o.start => Some(Invocation::new(
+            "playlist.trim_clip",
+            [(o.track + 1).to_string(), t(o.start), t(drag.start)],
         )),
         _ => None,
     }
@@ -1260,14 +1266,22 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                 Look::Ghost,
             );
         }
+        let trimming = state
+            .playlist
+            .drag
+            .is_some_and(|d| d.kind == DragKind::Trim);
         for c in &moving {
             let (track, start) = shifted(c, dt, dtrack);
             let length = u32::try_from((i64::from(c.length) + dl).max(1)).unwrap_or(1);
+            let mut shown = *c;
+            if trimming {
+                shown.offset = u32::try_from(i64::from(c.offset) + dt).unwrap_or(0);
+            }
             draw_clip(
                 &painter,
                 &grid,
                 frame,
-                c,
+                &shown,
                 (track, start, length),
                 Look::Ghost,
             );
@@ -2761,7 +2775,28 @@ fn drag_delta(state: &UiState, group: &[Clip]) -> (i64, i64, i64) {
             (dt, dtrack, 0)
         }
         DragKind::Resize => (0, 0, i64::from(drag.length) - i64::from(o.length)),
+        DragKind::Trim => {
+            // No clip may start before its source or lose its whole length.
+            let dt = i64::from(drag.start) - i64::from(o.start);
+            let earliest = group
+                .iter()
+                .map(|c| -i64::from(c.offset))
+                .max()
+                .unwrap_or(0);
+            let latest = group
+                .iter()
+                .map(|c| i64::from(c.length) - 1)
+                .min()
+                .unwrap_or(0);
+            let dt = dt.clamp(earliest, latest.max(earliest));
+            (dt, 0, -dt)
+        }
     }
+}
+
+/// Whether `pos` is on the left edge of a clip's `rect` (its trim handle).
+fn on_left_edge(rect: Rect, pos: egui::Pos2) -> bool {
+    pos.x - rect.left() <= crate::geometry::EDGE_GRAB.min(rect.width() / 3.0)
 }
 
 fn clamp_delta(group: &[Clip], dt: i64, dtrack: i64) -> (i64, i64) {
@@ -3280,9 +3315,15 @@ fn edit(
                     if !state.playlist.selection.contains(&(c.track, c.start)) {
                         state.playlist.selection = BTreeSet::from([(c.track, c.start)]);
                     }
+                    let left = boxes
+                        .iter()
+                        .find(|(index, _)| matches!(hit, Hit::Body(i) if i == *index))
+                        .is_some_and(|(_, rect)| on_left_edge(*rect, origin));
                     ClipDrag {
                         kind: if matches!(hit, Hit::Edge(_)) {
                             DragKind::Resize
+                        } else if left {
+                            DragKind::Trim
                         } else {
                             DragKind::Move
                         },
@@ -3316,6 +3357,12 @@ fn edit(
                         .max(drag.start + snap.ticks_at(drag.start, &meter));
                     drag.length = end - drag.start;
                 }
+                DragKind::Trim => {
+                    let o = drag.original;
+                    let start = snap.round(tick.max(0.0), &meter);
+                    drag.start = start.clamp(o.start - o.offset.min(o.start), o.end() - 1);
+                    drag.length = o.end() - drag.start;
+                }
             }
         }
     }
@@ -3336,6 +3383,23 @@ fn edit(
             if let Some(drag) = state.playlist.drag.take() {
                 let invocation = match drag.kind {
                     DragKind::Move => move_clips(&group, dt, dtrack),
+                    DragKind::Trim => batch(
+                        group
+                            .iter()
+                            .filter(|_| dt != 0)
+                            .map(|c| {
+                                let start = u32::try_from(i64::from(c.start) + dt).unwrap_or(0);
+                                Invocation::new(
+                                    "playlist.trim_clip",
+                                    [
+                                        (c.track + 1).to_string(),
+                                        format!("{}t", c.start),
+                                        format!("{start}t"),
+                                    ],
+                                )
+                            })
+                            .collect(),
+                    ),
                     DragKind::Resize => batch(
                         group
                             .iter()
@@ -3504,8 +3568,13 @@ fn edit(
         keys(ui.ctx(), state, project, actions);
     }
     if let Some(pos) = response.hover_pos().filter(|p| editable(*p)) {
-        let cursor = match hit_test(boxes.iter().copied(), pos) {
+        let hit = hit_test(boxes.iter().copied(), pos);
+        let left = boxes
+            .iter()
+            .any(|(i, rect)| hit == Hit::Body(*i) && on_left_edge(*rect, pos));
+        let cursor = match hit {
             Hit::Edge(_) => egui::CursorIcon::ResizeHorizontal,
+            Hit::Body(_) if left => egui::CursorIcon::ResizeHorizontal,
             Hit::Body(_) => egui::CursorIcon::Grab,
             Hit::Empty if ctrl => egui::CursorIcon::Cell,
             Hit::Empty => egui::CursorIcon::Default,

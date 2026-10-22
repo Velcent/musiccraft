@@ -1063,6 +1063,32 @@ fn playlist_rejects_overlaps() {
 }
 
 #[test]
+fn trimming_a_clip_moves_its_start_and_keeps_its_end() {
+    let mut s = session();
+    run(&mut s, "playlist.add_clip 1 1 0 1");
+    run(&mut s, "playlist.add_clip 1 1 2 2");
+    let bar = TICKS_PER_BAR;
+    run(&mut s, "playlist.trim_clip 1 2 2.5");
+    let c = s.project().playlist.clips[1];
+    assert_eq!(
+        (c.start, c.length, c.offset),
+        (5 * bar / 2, 3 * bar / 2, bar / 2)
+    );
+    // Back towards the source's start, but not before it.
+    run(&mut s, "playlist.trim_clip 1 2.5 2.25");
+    let c = s.project().playlist.clips[1];
+    assert_eq!((c.start, c.offset), (9 * bar / 4, bar / 4));
+    fails(&mut s, "playlist.trim_clip 1 2.25 1.5");
+    // Not past its end, and not over its neighbour.
+    fails(&mut s, "playlist.trim_clip 1 2.25 4");
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    let c = s.project().playlist.clips[1];
+    assert_eq!((c.start, c.length, c.offset), (2 * bar, 2 * bar, 0));
+    fails(&mut s, "playlist.trim_clip 1 2 0.5");
+}
+
+#[test]
 fn errors_leave_the_project_unchanged() {
     let mut s = session();
     run(&mut s, "channel.add_synth");

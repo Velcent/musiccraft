@@ -3585,3 +3585,23 @@ fn the_edit_menu_copy_and_paste_reach_the_focused_editor() {
     h.settle();
     assert_eq!(h.session.project().playlist.clips.len(), 2);
 }
+
+#[test]
+fn dragging_a_clips_left_edge_trims_its_start() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 1 2"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    let edge = h.playlist_point(bar, 0) + vec2(2.0, 0.0);
+    // The default snap is a bar.
+    let out = h.drag(edge, h.playlist_point(2 * bar - 20, 0));
+    assert_eq!(out, [format!("playlist.trim_clip 1 {bar}t {}t", 2 * bar)]);
+    let c = h.session.project().playlist.clips[0];
+    assert_eq!((c.start, c.length, c.offset), (2 * bar, bar, bar));
+    assert_eq!(h.state.playlist.selection, BTreeSet::from([(0, 2 * bar)]));
+    // Back out to the source's start, and no further.
+    let edge = h.playlist_point(2 * bar, 0) + vec2(2.0, 0.0);
+    h.drag(edge, h.playlist_point(0, 0) + vec2(4.0, 0.0));
+    let c = h.session.project().playlist.clips[0];
+    assert_eq!((c.start, c.length, c.offset), (bar, 2 * bar, 0));
+}

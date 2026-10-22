@@ -48,6 +48,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             resize_clip,
         ),
         cmd(
+            "playlist.trim_clip",
+            "playlist.trim_clip <track> <at bar> <new start bar>",
+            "Move a clip's start, keeping its end: the clip begins at a later or earlier point of its source.",
+            trim_clip,
+        ),
+        cmd(
             "playlist.set_track_mute",
             "playlist.set_track_mute <track> <on|off>",
             "Mute or unmute a playlist track.",
@@ -424,6 +430,37 @@ fn resize_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
                 ticks(old.start),
                 ticks(old.length),
             ],
+        ),
+    ))
+}
+
+fn trim_clip(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = clip_arg(project, args, 0)?;
+    let old = project.playlist.clips[index];
+    let start = args.bars(2, &project.song_meter())?;
+    let offset = i64::from(old.offset) + i64::from(start) - i64::from(old.start);
+    if start >= old.end() {
+        return Err(args.invalid("the new start is at or past the clip's end"));
+    }
+    let Ok(offset) = u32::try_from(offset) else {
+        return Err(args.invalid("the clip cannot start before its source does"));
+    };
+    let trimmed = Clip {
+        start,
+        length: old.end() - start,
+        offset,
+        ..old
+    };
+    if overlaps(project, &trimmed, Some(index)) {
+        return Err(args.invalid("the new start overlaps another clip"));
+    }
+    project.playlist.clips[index] = trimmed;
+    Ok(Outcome::undoable(
+        format!("clip starts at {start}t"),
+        Invocation::new(
+            args.name(),
+            [(old.track + 1).to_string(), ticks(start), ticks(old.start)],
         ),
     ))
 }
