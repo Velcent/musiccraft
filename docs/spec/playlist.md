@@ -301,7 +301,10 @@
   edge; in song mode a triangle marks the playhead and its line runs down the
   lanes whether or not the song is playing (the view follows it only while
   playing). A clip's glyph and name stay in view when the clip starts left
-  of the visible lanes. Zoomed far in (a bar wider than 240 points), each
+  of the visible lanes. The glyph lights up under the pointer; a click on it
+  (with any tool) selects that clip alone and opens the Clip menu beside it,
+  while a drag from it trims the clip's start as a drag from the left edge
+  does. Zoomed far in (a bar wider than 240 points), each
   bar is its own group for the shading and the strongest lines.
 - The window menu's Tracks submenu unmutes every muted track and clears
   every track solo, each as one undo step.

@@ -3607,6 +3607,40 @@ fn dragging_a_clips_left_edge_trims_its_start() {
 }
 
 #[test]
+fn clicking_a_clips_glyph_selects_it_and_opens_the_clip_menu() {
+    let mut h = Harness::new(&[
+        "pattern.add",
+        "playlist.add_clip 1 1 1",
+        "playlist.add_clip 1 1 3",
+    ]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    let menu = egui::Id::new("playlist-clip-glyph-menu");
+    let (grid, _) = h.state.playlist.last_view.unwrap();
+    let glyph = pos2(grid.x((3 * bar) as f32) + 5.0, grid.y(0) + 5.0);
+    let out = h.click(glyph, PointerButton::Primary);
+    assert!(out.is_empty(), "{out:?}");
+    h.settle();
+    assert_eq!(h.state.playlist.selection, BTreeSet::from([(0, 3 * bar)]));
+    assert!(egui::Popup::is_id_open(&h.ctx, menu));
+    // The first item, Slice at playhead, cuts the clicked clip.
+    let at = 3 * bar + bar / 2;
+    h.engine.position_ticks = f64::from(at);
+    h.frame(vec![]);
+    let area = h.ctx.memory(|m| m.area_rect(menu)).expect("the menu");
+    let out = h.click(area.left_top() + vec2(30.0, 12.0), PointerButton::Primary);
+    assert_eq!(out, [format!("playlist.slice_clip 1 {at}t")]);
+    h.settle();
+    assert!(!egui::Popup::is_id_open(&h.ctx, menu));
+    // The rest of the clip still works as before: a click on its body with
+    // the Draw tool does not open the menu.
+    h.click(h.playlist_point(bar + bar / 2, 0), PointerButton::Primary);
+    h.settle();
+    assert!(!egui::Popup::is_id_open(&h.ctx, menu));
+}
+
+#[test]
 fn dragging_a_marker_label_moves_it_and_double_click_renames_it() {
     let mut h = Harness::new(&["playlist.add_marker 2 Drop"]);
     h.state.windows.playlist = true;

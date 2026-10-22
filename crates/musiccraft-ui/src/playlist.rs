@@ -1324,7 +1324,26 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             .enumerate()
             .map(|(i, c)| (i, grid.span(c.track, c.start, c.length)))
             .collect();
-        edit(ui, state, project, &grid, &response, clip, &boxes, actions);
+        // A click on a clip's kind glyph selects the clip and opens its menu;
+        // drags from the glyph still trim or move the clip.
+        let glyph_click = response
+            .clicked_by(PointerButton::Primary)
+            .then(|| response.interact_pointer_pos())
+            .flatten()
+            .and_then(|p| glyph_hit(clips, &grid, clip, p).map(|c| (c, p)));
+        let menu = egui::Id::new("playlist-clip-glyph-menu");
+        if let Some((c, pos)) = glyph_click {
+            state.playlist.selection = BTreeSet::from([(c.track, c.start)]);
+            ui.data_mut(|d| d.insert_temp(menu, pos));
+        } else {
+            edit(ui, state, project, &grid, &response, clip, &boxes, actions);
+        }
+        let at = ui.data(|d| d.get_temp::<Pos2>(menu)).unwrap_or(clip.min);
+        egui::Popup::menu(&response)
+            .id(menu)
+            .open_memory(glyph_click.map(|_| egui::SetOpenCommand::Bool(true)))
+            .anchor(egui::PopupAnchor::Position(at))
+            .show(|ui| clip_menu(ui, state, frame, actions));
         draw_ruler(
             &painter,
             &grid,
@@ -1604,11 +1623,15 @@ fn draw_clip(
     let strip_painter = painter.with_clip_rect(title.intersect(painter.clip_rect()));
     // The glyph and name stay in view when the clip starts left of the
     // lanes (scrolled past), up to the clip's right end.
-    let lanes_left = painter.clip_rect().left() + HEADER_WIDTH;
-    let left = (title.left() + 1.0)
-        .max(lanes_left + 1.0)
-        .min((title.right() - title_h - 24.0).max(title.left() + 1.0));
-    let glyph_rect = Rect::from_min_size(pos2(left, title.top()), vec2(title_h, title_h));
+    let glyph_rect = glyph_rect(rect, painter.clip_rect());
+    if painter
+        .ctx()
+        .pointer_hover_pos()
+        .is_some_and(|p| glyph_rect.contains(p) && painter.clip_rect().contains(p))
+    {
+        // The glyph opens the clip's menu, so it lights up under the pointer.
+        strip_painter.rect_filled(glyph_rect.shrink(1.0), 2.0, text.gamma_multiply(0.25));
+    }
     icons::paint(&strip_painter, glyph_rect, glyph, text);
     strip_painter.text(
         pos2(glyph_rect.right() + 1.0, title.center().y),
@@ -1617,6 +1640,32 @@ fn draw_clip(
         FontId::proportional(theme::FONT_CAPTION + 0.5),
         text,
     );
+}
+
+/// Where a clip's kind glyph sits in its title strip (`rect` is the drawn
+/// clip, `view` the visible lanes). It opens the clip's menu.
+fn glyph_rect(rect: Rect, view: Rect) -> Rect {
+    let title_h = TITLE_HEIGHT.min(rect.height());
+    // The glyph and name stay in view when the clip starts left of the
+    // lanes (scrolled past), up to the clip's right end.
+    let lanes_left = view.left() + HEADER_WIDTH;
+    let left = (rect.left() + 1.0)
+        .max(lanes_left + 1.0)
+        .min((rect.right() - title_h - 24.0).max(rect.left() + 1.0));
+    Rect::from_min_size(pos2(left, rect.top()), vec2(title_h, title_h))
+}
+
+/// The clip under `pos` whose kind glyph `pos` is on.
+fn glyph_hit(clips: &[Clip], grid: &Grid, view: Rect, pos: Pos2) -> Option<Clip> {
+    if pos.x <= view.left() + HEADER_WIDTH || pos.y <= view.top() + RULER_HEIGHT {
+        return None;
+    }
+    clips.iter().rev().copied().find(|c| {
+        let rect = grid
+            .span(c.track, c.start, c.length)
+            .shrink2(vec2(0.5, 1.0));
+        glyph_rect(rect, view).contains(pos)
+    })
 }
 
 /// A clip's colour, name and kind glyph.
