@@ -32,6 +32,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             insert_track,
         ),
         cmd(
+            "mixer.reset_track",
+            "mixer.reset_track <track>",
+            "Return a mixer track to its defaults: default name and colour, no effects, sends or EQ, unity level, centred, routed to the master.",
+            reset_track,
+        ),
+        cmd(
+            "mixer.set_track",
+            "mixer.set_track <track> <json>",
+            "Replace a mixer track's settings with a saved copy (the undo of mixer.reset_track).",
+            set_track,
+        ),
+        cmd(
             "mixer.rename",
             "mixer.rename <track> <name>",
             "Rename a mixer track.",
@@ -365,6 +377,59 @@ fn remove_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     Ok(Outcome::undoable(
         format!("removed mixer track {index} ({name})"),
         Invocation::new("mixer.insert_track", [index.to_string(), json]),
+    ))
+}
+
+/// The name a track has when made: "Master", or "Insert n".
+fn default_track_name(index: usize) -> String {
+    if index == 0 {
+        "Master".to_owned()
+    } else {
+        format!("Insert {index}")
+    }
+}
+
+fn reset_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let index = track_arg(project, args, 0)?;
+    let slots = project.mixer[index].effects.len();
+    if (0..slots).any(|slot| super::automation::targets_track(project, index, Some(slot))) {
+        return Err(args.invalid(
+            "an automation drives one of this track's effects; delete the automation first",
+        ));
+    }
+    let old = std::mem::replace(
+        &mut project.mixer[index],
+        MixerTrack::new(default_track_name(index)),
+    );
+    let json = serde_json::to_string(&old).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Outcome::undoable(
+        format!("reset mixer track {index}"),
+        Invocation::new("mixer.set_track", [index.to_string(), json]),
+    ))
+}
+
+fn set_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let track: MixerTrack =
+        serde_json::from_str(args.str(1)?).map_err(|e| args.invalid(e.to_string()))?;
+    let len = project.mixer.len();
+    if track
+        .sends
+        .iter()
+        .any(|send| send.target <= index || send.target >= len)
+    {
+        return Err(args.invalid("sends must go to existing higher-numbered tracks"));
+    }
+    if track.effects.len() > MAX_EFFECT_SLOTS {
+        return Err(args.invalid(format!("a track holds at most {MAX_EFFECT_SLOTS} effects")));
+    }
+    let old = std::mem::replace(&mut project.mixer[index], track);
+    let json = serde_json::to_string(&old).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Outcome::undoable(
+        format!("set mixer track {index}"),
+        Invocation::new("mixer.set_track", [index.to_string(), json]),
     ))
 }
 

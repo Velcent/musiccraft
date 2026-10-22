@@ -209,15 +209,52 @@ fn window_menu(
             ui.close();
         }
         colour_menu(ui, index, track, actions);
-        if index > 0
-            && ui
-                .button(RichText::new("Delete").color(theme::DANGER))
-                .clicked()
+        ui.separator();
+        let tracks = selection(state);
+        if ui.button("Reset selected tracks").clicked() {
+            run_each(actions, "mixer.reset_track", &tracks, "");
+            ui.close();
+        }
+        // Highest first, so the numbers still to remove stay put.
+        let inserts: Vec<usize> = tracks.iter().rev().copied().filter(|&t| t > 0).collect();
+        let delete = RichText::new("Delete selected tracks").color(theme::DANGER);
+        if widgets::add_enabled(ui, !inserts.is_empty(), egui::Button::new(delete)).clicked() {
+            run_each(actions, "mixer.remove_track", &inserts, "");
+            select(state, inserts.last().map_or(0, |t| t - 1), false);
+            ui.close();
+        }
+        let idle = idle_inserts(project);
+        let clear = egui::Button::new("Clear out idle inserts");
+        if widgets::add_enabled(ui, !idle.is_empty(), clear)
+            .hint("Deletes inserts nothing plays through: no channel, no incoming send, no effects, default settings")
+            .clicked()
         {
-            run(actions, "mixer.remove_track", [index.to_string()]);
+            run_each(actions, "mixer.remove_track", &idle, "");
+            select(state, 0, false);
             ui.close();
         }
     });
+}
+
+/// Inserts nothing plays through, highest first: no channel routed to them,
+/// no send into them, and every setting but the name at its default.
+fn idle_inserts(project: &Project) -> Vec<usize> {
+    (1..project.mixer.len())
+        .rev()
+        .filter(|&t| {
+            let track = &project.mixer[t];
+            let fresh = MixerTrack {
+                name: track.name.clone(),
+                ..MixerTrack::new("")
+            };
+            *track == fresh
+                && !project.channels.iter().any(|c| c.mixer_track == t)
+                && !project
+                    .mixer
+                    .iter()
+                    .any(|other| other.sends.iter().any(|send| send.target == t))
+        })
+        .collect()
 }
 
 const EFFECTS_WIDTH: f32 = 270.0;
@@ -576,11 +613,15 @@ fn targets(state: &UiState, index: usize) -> Vec<usize> {
     }
 }
 
-/// Runs `name <track> <value>` for each of `tracks`, as one undo step.
+/// Runs `name <track> <value>` (or `name <track>` when `value` is empty) for
+/// each of `tracks`, as one undo step.
 fn run_each(actions: &mut Vec<Action>, name: &str, tracks: &[usize], value: &str) {
     let mut lines: Vec<String> = tracks
         .iter()
-        .map(|t| Invocation::new(name, [t.to_string(), value.to_owned()]).to_string())
+        .map(|t| {
+            let args = [t.to_string(), value.to_owned()];
+            Invocation::new(name, args.into_iter().filter(|a| !a.is_empty())).to_string()
+        })
         .collect();
     match lines.len() {
         0 => {}
@@ -1661,5 +1702,41 @@ mod tests {
         }
         let mixer = &session.project().mixer;
         assert!(mixer[1].phase_invert && mixer[2].phase_invert && !mixer[3].phase_invert);
+    }
+
+    #[test]
+    fn idle_inserts_are_untouched_unfed_and_unrouted() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        let last = session.project().mixer.len() - 1;
+        let all: Vec<usize> = (1..=last).rev().collect();
+        assert_eq!(
+            idle_inserts(session.project()),
+            all,
+            "a new project's inserts are all idle"
+        );
+        for line in [
+            "channel.add_synth",
+            "channel.route 1 1",
+            "mixer.set_send 2 3 0.5",
+            "mixer.set_pan 4 0.5",
+            "mixer.rename 5 Named",
+        ] {
+            session.run_line(line).unwrap();
+        }
+        let idle = idle_inserts(session.project());
+        assert!(!idle.contains(&1), "a channel plays through 1");
+        assert!(!idle.contains(&2), "2 sends to 3");
+        assert!(!idle.contains(&3), "3 is fed by 2");
+        assert!(!idle.contains(&4), "4 is panned");
+        assert!(idle.contains(&5), "a name alone does not count");
+        let mut actions = Vec::new();
+        run_each(&mut actions, "mixer.remove_track", &idle, "");
+        if let [Action::Run(batch)] = actions.as_slice() {
+            session.run(batch).unwrap();
+        }
+        assert_eq!(session.project().mixer.len(), 5);
     }
 }

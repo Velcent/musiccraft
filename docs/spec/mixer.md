@@ -159,8 +159,14 @@ Ranges and defaults are defined in `musiccraft-params`.
 - Header: window menu, the strip-details switch, the slot-panel switch and
   the add-insert button (a plus: adds an insert and selects it), then the
   title (`Mixer — <track>`) at the right end before the window buttons. The
-  window menu holds View (Strip details, Slot panel) and Tracks (Rename…,
-  Delete), then the common items.
+  window menu holds View (Strip details, Slot panel) and Tracks (Rename…
+  and Colour ▸ for the primary track; Reset selected tracks, which returns
+  each to its defaults with `mixer.reset_track <track>`; Delete selected
+  tracks, in the danger tone; Clear out idle inserts, which deletes every
+  insert with no channel routed to it, no send into it and every setting but
+  its name at the default), then the common items. Each item is one undo
+  step. `mixer.reset_track` is refused while an automation drives one of the
+  track's effects; its undo is `mixer.set_track <track> <json>`.
 - The selected strip is lifted to the raised tone with a thin accent edge
   around the whole strip, and its meter well is outlined in the accent.
 - Several tracks can be selected. Ctrl+Shift+click on a number cell, name or

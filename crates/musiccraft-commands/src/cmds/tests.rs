@@ -2059,3 +2059,25 @@ fn mixer_docks_are_saved_undoable_and_never_move_the_master() {
     run(&mut s, "edit.undo");
     assert_eq!(s.project().mixer[4].dock, musiccraft_project::Dock::Middle);
 }
+
+#[test]
+fn resetting_a_mixer_track_clears_it_and_undo_brings_it_back() {
+    let mut s = session();
+    run(&mut s, "mixer.rename 3 Vox");
+    run(&mut s, "mixer.set_volume 3 0.5");
+    run(&mut s, "mixer.add_effect 3 delay");
+    run(&mut s, "mixer.set_send 3 5 0.8");
+    run(&mut s, "mixer.set_track_color 3 4");
+    let before = s.project().mixer[3].clone();
+    run(&mut s, "mixer.reset_track 3");
+    let reset = &s.project().mixer[3];
+    assert_eq!(reset.name, "Insert 3");
+    assert!(reset.effects.is_empty() && reset.sends.is_empty());
+    assert_eq!((reset.volume, reset.color), (1.0, None));
+    assert!(reset.to_master);
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().mixer[3], before);
+    run(&mut s, "mixer.reset_track 0");
+    assert_eq!(s.project().mixer[0].name, "Master");
+    assert!(s.run_line("mixer.set_track 4 {\"bad\": 1}").is_err());
+}
