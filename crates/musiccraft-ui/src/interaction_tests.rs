@@ -2293,3 +2293,32 @@ fn midi_output_and_stack_windows_show_a_short_strip() {
         crate::channel_settings::ChannelTab::Sound
     );
 }
+
+#[test]
+fn dragging_the_envelope_peak_sets_the_attack_in_one_step() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_settings = true;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Envelope;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let handle = (0..40)
+        .flat_map(|j| (0..100).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 4.0 * i as f32, 60.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some("Attack: drag across")
+        })
+        .expect("the attack handle");
+    let attack = |h: &Harness| {
+        h.session.project().channels[0]
+            .params
+            .get(musiccraft_project::params::inst::ATTACK)
+    };
+    let before = attack(&h);
+    h.drag(handle, handle + vec2(40.0, 0.0));
+    h.settle();
+    assert!(attack(&h) > before + 0.01, "{} → {}", before, attack(&h));
+    h.session.run_line("edit.undo").unwrap();
+    assert!((attack(&h) - before).abs() < 1e-6);
+}

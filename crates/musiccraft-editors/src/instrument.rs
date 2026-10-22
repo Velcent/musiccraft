@@ -400,14 +400,64 @@ impl<'a> InstrumentEditor<'a> {
     /// The amplitude envelope knobs and their graph.
     pub fn envelope(&mut self, ui: &mut Ui) {
         section(ui, "ENVELOPE", |ui| {
+            self.envelope_graph(ui);
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
                 self.knob(ui, inst::ATTACK, "Attack");
                 self.knob(ui, inst::DECAY, "Decay");
                 self.knob(ui, inst::SUSTAIN, "Sustain");
                 self.knob(ui, inst::RELEASE, "Release");
-                envelope_graph(ui, self.values, self.color);
             });
         });
+    }
+
+    /// The envelope's graph with a round handle at each stage's corner: the
+    /// peak sets the attack, the next corner the decay (across) and sustain
+    /// (up and down), the end the release. One drag is one undo step.
+    fn envelope_graph(&mut self, ui: &mut Ui) {
+        let (rect, _) =
+            ui.allocate_exact_size(vec2(ui.available_width().max(160.0), 120.0), Sense::hover());
+        ui.painter().rect_filled(rect, 4.0, theme::LCD_BG);
+        let shape = EnvelopeShape::new(rect.shrink(8.0));
+        let values = [inst::ATTACK, inst::DECAY, inst::SUSTAIN, inst::RELEASE].map(|i| self.get(i));
+        let corners = shape.corners(values);
+        ui.painter_at(rect)
+            .add(Shape::line(corners.to_vec(), Stroke::new(2.0, self.color)));
+        let handles = [
+            (1, "Attack: drag across"),
+            (
+                2,
+                "Decay and sustain: drag across for the decay, up or down for the sustain",
+            ),
+            (4, "Release: drag across"),
+        ];
+        for (corner, hint) in handles {
+            let at = corners[corner];
+            let response = ui
+                .interact(
+                    egui::Rect::from_center_size(at, vec2(14.0, 14.0)),
+                    self.salt.with(("envelope-handle", corner)),
+                    Sense::drag(),
+                )
+                .hint(hint);
+            let lit = response.hovered() || response.dragged();
+            ui.painter()
+                .circle_filled(at, if lit { 5.5 } else { 4.5 }, self.color);
+            if response.drag_started() {
+                self.edits.push(InstrumentEdit::Begin);
+            }
+            let Some(pointer) = response
+                .interact_pointer_pos()
+                .filter(|_| response.dragged())
+            else {
+                continue;
+            };
+            for (index, new) in shape.drag(corner, pointer, values) {
+                if (new - self.get(index)).abs() > 1e-6 {
+                    self.edits.push(InstrumentEdit::Set(index, new));
+                }
+            }
+        }
     }
 
     /// The Functions page: voices, timing (with swing), choke, arpeggiator
@@ -962,30 +1012,72 @@ pub fn waveform(ui: &mut Ui, overview: Option<&[(f32, f32)]>, color: Color32, sl
 }
 
 /// The envelope shape: attack, decay, a fixed sustain segment, release.
-fn envelope_graph(ui: &mut Ui, values: &Params, color: Color32) {
-    let (rect, _) =
-        ui.allocate_exact_size(vec2(ui.available_width().max(100.0), 56.0), Sense::hover());
-    let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 4.0, theme::LCD_BG);
-    let a = value(values, inst::ATTACK);
-    let d = value(values, inst::DECAY);
-    let s = value(values, inst::SUSTAIN).clamp(0.0, 1.0);
-    let r = value(values, inst::RELEASE);
-    // Time axis compressed with a square root so short stages stay visible.
-    let w = |t: f32| t.max(0.0).sqrt();
-    let hold = 0.6;
-    let total = w(a) + w(d) + hold + w(r);
-    let inner = rect.shrink(6.0);
-    let x = |t: f32| inner.left() + t / total.max(1e-6) * inner.width();
-    let y = |level: f32| inner.bottom() - level * inner.height();
-    let points = vec![
-        pos2(x(0.0), y(0.0)),
-        pos2(x(w(a)), y(1.0)),
-        pos2(x(w(a) + w(d)), y(s)),
-        pos2(x(w(a) + w(d) + hold), y(s)),
-        pos2(x(total), y(0.0)),
-    ];
-    painter.add(Shape::line(points, Stroke::new(2.0, color)));
+/// Where the envelope graph draws its stages. Each timed stage has a
+/// quarter of the width, with time on a square-root scale up to the
+/// parameter's 5 s maximum, so short stages stay visible and a drag maps
+/// back to the same time; the sustain hold is a fixed quarter.
+struct EnvelopeShape {
+    inner: egui::Rect,
+}
+
+impl EnvelopeShape {
+    const MAX_SECONDS: f32 = 5.0;
+
+    fn new(inner: egui::Rect) -> Self {
+        Self { inner }
+    }
+
+    fn quarter(&self) -> f32 {
+        self.inner.width() / 4.0
+    }
+
+    fn width_of(&self, seconds: f32) -> f32 {
+        (seconds.max(0.0) / Self::MAX_SECONDS).sqrt().min(1.0) * self.quarter()
+    }
+
+    fn seconds_at(&self, width: f32) -> f32 {
+        let t = (width / self.quarter()).clamp(0.0, 1.0);
+        t * t * Self::MAX_SECONDS
+    }
+
+    fn y(&self, level: f32) -> f32 {
+        self.inner.bottom() - level.clamp(0.0, 1.0) * self.inner.height()
+    }
+
+    /// Start, peak, decay end, hold end and release end, from attack, decay,
+    /// sustain and release.
+    fn corners(&self, [a, d, s, r]: [f32; 4]) -> [Pos2; 5] {
+        let x0 = self.inner.left();
+        let x1 = x0 + self.width_of(a);
+        let x2 = x1 + self.width_of(d);
+        let x3 = x2 + self.quarter();
+        let x4 = x3 + self.width_of(r);
+        let (top, bottom) = (self.y(1.0), self.y(0.0));
+        [
+            pos2(x0, bottom),
+            pos2(x1, top),
+            pos2(x2, self.y(s)),
+            pos2(x3, self.y(s)),
+            pos2(x4, bottom),
+        ]
+    }
+
+    /// The parameters a drag of `corner` to `pointer` sets.
+    fn drag(&self, corner: usize, pointer: Pos2, values: [f32; 4]) -> Vec<(usize, f32)> {
+        let corners = self.corners(values);
+        match corner {
+            1 => vec![(inst::ATTACK, self.seconds_at(pointer.x - corners[0].x))],
+            2 => {
+                let level = (self.inner.bottom() - pointer.y) / self.inner.height();
+                vec![
+                    (inst::DECAY, self.seconds_at(pointer.x - corners[1].x)),
+                    (inst::SUSTAIN, level.clamp(0.0, 1.0)),
+                ]
+            }
+            4 => vec![(inst::RELEASE, self.seconds_at(pointer.x - corners[3].x))],
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// The group "Self-choke" puts a channel in, given its choke group and the
@@ -1058,5 +1150,20 @@ mod tests {
         assert_eq!(self_choke_group(0.0, 5.0), Some(5.0));
         assert_eq!(self_choke_group(2.0, 4.0), Some(2.0));
         assert_eq!(self_choke_group(4.0, 4.0), None);
+    }
+
+    #[test]
+    fn envelope_handles_map_back_to_their_stage() {
+        let shape = EnvelopeShape::new(egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 100.0)));
+        let values = [0.2, 0.3, 0.8, 1.25];
+        let corners = shape.corners(values);
+        // Dragging each handle onto itself gives back the same values.
+        assert!((shape.drag(1, corners[1], values)[0].1 - 0.2).abs() < 1e-4);
+        let decay = shape.drag(2, corners[2], values);
+        assert!((decay[0].1 - 0.3).abs() < 1e-4 && (decay[1].1 - 0.8).abs() < 1e-4);
+        assert!((shape.drag(4, corners[4], values)[0].1 - 1.25).abs() < 1e-4);
+        // Past the end of its quarter a stage stops at the maximum.
+        let far = shape.drag(1, pos2(1_000.0, 0.0), values);
+        assert!((far[0].1 - EnvelopeShape::MAX_SECONDS).abs() < 1e-4);
     }
 }

@@ -364,6 +364,12 @@ square partials), normalized to a 0.9 peak and faded out at the end.
     plugins, drawn disabled, so the strip never shifts. Clicking the
     "Track" caption routes to a free mixer track (`channel.route_free`).
     Double-clicking the box opens the mixer with that track selected.
+- The **Envelope** page shows the envelope graph over its four knobs
+  (Attack, Decay, Sustain, Release). The graph is drawn in the channel colour
+  with a round handle at the peak (drag across: attack), the decay corner
+  (across: decay; up or down: sustain) and the end (across: release). Each
+  timed stage has a quarter of the width on a square-root time scale, so a
+  drag maps back to the same time. One drag is one undo step.
 - The **page** under the strip is the selected tab's contents: Functions
   tiles its boxes two to a row (VOICES | TIMING with swing, ARPEGGIATOR full
   width, CHOKE | ECHO). Only the page scrolls. The last tab used stays
