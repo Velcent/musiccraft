@@ -1,5 +1,8 @@
+use std::collections::BTreeMap;
+
 use musiccraft_project::{
     Clip, ClipSource, Instrument, Marker, MarkerAction, Meter, PLAYLIST_TRACKS, Project,
+    TRACK_HEIGHT_PERCENT,
 };
 
 use crate::args::{Args, on_off, ticks};
@@ -85,6 +88,24 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "playlist.set_track_color <track> <1-16|none>",
             "Colour a playlist track.",
             set_track_color,
+        ),
+        cmd(
+            "playlist.set_track_height",
+            "playlist.set_track_height <track> <percent|reset>",
+            "Set one playlist track's height as a percentage of the global track height (25-400), or reset it to 100.",
+            set_track_height,
+        ),
+        cmd(
+            "playlist.reset_track_heights",
+            "playlist.reset_track_heights",
+            "Return every playlist track to the global track height.",
+            reset_track_heights,
+        ),
+        cmd(
+            "playlist.set_track_heights",
+            "playlist.set_track_heights <json>",
+            "Replace every playlist track's own height (used by undo).",
+            set_track_heights,
         ),
         cmd(
             "playlist.toggle_track_mute",
@@ -545,6 +566,61 @@ fn set_track_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Co
         format!("playlist track {} colour {}", track + 1, label(color)),
         Invocation::new(args.name(), [(track + 1).to_string(), label(previous)]),
     ))
+}
+
+fn set_track_height(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let track = track_arg(args, 0)?;
+    let percent = match args.str(1)? {
+        "reset" => 100,
+        _ => {
+            let n = args.number(1, "height")?;
+            u16::try_from(n)
+                .ok()
+                .filter(|n| TRACK_HEIGHT_PERCENT.contains(n))
+                .ok_or_else(|| args.invalid("track heights are 25 to 400 percent"))?
+        }
+    };
+    let heights = &mut project.playlist.track_heights;
+    let previous = if percent == 100 {
+        heights.remove(&track)
+    } else {
+        heights.insert(track, percent)
+    }
+    .unwrap_or(100);
+    Ok(Outcome::undoable(
+        format!("playlist track {} height {percent}%", track + 1),
+        Invocation::new(args.name(), [(track + 1).to_string(), previous.to_string()]),
+    ))
+}
+
+fn reset_track_heights(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    let old = std::mem::take(&mut project.playlist.track_heights);
+    Ok(Outcome::undoable(
+        "playlist track heights reset".to_owned(),
+        restore_heights(args, &old)?,
+    ))
+}
+
+fn set_track_heights(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 1)?;
+    let mut heights: BTreeMap<u32, u16> =
+        serde_json::from_str(args.str(0)?).map_err(|e| args.invalid(e.to_string()))?;
+    heights.retain(|t, h| *t < PLAYLIST_TRACKS && *h != 100 && TRACK_HEIGHT_PERCENT.contains(h));
+    let old = std::mem::replace(&mut project.playlist.track_heights, heights);
+    Ok(Outcome::undoable(
+        "playlist track heights".to_owned(),
+        restore_heights(args, &old)?,
+    ))
+}
+
+fn restore_heights(
+    args: &Args<'_>,
+    heights: &BTreeMap<u32, u16>,
+) -> Result<Invocation, CommandError> {
+    let json = serde_json::to_string(heights).map_err(|e| args.invalid(e.to_string()))?;
+    Ok(Invocation::new("playlist.set_track_heights", [json]))
 }
 
 pub(super) fn replace_clips(

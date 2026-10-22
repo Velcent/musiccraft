@@ -10,6 +10,7 @@ use musiccraft_commands::Invocation;
 use musiccraft_project::params::PPQ;
 use musiccraft_project::{
     AutomationId, Clip, ClipSource, MarkerAction, Meter, PLAYLIST_TRACKS, PlayMode, Project,
+    TRACK_HEIGHT_PERCENT,
 };
 
 use crate::dialogs::Dialog;
@@ -52,6 +53,9 @@ const TRACK_HEIGHT_RANGE: (f32, f32) = (18.0, 96.0);
 pub struct PlaylistState {
     pub(crate) px_per_bar: f32,
     row_height: f32,
+    /// A track divider being dragged: the track and its height so far, in
+    /// percent of `row_height`. Drawn at once, run as one command on release.
+    resize: Option<(u32, u16)>,
     /// Scroll offset of the last frame, in points.
     pub(crate) offset: Vec2,
     /// Scroll offset asked for by the scroll bars, applied next frame.
@@ -120,6 +124,7 @@ impl Default for PlaylistState {
         Self {
             px_per_bar: 72.0,
             row_height: TRACK_HEIGHT,
+            resize: None,
             offset: Vec2::ZERO,
             jump: None,
             snap: Snap::Bar,
@@ -406,6 +411,14 @@ fn window_menu(
             "No playlist track is soloed",
             per_track(&list.soloed_tracks, "playlist.toggle_track_solo"),
         );
+        menu_item(
+            ui,
+            actions,
+            "Reset all track heights",
+            "Every playlist track returns to the global height",
+            (!list.track_heights.is_empty())
+                .then(|| Invocation::bare("playlist.reset_track_heights")),
+        );
     });
     ui.menu_button("View", |ui| {
         let view = &mut state.playlist.view;
@@ -660,7 +673,12 @@ fn show_source(state: &mut UiState, project: &Project, source: ClipSource) {
         .min_by_key(|c| (c.start, c.track));
     if let Some(c) = first {
         let x = c.start as f32 / ZOOM_TICKS as f32 * list.px_per_bar;
-        list.jump = Some(vec2(x, c.track as f32 * list.row_height));
+        let y = list
+            .last_view
+            .map_or(c.track as f32 * list.row_height, |(grid, _)| {
+                grid.y(c.track) - grid.origin.y
+            });
+        list.jump = Some(vec2(x, y));
     }
 }
 
@@ -1073,16 +1091,47 @@ fn automation_section(
     }
 }
 
+/// The tracks' own heights as grid row scales, or `None` when every track
+/// has the global height.
+fn row_scales(
+    playlist: &musiccraft_project::Playlist,
+    resize: Option<(u32, u16)>,
+) -> Option<crate::geometry::RowScales> {
+    if playlist.track_heights.is_empty() && resize.is_none() {
+        return None;
+    }
+    let mut scales = [100; crate::geometry::SCALED_ROWS];
+    for (&track, &percent) in playlist
+        .track_heights
+        .iter()
+        .chain(resize.as_ref().map(|(t, p)| (t, p)))
+    {
+        if let Some(scale) = scales.get_mut(track as usize) {
+            *scale = percent;
+        }
+    }
+    Some(scales)
+}
+
 fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     let project = frame.project;
     state.playlist.playhead = frame.engine.position_ticks.max(0.0) as f32;
     let px_per_tick = state.playlist.px_per_bar / ZOOM_TICKS as f32;
     let row_h = state.playlist.row_height;
+    let scales = row_scales(&project.playlist, state.playlist.resize);
     let meter = state.playlist.meter.clone();
     let bars = (meter.bar(project.playlist.length_ticks()).index + 16).max(32);
+    let tracks_height = Grid {
+        origin: Pos2::ZERO,
+        px_per_tick,
+        row_height: row_h,
+        rows: PLAYLIST_TRACKS,
+        scales,
+    }
+    .y(PLAYLIST_TRACKS);
     let size = vec2(
         HEADER_WIDTH + meter.bar_start(bars) as f32 * px_per_tick,
-        RULER_HEIGHT + PLAYLIST_TRACKS as f32 * row_h,
+        RULER_HEIGHT + tracks_height,
     );
     // The scroll/zoom row runs along the top and the vertical bar down the
     // right; the view (ruler, track headers and lanes) fills the rest.
@@ -1105,6 +1154,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             px_per_tick,
             row_height: row_h,
             rows: PLAYLIST_TRACKS,
+            scales,
         };
         state.playlist.last_view = Some((grid, clip));
         let painter = ui.painter_at(clip);
@@ -1392,7 +1442,7 @@ fn draw_grid(
         .row_at(clip.bottom() - 1.0)
         .unwrap_or(PLAYLIST_TRACKS - 1);
     for row in (first_row..=last_row).filter(|_| view.separators) {
-        let y = grid.y(row) + grid.row_height - 0.5;
+        let y = grid.y(row + 1) - 0.5;
         painter.line_segment(
             [pos2(grid.origin.x, y), pos2(rect.right(), y)],
             Stroke::new(1.0, theme::GRID_LINE),
@@ -2179,10 +2229,7 @@ fn headers(
         .unwrap_or(PLAYLIST_TRACKS - 1);
     for row in first..=last {
         let y = grid.y(row);
-        let r = Rect::from_min_max(
-            pos2(area.left(), y),
-            pos2(area.right(), y + grid.row_height),
-        );
+        let r = Rect::from_min_max(pos2(area.left(), y), pos2(area.right(), grid.y(row + 1)));
         let playlist = &project.playlist;
         if let Some(&color) = playlist.track_colors.get(&row) {
             painter.rect_filled(
@@ -2240,7 +2287,16 @@ fn headers(
                     ui.close();
                 }
             });
+            height_menu(ui, playlist, row, actions);
         });
+        track_divider(
+            ui,
+            state,
+            grid,
+            (r, playlist.track_height(row)),
+            row,
+            actions,
+        );
         let dot = Rect::from_center_size(r.right_center() - vec2(12.0, 0.0), vec2(14.0, 14.0));
         if !area.contains_rect(dot) {
             continue;
@@ -2287,6 +2343,88 @@ fn headers(
             )));
         }
     }
+}
+
+/// Heights a track's menu offers, in percent of the global track height.
+const HEIGHT_CHOICES: [u16; 6] = [50, 75, 100, 150, 200, 300];
+
+/// The track menu's Height submenu: this track's own height.
+fn height_menu(
+    ui: &mut egui::Ui,
+    playlist: &musiccraft_project::Playlist,
+    row: u32,
+    actions: &mut Vec<Action>,
+) {
+    let current = playlist.track_height(row);
+    ui.menu_button("Height", |ui| {
+        for percent in HEIGHT_CHOICES {
+            if ui
+                .selectable_label(current == percent, format!("{percent}%"))
+                .clicked()
+            {
+                actions.push(Action::Run(Invocation::new(
+                    "playlist.set_track_height",
+                    [(row + 1).to_string(), percent.to_string()],
+                )));
+                ui.close();
+            }
+        }
+    });
+}
+
+/// The bottom edge of a track header: dragging it resizes that track alone,
+/// and Alt+click returns it to the global height.
+fn track_divider(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    grid: &Grid,
+    (header, saved): (Rect, u16),
+    row: u32,
+    actions: &mut Vec<Action>,
+) {
+    let edge = Rect::from_min_max(
+        pos2(header.left(), header.bottom() - 3.0),
+        pos2(header.right(), header.bottom() + 2.0),
+    );
+    let response = ui
+        .interact(
+            edge,
+            ui.id().with(("track-divider", row)),
+            Sense::click_and_drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::ResizeVertical);
+    let list = &mut state.playlist;
+    let origin = ui.input(|i| i.pointer.press_origin());
+    if response.dragged()
+        && let (Some(pointer), Some(origin)) = (response.interact_pointer_pos(), origin)
+    {
+        // The saved height plus the drag so far, in steps of 5%.
+        let moved = (pointer.y - origin.y) / grid.row_height.max(1.0) * 100.0;
+        let percent = ((f32::from(saved) + moved) / 5.0).round().max(0.0) as u16 * 5;
+        let percent = percent.clamp(*TRACK_HEIGHT_PERCENT.start(), *TRACK_HEIGHT_PERCENT.end());
+        list.resize = Some((row, percent));
+    }
+    let shown = match list.resize {
+        Some((r, percent)) if r == row => percent,
+        _ => (grid.height_of(row) / grid.row_height.max(1.0) * 100.0).round() as u16,
+    };
+    if response.drag_stopped()
+        && let Some((track, percent)) = list.resize.take()
+    {
+        actions.push(Action::Run(Invocation::new(
+            "playlist.set_track_height",
+            [(track + 1).to_string(), percent.to_string()],
+        )));
+    }
+    if response.clicked() && ui.input(|i| i.modifiers.alt) {
+        actions.push(Action::Run(Invocation::new(
+            "playlist.set_track_height",
+            [(row + 1).to_string(), "reset".to_owned()],
+        )));
+    }
+    response.hint(format!(
+        "Track height {shown}% · drag to resize this track · Alt+click to reset"
+    ));
 }
 
 fn moving_clips(state: &UiState, clips: &[Clip]) -> Vec<Clip> {
@@ -2762,7 +2900,7 @@ fn drop_ghost(
     );
     let header = Rect::from_min_size(
         pos2(clip.left(), grid.y(row)),
-        vec2(HEADER_WIDTH, grid.row_height),
+        vec2(HEADER_WIDTH, grid.height_of(row)),
     );
     ui.painter_at(clip).rect_stroke(
         header.shrink(1.0),

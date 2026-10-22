@@ -148,6 +148,10 @@ const SCRIPT: &[&str] = &[
     "playlist.set_track_color 3 12",
     "playlist.set_track_color 3 none",
     "playlist.set_track_color 4 2",
+    "playlist.set_track_height 3 200",
+    "playlist.set_track_height 5 50",
+    "playlist.set_track_height 3 reset",
+    "playlist.reset_track_heights",
     "playlist.slice_clip 3 6",
     "playlist.toggle_clip_mute 3 6",
     "playlist.make_unique 3 6",
@@ -2013,4 +2017,25 @@ fn set_effects_enabled_bypasses_a_whole_track_and_undo_restores_each_slot() {
     assert_eq!(enabled, [true, false]);
     run(&mut s, "mixer.set_effects_enabled 1 on");
     assert!(s.project().mixer[1].effects.iter().all(|e| e.enabled));
+}
+
+#[test]
+fn playlist_track_heights_are_saved_undoable_and_bounded() {
+    let mut s = session();
+    run(&mut s, "playlist.set_track_height 2 150");
+    run(&mut s, "playlist.set_track_height 4 300");
+    let p = s.project();
+    assert_eq!(p.playlist.track_heights.get(&1), Some(&150));
+    assert!(p.to_json().unwrap().contains("track_heights"));
+    // 100% is the default and is not stored.
+    run(&mut s, "playlist.set_track_height 2 100");
+    assert_eq!(s.project().playlist.track_heights.len(), 1);
+    assert!(s.run_line("playlist.set_track_height 2 1000").is_err());
+    run(&mut s, "playlist.reset_track_heights");
+    assert!(s.project().playlist.track_heights.is_empty());
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.track_heights.get(&3), Some(&300));
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.track_heights.get(&1), Some(&150));
 }

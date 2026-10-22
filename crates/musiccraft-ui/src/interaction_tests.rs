@@ -175,7 +175,10 @@ impl Harness {
 
     fn playlist_point(&self, tick: u32, track: u32) -> Pos2 {
         let (grid, clip) = self.state.playlist.last_view.expect("playlist drawn");
-        let p = pos2(grid.x(tick as f32), grid.y(track) + grid.row_height / 2.0);
+        let p = pos2(
+            grid.x(tick as f32),
+            grid.y(track) + grid.height_of(track) / 2.0,
+        );
         assert!(clip.contains(p), "{p:?} not visible in {clip:?}");
         p
     }
@@ -2761,4 +2764,30 @@ fn the_browser_walks_its_tree_with_the_arrow_keys_and_enter_adds_an_effect() {
         h.key(egui::Key::ArrowUp, Modifiers::NONE);
     }
     assert_eq!(selected(&h), Some(first));
+}
+
+#[test]
+fn dragging_a_track_divider_resizes_that_track_alone() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.unwrap();
+    let row_h = grid.row_height;
+    let edge = pos2(clip.left() + 40.0, grid.y(1) - 1.0);
+    let ran = h.drag(edge, edge + vec2(0.0, row_h));
+    assert_eq!(ran, ["playlist.set_track_height 1 200"]);
+    h.settle();
+    let (grid, _) = h.state.playlist.last_view.unwrap();
+    assert!((grid.height_of(0) - 2.0 * row_h).abs() < 0.5);
+    assert!(
+        (grid.height_of(1) - row_h).abs() < 0.5,
+        "the next track keeps its height"
+    );
+    // Alt+click on the divider returns the track to the global height.
+    h.modifiers = Modifiers::ALT;
+    let edge = pos2(clip.left() + 40.0, grid.y(1) - 1.0);
+    let ran = h.click(edge, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(ran, ["playlist.set_track_height 1 reset"]);
+    assert!(h.session.project().playlist.track_heights.is_empty());
 }

@@ -996,6 +996,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             px_per_tick,
             row_height: key_h,
             rows: KEYS,
+            scales: None,
         };
         state.roll.last_view = Some((grid, clip));
         let painter = ui.painter_at(clip);

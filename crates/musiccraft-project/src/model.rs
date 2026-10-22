@@ -29,6 +29,8 @@ pub const DEFAULT_CHANNEL_VOLUME: f32 = 0.8;
 pub const MAX_PATTERN_STEPS: u32 = 1024;
 /// Number of playlist track rows.
 pub const PLAYLIST_TRACKS: u32 = 64;
+/// The range of a playlist track's own height, in percent of the global one.
+pub const TRACK_HEIGHT_PERCENT: std::ops::RangeInclusive<u16> = 25..=400;
 /// Inserts in a new project's mixer (plus master).
 pub const DEFAULT_INSERTS: usize = 16;
 /// Key that steps toggled in the channel rack play.
@@ -1192,6 +1194,10 @@ pub struct Playlist {
     /// Track colours by row (0-based): palette index 0..=15.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub track_colors: BTreeMap<u32, u8>,
+    /// Track heights by row (0-based), in percent of the global track height
+    /// (`TRACK_HEIGHT_PERCENT`); rows not listed are 100%.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub track_heights: BTreeMap<u32, u16>,
     /// Song-mode loop region `(start, end)` in ticks, if set.
     #[serde(default)]
     pub loop_range: Option<(u32, u32)>,
@@ -1201,6 +1207,12 @@ pub struct Playlist {
 }
 
 impl Playlist {
+    /// `track`'s own height, in percent of the global track height.
+    #[must_use]
+    pub fn track_height(&self, track: u32) -> u16 {
+        self.track_heights.get(&track).copied().unwrap_or(100)
+    }
+
     /// Whether clips on `track` play: not muted, and soloed when any row is.
     #[must_use]
     pub fn track_audible(&self, track: u32) -> bool {

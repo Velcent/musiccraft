@@ -104,7 +104,17 @@ pub struct Grid {
     pub row_height: f32,
     /// Number of rows.
     pub rows: u32,
+    /// Rows with their own height: each row's share of `row_height` in
+    /// percent (the playlist's per-track heights). `None`: every row is
+    /// `row_height` tall.
+    pub scales: Option<RowScales>,
 }
+
+/// Rows covered by [`Grid::scales`]; later rows are 100%.
+pub const SCALED_ROWS: usize = 64;
+
+/// Each row's height in percent of the grid's row height.
+pub type RowScales = [u16; SCALED_ROWS];
 
 impl Grid {
     /// X coordinate of a tick.
@@ -116,7 +126,24 @@ impl Grid {
     /// Y coordinate of the top of a row.
     #[must_use]
     pub fn y(&self, row: u32) -> f32 {
-        self.origin.y + row as f32 * self.row_height
+        let Some(scales) = &self.scales else {
+            return self.origin.y + row as f32 * self.row_height;
+        };
+        let row = row as usize;
+        let scaled: u32 = scales.iter().take(row).map(|&s| u32::from(s)).sum();
+        let rest = row.saturating_sub(SCALED_ROWS) as f32;
+        self.origin.y + self.row_height * (scaled as f32 / 100.0 + rest)
+    }
+
+    /// Height of one row.
+    #[must_use]
+    pub fn height_of(&self, row: u32) -> f32 {
+        let scale = self
+            .scales
+            .as_ref()
+            .and_then(|s| s.get(row as usize))
+            .map_or(100, |&s| s);
+        self.row_height * f32::from(scale) / 100.0
     }
 
     /// Tick under an x coordinate (never negative).
@@ -128,8 +155,14 @@ impl Grid {
     /// Row under a y coordinate, if inside the grid.
     #[must_use]
     pub fn row_at(&self, y: f32) -> Option<u32> {
-        let row = ((y - self.origin.y) / self.row_height).floor();
-        (row >= 0.0 && row < self.rows as f32).then_some(row as u32)
+        if self.scales.is_none() {
+            let row = ((y - self.origin.y) / self.row_height).floor();
+            return (row >= 0.0 && row < self.rows as f32).then_some(row as u32);
+        }
+        if y < self.origin.y {
+            return None;
+        }
+        (0..self.rows).find(|&row| y < self.y(row + 1))
     }
 
     /// Screen rectangle of a span of ticks on a row.
@@ -204,7 +237,28 @@ mod tests {
             px_per_tick: 0.5,
             row_height: 10.0,
             rows: 128,
+            scales: None,
         }
+    }
+
+    #[test]
+    fn scaled_rows_stack_their_own_heights() {
+        let mut scales = [100; SCALED_ROWS];
+        scales[1] = 200;
+        scales[2] = 50;
+        let g = Grid {
+            scales: Some(scales),
+            ..grid()
+        };
+        assert!((g.y(1) - 60.0).abs() < 1e-4);
+        assert!((g.y(2) - 80.0).abs() < 1e-4);
+        assert!((g.y(3) - 85.0).abs() < 1e-4);
+        assert!((g.height_of(1) - 20.0).abs() < 1e-4);
+        assert_eq!(g.row_at(79.0), Some(1));
+        assert_eq!(g.row_at(82.0), Some(2));
+        assert_eq!(g.row_at(49.0), None);
+        // Rows past the scaled ones are 100%.
+        assert!((g.y(70) - (50.0 + 10.0 * 70.5)).abs() < 1e-3);
     }
 
     #[test]

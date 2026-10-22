@@ -19,6 +19,15 @@
   and pattern menus share one Colour submenu: two rows of eight swatches with
   the current one outlined, then "No colour". A coloured row shows a stripe of its colour at the
   left of its header; silenced rows show their name dimmed.
+- **Track heights.** Each row can have its own height, a percentage of the
+  global track height (25–400%, default 100%; saved, undoable):
+  `playlist.set_track_height <track> <percent|reset>` and
+  `playlist.reset_track_heights` (window menu → Tracks → "Reset all track
+  heights"). The row's menu has Height ▸ 50%, 75%, 100%, 150%, 200%, 300%.
+  Dragging a header's bottom edge resizes that row alone in steps of 5%, shown
+  at once and saved as one step on release; the hint shows the percentage.
+  Alt+click on the edge resets the row. The vertical zoom still scales every
+  row together, keeping their proportions.
 - Playlist time arguments are in bars from 0 of the song's time signatures
   (`time-signatures.md`); fractions are allowed and `<n>t` gives exact ticks.
 - Commands: `playlist.add_clip <pattern> <track> <start> [length]` (default length:

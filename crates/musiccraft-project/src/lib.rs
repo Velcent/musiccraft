@@ -25,7 +25,7 @@ pub use model::{
     Instrument, InstrumentParams, MAX_PATTERN_STEPS, MAX_SENDS, MAX_VOLUME, MIN_VOLUME, Marker,
     MarkerAction, MixerSend, MixerTrack, Note, NoteProps, PLAYLIST_TRACKS, PanLaw, Pattern,
     PatternId, PatternLane, PlayMode, Playlist, PluginRef, PluginSlot, STEP_KEY, SampleZone,
-    TrackEq,
+    TRACK_HEIGHT_PERCENT, TrackEq,
 };
 pub use musiccraft_meter as meter;
 pub use musiccraft_meter::{Meter, TimeSig};
@@ -690,6 +690,9 @@ impl Project {
         playlist
             .track_colors
             .retain(|t, c| *t < PLAYLIST_TRACKS && *c < 16);
+        playlist
+            .track_heights
+            .retain(|t, h| *t < PLAYLIST_TRACKS && *h != 100 && TRACK_HEIGHT_PERCENT.contains(h));
         // Older files kept swing per pattern: take the largest.
         if self.swing == 0.0 {
             self.swing = self
