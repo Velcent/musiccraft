@@ -337,7 +337,28 @@ pub fn zoom_box(ui: &Ui, rect: Rect, id: Id, level: f32, hint: &str) -> Option<Z
 pub fn plain_area<R>(
     ui: &mut Ui,
     area: egui::ScrollArea,
+    bars: (Id, f32),
+    add: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    plain(ui, area, bars, false, add)
+}
+
+/// [`plain_area`] with the vertical bar at the left, for a column docked at
+/// the left edge (the bar sits on its outer side).
+pub fn plain_area_left<R>(
+    ui: &mut Ui,
+    area: egui::ScrollArea,
+    bars: (Id, f32),
+    add: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    plain(ui, area, bars, true, add)
+}
+
+fn plain<R>(
+    ui: &mut Ui,
+    area: egui::ScrollArea,
     (id, step): (Id, f32),
+    left: bool,
     add: impl FnOnce(&mut Ui) -> R,
 ) -> R {
     let key = id.with("plain-bars");
@@ -351,13 +372,27 @@ pub fn plain_area<R>(
     if over_y {
         area = area.max_width(ui.available_width() - BAR);
     }
-    let output = area.show(ui, add);
+    let output = if over_y && left {
+        let full = ui.available_rect_before_wrap();
+        let body = Rect::from_min_max(full.min + vec2(BAR, 0.0), full.max);
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body).layout(*ui.layout()));
+        let output = area.show(&mut child, add);
+        ui.advance_cursor_after_rect(child.min_rect());
+        output
+    } else {
+        area.show(ui, add)
+    };
     let inner = output.inner_rect;
     let content = output.content_size;
     let offset = output.state.offset;
     let mut next = None;
     if over_y {
-        let rect = Rect::from_min_size(inner.right_top(), vec2(BAR, inner.height()));
+        let x = if left {
+            inner.left() - BAR
+        } else {
+            inner.right()
+        };
+        let rect = Rect::from_min_size(egui::pos2(x, inner.top()), vec2(BAR, inner.height()));
         let view = Span {
             first: offset.y,
             span: inner.height(),

@@ -1354,7 +1354,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                     .auto_shrink([false, false])
                     .max_height((ui.available_height() - footer - 6.0).max(40.0));
                 let bars = (egui::Id::new("browser-bars"), 20.0);
-                crate::scrollbars::plain_area(ui, area, bars, |ui| {
+                crate::scrollbars::plain_area_left(ui, area, bars, |ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
                     let before = ui.next_widget_position();
                     let tab = state.browser.tab;

@@ -134,7 +134,8 @@ stay our own. The full target look, window by window, is the style guide in
 - When the rows overflow, the rack shows the simplified scroll bars (rail,
   thumb and chevrons, no zoom grips): a vertical bar at the right and a
   horizontal bar underneath, each only while needed. The mixer's strips and
-  slot panel and the browser's list use the same simplified bars.
+  slot panel and the browser's list use the same simplified bars; the
+  browser's vertical bar sits on its outer (left) edge.
 
 ## Playlist
 
