@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::args::{Args, num, on_off};
 use crate::command::cmd;
-use crate::{Command, CommandError, Invocation, Outcome};
+use crate::{BATCH, Command, CommandError, Invocation, Outcome};
 
 pub(super) fn commands() -> Vec<Box<dyn Command>> {
     vec![
@@ -144,6 +144,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "mixer.set_effect_param <track> <slot> <param> <value>",
             "Set an effect parameter.",
             set_effect_param,
+        ),
+        cmd(
+            "mixer.set_effects_enabled",
+            "mixer.set_effects_enabled <track> <on|off>",
+            "Enable or bypass every effect of a track at once.",
+            set_effects_enabled,
         ),
         cmd(
             "mixer.set_effect_enabled",
@@ -804,6 +810,41 @@ fn set_effect_enabled(project: &mut Project, args: &Args<'_>) -> Result<Outcome,
             ],
         ),
     ))
+}
+
+fn set_effects_enabled(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let enabled = args.flag(1)?;
+    let track = &mut project.mixer[index];
+    // Each slot that changes gets its own line in the inverse.
+    let restore: Vec<String> = track
+        .effects
+        .iter_mut()
+        .enumerate()
+        .filter(|(_, effect)| effect.enabled != enabled)
+        .map(|(slot, effect)| {
+            effect.enabled = enabled;
+            Invocation::new(
+                "mixer.set_effect_enabled",
+                [
+                    index.to_string(),
+                    (slot + 1).to_string(),
+                    on_off(!enabled).to_owned(),
+                ],
+            )
+            .to_string()
+        })
+        .collect();
+    let message = format!(
+        "{} effects {}",
+        track.name,
+        if enabled { "enabled" } else { "bypassed" }
+    );
+    if restore.is_empty() {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(message, Invocation::new(BATCH, restore)))
 }
 
 fn set_effect_file(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

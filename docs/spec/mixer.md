@@ -151,10 +151,16 @@ Ranges and defaults are defined in `musiccraft-params`.
 - Each strip is narrow and shows, top to bottom: the number cell (the number,
   or M for the master, on a cell tinted with the track's colour), the name
   written vertically beside the peak meter, a round enable light (lit while
-  the track is heard; click mutes), the S (solo) switch as a tiny round light
+  the track is heard; click mutes, Ctrl+click solos, right-click offers Mute
+  and Solo), the S (solo) switch as a tiny round light
   under it (not on the master), the pan knob, the fader, then the track
   switches: invert phase, swap left and right, the stereo separation knob and
-  the effect count. The strip-details switch hides the track switches. The
+  the effect count, lit while any effect runs; clicking it bypasses all the
+  track's effects, or enables them all again
+  (`mixer.set_effects_enabled <track> <on|off>`, one undo step). A click
+  anywhere on a strip selects it, without taking the click from the light or
+  switch under the pointer. The wheel over the number cell or the name steps
+  the strips sideways by whole strips. The strip-details switch hides the track switches. The
   level in dB is in the fader's hint. The route arrow is at the bottom.
 - **Routing**: the arrow under every strip the selected insert may feed shows
   whether it does (filled in the highlight tone) or not (an outline) and

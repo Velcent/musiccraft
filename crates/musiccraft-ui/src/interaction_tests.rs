@@ -2089,3 +2089,30 @@ fn dropping_a_sound_on_a_sampler_row_replaces_its_sample() {
     let synth = span(&h, 1);
     assert_eq!(drop_at(&mut h, synth), ["channel.add_sampler builtin:clap"]);
 }
+
+#[test]
+fn mixer_strip_lights_solo_on_ctrl_click() {
+    let mut h = Harness::new(&["mixer.add_effect 1 delay"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let find = |h: &mut Harness, prefix: &str| {
+        (0..100)
+            .flat_map(|j| (0..60).map(move |i| (i, j)))
+            .map(|(i, j)| mixer.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with(prefix))
+            })
+    };
+    let light =
+        find(&mut h, "Enable (on) · click to mute or unmute · Ctrl").expect("insert 1's light");
+    h.modifiers = Modifiers::COMMAND;
+    let out = h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["mixer.toggle_solo 1"]);
+}

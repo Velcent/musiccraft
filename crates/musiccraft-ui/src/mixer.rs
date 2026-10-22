@@ -203,6 +203,13 @@ fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool, height: f32) -> 
         egui::epaint::TextShape::new(pos, galley, theme::TEXT)
             .with_angle(-std::f32::consts::FRAC_PI_2),
     );
+    step_strips_on_wheel(ui, &response);
+    response
+}
+
+/// The wheel over `response` (a strip's name or number) scrolls the strips by
+/// whole strips.
+fn step_strips_on_wheel(ui: &egui::Ui, response: &egui::Response) {
     let notches = if response.hovered() {
         crate::scrollbars::wheel_notches(ui)
     } else {
@@ -212,7 +219,6 @@ fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool, height: f32) -> 
         let step = vec2(-notches * (STRIP_WIDTH + 2.0), 0.0);
         crate::scrollbars::plain_step(ui.ctx(), egui::Id::new(STRIP_BARS), step);
     }
-    response
 }
 
 /// A round light of `diameter`: filled in `color` when on, a dim ring when
@@ -410,6 +416,7 @@ fn strip(
             ui.spacing_mut().item_spacing.y = 3.0;
             let hint = format!("{} — click to select, right-click for options", track.name);
             let cell = number_cell(ui, index, color, selected).hint(&hint);
+            step_strips_on_wheel(ui, &cell);
             let block = (height * 0.22).clamp(56.0, 120.0);
             let name = ui
                 .horizontal(|ui| {
@@ -440,17 +447,39 @@ fn strip(
             }
             name.context_menu(|ui| track_menu(ui, state, index, track, actions));
             let heard = if track.mute { "muted" } else { "on" };
-            if light(
+            let enable = light(
                 ui,
                 10.0,
                 !track.mute,
                 theme::ACCENT,
-                &format!("Enable ({heard}) · click to mute or unmute"),
-            )
-            .clicked()
-            {
-                run(actions, "mixer.toggle_mute", [number.clone()]);
+                &if index > 0 {
+                    format!("Enable ({heard}) · click to mute or unmute · Ctrl+click to solo")
+                } else {
+                    format!("Enable ({heard}) · click to mute or unmute")
+                },
+            );
+            let solo_key = ui.input(|i| i.modifiers.command);
+            if enable.clicked() {
+                if solo_key && index > 0 {
+                    run(actions, "mixer.toggle_solo", [number.clone()]);
+                } else {
+                    run(actions, "mixer.toggle_mute", [number.clone()]);
+                }
             }
+            enable.context_menu(|ui| {
+                let mute = if track.mute { "Unmute" } else { "Mute" };
+                if ui.button(mute).clicked() {
+                    run(actions, "mixer.toggle_mute", [number.clone()]);
+                    ui.close();
+                }
+                if index > 0 {
+                    let solo = if track.solo { "Unsolo" } else { "Solo" };
+                    if ui.button(solo).clicked() {
+                        run(actions, "mixer.toggle_solo", [number.clone()]);
+                        ui.close();
+                    }
+                }
+            });
             if index > 0 {
                 if light(ui, 7.0, track.solo, theme::HIGHLIGHT, "Solo").clicked() {
                     run(actions, "mixer.toggle_solo", [number.clone()]);
@@ -481,7 +510,16 @@ fn strip(
             route_arrow(ui, state, project, index, actions);
         });
     });
-    if response.response.interact(egui::Sense::click()).clicked() {
+    // A click anywhere on the strip selects it. This reads the pointer
+    // instead of adding a strip-wide click area, which would sit on top of
+    // the lights, switches and name and take their clicks and hovers.
+    let clicked_here = ui.input(|i| {
+        i.pointer.primary_clicked()
+            && i.pointer
+                .interact_pos()
+                .is_some_and(|p| response.response.rect.contains(p))
+    });
+    if clicked_here && ui.is_rect_visible(response.response.rect) {
         state.selected_track = index;
     }
 }
@@ -524,22 +562,52 @@ fn details(
         "Stereo separation {:+.0} (left: mono, right: wider)",
         track.separation * 100.0
     ));
-    let fx = track.effects.iter().filter(|e| e.enabled).count();
+    effects_switch(ui, track, number, actions);
+}
+
+/// The effect count at the foot of a strip, lit while any effect runs.
+/// Clicking it bypasses every effect of the track, or brings them all back.
+fn effects_switch(ui: &mut egui::Ui, track: &MixerTrack, number: &str, actions: &mut Vec<Action>) {
+    let count = track.effects.len();
+    let running = track.effects.iter().filter(|e| e.enabled).count();
     let names: Vec<String> = track.effects.iter().map(|e| e.label()).collect();
-    ui.label(
-        RichText::new(if fx > 0 {
-            format!("{fx} fx")
-        } else {
-            " ".to_owned()
-        })
-        .size(theme::FONT_CAPTION + 0.5)
-        .color(theme::ACCENT),
-    )
-    .hint(if names.is_empty() {
-        "No effects".to_owned()
+    let text = if count > 0 {
+        format!("{count} fx")
     } else {
-        format!("Effects: {}", names.join(", "))
-    });
+        " ".to_owned()
+    };
+    let color = if running > 0 {
+        theme::ACCENT
+    } else {
+        theme::TEXT_FAINT
+    };
+    let response = ui
+        .add(
+            egui::Label::new(
+                RichText::new(text)
+                    .size(theme::FONT_CAPTION + 0.5)
+                    .color(color),
+            )
+            .sense(egui::Sense::click()),
+        )
+        .hint(if names.is_empty() {
+            "No effects".to_owned()
+        } else if running > 0 {
+            format!("Effects: {} · click to bypass them all", names.join(", "))
+        } else {
+            format!(
+                "Effects (all bypassed): {} · click to enable them",
+                names.join(", ")
+            )
+        });
+    if count > 0 && response.clicked() {
+        let on = if running > 0 { "off" } else { "on" };
+        run(
+            actions,
+            "mixer.set_effects_enabled",
+            [number.to_owned(), on.to_owned()],
+        );
+    }
 }
 
 /// The arrow under a strip shows whether the selected insert sends here;

@@ -1928,3 +1928,22 @@ fn control_reset_returns_a_channel_volume_to_its_default() {
         "{volume}"
     );
 }
+
+#[test]
+fn set_effects_enabled_bypasses_a_whole_track_and_undo_restores_each_slot() {
+    let mut s = session();
+    run(&mut s, "mixer.add_effect 1 delay");
+    run(&mut s, "mixer.add_effect 1 reverb");
+    run(&mut s, "mixer.set_effect_enabled 1 2 off");
+    run(&mut s, "mixer.set_effects_enabled 1 off");
+    assert!(s.project().mixer[1].effects.iter().all(|e| !e.enabled));
+    run(&mut s, "edit.undo");
+    let enabled: Vec<bool> = s.project().mixer[1]
+        .effects
+        .iter()
+        .map(|e| e.enabled)
+        .collect();
+    assert_eq!(enabled, [true, false]);
+    run(&mut s, "mixer.set_effects_enabled 1 on");
+    assert!(s.project().mixer[1].effects.iter().all(|e| e.enabled));
+}

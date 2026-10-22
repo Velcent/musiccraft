@@ -388,7 +388,7 @@ Tokens are in `crates/musiccraft-editors/src/theme.rs`. Names marked "new" are p
 
 Ordered by visual impact. File references are where the change lands. `docs/spec/mixer.md` ("Layout") and `docs/spec/window-layout.md` ("Mixer") describe today's strip order and must be updated first (spec before code).
 
-1. **Strip anatomy.** The strip now runs: tinted number cell, name beside the meter, round enable light with a tiny S light under it, pan, fader, then phase and swap switches, the separation knob and the effect count (the dB level is in the fader's hint). Still missing: solo on right-click of the light (needs `mixer.md` first), the effect count as a working bypass-all switch, and the arm switch. Files: `crates/musiccraft-ui/src/mixer.rs` (`strip`, `details`).
+1. **Strip anatomy.** The strip now runs: tinted number cell, name beside the meter, round enable light with a tiny S light under it, pan, fader, then phase and swap switches, the separation knob and the effect count (the dB level is in the fader's hint). The light solos on Ctrl+click and from its right-click menu, and the effect count bypasses or enables all effects. Still missing: the arm switch. Files: `crates/musiccraft-ui/src/mixer.rs` (`strip`, `details`).
 2. **Routing picture.**
    - Arrows now show three states: filled (routed), outlined (can be routed) and a faint inert outline; the selected strip shows an upward source arrow with its destinations in the hint.
    - There are no incoming-route chevrons.
@@ -405,7 +405,6 @@ Ordered by visual impact. File references are where the change lands. `docs/spec
 10. **Fader states.** Holding the rail glides the cap toward the pointer, but the cap has no selected or armed look. `crates/musiccraft-editors/src/widgets.rs` (`fader`).
 11. **Meter details.** Meters hold their peak as a thin line and show a clip mark for a few seconds, but there is no selected outline and no level strip with a scale. `crates/musiccraft-editors/src/widgets.rs` (`meter`), `mixer.rs`.
 12. **Missing commands behind the controls.**
-    - bypass or restore all effects of a track;
     - move a track left or right ("Shift left" / "Shift right", Shift+wheel);
     - gaps and groups;
     - "Play selected channels through this track" from the mixer side (proposed mixer-local Ctrl+L; today Ctrl+L is `channel.route_free` over the rack, `keymap.md`);
@@ -414,7 +413,7 @@ Ordered by visual impact. File references are where the change lands. `docs/spec
     - mixer-track arming. Today audio recording arms *playlist* rows (`playlist.toggle_track_arm`, `docs/spec/playlist.md`, "Audio recording"), so the strip's arm switch needs the owner's decision before it is specified.
     `crates/musiccraft-commands`.
 13. **Drag and drop.** Nothing can be dropped on strips or slots, and slots cannot be dragged to reorder. `crates/musiccraft-ui/src/mixer.rs`; `crates/musiccraft-ui/src/browser.rs` (effects are not draggable today).
-14. **Scrolling.** The strips and the slot panel have the simplified bars (`scrollbars::plain_area`) and the wheel over a strip's name steps whole strips, but the wheel over the number cells and empty strip space does nothing yet. `crates/musiccraft-ui/src/mixer.rs`.
+14. **Scrolling.** The strips and the slot panel have the simplified bars (`scrollbars::plain_area`) and the wheel over a strip's name steps whole strips, and so does the wheel over a number cell; the wheel over empty strip space does nothing yet. `crates/musiccraft-ui/src/mixer.rs`.
 15. **Input row.** The input picker changes the one global input device (Settings › Audio) from whichever track is selected, and its hint now says so. The input glyph is decorative only. `crates/musiccraft-ui/src/mixer.rs` (`input_row`).
 16. **Specs to change first.** `docs/spec/mixer.md` ("Layout", "Routing") and `docs/spec/window-layout.md` ("Window header", "Mixer") for every layout and order change above; `docs/spec/mixer.md` for each item marked Proposed; `docs/spec/keymap.md` for the mixer-local keys. The main-window section's mixer-header gap ("only icons, the layout selector, the title and the window buttons") is consistent with this section: the add, strip-details and slot-panel buttons are icons.
 
