@@ -383,28 +383,71 @@ impl<'a> InstrumentEditor<'a> {
         });
     }
 
-    /// The Functions page: arpeggiator, swing, timing and echo, voices.
-    /// `extra` adds controls of the caller's to the swing section (a
-    /// plugin's own swing amount).
+    /// The Functions page: voices, timing (with swing), choke, arpeggiator
+    /// and echo, in the order of the style guide's Functions layout.
     pub fn functions(&mut self, ui: &mut Ui) {
         self.functions_with(ui, &mut |_, _| {});
     }
 
-    /// [`Self::functions`] with `extra` drawn in the swing and voices rows.
+    /// [`Self::functions`] with `extra` drawn in the timing ("swing") and
+    /// voices rows (a plugin's own swing amount and voice controls).
     pub fn functions_with(&mut self, ui: &mut Ui, extra: &mut dyn FnMut(&mut Ui, &str)) {
+        section(ui, "VOICES", |ui| {
+            ui.horizontal(|ui| {
+                self.knob(ui, inst::POLY_MAX, "Max");
+                self.choice(ui, inst::MONO, &["Poly", "Mono"]);
+                extra(ui, "voices");
+            });
+        });
+        ui.add_space(6.0);
+        section(ui, "TIMING", |ui| {
+            ui.horizontal(|ui| {
+                self.knob(ui, inst::TIME_SHIFT, "Delay");
+                self.knob(ui, inst::GATE, "Length");
+            });
+            ui.horizontal(|ui| {
+                extra(ui, "swing");
+                self.knob(ui, inst::SWING_MIX, "Swing");
+                self.choice(ui, inst::SWING_TRUNCATE, &["Delay", "Shorten"]);
+            });
+        });
+        ui.add_space(6.0);
+        section(ui, "CHOKE", |ui| {
+            ui.horizontal(|ui| {
+                self.knob(ui, inst::CUT_GROUP, "Group");
+                self.knob(ui, inst::CUT_BY, "Silenced by");
+                self.self_choke(ui);
+            });
+        });
+        ui.add_space(6.0);
         if self.arpeggiator {
             self.arpeggiator_section(ui);
             ui.add_space(6.0);
         }
-        section(ui, "SWING", |ui| {
+        section(ui, "ECHO", |ui| {
             ui.horizontal(|ui| {
-                extra(ui, "swing");
-                self.knob(ui, inst::SWING_MIX, "Mix");
-                self.choice(ui, inst::SWING_TRUNCATE, &["Shift", "Truncate"]);
+                self.knob(ui, inst::ECHO_COUNT, "Repeats");
+                self.knob(ui, inst::ECHO_TIME, "Time");
+                self.knob(ui, inst::ECHO_FEED, "Feedback");
+                self.knob(ui, inst::ECHO_PITCH, "Pitch step");
             });
         });
-        ui.add_space(6.0);
-        self.timing_and_voices(ui, extra);
+    }
+
+    /// "Self-choke": puts the channel in one group as both its group and the
+    /// group that silences it, so each new note cuts the last (one step).
+    fn self_choke(&mut self, ui: &mut Ui) {
+        let shared = self_choke_group(self.get(inst::CUT_GROUP), self.get(inst::CUT_BY));
+        let clicked = ui
+            .selectable_label(shared.is_none(), "Self-choke")
+            .on_hover_text("Each new note silences this channel's last one")
+            .clicked();
+        if let Some(shared) = shared.filter(|_| clicked) {
+            self.edits.push(InstrumentEdit::Preset(vec![
+                (inst::CUT_GROUP, shared),
+                (inst::CUT_BY, shared),
+            ]));
+        }
     }
 
     fn arpeggiator_section(&mut self, ui: &mut Ui) {
@@ -426,31 +469,6 @@ impl<'a> InstrumentEditor<'a> {
                     self.knob(ui, inst::ARP_GATE, "Gate");
                 });
             }
-        });
-    }
-
-    fn timing_and_voices(&mut self, ui: &mut Ui, extra: &mut dyn FnMut(&mut Ui, &str)) {
-        section(ui, "TIMING AND ECHO", |ui| {
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::TIME_SHIFT, "Shift");
-                self.knob(ui, inst::GATE, "Gate");
-            });
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::ECHO_COUNT, "Echoes");
-                self.knob(ui, inst::ECHO_TIME, "Time");
-                self.knob(ui, inst::ECHO_FEED, "Feed");
-                self.knob(ui, inst::ECHO_PITCH, "Pitch");
-            });
-        });
-        ui.add_space(6.0);
-        section(ui, "VOICES", |ui| {
-            ui.horizontal(|ui| {
-                self.knob(ui, inst::CUT_GROUP, "Cut");
-                self.knob(ui, inst::CUT_BY, "Cut by");
-                self.knob(ui, inst::POLY_MAX, "Max");
-                self.choice(ui, inst::MONO, &["Poly", "Mono"]);
-                extra(ui, "voices");
-            });
         });
     }
 
@@ -941,6 +959,16 @@ fn envelope_graph(ui: &mut Ui, values: &Params, color: Color32) {
     painter.add(Shape::line(points, Stroke::new(2.0, color)));
 }
 
+/// The group "Self-choke" puts a channel in, given its choke group and the
+/// group that silences it: the first one set, else group 1. `None` when it
+/// already chokes itself.
+fn self_choke_group(group: f32, by: f32) -> Option<f32> {
+    if group > 0.0 && group == by {
+        return None;
+    }
+    Some([group, by].into_iter().find(|g| *g > 0.0).unwrap_or(1.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -992,5 +1020,14 @@ mod tests {
             values[musiccraft_params::index_of(INSTRUMENT_PARAMS, name).unwrap()] = v;
         }
         assert!(preset.matches(INSTRUMENT_PARAMS, &values));
+    }
+
+    #[test]
+    fn self_choke_shares_the_first_group_set() {
+        assert_eq!(self_choke_group(0.0, 0.0), Some(1.0));
+        assert_eq!(self_choke_group(3.0, 0.0), Some(3.0));
+        assert_eq!(self_choke_group(0.0, 5.0), Some(5.0));
+        assert_eq!(self_choke_group(2.0, 4.0), Some(2.0));
+        assert_eq!(self_choke_group(4.0, 4.0), None);
     }
 }

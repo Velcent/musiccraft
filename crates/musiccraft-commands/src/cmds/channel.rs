@@ -129,7 +129,7 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         cmd(
             "channel.set_group",
             "channel.set_group <channel> [group]",
-            "Put a channel in a display filter group (no group name: none).",
+            "Put a channel in a group for the group filter (no group name: none).",
             set_group,
         ),
         cmd(

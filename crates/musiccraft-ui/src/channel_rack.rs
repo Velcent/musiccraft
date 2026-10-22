@@ -201,7 +201,9 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                     ui.selectable_value(&mut state.rack_group, Some(String::new()), "No group");
                 })
                 .response
-                .on_hover_text("Show one display filter group (right-click a channel → Group…)");
+                .on_hover_text(
+                    "Group filter: show one group of channels (right-click a channel → Group…)",
+                );
         }
         let pattern = project.current_pattern();
         ui.label(

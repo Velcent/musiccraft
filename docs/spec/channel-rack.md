@@ -31,7 +31,7 @@
   that starts on that step (the highest, when several do): velocity, pan,
   release, fine pitch, Mod A or Mod B. Dragging a bar sets that note's value
   through the usual note commands; one drag is one undo step.
-- **Display filter groups**: `channel.set_group <n> [group]` (undoable,
+- **Group filter**: `channel.set_group <n> [group]` (undoable,
   saved as `"group"`; no name removes it) puts a channel in a named group. The
   rack's group menu (always at the top left of the rack) shows All, one
   group, or No group (channels without one). Right-click a channel → Group…
@@ -97,30 +97,32 @@
   - `swing_truncate` (channel parameter, 0 or 1, default 0): a swung note
     keeps its original end and so gets shorter by the delay (never below one
     tick) instead of moving whole, so it cannot run into the next step.
-  - Both are in channel settings → Functions → SWING. The channel rack's swing box sets
-    the global amount.
+  - Both are in channel settings → Functions → TIMING, captioned "Swing"
+    (the mix) and "Delay" / "Shorten" (the truncate choice). The channel
+    rack's swing box sets the global amount.
   - Older files stored swing per pattern. On load, a project without a global
     swing takes the largest pattern swing.
 
 ## Timing and echo
 
-Channel parameters (channel settings → Functions → TIMING AND ECHO), applied when the
+Channel parameters (channel settings → Functions → TIMING and ECHO), applied when the
 sequence is built, after swing and the arpeggiator; they change what the
 channel plays, not the stored notes:
 
-- `time_shift` (-96…96 ticks) moves every note of the channel later
+- `time_shift` (-96…96 ticks; caption "Delay") moves every note of the channel later
   (negative: earlier, never before the loop start).
-- `gate` (0…384 ticks, 0 = off) gives every note that fixed length.
+- `gate` (0…384 ticks, 0 = off; caption "Length") gives every note that fixed length.
 - Note echo: `echo_count` (0–8) repeats each note `echo_time` ticks apart
   (default 48), each repeat's velocity multiplied by `echo_feed` (0–1,
   default 0.5) and its key moved by `echo_pitch` semitones (-12…12). Repeats
   past the loop end, below velocity 1 or outside the key range are dropped.
-  Echoes are never slide notes.
+  Echoes are never slide notes. Captions: "Repeats", "Time", "Feedback",
+  "Pitch step".
 
 ## Voices: cut groups, mono and polyphony
 
 Channel parameters (`channel.set_param <n> <name> <value>`, undoable; channel
-settings → VOICES). They apply to the built-in instruments; plugin and MIDI
+settings → Functions → VOICES and CHOKE). They apply to the built-in instruments; plugin and MIDI
 Out channels voice their own notes and are never cut.
 
 - **Cut groups** (choke): `cut_group` (0–16, 0 = none) is the group a
@@ -130,6 +132,7 @@ Out channels voice their own notes and are never cut.
   note's own frame. A closed hi-hat with `cut_group 1` and an open hi-hat with
   `cut_by 1` makes the closed hat choke the open one; giving both channels
   `cut_group 1` and `cut_by 1` makes each choke the other (and itself).
+  The CHOKE box captions them "Group" and "Silenced by".
 - **Mono** (`mono` 0 or 1): a new note cuts every other voice of the channel,
   so one note sounds at a time. With the synth's `glide`, the new note still
   glides from the note it replaces.
@@ -345,8 +348,8 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   as a number box (drag or type; `channel.route`).
 - Below it, **tabs**: *Sound* (the instrument's own sections: sample, oscillators,
   operators, plugin parameters…), *Envelope* (the amplitude envelope, for
-  instruments that use it) and *Functions* (arpeggiator, swing, timing and
-  echo, voices). Only the tab's contents scroll. The last tab used stays
+  instruments that use it) and *Functions* (voices, timing with swing, choke,
+  arpeggiator, echo). Only the tab's contents scroll. The last tab used stays
   selected while the window is open.
 - MIDI Out channels have no sound settings: the window shows their MIDI page
   only.
@@ -385,7 +388,7 @@ square partials), normalized to a 0.9 peak and faded out at the end.
 - Time shift, gate and note echo are channel settings described in the FL
   Studio online manual, "Channel settings" (miscellaneous functions: time,
   echo delay). Units, ranges and rules are our own.
-- Display filter groups follow the channel rack filter groups described in the
+- The group filter follows the channel rack filter groups described in the
   FL Studio online manual, "Channel Rack". "No group" and the menu are our own.
 - The step graph editor follows the channel rack graph editor described in the
   FL Studio online manual, "Channel Rack" (graph editor). Its properties match

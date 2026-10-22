@@ -458,7 +458,7 @@ pub struct UiState {
     pub path_drafts: [String; 4],
     /// The channel settings window's page.
     pub channel_tab: channel_settings::ChannelTab,
-    /// The channel rack shows only this display filter group (`None`: all).
+    /// The channel rack shows only this group (the group filter; `None`: all).
     pub rack_group: Option<String>,
     /// The channel rack's step graph editor: open, what it edits, and the
     /// step being dragged.

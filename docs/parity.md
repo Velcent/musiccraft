@@ -190,7 +190,7 @@ of contents; see `docs/clean-room.md`.
 | Channel rack | Time shift, gate and note echo | `spec:channel-rack.md` `done` |
 | Transport | Master pitch / A4 tuning | `cmd:project.set_master_pitch` `cmd:project.set_a4` |
 | Transport | Tap tempo | `spec:transport.md` `done` |
-| Channel rack | Display filter groups | `cmd:channel.set_group` |
+| Channel rack | Group filter | `cmd:channel.set_group` |
 | Transport | Arm playlist tracks for audio takes; choose the input device | `cmd:playlist.toggle_track_arm` `spec:settings.md` |
 | Channel rack | Step graph editor | `spec:channel-rack.md` `done` |
 | Automation | Automation inside patterns (recorded in pattern mode) | `cmd:pattern.record_event` `cmd:pattern.clear_events` `spec:recording.md` |

@@ -133,7 +133,7 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Channel rack
 
-- Header, left to right: window menu, display filter, the pattern's name,
+- Header, left to right: window menu, group filter, the pattern's name,
   swing, steps, Graph, the title, then the window buttons.
 - Step buttons are taller than they are wide (14 × 24 points). Alternate beats
   of the pattern's signature are shaded clearly differently, so steps read in
