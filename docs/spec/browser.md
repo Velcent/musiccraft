@@ -81,6 +81,17 @@ their category.
   With no match at all the list shows "No matches".
 - Antiserum presets also match on their tags.
 
+## Keyboard
+
+While the pointer is over the browser (and no text field has focus), its
+keys take precedence over the global ones (`keymap.md`, "Over the
+browser"): Up and Down move the selected row; Right opens a closed folder
+or steps into an open one; Left closes an open folder or steps out to the
+parent; Enter opens or closes a folder and on any other row does what a
+double-click does (add the sound, generator, preset or effect); Ctrl+Up
+folds all; Ctrl+F puts the cursor in the search field; Esc clears a search.
+The list scrolls to keep the selected row in view.
+
 ## Sources
 
 - Interface style guide, `docs/spec/style/browser.md` (owner's 2026-10-21

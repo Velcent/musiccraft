@@ -272,12 +272,132 @@ fn selected_id() -> egui::Id {
     egui::Id::new("browser-selected-row")
 }
 
+/// A row as drawn, in order, for the keyboard.
+#[derive(Debug, Clone)]
+struct Drawn {
+    key: String,
+    depth: usize,
+    /// `Some(open)` for branches.
+    open: Option<bool>,
+}
+
+/// The rows drawn this frame (the keys read last frame's).
+fn drawn_id() -> egui::Id {
+    egui::Id::new("browser-drawn-rows")
+}
+
+/// The row Enter asked to act on, by key.
+fn activate_id() -> egui::Id {
+    egui::Id::new("browser-activate-row")
+}
+
+/// The row the keyboard moved to, scrolled into view when next drawn.
+fn reveal_id() -> egui::Id {
+    egui::Id::new("browser-reveal-row")
+}
+
+/// Whether Enter asked the row `key` to act (as a double-click does).
+fn activated(ui: &egui::Ui, key: &str) -> bool {
+    let asked = ui
+        .data(|d| d.get_temp::<String>(activate_id()))
+        .is_some_and(|k| k == key);
+    if asked {
+        ui.data_mut(|d| d.remove::<String>(activate_id()));
+    }
+    asked
+}
+
+/// The browser's keys, while the pointer is over it: Up and Down move the
+/// selected row, Right opens a folder or steps into it, Left closes it or
+/// steps out, Enter toggles a folder or acts as a double-click, Ctrl+Up
+/// folds all, Ctrl+F goes to the search and Esc clears it.
+fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) {
+    use egui::{Key, Modifiers};
+    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
+    if pressed(Modifiers::COMMAND, Key::F) {
+        ctx.memory_mut(|m| m.request_focus(search_id()));
+    }
+    if pressed(Modifiers::COMMAND, Key::ArrowUp) {
+        state.browser.fold_all();
+    }
+    if !state.browser.search.is_empty() && pressed(Modifiers::NONE, Key::Escape) {
+        state.browser.search.clear();
+    }
+    let selected = ctx.data(|d| d.get_temp::<String>(selected_id()));
+    let at = selected
+        .as_ref()
+        .and_then(|key| rows.iter().position(|r| &r.key == key));
+    let select = |index: usize| {
+        if let Some(r) = rows.get(index) {
+            ctx.data_mut(|d| {
+                d.insert_temp(selected_id(), r.key.clone());
+                d.insert_temp(reveal_id(), r.key.clone());
+            });
+        }
+    };
+    if pressed(Modifiers::NONE, Key::ArrowDown) {
+        select(at.map_or(0, |i| (i + 1).min(rows.len().saturating_sub(1))));
+    }
+    if pressed(Modifiers::NONE, Key::ArrowUp) {
+        select(at.map_or(0, |i| i.saturating_sub(1)));
+    }
+    let Some((i, row)) = at.and_then(|i| rows.get(i).map(|r| (i, r))) else {
+        return;
+    };
+    if pressed(Modifiers::NONE, Key::ArrowRight) {
+        match row.open {
+            Some(false) => {
+                state.browser.open.insert(row.key.clone(), true);
+            }
+            Some(true) => select(i + 1),
+            None => {}
+        }
+    }
+    if pressed(Modifiers::NONE, Key::ArrowLeft) {
+        if row.open == Some(true) {
+            state.browser.open.insert(row.key.clone(), false);
+        } else if let Some(parent) = rows[..i].iter().rposition(|r| r.depth < row.depth) {
+            select(parent);
+        }
+    }
+    if pressed(Modifiers::NONE, Key::Enter) {
+        match row.open {
+            Some(open) => {
+                state.browser.open.insert(row.key.clone(), !open);
+            }
+            None => ctx.data_mut(|d| {
+                d.insert_temp(activate_id(), row.key.clone());
+            }),
+        }
+    }
+}
+
+/// The search field's id.
+fn search_id() -> egui::Id {
+    egui::Id::new("browser-search")
+}
+
 /// Draws `row` across the whole width and returns its response; a click
 /// selects it.
 fn row(ui: &mut egui::Ui, row: &Row<'_>, sense: Sense) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_HEIGHT), sense);
     if response.clicked() {
         ui.data_mut(|d| d.insert_temp(selected_id(), row.key.to_owned()));
+    }
+    ui.data_mut(|d| {
+        d.get_temp_mut_or_default::<Vec<Drawn>>(drawn_id())
+            .push(Drawn {
+                key: row.key.to_owned(),
+                depth: row.depth,
+                open: row.open,
+            });
+    });
+    if ui
+        .data(|d| d.get_temp::<String>(reveal_id()))
+        .is_some_and(|k| k == row.key)
+    {
+        ui.data_mut(|d| d.remove::<String>(reveal_id()));
+        ui.scroll_to_rect(rect, None);
     }
     if !ui.is_rect_visible(rect) {
         return response;
@@ -450,7 +570,7 @@ fn item(ui: &mut egui::Ui, depth: usize, label: &str, dragged: Dragged, actions:
             ui.close();
         }
     });
-    if response.double_clicked() {
+    if response.double_clicked() || activated(ui, &key) {
         actions.extend(dragged.add_channel().map(Action::Run));
     } else if response.clicked() {
         actions.push(Action::PreviewSample(sample));
@@ -481,7 +601,7 @@ fn plugin_entry(
             response.dnd_set_drag_payload(dragged);
         }
     }
-    if response.double_clicked() {
+    if response.double_clicked() || activated(ui, &key) {
         actions.push(Action::Run(add));
     }
 }
@@ -1392,6 +1512,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
             if state.browser.collapsed {
                 return;
             }
+            // The keys act on the rows drawn last frame; this frame records
+            // them afresh.
+            let rows = ui
+                .data_mut(|d| d.remove_temp::<Vec<Drawn>>(drawn_id()))
+                .unwrap_or_default();
+            let over = ui.rect_contains_pointer(ui.max_rect());
+            if over && !ui.ctx().egui_wants_keyboard_input() {
+                keys(ui.ctx(), state, &rows);
+            }
             tabs(ui, state);
             let footer = 24.0;
             let well = egui::Frame::new()
@@ -1444,10 +1573,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
             ui.add_space(4.0);
             ui.add(
                 egui::TextEdit::singleline(&mut state.browser.search)
+                    .id(search_id())
                     .hint_text("Search…")
                     .desired_width(f32::INFINITY),
             )
-            .hint("Search: names, ignoring case; folders with matches open on their own");
+            .hint("Search (Ctrl+F): names, ignoring case; folders with matches open on their own");
         });
 }
 

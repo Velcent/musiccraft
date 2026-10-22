@@ -74,6 +74,20 @@ one, which a click anywhere in it makes; and the typing keyboard is off); they t
 | F2 | Rename the selected channel |
 | Page Down / Page Up | Next / previous group in the group filter (All, each group, No group; wraps) |
 
+### Over the browser
+
+Window-local keys, active while the pointer is over the browser and no text
+field has focus; they take precedence over the global keys.
+
+| Chord | Action |
+| --- | --- |
+| Up / Down | Move the selected row |
+| Right / Left | Open a folder or step into it / close it or step out |
+| Enter | Open or close a folder; on other rows, as a double-click (add it) |
+| Ctrl+Up | Fold all |
+| Ctrl+F | Go to the search field |
+| Esc | Clear the search |
+
 ### Over the piano roll
 
 Window-local keys, active while the piano roll is the focused window (and

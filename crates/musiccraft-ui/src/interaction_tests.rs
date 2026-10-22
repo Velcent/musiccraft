@@ -2724,3 +2724,41 @@ fn rack_keys_copy_steps_toggle_the_graph_and_step_groups() {
     h.key(egui::Key::F2, Modifiers::NONE);
     assert!(h.state.dialog.is_some(), "F2 renames the selected channel");
 }
+
+#[test]
+fn the_browser_walks_its_tree_with_the_arrow_keys_and_enter_adds_an_effect() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.browser = true;
+    h.settle();
+    h.frame(vec![Event::PointerMoved(pos2(60.0, 300.0))]);
+    let selected = |h: &Harness| {
+        h.ctx
+            .data(|d| d.get_temp::<String>(egui::Id::new("browser-selected-row")))
+    };
+    h.key(egui::Key::ArrowDown, Modifiers::NONE);
+    let first = selected(&h).expect("Down selects the first row");
+    // Right opens folders and steps in; Down moves on; stop at an effect.
+    let mut out = Vec::new();
+    for _ in 0..80 {
+        let key = selected(&h).unwrap_or_default();
+        if key.starts_with("plugin:") {
+            out = h.key(egui::Key::Enter, Modifiers::NONE);
+            break;
+        }
+        h.key(egui::Key::ArrowRight, Modifiers::NONE);
+        if selected(&h).unwrap_or_default() == key {
+            h.key(egui::Key::ArrowDown, Modifiers::NONE);
+        }
+    }
+    assert!(
+        out.iter().any(|c| c.starts_with("mixer.add_effect")),
+        "Enter on an effect adds it: {out:?}"
+    );
+    // Left steps out to the parent folder; Up at the top stays.
+    h.key(egui::Key::ArrowLeft, Modifiers::NONE);
+    assert_eq!(selected(&h).as_deref(), Some("plugins/effects"));
+    for _ in 0..80 {
+        h.key(egui::Key::ArrowUp, Modifiers::NONE);
+    }
+    assert_eq!(selected(&h), Some(first));
+}
