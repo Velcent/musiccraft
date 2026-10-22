@@ -176,7 +176,11 @@ fn caption(name: &str) -> String {
     for (long, short) in words {
         text = text.replace(long, short);
     }
-    text
+    // Sentence case, like the other instruments' captions.
+    let mut chars = text.chars();
+    chars.next().map_or(text.clone(), |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 /// A spec's value as a knob position.
@@ -1390,6 +1394,16 @@ mod tests {
     use super::*;
     use egui::{RawInput, Rect};
     use musiccraft_antiserum::index_of;
+
+    #[test]
+    fn knob_captions_are_sentence_case() {
+        let first = musiccraft_antiserum::params()
+            .iter()
+            .map(|spec| caption(spec.name))
+            .find(|c| !c.is_empty())
+            .unwrap();
+        assert!(first.starts_with(char::is_uppercase), "{first}");
+    }
 
     fn values(patch: &Patch) -> Box<[f32; PARAM_COUNT]> {
         musiccraft_antiserum_presets::values(patch)

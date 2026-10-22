@@ -464,8 +464,6 @@ Ordered by visual impact. Where a gap changes layout or behaviour fixed in a spe
 7. **Font sizes and weight are scattered.** About ten distinct sizes are used across `crates/musiccraft-ui/src/*.rs` and `icons.rs` (`FontId::proportional(…)`, `.size(…)`). The named classes (`FONT_DISPLAY`, `FONT_TITLE`, `FONT_LABEL`, `FONT_CAPTION`, `FONT_VALUE`) now exist in `theme` and the window headers and LCDs use them; the other literals still need moving onto them. Bold is also used beyond the weight rule, for example the playlist and mixer titles (`playlist.rs` around line 129, `mixer.rs` around line 597).
 8. **Number formats.** The tempo shows two decimals in one size (`toolbar.rs`, toolbar section gap list), not whole digits plus three small decimals.
 9. **Capitalisation and spelling drift.**
-    - Antiserum's knob captions are lower case ("position", "rnd phase") while the synth's are sentence case (`crates/musiccraft-editors/src/antiserum.rs`; see `docs/screenshots/antiserum.png` and `synth-and-eq.png`).
-    - "+ add effect" in the mixer slots is lower case.
     - "Spectrum analyzer" and "Equalizer" use one spelling, "Colour" the other.
 10. **Disabled controls fade the egui way.** `TEXT_FAINT` exists in `theme` but disabled widgets still rely on egui's default fading; draw their text and glyphs in `TEXT_FAINT` and keep fills unchanged.
 11. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
