@@ -826,10 +826,13 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         };
         state.roll.last_view = Some((grid, clip));
         let painter = ui.painter_at(clip);
-        draw_background(&painter, &grid, (clip, rect), length, &state.roll.meter);
-        if let Some((root, scale)) = state.roll.scale {
-            draw_scale(&painter, &grid, clip, rect, root, scale);
-        }
+        draw_background(
+            &painter,
+            &grid,
+            (clip, rect),
+            length,
+            (&state.roll.meter, state.roll.scale),
+        );
         if let Some(range) = state.roll.time_selection {
             draw_time_wash(&painter, &grid, clip, range);
         }
@@ -1337,18 +1340,14 @@ fn draw_background(
     grid: &Grid,
     (clip, rect): (Rect, Rect),
     length: u32,
-    meter: &Meter,
+    (meter, scale): (&Meter, Option<(u8, usize)>),
 ) {
     let first = grid.row_at(clip.top().max(grid.origin.y)).unwrap_or(0);
     let last = grid.row_at(clip.bottom() - 1.0).unwrap_or(KEYS - 1);
     for row in first..=last {
         let key = key_of_row(row);
         let y = grid.y(row);
-        let fill = if is_black(key) {
-            theme::BLACK_KEY_ROW
-        } else {
-            theme::WHITE_KEY_ROW
-        };
+        let fill = row_fill(key, scale);
         painter.rect_filled(
             Rect::from_min_max(
                 pos2(grid.origin.x, y),
@@ -1393,33 +1392,27 @@ fn draw_background(
     }
 }
 
-fn draw_scale(
-    painter: &egui::Painter,
-    grid: &Grid,
-    clip: Rect,
-    rect: Rect,
-    root: u8,
-    scale: usize,
-) {
-    let Some((_, degrees)) = musiccraft_project::music::SCALES.get(scale) else {
-        return;
-    };
-    let first = grid.row_at(clip.top().max(grid.origin.y)).unwrap_or(0);
-    let last = grid.row_at(clip.bottom() - 1.0).unwrap_or(KEYS - 1);
-    for row in first..=last {
-        let key = key_of_row(row);
-        if musiccraft_project::music::in_scale(key, root, degrees) {
-            let y = grid.y(row);
-            let tint = if key % 12 == root % 12 { 22 } else { 12 };
-            painter.rect_filled(
-                Rect::from_min_max(
-                    pos2(grid.origin.x, y),
-                    pos2(rect.right(), y + grid.row_height),
-                ),
-                0.0,
-                theme::at_strength(theme::ACCENT, tint),
-            );
+/// A key row's tone. Without a scale, black-key rows are darker. With one,
+/// that shading is replaced: in-scale rows a step lighter than white-key
+/// rows (the root's with a faint accent), the rest like black-key rows.
+fn row_fill(key: u8, scale: Option<(u8, usize)>) -> Color32 {
+    let degrees = scale.and_then(|(root, s)| {
+        musiccraft_project::music::SCALES
+            .get(s)
+            .map(|(_, d)| (root, *d))
+    });
+    match degrees {
+        None if is_black(key) => theme::BLACK_KEY_ROW,
+        None => theme::WHITE_KEY_ROW,
+        Some((root, degrees)) if musiccraft_project::music::in_scale(key, root, degrees) => {
+            let lighter = theme::mix(theme::WHITE_KEY_ROW, theme::RAISED, 0.45);
+            if key % 12 == root % 12 {
+                theme::mix(lighter, theme::ACCENT, 0.12)
+            } else {
+                lighter
+            }
         }
+        Some(_) => theme::BLACK_KEY_ROW,
     }
 }
 
@@ -3031,5 +3024,18 @@ mod tests {
         assert_eq!(key_of_row(127), 0);
         assert_eq!(row_of_key(60), 67);
         assert!(is_black(61) && !is_black(60));
+    }
+
+    #[test]
+    fn a_scale_replaces_the_key_shading() {
+        // No scale: black keys dark, white keys light.
+        assert_eq!(row_fill(61, None), theme::BLACK_KEY_ROW);
+        assert_eq!(row_fill(62, None), theme::WHITE_KEY_ROW);
+        // D major: C# (a black key) is in the scale, C (white) is not.
+        let d_major = Some((2, 0));
+        assert_ne!(row_fill(61, d_major), theme::BLACK_KEY_ROW);
+        assert_eq!(row_fill(60, d_major), theme::BLACK_KEY_ROW);
+        // The root row differs from other in-scale rows.
+        assert_ne!(row_fill(62, d_major), row_fill(64, d_major));
     }
 }

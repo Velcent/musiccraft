@@ -29,9 +29,11 @@
   the notes of a chord (major, minor, dim, aug, sus2, sus4, maj7, min7, dom7,
   dim7, add9) as one undo step. The piano roll's chord menu makes a click draw
   the chosen chord.
-- The scale menu tints the rows of a scale (major, natural and harmonic minor,
-  dorian, mixolydian, major and minor pentatonic) on any root; the root row is
-  tinted more strongly. Display only.
+- The scale menu highlights a scale (major, natural and harmonic minor,
+  dorian, mixolydian, major and minor pentatonic) on any root. The usual
+  black/white key-row shading is replaced: rows in the scale are a step
+  lighter than white-key rows, the root's rows also get a faint accent, and
+  rows outside the scale are drawn like black-key rows. Display only.
 - With recording armed (REC button or R) and playback running, notes played on
   a MIDI keyboard or the typing keyboard are written into the selected pattern on
   the selected channel at the playhead position (folded into the pattern length
