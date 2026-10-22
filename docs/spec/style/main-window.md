@@ -47,10 +47,10 @@ There is no status bar along the bottom. Hints and status messages live in the t
   - a window that is visible but not focused is raised and focused;
     - the focused window is hidden.
 - Clicking anywhere in a window raises it above the others and focuses it.
-- **Proposed (needs `keymap.md` updated first)**; none of these keys is bound today, so none clashes:
+- Window keys (all bound except Tab, which is still proposed):
   - Tab moves focus to the next open window in the workspace, in stacking order, and raises it. Tab inside a text field still belongs to the field.
   - Esc closes the focused window, unless a text field, menu or drag inside it takes Esc first.
-  - F12 hides every window. Alt+F12 hides only effect and plugin windows. Ctrl+F12 hides every window except the focused one. The View menu offers the same three (see Labels).
+  - F12 hides every window. Alt+F12 hides only effect and plugin windows (today effect windows; hosted plugin views are not covered yet). Ctrl+F12 hides every window except the focused one. The View menu offers the same three (see Labels; the menu items are still to come).
   - Ctrl+Shift+H puts the windows back in the default layout.
 - While something from the browser is being dragged, hovering over a toolbar window button raises that window, so the drag can continue into it.
 
@@ -396,7 +396,7 @@ Ordered by visual impact. Each needs `docs/spec/window-layout.md` (or the spec n
     - eframe's `persistence` feature is off (workspace `Cargo.toml`), so positions, sizes and collapsed flags live only in egui memory for the session (`chrome.rs` stores collapse there).
     - The open-window set is reset by `Windows::default()` in `lib.rs`.
     - There is no `Windows layout ▸` submenu and no saved custom layout.
-4. **Missing window shortcuts**: Esc (close focused), Tab (cycle focus), F12, Alt+F12 and Ctrl+F12 (hide windows), Ctrl+F11 (hide toolbar). Enter (maximize the playlist) and Ctrl+Shift+H (default layout) are bound. None of the missing keys is in `default.keymap`, and none clashes with it. F10 is already bound to `ui.settings`, so no window or project-info shortcut may take F10. `keymap.md` changes first.
+4. **Missing window shortcuts**: Tab (cycle focus) and Ctrl+F11 (hide toolbar). Enter, Ctrl+Shift+H, Esc, F12, Alt+F12 and Ctrl+F12 are bound. Tab needs care: egui uses it to move keyboard focus between widgets, and a widget holding focus blocks every shortcut, so it has to be taken from the raw input before egui sees it (`crates/musiccraft-app/src/main.rs`). F10 is already bound to `ui.settings`, so no window or project-info shortcut may take F10. `keymap.md` changes first.
 5. **Browser chrome and placement** (`crates/musiccraft-ui/src/browser.rs`, `show`):
     - The header is a "Browser" label with a refresh glyph: no window menu, fold-all, collapse or close, and the tools come after the title rather than before it.
     - It cannot dock right, float or auto-hide.

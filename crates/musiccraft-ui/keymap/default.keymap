@@ -43,6 +43,10 @@ F9           = view.toggle mixer
 Alt+F8       = view.toggle browser
 Enter        = view.maximize playlist
 Ctrl+Shift+H = view.default_layout
+Escape       = view.close_focused
+F12          = view.hide_all
+Alt+F12      = view.hide_effects
+Ctrl+F12     = view.hide_others
 F10          = ui.settings
 
 # Patterns

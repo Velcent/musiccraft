@@ -242,6 +242,94 @@ fn toggle_window(state: &mut UiState, which: &str) {
     *flag = !*flag;
 }
 
+/// A window in the workspace that the window keys can close.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    Playlist,
+    ChannelRack,
+    Mixer,
+    PianoRoll,
+    ChannelSettings,
+    Automation,
+    Spectrum,
+    Shortcuts,
+    Effect(usize, usize),
+}
+
+impl Slot {
+    /// The window's id, as its module names it.
+    fn id(self) -> egui::Id {
+        match self {
+            Self::Playlist => egui::Id::new("playlist-window"),
+            Self::ChannelRack => egui::Id::new("channel-rack"),
+            Self::Mixer => egui::Id::new("mixer-window"),
+            Self::PianoRoll => egui::Id::new("piano-roll"),
+            Self::ChannelSettings => egui::Id::new("channel-settings"),
+            Self::Automation => egui::Id::new("automation-editor"),
+            Self::Spectrum => egui::Id::new("spectrum-analyzer"),
+            Self::Shortcuts => egui::Id::new("keyboard-shortcuts"),
+            Self::Effect(track, slot) => egui::Id::new(("effect-window", track, slot)),
+        }
+    }
+}
+
+/// The open workspace windows (not the docked browser).
+fn open_slots(state: &UiState) -> Vec<Slot> {
+    let w = &state.windows;
+    let mut slots: Vec<Slot> = [
+        (w.playlist, Slot::Playlist),
+        (w.channel_rack, Slot::ChannelRack),
+        (w.mixer, Slot::Mixer),
+        (w.piano_roll, Slot::PianoRoll),
+        (w.channel_settings, Slot::ChannelSettings),
+        (state.automation_editor.is_some(), Slot::Automation),
+        (w.spectrum, Slot::Spectrum),
+        (w.shortcuts, Slot::Shortcuts),
+    ]
+    .into_iter()
+    .filter_map(|(open, slot)| open.then_some(slot))
+    .collect();
+    slots.extend(
+        state
+            .effect_windows
+            .iter()
+            .map(|&(track, slot)| Slot::Effect(track, slot)),
+    );
+    slots
+}
+
+fn close_slot(state: &mut UiState, slot: Slot) {
+    let w = &mut state.windows;
+    match slot {
+        Slot::Playlist => w.playlist = false,
+        Slot::ChannelRack => w.channel_rack = false,
+        Slot::Mixer => w.mixer = false,
+        Slot::PianoRoll => w.piano_roll = false,
+        Slot::ChannelSettings => w.channel_settings = false,
+        Slot::Automation => state.automation_editor = None,
+        Slot::Spectrum => w.spectrum = false,
+        Slot::Shortcuts => w.shortcuts = false,
+        Slot::Effect(track, index) => state.effect_windows.retain(|&e| e != (track, index)),
+    }
+}
+
+/// `view.close_focused`, `view.hide_all`, `view.hide_effects` and
+/// `view.hide_others`.
+fn hide_windows(state: &mut UiState, which: &str) {
+    let focused = state.focused_window;
+    for slot in open_slots(state) {
+        let close = match which {
+            "view.close_focused" => focused == Some(slot.id()),
+            "view.hide_effects" => matches!(slot, Slot::Effect(..)),
+            "view.hide_others" => focused != Some(slot.id()),
+            _ => true,
+        };
+        if close {
+            close_slot(state, slot);
+        }
+    }
+}
+
 /// Applies a pending [`Arrange`] before the windows are drawn.
 fn arrange(ctx: &egui::Context, state: &mut UiState) {
     match state.arrange.take() {
@@ -535,6 +623,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     state.workspace = workspace;
 
     let ctx = ui.ctx().clone();
+    // A dialog, a menu or a drag open at the start of the frame takes Esc.
+    let escape_taken =
+        state.dialog.is_some() || egui::Popup::is_any_open(&ctx) || ctx.dragged_id().is_some();
     arrange(&ctx, state);
     playlist::show(&ctx, state, frame, &mut actions);
     channel_rack::show(&ctx, state, frame, &mut actions);
@@ -573,6 +664,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
             );
             painter.galley(rect.min + egui::vec2(5.0, 5.0), galley, theme::TEXT);
         }
+    }
+    if escape_taken {
+        ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     }
     state.focused_window = ctx
         .memory(|m| m.areas().top_layer_id(egui::Order::Middle))
@@ -709,7 +803,17 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                 state.windows.playlist = true;
                 state.arrange = Some(Arrange::MaximizePlaylist);
             }
-            "view.default_layout" | "view.maximize" => {}
+            "view.close_focused" | "view.hide_all" | "view.hide_effects" | "view.hide_others"
+                if state.dialog.is_none() =>
+            {
+                hide_windows(state, &invocation.name);
+            }
+            "view.default_layout"
+            | "view.maximize"
+            | "view.close_focused"
+            | "view.hide_all"
+            | "view.hide_effects"
+            | "view.hide_others" => {}
             "ui.new" => out.push(Action::Run(Invocation::bare("project.new"))),
             "ui.open" => state.dialog = Some(dialogs::Dialog::open(frame.project)),
             "ui.save" => match frame.project.path() {

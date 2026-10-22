@@ -2601,7 +2601,8 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     if pressed(Modifiers::COMMAND, Key::A) {
         state.playlist.selection = clips.iter().map(|c| (c.track, c.start)).collect();
     }
-    if pressed(Modifiers::NONE, Key::Escape) {
+    // Esc clears a selection first; with none, it closes the window.
+    if !state.playlist.selection.is_empty() && pressed(Modifiers::NONE, Key::Escape) {
         state.playlist.selection.clear();
     }
     if (pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace))

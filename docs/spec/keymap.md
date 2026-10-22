@@ -37,6 +37,8 @@
 | Alt+F8 | Browser |
 | Enter | Maximize the playlist, or restore it (opens it if closed) |
 | Ctrl+Shift+H | Put the windows back in the default layout |
+| Esc | Close the focused window (after a selection, menu, dialog or drag has taken it) |
+| F12 / Alt+F12 / Ctrl+F12 | Close every window / only effect windows / every window but the focused one |
 | Alt+T | Add a playlist marker at the playhead |
 | F10 | Settings |
 | F4 | Next empty pattern (adds one if none), then name it |
@@ -86,6 +88,7 @@ one, which a click anywhere in it makes; and the typing keyboard is off); they t
   choice to both editors is our own simplification.
 - Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo and redo: common desktop convention (own
   choice; the manual describes a different undo toggle).
-- Enter (maximize the playlist) and Ctrl+Shift+H (default window layout)
+- Enter (maximize the playlist), Ctrl+Shift+H (default window layout), Esc
+  (close the focused window) and F12 / Alt+F12 / Ctrl+F12 (hide windows)
   follow the FL Studio online manual, "Keyboard shortcuts", "Window
   Navigation". What the default layout restores is our own design.

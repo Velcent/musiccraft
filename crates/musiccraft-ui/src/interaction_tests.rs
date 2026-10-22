@@ -1752,3 +1752,46 @@ fn window_keys_follow_the_focused_window_not_the_pointer() {
         "{out:?}"
     );
 }
+
+#[test]
+fn esc_closes_the_focused_window_and_f12_hides_them_all() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C5"]);
+    h.state.windows.channel_rack = true;
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let key = |key, modifiers| Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    let roll = window_rect(&h, "piano-roll");
+    h.click(
+        roll.left_top() + vec2(roll.width() / 2.0, 8.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    // A selection takes Esc first.
+    h.state.roll.selection.insert((0, 72));
+    h.frame(vec![key(egui::Key::Escape, Modifiers::NONE)]);
+    assert!(h.state.roll.selection.is_empty());
+    assert!(h.state.windows.piano_roll);
+    // Then Esc closes the focused window only.
+    h.frame(vec![Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    h.frame(vec![key(egui::Key::Escape, Modifiers::NONE)]);
+    assert!(!h.state.windows.piano_roll);
+    assert!(h.state.windows.channel_rack);
+
+    h.state.windows.mixer = true;
+    h.settle();
+    h.frame(vec![key(egui::Key::F12, Modifiers::NONE)]);
+    let w = &h.state.windows;
+    assert!(!w.channel_rack && !w.mixer && !w.piano_roll && !w.playlist);
+}

@@ -2326,7 +2326,9 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     if pressed(Modifiers::COMMAND, Key::A) {
         state.roll.selection = notes.iter().map(|n| (n.start, n.key)).collect();
     }
-    if pressed(Modifiers::NONE, Key::Escape) {
+    // Esc clears a selection first; with none, it closes the window.
+    let any = !state.roll.selection.is_empty() || state.roll.time_selection.is_some();
+    if any && pressed(Modifiers::NONE, Key::Escape) {
         state.roll.selection.clear();
         state.roll.time_selection = None;
     }

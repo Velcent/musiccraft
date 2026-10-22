@@ -30,6 +30,12 @@ stay our own. The full target look, window by window, is the style guide in
   menu open a closed window and bring it to the front, bring an open window
   that is behind others to the front, and close the focused window. The
   browser, a docked panel, just shows or hides.
+- Esc (`view.close_focused`) closes the focused window. A dialog, an open
+  menu, a drag in progress, or a piano-roll or playlist selection takes Esc
+  first (Esc then clears the selection).
+- F12 (`view.hide_all`) closes every workspace window; Alt+F12
+  (`view.hide_effects`) closes only effect windows; Ctrl+F12
+  (`view.hide_others`) closes all but the focused one. The browser stays.
 
 ## Dragging from the browser
 
