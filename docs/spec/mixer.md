@@ -30,7 +30,9 @@
   saved as `"color"`, 0-based). Without one, the master uses the highlight
   tone and each insert a palette colour by position. UI: the track menu
   (right-click the number or name) and the window menu's Tracks → Colour ▸
-  (the shared colour grid). The colour tints the number cell.
+  (the shared colour grid). The colour tints the number cell. While a
+  track menu is open, its strip lifts one tone (`RAISED_HOVER`) so it is
+  clear which track the menu acts on.
 - **Docks**: the strips sit in three docks, left to right: a fixed left dock
   (the master, then inserts pinned left), the scrolling middle (every other
   insert), and a fixed right dock (inserts pinned right; absent until one

@@ -34,6 +34,16 @@ pub fn show(
     if !open {
         return;
     }
+    // The track whose menu was open last frame lifts while it stays open.
+    ctx.data_mut(|d| {
+        let target = d.remove_temp::<usize>(menu_target_id());
+        match target {
+            Some(index) => {
+                d.insert_temp(menu_target_id().with("last"), index);
+            }
+            None => d.remove::<usize>(menu_target_id().with("last")),
+        }
+    });
     // At the top, right of the channel rack, up to the right edge, a little
     // under half the height.
     let rack_right = ctx
@@ -323,6 +333,16 @@ const EFFECTS_WIDTH: f32 = 270.0;
 /// into the strip.
 const TINT_NAMES: [&str; 4] = ["Off", "Faint", "Medium", "Strong"];
 const TINTS: [f32; 4] = [0.0, 0.08, 0.16, 0.28];
+
+/// Where a track menu records its track while open.
+fn menu_target_id() -> egui::Id {
+    egui::Id::new("mixer-menu-target")
+}
+
+/// The track whose menu is open (as of last frame).
+pub(crate) fn menu_target(ctx: &egui::Context) -> Option<usize> {
+    ctx.data(|d| d.get_temp::<usize>(menu_target_id().with("last")))
+}
 
 /// A strip's fill: its base tone with the track colour mixed in.
 fn strip_fill(selected: bool, color: egui::Color32, tint: u8) -> egui::Color32 {
@@ -790,8 +810,13 @@ fn strip(
     let primary = state.selected_track == index;
     let color = track_color(index, track);
     let tint = if index == 0 { 0 } else { state.mixer_tint };
+    let fill = if menu_target(ui.ctx()) == Some(index) {
+        theme::RAISED_HOVER
+    } else {
+        strip_fill(selected, color, tint)
+    };
     let frame = egui::Frame::new()
-        .fill(strip_fill(selected, color, tint))
+        .fill(fill)
         .corner_radius(2.0)
         .inner_margin(egui::Margin::symmetric(0, 2));
     let response = frame.show(ui, |ui| {
@@ -840,7 +865,10 @@ fn strip(
                 let field = egui::Rect::from_min_size(name.rect.left_top(), vec2(120.0, 20.0));
                 state.rename_in_place(Dialog::rename_track(index, &track.name), field);
             }
-            name.context_menu(|ui| track_menu(ui, state, project, index, actions));
+            name.context_menu(|ui| {
+                ui.data_mut(|d| d.insert_temp(menu_target_id(), index));
+                track_menu(ui, state, project, index, actions);
+            });
             if name.hovered() && ui.input(|i| i.modifiers.shift) {
                 // Shift+wheel moves the strip: down (towards you) to the right.
                 let notches = crate::scrollbars::wheel_notches(ui);

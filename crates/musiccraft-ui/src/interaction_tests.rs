@@ -1935,6 +1935,33 @@ fn mixer_strips_step_by_whole_strips() {
 }
 
 #[test]
+fn a_strip_lifts_while_its_track_menu_is_open() {
+    let mut h = Harness::new(&["mixer.rename 2 Bass"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let name = (0..100)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| mixer.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Bass — click"))
+        })
+        .expect("insert 2's name");
+    assert_eq!(crate::mixer::menu_target(&h.ctx), None);
+    h.click(name, PointerButton::Secondary);
+    h.settle();
+    assert_eq!(crate::mixer::menu_target(&h.ctx), Some(2));
+    h.key(egui::Key::Escape, Modifiers::NONE);
+    h.settle();
+    assert_eq!(crate::mixer::menu_target(&h.ctx), None);
+}
+
+#[test]
 fn the_mixer_plus_adds_an_insert_and_selects_it() {
     let mut h = Harness::new(&[]);
     h.state.windows.mixer = true;
