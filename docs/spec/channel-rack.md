@@ -53,6 +53,8 @@
   Melodic rows show a miniature roll whose alternate bars are shaded; a click
   on it opens the piano roll on that channel, or closes it when it already
   shows that channel.
+- Shift+wheel over the rack's header row steps to the next or previous
+  pattern (`pattern.next`, `pattern.prev`).
 - The mute light: a click mutes or unmutes, Ctrl+click solos the channel
   (`channel.solo`), and right-click offers Mute or Unmute and Solo.
   The pattern length box takes 1 to 1024 steps.

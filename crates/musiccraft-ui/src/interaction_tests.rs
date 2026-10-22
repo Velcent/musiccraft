@@ -1927,3 +1927,28 @@ fn ctrl_clicking_a_mute_light_solos_the_channel() {
     h.modifiers = Modifiers::NONE;
     assert_eq!(out, ["channel.solo 1"]);
 }
+
+#[test]
+fn shift_wheel_over_the_rack_header_steps_patterns() {
+    let mut h = Harness::new(&["pattern.add", "pattern.add"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let wheel = Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::SHIFT,
+    };
+    h.modifiers = Modifiers::SHIFT;
+    let stepped = (0..60)
+        .map(|i| rack.left_top() + vec2(30.0 + 6.0 * i as f32, 11.0))
+        .any(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![wheel.clone()])
+                .iter()
+                .any(|c| c == "pattern.next")
+        });
+    h.modifiers = Modifiers::NONE;
+    assert!(stepped, "no header spot stepped the pattern");
+}

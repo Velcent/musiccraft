@@ -438,7 +438,9 @@ pub fn wheel_notches(ui: &Ui) -> f32 {
             .events
             .iter()
             .filter_map(|e| match e {
+                // Some systems turn Shift+wheel into a sideways scroll.
                 egui::Event::MouseWheel { delta, .. } if delta.y != 0.0 => Some(delta.y.signum()),
+                egui::Event::MouseWheel { delta, .. } if delta.x != 0.0 => Some(delta.x.signum()),
                 _ => None,
             })
             .sum::<f32>()

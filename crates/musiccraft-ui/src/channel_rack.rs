@@ -121,7 +121,7 @@ pub fn show(
 }
 
 fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
-    ui.horizontal(|ui| {
+    let row = ui.horizontal(|ui| {
         let mut groups: Vec<&str> = project
             .channels
             .iter()
@@ -204,6 +204,18 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
             state.graph = open.then_some(crate::piano_roll::LaneMode::Velocity);
         }
     });
+    // Shift+wheel over the header row steps through the patterns.
+    let shift = ui.input(|i| i.modifiers.shift);
+    let notches = if shift && row.response.contains_pointer() {
+        crate::scrollbars::wheel_notches(ui)
+    } else {
+        0.0
+    };
+    if notches < 0.0 {
+        run(actions, "pattern.next", [] as [String; 0]);
+    } else if notches > 0.0 {
+        run(actions, "pattern.prev", [] as [String; 0]);
+    }
 }
 
 /// One channel's row; `at` is the channel's index and the playing step.

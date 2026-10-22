@@ -440,10 +440,9 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
     - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`).
 15. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
     - File: `crates/musiccraft-ui/src/channel_rack.rs`.
-16. **Shift+scroll over the header does not change patterns.**
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`).
-17. **Keymap.** Ctrl+K, Alt+M, Alt+G, Alt+Z, Alt+U, Page Up/Down, Ctrl+C/X/V and F2 over the rack are new window-local bindings for `docs/spec/keymap.md` ("Over the channel rack") and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today; F2 over the rack takes precedence over the toolbar's proposed global F2 for pattern rename while the pointer is over the rack.
-18. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
+16. **Keymap.** Ctrl+K, Alt+M, Alt+G, Alt+Z, Alt+U, Page Up/Down, Ctrl+C/X/V and F2 over the rack are new window-local bindings for `docs/spec/keymap.md` ("Over the channel rack") and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today; F2 over the rack takes precedence over the toolbar's proposed global F2 for pattern rename while the pointer is over the rack.
+17. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
 
 ## Sources
 
