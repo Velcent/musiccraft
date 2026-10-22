@@ -26,6 +26,8 @@ pub enum Purpose {
     RenameTrack(usize),
     RenamePlaylistTrack(u32),
     ChannelGroup(usize),
+    /// Rename the channel group with this name.
+    RenameGroup(String),
     AddFolder,
     AddPluginFolder,
     RenameAutomation(usize),
@@ -161,6 +163,10 @@ impl Dialog {
         Self::new(Purpose::ChannelGroup(channel), current.to_owned())
     }
 
+    pub fn rename_group(group: &str) -> Self {
+        Self::new(Purpose::RenameGroup(group.to_owned()), group.to_owned())
+    }
+
     pub fn rename_playlist_track(track: u32, current: &str) -> Self {
         Self::new(Purpose::RenamePlaylistTrack(track), current.to_owned())
     }
@@ -207,6 +213,7 @@ impl Dialog {
             Purpose::RenameTrack(_) => "Rename mixer track",
             Purpose::RenamePlaylistTrack(_) => "Rename playlist track",
             Purpose::ChannelGroup(_) => "Channel group (empty: none)",
+            Purpose::RenameGroup(_) => "Group name (empty: remove the group)",
             Purpose::AddFolder => "Add folder to the browser",
             Purpose::AddPluginFolder => "Add a plugin folder",
             Purpose::RenameAutomation(_) => "Rename automation",
@@ -265,6 +272,13 @@ impl Dialog {
                     args.push(text);
                 }
                 Invocation::new("channel.set_group", args)
+            }
+            Purpose::RenameGroup(ref group) => {
+                let mut args = vec![group.clone()];
+                if !text.is_empty() {
+                    args.push(text);
+                }
+                Invocation::new("channel.rename_group", args)
             }
             Purpose::RenamePlaylistTrack(track) => {
                 Invocation::new("playlist.rename_track", [(track + 1).to_string(), text])
@@ -533,6 +547,21 @@ mod tests {
                 .invocation()
                 .to_string(),
             "project.save Untitled.mcproj"
+        );
+    }
+
+    #[test]
+    fn the_group_prompt_renames_or_removes_the_group() {
+        let mut dialog = Dialog::rename_group("Drums");
+        dialog.text = "Kit one".into();
+        assert_eq!(
+            dialog.invocation().to_string(),
+            "channel.rename_group Drums \"Kit one\""
+        );
+        dialog.text = "  ".into();
+        assert_eq!(
+            dialog.invocation().to_string(),
+            "channel.rename_group Drums"
         );
     }
 }

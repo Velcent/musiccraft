@@ -139,6 +139,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_group,
         ),
         cmd(
+            "channel.rename_group",
+            "channel.rename_group <group> [new name]",
+            "Rename a channel group, moving every channel in it (no new name: the group goes and its channels are in no group).",
+            rename_group,
+        ),
+        cmd(
             "channel.rename",
             "channel.rename <channel> <name>",
             "Rename a channel.",
@@ -739,6 +745,35 @@ fn set_group(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
         },
         Invocation::new(args.name(), inverse),
     ))
+}
+
+fn rename_group(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, 2)?;
+    let old = args.str(0)?.trim().to_owned();
+    let new = if args.len() > 1 {
+        args.str(1)?.trim().to_owned()
+    } else {
+        String::new()
+    };
+    let members: Vec<usize> = (0..project.channels.len())
+        .filter(|&i| !old.is_empty() && project.channels[i].group == old)
+        .collect();
+    if members.is_empty() {
+        return Err(args.invalid(format!("no channel is in group `{old}`")));
+    }
+    let mut inverse = Vec::new();
+    for &i in &members {
+        project.channels[i].group.clone_from(&new);
+        inverse.push(
+            Invocation::new("channel.set_group", [(i + 1).to_string(), old.clone()]).to_string(),
+        );
+    }
+    let message = if new.is_empty() {
+        format!("removed group {old} from {} channels", members.len())
+    } else {
+        format!("renamed group {old} to {new}")
+    };
+    Ok(Outcome::undoable(message, Invocation::new(BATCH, inverse)))
 }
 
 fn rename(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

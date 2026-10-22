@@ -2081,3 +2081,26 @@ fn resetting_a_mixer_track_clears_it_and_undo_brings_it_back() {
     assert_eq!(s.project().mixer[0].name, "Master");
     assert!(s.run_line("mixer.set_track 4 {\"bad\": 1}").is_err());
 }
+
+#[test]
+fn renaming_a_channel_group_moves_its_channels_and_undoes_in_one_step() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.add_synth");
+    let n = s.project().channels.len();
+    run(&mut s, &format!("channel.set_group {} Drums", n - 1));
+    run(&mut s, &format!("channel.set_group {n} Drums"));
+    run(&mut s, "channel.rename_group Drums \"Kit one\"");
+    let groups = |s: &Session| -> Vec<String> {
+        s.project().channels[n - 2..]
+            .iter()
+            .map(|c| c.group.clone())
+            .collect()
+    };
+    assert_eq!(groups(&s), ["Kit one", "Kit one"]);
+    run(&mut s, "edit.undo");
+    assert_eq!(groups(&s), ["Drums", "Drums"]);
+    run(&mut s, "channel.rename_group Drums");
+    assert_eq!(groups(&s), ["", ""]);
+    assert!(s.run_line("channel.rename_group Nothing Else").is_err());
+}

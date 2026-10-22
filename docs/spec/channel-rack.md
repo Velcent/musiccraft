@@ -47,6 +47,11 @@
   one named group is shown, a channel added from the rack's plus joins it (the
   add and the `channel.set_group` are one undo step). Over the rack, Page
   Down and Page Up step the filter through All, each group and No group.
+  Right-clicking the group menu offers "New group with <selected channel>…"
+  (the same prompt as Group…), and for the group shown "Rename this group…"
+  and "Remove this group" (danger tone):
+  `channel.rename_group <group> [new name]` moves every channel of the group
+  to the new name, or to no group without one, as one undo step.
 - The rack's window menu shows or hides the graph editor (Ctrl+K) and the
   mixer-track column (Alt+M); both are view choices, not saved.
 - **Solo** is its own state, separate from mute (saved as `"solo"`). While

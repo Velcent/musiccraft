@@ -426,7 +426,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
 9. **Mute light.** Ctrl+click solos and right-click offers Mute and Solo, but there is no Shift+click lock.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
 10. **Group filter.**
-    - No right-click new, rename or delete (Page Up/Down cycling is in).
+    - Right-click new, rename and remove are in, and Page Up/Down cycle the groups. The filter is still an egui drop-down rather than our styled field.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`header`, `add_menu`).
 11. **Pattern length.** The length box takes 1–1024 steps and offers whole-bar lengths on right-click, but there is no "auto" length.
     - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`).

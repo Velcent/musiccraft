@@ -212,8 +212,9 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                 })
                 .response
                 .on_hover_text(
-                    "Group filter: show one group of channels (right-click a channel → Group…)",
-                );
+                    "Group filter: show one group of channels · right-click to make, rename or remove a group",
+                )
+                .context_menu(|ui| group_menu(ui, state, project, actions));
         }
         let pattern = project.current_pattern();
         ui.label(RichText::new(&pattern.name).color(theme::HIGHLIGHT));
@@ -1143,6 +1144,40 @@ fn window_menu(ui: &mut egui::Ui, state: &mut UiState) {
     {
         state.rack_hide_tracks = !tracks;
     }
+}
+
+/// The group filter's right-click menu: a new group for the selected
+/// channel, and renaming or removing the group shown.
+fn group_menu(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    actions: &mut Vec<Action>,
+) {
+    if let Some(channel) = project.channels.get(state.selected_channel) {
+        let label = format!("New group with {}…", channel.name);
+        if ui.button(label).clicked() {
+            state.open_dialog(Dialog::channel_group(state.selected_channel, ""));
+            ui.close();
+        }
+    }
+    let shown = state.rack_group.clone().filter(|g| !g.is_empty());
+    crate::widgets::enabled_ui(ui, shown.is_some(), |ui| {
+        if ui.button("Rename this group…").clicked() {
+            if let Some(group) = &shown {
+                state.open_dialog(Dialog::rename_group(group));
+            }
+            ui.close();
+        }
+        let remove = RichText::new("Remove this group").color(theme::DANGER);
+        if ui.button(remove).clicked() {
+            if let Some(group) = &shown {
+                run(actions, "channel.rename_group", [group.clone()]);
+                state.rack_group = None;
+            }
+            ui.close();
+        }
+    });
 }
 
 /// The group filter's choices in order: All, each group alphabetically,
