@@ -243,8 +243,10 @@ Ranges and defaults are defined in `musiccraft-params`.
   land.
 - The input and output rows start with small glyphs (a circle with an arrow
   entering it; one leaving it) instead of the words "In" and "Out".
-- The mouse wheel over a strip's name moves the strips one whole strip per
-  notch. Elsewhere over the strips the wheel is left to the knobs and faders.
+- The mouse wheel over a strip's number, name or meter moves the strips one
+  whole strip per notch, and so does the wheel over the strips' empty space (between the
+  controls and after the last strip). Over a knob or fader the wheel adjusts
+  that control instead.
 
 ## Effect rack
 

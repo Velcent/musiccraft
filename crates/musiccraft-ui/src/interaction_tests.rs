@@ -1911,6 +1911,69 @@ fn mixer_strips_step_by_whole_strips() {
 }
 
 #[test]
+fn the_wheel_over_empty_strip_space_steps_the_strips() {
+    let mut h = Harness::new(&["mixer.rename 2 Bass"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let hint_at = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone()
+    };
+    let name = (0..100)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| mixer.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| hint_at(&mut h, *p).is_some_and(|t| t.starts_with("Bass — click")))
+        .expect("insert 2's name");
+    // Somewhere in insert 2's strip with no control under the pointer.
+    let space = (0..120)
+        .flat_map(|j| (-4..8).map(move |i| (i, j)))
+        .map(|(i, j)| name + vec2(3.0 * i as f32, 3.0 * j as f32))
+        .find(|p| hint_at(&mut h, *p).is_none())
+        .expect("empty strip space");
+    let bars = egui::Id::new("mixer-strip-bars");
+    let before = crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    let out = h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    }]);
+    h.settle();
+    assert!(out.is_empty(), "{out:?}");
+    let after = crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    assert!(after > before + 20.0, "{before} → {after} at {space:?}");
+    // The wheel over a name steps too (a step asked for from inside the
+    // strips is not lost).
+    h.frame(vec![Event::PointerMoved(name)]);
+    h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, 1.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    }]);
+    h.settle();
+    let back = crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    assert!(back < after - 20.0, "{after} → {back}");
+    // Over a knob the wheel turns the knob and the strips stay put.
+    let knob = (0..200)
+        .flat_map(|j| (-4..8).map(move |i| (i, j)))
+        .map(|(i, j)| name + vec2(3.0 * i as f32, 3.0 * j as f32))
+        .find(|p| hint_at(&mut h, *p).is_some_and(|t| t.starts_with("Pan ")))
+        .expect("a pan knob");
+    h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    }]);
+    h.settle();
+    let still = crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    assert!((still - back).abs() < 0.5, "{back} → {still} at {knob:?}");
+}
+
+#[test]
 fn ctrl_clicking_a_mute_light_solos_the_channel() {
     let mut h = Harness::new(&["channel.add_synth", "channel.add_synth"]);
     h.state.windows.channel_rack = true;

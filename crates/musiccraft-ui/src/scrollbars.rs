@@ -365,6 +365,9 @@ fn plain<R>(
     let (over_x, over_y, jump) = ui
         .data(|d| d.get_temp::<(bool, bool, Option<egui::Vec2>)>(key))
         .unwrap_or_default();
+    // Taken now, so a `plain_step` asked for by the content below (a wheel
+    // over a row) is not lost when the state is written back.
+    ui.data_mut(|d| d.insert_temp(key, (over_x, over_y, None::<egui::Vec2>)));
     let mut area = area.scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
     if let Some(jump) = jump {
         area = area.scroll_offset(jump);
@@ -385,7 +388,9 @@ fn plain<R>(
     let inner = output.inner_rect;
     let content = output.content_size;
     let offset = output.state.offset;
-    let mut next = None;
+    let mut next = ui
+        .data(|d| d.get_temp::<(bool, bool, Option<egui::Vec2>)>(key))
+        .and_then(|(_, _, step)| step);
     if over_y {
         let x = if left {
             inner.left() - BAR

@@ -110,8 +110,8 @@ pub fn show(
                     strip(ui, state, project, index, track, height, actions);
                 }
                 dock_divider(ui, height);
-                // The wheel over a strip's name steps whole strips
-                // (`vertical_name`); elsewhere it is left to the controls.
+                // The wheel over a strip's name or empty space steps whole
+                // strips; over a knob or fader it is left to the control.
                 let strip_bars = egui::Id::new(STRIP_BARS);
                 let area = egui::ScrollArea::horizontal()
                     .scroll_source(egui::scroll_area::ScrollSource {
@@ -126,6 +126,14 @@ pub fn show(
                 ui.vertical(|ui| {
                     let bars = (strip_bars, 42.0);
                     crate::scrollbars::plain_area(ui, area, bars, |ui| {
+                        // Behind the strips, so the controls on top keep
+                        // their wheel and only empty space steps strips.
+                        let behind = ui.interact(
+                            ui.clip_rect(),
+                            egui::Id::new("mixer-strip-space"),
+                            egui::Sense::hover(),
+                        );
+                        step_strips_on_wheel(ui, &behind);
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             for (index, track) in docked(Dock::Middle) {
@@ -319,8 +327,8 @@ fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool, height: f32) -> 
     response
 }
 
-/// The wheel over `response` (a strip's name or number) scrolls the strips by
-/// whole strips.
+/// The wheel over `response` (a strip's name, number, meter or empty space)
+/// scrolls the strips by whole strips.
 fn step_strips_on_wheel(ui: &egui::Ui, response: &egui::Response) {
     let notches = if response.hovered() && !ui.input(|i| i.modifiers.shift) {
         crate::scrollbars::wheel_notches(ui)
@@ -780,7 +788,9 @@ fn strip(
                             egui::StrokeKind::Outside,
                         );
                     }
-                    name.union(meter.interact(egui::Sense::click()))
+                    let meter = meter.interact(egui::Sense::click()).hint(&hint);
+                    step_strips_on_wheel(ui, &meter);
+                    name.union(meter)
                 })
                 .inner
                 .union(cell);
