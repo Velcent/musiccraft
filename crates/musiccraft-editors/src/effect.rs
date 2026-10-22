@@ -118,7 +118,10 @@ pub fn preset_bar(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits: &
             ((from + delta).rem_euclid(n.max(1))) as usize
         };
         let mut chosen = None;
-        if ui.small_button("◀").hint("Previous preset").clicked() {
+        if crate::widgets::chevron_button(ui, true)
+            .hint("Previous preset")
+            .clicked()
+        {
             chosen = Some(step(-1));
         }
         let name = current.map_or("(custom)", |i| list[i].name);
@@ -135,7 +138,10 @@ pub fn preset_bar(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits: &
                     }
                 }
             });
-        if ui.small_button("▶").hint("Next preset").clicked() {
+        if crate::widgets::chevron_button(ui, false)
+            .hint("Next preset")
+            .clicked()
+        {
             chosen = Some(step(1));
         }
         if let Some(preset) = chosen.and_then(|i| list.get(i)) {

@@ -303,6 +303,33 @@ pub fn held_peak(ui: &Ui, id: egui::Id, level: f32) -> (f32, bool) {
     (peak, now < clip_until)
 }
 
+/// A small raised tile with a chevron pointing left (`left`) or right, for
+/// stepping through presets.
+pub fn chevron_button(ui: &mut Ui, left: bool) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(16.0, 18.0), Sense::click());
+    let hovered = response.hovered();
+    let fill = if response.is_pointer_button_down_on() {
+        theme::ACCENT_DIM
+    } else if hovered {
+        theme::RAISED_HOVER
+    } else {
+        theme::RAISED
+    };
+    let painter = ui.painter();
+    painter.rect_filled(rect, 2.0, fill);
+    let color = if hovered {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
+    let c = rect.center();
+    let (tip, back) = if left { (-2.5, 2.0) } else { (2.5, -2.0) };
+    let stroke = Stroke::new(1.5, color);
+    painter.line_segment([pos2(c.x + back, c.y - 4.0), pos2(c.x + tip, c.y)], stroke);
+    painter.line_segment([pos2(c.x + tip, c.y), pos2(c.x + back, c.y + 4.0)], stroke);
+    response
+}
+
 /// A vertical stereo peak meter.
 pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::hover());

@@ -260,7 +260,10 @@ impl<'a> InstrumentEditor<'a> {
                     .strong()
                     .color(theme::TEXT_DIM),
             );
-            if ui.small_button("◀").hint("Previous preset").clicked() {
+            if crate::widgets::chevron_button(ui, true)
+                .hint("Previous preset")
+                .clicked()
+            {
                 chosen = Some(current.map_or(n - 1, |c| (c + n - 1) % n));
             }
             egui::ComboBox::from_id_salt(("instrument-preset", self.salt, list.as_ptr() as usize))
@@ -280,7 +283,10 @@ impl<'a> InstrumentEditor<'a> {
                         }
                     }
                 });
-            if ui.small_button("▶").hint("Next preset").clicked() {
+            if crate::widgets::chevron_button(ui, false)
+                .hint("Next preset")
+                .clicked()
+            {
                 chosen = Some(current.map_or(0, |c| (c + 1) % n));
             }
         });
