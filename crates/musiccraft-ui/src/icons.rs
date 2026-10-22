@@ -1033,6 +1033,24 @@ pub fn output_monitor(
             1.0,
             color,
         );
+        // The held peak as a thin line, and a clip mark at the end that
+        // stays for a few seconds after the level reached full scale.
+        let (peak, clipped) =
+            musiccraft_editors::widgets::held_peak(ui, response.id.with(("peak", i)), level);
+        let x = bar.left() + bar.width() * peak.clamp(0.0, 1.0);
+        if peak > 0.001 {
+            painter.line_segment(
+                [pos2(x, bar.top()), pos2(x, bar.bottom())],
+                Stroke::new(1.0, theme::TEXT),
+            );
+        }
+        if clipped {
+            painter.rect_filled(
+                Rect::from_min_max(pos2(bar.right() - 3.0, bar.top()), bar.max),
+                0.0,
+                theme::DANGER,
+            );
+        }
     }
     response
 }

@@ -285,7 +285,7 @@ fn meter_position(gain: f32) -> f32 {
 
 /// The peak of one meter channel held for 1.5 s, then falling, and whether
 /// it clipped in the last 3 s.
-fn held_peak(ui: &Ui, id: egui::Id, level: f32) -> (f32, bool) {
+pub fn held_peak(ui: &Ui, id: egui::Id, level: f32) -> (f32, bool) {
     let now = ui.input(|i| i.time);
     let (mut peak, mut until, mut clip_until) = ui
         .data(|d| d.get_temp::<(f32, f64, f64)>(id))

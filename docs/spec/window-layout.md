@@ -95,7 +95,9 @@ stay our own. The full target look, window by window, is the style guide in
   - **upper rack**: the option toggles (Metronome, Wait for input,
     Count-in, Blend recording, Loop recording, Computer keyboard as piano,
     Step edit), the time display, the output monitor (a scope beside two
-    horizontal peak bars) and the performance panel (CPU and voices);
+    horizontal peak bars, each holding its peak as a thin line and showing a
+    clip mark for 3 s after full scale) and the performance panel (CPU and
+    voices);
   - **lower rack**: the master volume knob, the mode switch (Pattern over
     Song, one button wide; right-click a half to open the channel rack or the
     playlist), play (a pause glyph while playing), stop, record, the tempo
