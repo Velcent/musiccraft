@@ -2368,6 +2368,27 @@ fn the_piano_roll_play_button_plays_the_pattern() {
 }
 
 #[test]
+fn the_playlist_play_button_plays_the_song() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let window = window_rect(&h, "playlist-window");
+    let button = (0..200)
+        .map(|i| window.left_top() + vec2(4.0 + 3.0 * i as f32, 11.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Play the song"))
+        })
+        .expect("a play button in the playlist header");
+    let out = h.click(button, PointerButton::Primary);
+    assert_eq!(out, ["transport.set_mode song", "transport.play"]);
+}
+
+#[test]
 fn double_clicking_stop_silences_every_sound() {
     let mut h = Harness::new(&[]);
     h.settle();

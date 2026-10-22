@@ -262,6 +262,11 @@
   play), Slice (click a clip to cut it at the snapped click), Play (click
   moves the playhead there and plays) and Zoom (click zooms in, Shift+click
   out). Keys P, B, D, E, T, C, Y, Z pick them.
+- The **song play button** (after the tools) plays the song from the
+  playhead, switching to song mode first, or pauses while the song plays;
+  right-click stops and returns to the start (while stopped: moves the
+  playhead to the start). It is lit while the song plays, like the piano
+  roll's pattern play button (`piano-roll.md`).
 - The **snap button** (before the tools) shows the snap glyph and value; a
   click lists the values, the wheel over it steps to the next coarser value
   (up) or finer one (down), and right-click returns it to Bar.

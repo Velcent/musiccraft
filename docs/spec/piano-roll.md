@@ -246,9 +246,10 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   from the start of each beat, so they follow the time signature.
 - **Pattern play button** (header, after the pickers): a click plays the
   pattern from the playhead, switching to pattern mode first if the song was
-  selected, or pauses while playing; a right-click stops and returns to the
-  start while playing, or moves the playhead to the start while stopped. It
-  shows a pause glyph and is lit while playing.
+  selected, or pauses while the pattern plays; a right-click stops and
+  returns to the start while playing, or moves the playhead to the start
+  while stopped. It shows a pause glyph and is lit while the pattern plays.
+  The playlist header has the same button for the song (after its tools).
 - **Tools** (header, in this order: Draw, Paint, Delete, Mute, Slice, Select,
   Zoom, Audition): Draw (the default behavior below), Paint (drag to
   lay notes end to end at the last length; one undo step), Delete (click or

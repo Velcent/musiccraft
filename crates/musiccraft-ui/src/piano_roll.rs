@@ -542,7 +542,7 @@ pub fn show(
                         |ui, (state, actions)| {
                             if !empty {
                                 pickers(ui, state, project, &number, actions);
-                                play_button(ui, project, actions);
+                                play_button(ui, project, PlayMode::Pattern, actions);
                                 ui.add_space(6.0);
                                 tools(ui, state);
                             }
@@ -619,19 +619,32 @@ const TOOLS: [(Tool, Icon, &str); 8] = [
     ),
 ];
 
-/// The pattern play button: a click plays the pattern (switching to pattern
-/// mode) or pauses; a right-click stops and returns to the start.
-fn play_button(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
-    let playing = project.transport().is_playing();
+/// A window's play button: a click plays in `mode` (the pattern for the
+/// piano roll, the song for the playlist), switching to it first, or pauses;
+/// a right-click stops and returns to the start.
+pub(crate) fn play_button(
+    ui: &mut egui::Ui,
+    project: &Project,
+    mode: PlayMode,
+    actions: &mut Vec<Action>,
+) {
+    let playing = project.transport().is_playing() && project.play_mode == mode;
+    let what = match mode {
+        PlayMode::Pattern => "pattern",
+        PlayMode::Song => "song",
+    };
     let (icon, hint) = if playing {
-        (Icon::Pause, "Pause the pattern · right-click to stop")
+        (
+            Icon::Pause,
+            format!("Pause the {what} · right-click to stop"),
+        )
     } else {
         (
             Icon::Play,
-            "Play the pattern · right-click to go back to its start",
+            format!("Play the {what} · right-click to go back to its start"),
         )
     };
-    let response = icons::button(ui, icon, playing, theme::ACCENT, hint);
+    let response = icons::button(ui, icon, playing, theme::ACCENT, &hint);
     let mut run = |line: &str| {
         if let Ok(invocation) = Invocation::parse(line) {
             actions.push(Action::Run(invocation));
@@ -641,8 +654,8 @@ fn play_button(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) 
         if playing {
             run("transport.pause");
         } else {
-            if project.play_mode != musiccraft_project::PlayMode::Pattern {
-                run("transport.set_mode pattern");
+            if project.play_mode != mode {
+                run(&format!("transport.set_mode {what}"));
             }
             run("transport.play");
         }

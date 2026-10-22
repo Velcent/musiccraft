@@ -274,7 +274,11 @@ pub fn show(
                 &mut open,
                 &mut data,
                 |ui, (state, actions)| window_menu(ui, state, frame, actions),
-                |ui, (state, _)| tools(ui, state),
+                |ui, (state, actions)| {
+                    tools(ui, state);
+                    ui.add_space(6.0);
+                    crate::piano_roll::play_button(ui, frame.project, PlayMode::Song, actions);
+                },
             );
             if folded {
                 return;
