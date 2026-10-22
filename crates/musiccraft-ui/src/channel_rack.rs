@@ -8,7 +8,7 @@ use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES, TICKS_PER_STEP
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME, Project};
 
 use crate::dialogs::Dialog;
-use crate::{Action, Frame, UiState, theme, widgets};
+use crate::{Action, Frame, UiState, format, theme, widgets};
 
 const STEP_SIZE: egui::Vec2 = egui::Vec2::new(14.0, 24.0);
 const NAME_WIDTH: f32 = 96.0;
@@ -237,7 +237,7 @@ fn row(
             ));
         }
         pan.response
-            .hint(format!("Pan {:+.0}%", channel.pan * 100.0));
+            .hint(format!("Pan {}", format::pan(channel.pan)));
         let volume = widgets::knob(
             ui,
             channel.volume,
@@ -265,7 +265,7 @@ fn row(
         }
         volume
             .response
-            .hint(format!("Volume {:.0}%", channel.volume * 100.0));
+            .hint(format!("Volume {}", format::level(channel.volume)));
 
         let mut track = channel.mixer_track;
         let route = ui

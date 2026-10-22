@@ -8,7 +8,7 @@ use musiccraft_project::{MAX_VOLUME, MixerTrack, Project};
 
 use crate::dialogs::Dialog;
 use crate::icons::{self, Icon};
-use crate::{Action, Frame, UiState, theme, widgets};
+use crate::{Action, Frame, UiState, format, theme, widgets};
 
 const STRIP_WIDTH: f32 = 40.0;
 
@@ -277,15 +277,6 @@ fn number_cell(
     response
 }
 
-/// The level in dB, as the fader's hint shows it.
-fn level_db(volume: f32) -> String {
-    if volume <= 1e-6 {
-        "-inf dB".to_owned()
-    } else {
-        format!("{:+.1} dB", 20.0 * volume.log10())
-    }
-}
-
 /// The track menu (right-click on the number or name).
 fn track_menu(
     ui: &mut egui::Ui,
@@ -449,7 +440,7 @@ fn strip(
             let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
             crate::automation::menu(&pan.response, &format!("mixer:{index}:pan"), actions);
             knob_command(state, &pan, "mixer.set_pan", &number, actions);
-            pan.response.hint(format!("Pan {:+.0}", track.pan * 100.0));
+            pan.response.hint(format!("Pan {}", format::pan(track.pan)));
             let below = if state.mixer_details { 84.0 } else { 0.0 } + 20.0;
             let fader_height = (ui.available_height() - below).max(60.0);
             let fader = widgets::fader(
@@ -462,7 +453,7 @@ fn strip(
             knob_command(state, &fader, "mixer.set_volume", &number, actions);
             fader
                 .response
-                .hint(format!("Level {}", level_db(track.volume)));
+                .hint(format!("Level {}", format::level(track.volume)));
             if state.mixer_details {
                 details(ui, state, &number, track, actions);
             }

@@ -1114,7 +1114,7 @@ fn zones(ui: &mut Ui, cx: &mut Cx<'_, '_>, o: usize, zones: &[musiccraft_patch::
                 cx.edits
                     .push(AntiserumEdit::SetZone(o, z, keys[0], keys[1], keys[2]));
             }
-            if ui.small_button("✕").hint("Remove this zone").clicked() {
+            if ui.small_button("×").hint("Remove this zone").clicked() {
                 cx.edits.push(AntiserumEdit::RemoveZone(o, z));
             }
             ui.end_row();

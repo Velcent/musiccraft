@@ -29,7 +29,7 @@ mod toolbar;
 mod zone_editor;
 
 pub use musiccraft_editors::hint;
-use musiccraft_editors::{theme, widgets};
+use musiccraft_editors::{format, theme, widgets};
 
 use musiccraft_commands::Invocation;
 use musiccraft_project::Project;

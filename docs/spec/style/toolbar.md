@@ -415,7 +415,7 @@ Ordered by visual impact. Per `CLAUDE.md`, update the specs (`docs/spec/window-l
     - "Record audio input" sits in File instead of Options.
     - File: `crates/musiccraft-ui/src/toolbar.rs` (`file_menu` … `help_menu`).
 14. **No toolbar context menu or customising.** There are no dividers toggle, layouts, hide (Ctrl+F11) or narrow-width reflow beyond the one-band/two-band switch. Files: `crates/musiccraft-ui/src/toolbar.rs`, `docs/spec/window-layout.md`.
-15. **Keymap gaps.** The default keymap has no F1, F2, F8, F11, Shift+F4, Ctrl+F11, F12, Alt+F12, Ctrl+F12, Shift+F12, Ctrl+Shift+H, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+F or Alt+1…Alt+0. All are proposed new bindings; none clashes with an existing one. Files: `crates/musiccraft-ui/keymap/default.keymap`, `docs/spec/keymap.md`.
+15. **Keymap gaps.** The default keymap has no F1, F2, F8, F11, Shift+F4, Ctrl+F11, Shift+F12, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+F or Alt+1…Alt+0. All are proposed new bindings; none clashes with an existing one. (F12, Alt+F12, Ctrl+F12 and Ctrl+Shift+H are now bound, main-window section.) Files: `crates/musiccraft-ui/keymap/default.keymap`, `docs/spec/keymap.md`.
 16. **A shared submenu to agree on.** Menu titles are sentence case, the mode switch reads Ptn over Song, and the typing-keyboard and hint-bar items use our wording. The main-window draft calls the layout submenu "Arrange windows" with different items; both sections should use this section's *Windows layout* name and item list. File: `crates/musiccraft-ui/src/toolbar.rs` (`view_menu`).
 
 ## Sources

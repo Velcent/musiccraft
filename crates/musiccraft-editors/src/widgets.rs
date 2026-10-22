@@ -153,7 +153,7 @@ pub fn labeled_knob(
         if active { value } else { label },
         egui::FontId::proportional(10.5),
         if active {
-            theme::PLAYHEAD
+            theme::LCD_TEXT
         } else {
             theme::TEXT_DIM
         },

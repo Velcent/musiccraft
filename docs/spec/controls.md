@@ -18,7 +18,19 @@ everywhere.
   opening the menu or resetting cannot nudge it by accident.
 - A reset is one undo step, like any other change.
 
+## Value text
+
+Hints and captions share one formatter per kind of value
+(`musiccraft_editors::format`):
+
+- Levels (mixer faders, channel volume, the master knob) read in dB with one
+  decimal and a true minus sign: "−6.0 dB", "+1.6 dB", "0.0 dB", and
+  "−∞ dB" at silence.
+- Pans read as a percent with the side: "25% left", "Centre", "100% right".
+
 ## Sources
 
 - Own design. Middle-click and double-click to reset are common conventions
   in audio software; the rule that only the left button drags is our own.
+- Value text formats: the interface style guide, `docs/spec/style/controls.md`
+  ("Value formats"); own design.

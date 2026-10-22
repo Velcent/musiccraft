@@ -6,7 +6,7 @@ use musiccraft_commands::Invocation;
 use musiccraft_project::{MAX_TEMPO_BPM, MIN_TEMPO_BPM, PlayMode};
 
 use crate::icons::{self, Icon};
-use crate::{Action, Frame, UiState, geometry::position_label, signature, theme, widgets};
+use crate::{Action, Frame, UiState, format, geometry::position_label, signature, theme, widgets};
 
 fn run(actions: &mut Vec<Action>, line: &str) {
     if let Ok(invocation) = Invocation::parse(line) {
@@ -714,10 +714,8 @@ fn lower_rack(
                 state.gesture(),
             ));
         }
-        knob.response.hint(format!(
-            "Master volume: {:.1} dB",
-            20.0 * master.volume.max(1e-6).log10()
-        ));
+        knob.response
+            .hint(format!("Master volume: {}", format::level(master.volume)));
     }
     divider(ui);
     group(ui, |ui| {

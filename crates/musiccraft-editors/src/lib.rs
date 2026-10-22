@@ -5,6 +5,7 @@
 
 pub mod antiserum;
 pub mod effect;
+pub mod format;
 pub mod hint;
 pub mod instrument;
 pub mod theme;
