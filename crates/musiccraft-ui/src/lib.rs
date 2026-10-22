@@ -149,6 +149,10 @@ pub struct History {
     pub undo: Option<String>,
     /// Whether `edit.redo` is possible.
     pub can_redo: bool,
+    /// The latest commands `edit.undo` would reverse, newest first.
+    pub steps: Vec<String>,
+    /// The commands `edit.redo` would re-run, next first.
+    pub redo_steps: Vec<String>,
     /// Whether the project has changes since it was last saved or opened.
     pub unsaved: bool,
 }
@@ -825,6 +829,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     settings::show(&ctx, state, frame, &mut actions);
     type_in::show(&ctx, state, &mut actions);
     dialogs::show_in_place(&ctx, state, &mut actions);
+    // A menu cut, copy or paste that no focused editor took lapses.
+    ctx.data_mut(|d| d.remove::<ClipboardKey>(egui::Id::new(MENU_CLIPBOARD)));
 
     if let Some(dragged) = egui::DragAndDrop::payload::<browser::Dragged>(&ctx) {
         if let Some(pos) = ctx.pointer_hover_pos() {
@@ -988,6 +994,15 @@ pub(crate) enum ClipboardKey {
     Paste,
 }
 
+/// Where the main Edit menu leaves a cut, copy or paste for the focused
+/// editor to take this frame.
+const MENU_CLIPBOARD: &str = "menu-clipboard";
+
+/// Asks the focused editor for a cut, copy or paste, as its keys would.
+pub(crate) fn request_clipboard(ctx: &egui::Context, which: ClipboardKey) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new(MENU_CLIPBOARD), which));
+}
+
 /// Whether `which` was asked for this frame, and takes it from the input.
 /// On the desktop Ctrl+X, Ctrl+C and Ctrl+V reach egui as cut, copy and
 /// paste events instead of key presses (and paste only when the system
@@ -999,6 +1014,11 @@ pub(crate) fn clipboard_key(ctx: &egui::Context, which: ClipboardKey) -> bool {
         ClipboardKey::Copy => egui::Key::C,
         ClipboardKey::Paste => egui::Key::V,
     };
+    let menu = egui::Id::new(MENU_CLIPBOARD);
+    if ctx.data(|d| d.get_temp::<ClipboardKey>(menu)) == Some(which) {
+        ctx.data_mut(|d| d.remove::<ClipboardKey>(menu));
+        return true;
+    }
     ctx.input_mut(|i| {
         let before = i.events.len();
         i.events.retain(|e| {

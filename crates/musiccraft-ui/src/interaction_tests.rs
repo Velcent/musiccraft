@@ -3561,3 +3561,27 @@ fn the_tap_tempo_pad_sets_the_tempo_in_one_undo_step() {
     h.session.run_line("edit.undo").unwrap();
     assert_eq!(h.session.project().tempo_bpm(), before);
 }
+
+#[test]
+fn the_edit_menu_copy_and_paste_reach_the_focused_editor() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 1 1 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    h.click(h.playlist_point(bar + 40, 0), PointerButton::Primary);
+    crate::request_clipboard(&h.ctx, crate::ClipboardKey::Copy);
+    h.frame(vec![]);
+    h.engine.position_ticks = f64::from(4 * bar + 100);
+    crate::request_clipboard(&h.ctx, crate::ClipboardKey::Paste);
+    let pasted = h.frame(vec![]);
+    assert_eq!(pasted.len(), 1, "{pasted:?}");
+    assert_eq!(h.session.project().playlist.clips.len(), 2);
+    // A request no editor takes lapses at the end of the frame.
+    h.state.windows.playlist = false;
+    h.settle();
+    crate::request_clipboard(&h.ctx, crate::ClipboardKey::Paste);
+    h.frame(vec![]);
+    h.state.windows.playlist = true;
+    h.settle();
+    assert_eq!(h.session.project().playlist.clips.len(), 2);
+}

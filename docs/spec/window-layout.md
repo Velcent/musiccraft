@@ -100,6 +100,8 @@ stay our own. The full target look, window by window, is the style guide in
   bar (File, Edit, Add, Patterns, View, Options, Tools, Help) over the hint
   field (the project name with a small highlight dot while there are unsaved
   changes, then the hint or last message; right-click copies the message).
+  Edit holds Undo, Redo, Cut, Copy and Paste (which act on the focused
+  editor, as its Ctrl+X, Ctrl+C and Ctrl+V do) and History ▸ (`commands.md`).
   Beside it are two
   racks, each packed to the left:
   - **upper rack**: the option toggles (Metronome, Wait for input,

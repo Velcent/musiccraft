@@ -404,7 +404,6 @@ Ordered by visual impact. Per `CLAUDE.md`, update the specs (`docs/spec/window-l
 9. **The toolbar knob changes the master insert volume, which is exported.** The target is a listening-only volume plus a master pitch knob (Proposed, D1). Master pitch is reachable only from Settings → Project today, and `transport.md` does not say whether audio clips follow it. File: `crates/musiccraft-ui/src/toolbar.rs` (master `knob`).
 10. **The performance panel is partial.** It shows CPU and the voice count, but there is no history graph, no memory figure and no double-click load monitor. File: `crates/musiccraft-ui/src/icons.rs` (`performance`).
 11. **Menu contents are thin or misplaced.**
-    - Edit lacks cut, copy, paste and history.
     - Patterns lacks first empty, reveal, colour, transpose, move, one-pattern-per-channel and render.
     - View lacks the Toolbar and Windows layout submenus and the Plugins window.
     - Options lacks the recording switches.

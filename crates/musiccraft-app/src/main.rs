@@ -1289,6 +1289,22 @@ impl eframe::App for App {
         let history = History {
             undo: self.session.undo_label().map(ToString::to_string),
             can_redo: self.session.redo_depth() > 0,
+            steps: self
+                .session
+                .history()
+                .0
+                .iter()
+                .take(15)
+                .map(ToString::to_string)
+                .collect(),
+            redo_steps: self
+                .session
+                .history()
+                .1
+                .iter()
+                .take(15)
+                .map(ToString::to_string)
+                .collect(),
             unsaved: self.has_unsaved_changes(),
         };
         self.update_overview();

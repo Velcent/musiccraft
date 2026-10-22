@@ -463,6 +463,27 @@ fn menus(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mu
         crate::widgets::enabled_ui(ui, frame.history.can_redo, |ui| {
             menu_item(ui, state, "Redo", "edit.redo", actions);
         });
+        ui.separator();
+        for (label, key, which) in [
+            ("Cut", "Ctrl+X", crate::ClipboardKey::Cut),
+            ("Copy", "Ctrl+C", crate::ClipboardKey::Copy),
+            ("Paste", "Ctrl+V", crate::ClipboardKey::Paste),
+        ] {
+            let button = egui::Button::new(label).shortcut_text(key);
+            if ui
+                .add(button)
+                .hint("Acts on the focused editor window")
+                .clicked()
+            {
+                crate::request_clipboard(ui.ctx(), which);
+                ui.close();
+            }
+        }
+        ui.separator();
+        let empty = frame.history.steps.is_empty() && frame.history.redo_steps.is_empty();
+        crate::widgets::enabled_ui(ui, !empty, |ui| {
+            ui.menu_button("History", |ui| history_menu(ui, frame, actions));
+        });
     });
     ui.menu_button(menu("Add"), |ui| add_menu(ui, frame, actions));
     ui.menu_button(menu("Patterns"), |ui| {
@@ -474,6 +495,56 @@ fn menus(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mu
     });
     ui.menu_button(menu("Tools"), |ui| tools_menu(ui, frame, state, actions));
     ui.menu_button(menu("Help"), |ui| help_menu(ui, state));
+}
+
+/// Edit › History: redo steps (dim) above the current state, then undo steps
+/// newest first. Picking one undoes or redoes until just after it.
+fn history_menu(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
+    let history = &frame.history;
+    let mut pick = None;
+    for (i, step) in history.redo_steps.iter().enumerate().rev() {
+        if ui
+            .button(RichText::new(step).color(theme::TEXT_DIM))
+            .clicked()
+        {
+            pick = Some(HistoryPick::Redo(i));
+        }
+    }
+    ui.label(RichText::new("Now").color(theme::HIGHLIGHT));
+    for (i, step) in history.steps.iter().enumerate() {
+        if ui.button(step).clicked() {
+            pick = Some(HistoryPick::Undo(i));
+        }
+    }
+    if history.steps.len() < 15 && ui.button("Start of history").clicked() {
+        pick = Some(HistoryPick::Undo(history.steps.len()));
+    }
+    if let Some(pick) = pick {
+        let (name, times) = pick.runs();
+        for _ in 0..times {
+            run(actions, name);
+        }
+        ui.close();
+    }
+}
+
+/// A row picked in Edit › History, counted from the current state.
+#[derive(Debug, Clone, Copy)]
+enum HistoryPick {
+    /// The undo step this many back (0: the latest), keeping it.
+    Undo(usize),
+    /// The redo step this many ahead (0: the next), re-running it.
+    Redo(usize),
+}
+
+impl HistoryPick {
+    /// The command to repeat and how many times.
+    fn runs(self) -> (&'static str, usize) {
+        match self {
+            Self::Undo(i) => ("edit.undo", i),
+            Self::Redo(i) => ("edit.redo", i + 1),
+        }
+    }
 }
 
 /// The window buttons: playlist, channel rack, piano roll, browser, mixer.
@@ -1338,7 +1409,15 @@ fn record_options(
 
 #[cfg(test)]
 mod tests {
-    use super::dragged_tempo;
+    use super::{HistoryPick, dragged_tempo};
+
+    #[test]
+    fn history_picks_undo_or_redo_to_just_after_the_step() {
+        assert_eq!(HistoryPick::Undo(0).runs(), ("edit.undo", 0));
+        assert_eq!(HistoryPick::Undo(3).runs(), ("edit.undo", 3));
+        assert_eq!(HistoryPick::Redo(0).runs(), ("edit.redo", 1));
+        assert_eq!(HistoryPick::Redo(2).runs(), ("edit.redo", 3));
+    }
 
     #[test]
     fn tempo_drags_step_whole_digits_or_decimals() {
