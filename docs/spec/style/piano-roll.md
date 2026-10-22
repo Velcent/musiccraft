@@ -440,7 +440,7 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 8. **No tool switching from the wheel.** The tools follow the target order and Audition (renamed from Play) has its own glyph, but there is no right-hold + wheel tool switching, and the optional Paint steps and Ramp tools are not there.
 9. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
 10. **No tall-row property view.** Note labels are cut with an ellipsis, but the label size is fixed. `draw_note()`.
-11. **Window menu is flat**: new-note velocity, Quantize, Tools, transpose an octave, clear. It has no File / Edit / Select / View / Snap / Zoom / Markers submenus. `options_menu()` lines 558–622.
+11. **Window menu is incomplete.** It now has File, Edit, Tools, Chord, Snap, Select and Zoom submenus and the velocity field (`options_menu()`). Still missing: MIDI import, Mute / Unmute, Apply current colour, Select muted notes and notes of the current colour, Zoom to selection, the View and Markers submenus, and the Channel and Lane submenus.
 12. **Snap has no right-click.** Pressing a note with Draw or Paint now makes its length and velocity the new-note defaults; the snap picker still has no right-click menu.
 13. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
 14. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).

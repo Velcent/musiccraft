@@ -300,14 +300,20 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   shows it as a highlighted band, the grid gets a faint wash with two edge
   lines, and the notes that overlap it are selected. Escape or a click on
   the ruler clears it.
-- The header is one row: the window menu (☰: new-note velocity, quantize,
-  the note tools, transpose an octave up or down, clear the channel's notes),
-  then three square buttons for the note tools, snap and scale, a chord
+- The header is one row: the window menu (☰), then three square buttons for the note tools, snap and scale, a chord
   button, the tools, the title and a chevron that opens the channel list
   (channels with notes in the pattern are ticked). Snap, scale and chord name
   their value in the hint and tick it in their list; a dimmed glyph means
   none is set. In a narrow window the groups fold into the "more" button
   instead of wrapping.
+- The window menu has submenus: **File** (export the song as a MIDI file),
+  **Edit** (Cut, Copy, Paste, Duplicate, Delete, move the selection one snap
+  step left or right, transpose it a semitone, transpose the channel an
+  octave, and clear the channel's notes in the danger tone), **Tools**
+  (Quantize and the note tools), **Chord** and **Snap** (the same lists as
+  the header buttons), **Select** (All, None, Invert) and **Zoom** (in, out,
+  fit the pattern to the window), then the new-note velocity field. The
+  Edit and Select items do exactly what their keys do, and show the keys.
 - The window opens over the right half of the workspace, about half its
   width and height.
 - A velocity lane is pinned to the bottom of the view: one stem per note of the

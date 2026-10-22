@@ -590,14 +590,7 @@ fn pickers(
         ("roll-snap", Icon::Snap),
         (snap == Snap::Off, false),
         &format!("Snap: {} · click to choose", snap.label()),
-        |ui| {
-            for value in Snap::ALL {
-                if ui.selectable_label(snap == value, value.label()).clicked() {
-                    state.roll.snap = value;
-                    ui.close();
-                }
-            }
-        },
+        |ui| snap_list(ui, state),
     );
     let scale = state.roll.scale;
     picker(
@@ -619,18 +612,7 @@ fn pickers(
             "Draw: {} · click to draw single notes or chords",
             chord.unwrap_or("Note")
         ),
-        |ui| {
-            if ui.selectable_label(chord.is_none(), "Note").clicked() {
-                state.roll.chord = None;
-                ui.close();
-            }
-            for (name, _) in musiccraft_project::music::CHORDS {
-                if ui.selectable_label(chord == Some(name), name).clicked() {
-                    state.roll.chord = Some(name);
-                    ui.close();
-                }
-            }
-        },
+        |ui| chord_list(ui, state),
     );
 }
 
@@ -749,37 +731,154 @@ fn options_menu(
         all.extend(args.iter().map(|a| (*a).to_owned()));
         actions.push(Action::Run(Invocation::new(name, all)));
     };
+    ui.menu_button("File", |ui| {
+        if ui.button("Export the song as a MIDI file…").clicked() {
+            actions.push(Action::Run(Invocation::new(
+                "ui.export_midi",
+                Vec::<String>::new(),
+            )));
+            ui.close();
+        }
+    });
+    ui.menu_button("Edit", |ui| {
+        let any = !state.roll.selection.is_empty();
+        let item = |ui: &mut egui::Ui, enabled: bool, label: &str, keys: &str| {
+            ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(keys))
+                .clicked()
+        };
+        let ops = [
+            (any, "Cut", "Ctrl+X", EditOp::Cut),
+            (any, "Copy", "Ctrl+C", EditOp::Copy),
+            (
+                !state.roll.clipboard.is_empty(),
+                "Paste",
+                "Ctrl+V",
+                EditOp::Paste,
+            ),
+            (any, "Duplicate", "Ctrl+B", EditOp::Duplicate),
+            (any, "Delete", "Del", EditOp::Delete),
+        ];
+        for (enabled, label, keys, op) in ops {
+            if item(ui, enabled, label, keys) {
+                edit_op(state, project, op, actions);
+                ui.close();
+            }
+        }
+        ui.separator();
+        let moves = [
+            ("Move left one snap step", "Shift+←", EditOp::Move(-1, 0)),
+            ("Move right one snap step", "Shift+→", EditOp::Move(1, 0)),
+            ("Transpose up a semitone", "Shift+↑", EditOp::Move(0, 1)),
+            ("Transpose down a semitone", "Shift+↓", EditOp::Move(0, -1)),
+        ];
+        for (label, keys, op) in moves {
+            if item(ui, any, label, keys) {
+                edit_op(state, project, op, actions);
+                ui.close();
+            }
+        }
+        if ui.button("Transpose an octave up").clicked() {
+            run(actions, "note.transpose", &["12"]);
+            ui.close();
+        }
+        if ui.button("Transpose an octave down").clicked() {
+            run(actions, "note.transpose", &["-12"]);
+            ui.close();
+        }
+        ui.separator();
+        if ui
+            .button(RichText::new("Clear the channel's notes").color(theme::DANGER))
+            .clicked()
+        {
+            run(actions, "note.clear", &[]);
+            ui.close();
+        }
+    });
+    ui.menu_button("Tools", |ui| {
+        if ui
+            .button("Quantize")
+            .hint("Snap note starts to the grid")
+            .clicked()
+        {
+            let grid = format!("{}t", state.roll.snap.ticks_at(0, &state.roll.meter));
+            run(actions, "note.quantize", &[&grid]);
+            ui.close();
+        }
+        let selected = selected_of(state, project);
+        tools_menu(ui, state, number, &selected, actions, false);
+    });
+    ui.menu_button("Chord", |ui| chord_list(ui, state));
+    ui.menu_button("Snap", |ui| snap_list(ui, state));
+    ui.menu_button("Select", |ui| {
+        let ops = [
+            ("All", "Ctrl+A", EditOp::SelectAll),
+            ("None", "Esc", EditOp::SelectNone),
+            ("Invert", "", EditOp::InvertSelection),
+        ];
+        for (label, keys, op) in ops {
+            if ui
+                .add(egui::Button::new(label).shortcut_text(keys))
+                .clicked()
+            {
+                edit_op(state, project, op, actions);
+                ui.close();
+            }
+        }
+    });
+    ui.menu_button("Zoom", |ui| {
+        let zoom = |state: &mut UiState, factor: f32| {
+            state.roll.px_per_step =
+                (state.roll.px_per_step * factor).clamp(STEP_WIDTH_RANGE.0, STEP_WIDTH_RANGE.1);
+        };
+        if ui.button("Zoom in").clicked() {
+            zoom(state, 1.5);
+            ui.close();
+        }
+        if ui.button("Zoom out").clicked() {
+            zoom(state, 1.0 / 1.5);
+            ui.close();
+        }
+        if ui.button("Fit the pattern").clicked() {
+            let steps = project.current_pattern().length_steps.max(1) as f32;
+            if let Some((_, clip)) = state.roll.last_view {
+                let width = clip.width() - KEYS_WIDTH;
+                state.roll.px_per_step =
+                    (width / steps).clamp(STEP_WIDTH_RANGE.0, STEP_WIDTH_RANGE.1);
+                state.roll.jump = Some(vec2(0.0, state.roll.offset.y));
+            }
+            ui.close();
+        }
+    });
+    ui.separator();
     ui.horizontal(|ui| {
         ui.label("New-note velocity");
         ui.add(egui::DragValue::new(&mut state.roll.velocity).range(1..=127));
     });
-    ui.separator();
-    if ui
-        .button("Quantize")
-        .hint("Snap note starts to the grid")
-        .clicked()
-    {
-        let grid = format!("{}t", state.roll.snap.ticks_at(0, &state.roll.meter));
-        run(actions, "note.quantize", &[&grid]);
+}
+
+/// The snap values, the current one ticked (header picker and window menu).
+fn snap_list(ui: &mut egui::Ui, state: &mut UiState) {
+    let snap = state.roll.snap;
+    for value in Snap::ALL {
+        if ui.selectable_label(snap == value, value.label()).clicked() {
+            state.roll.snap = value;
+            ui.close();
+        }
+    }
+}
+
+/// Single notes or a chord for the Draw tool (header picker and window menu).
+fn chord_list(ui: &mut egui::Ui, state: &mut UiState) {
+    let chord = state.roll.chord;
+    if ui.selectable_label(chord.is_none(), "Note").clicked() {
+        state.roll.chord = None;
         ui.close();
     }
-    let selected = selected_of(state, project);
-    tools_menu(ui, state, number, &selected, actions, false);
-    if ui.button("Transpose an octave up").clicked() {
-        run(actions, "note.transpose", &["12"]);
-        ui.close();
-    }
-    if ui.button("Transpose an octave down").clicked() {
-        run(actions, "note.transpose", &["-12"]);
-        ui.close();
-    }
-    ui.separator();
-    if ui
-        .button(RichText::new("Clear the channel's notes").color(theme::DANGER))
-        .clicked()
-    {
-        run(actions, "note.clear", &[]);
-        ui.close();
+    for (name, _) in musiccraft_project::music::CHORDS {
+        if ui.selectable_label(chord == Some(name), name).clicked() {
+            state.roll.chord = Some(name);
+            ui.close();
+        }
     }
 }
 
@@ -2397,8 +2496,67 @@ fn edit(
 }
 
 /// Editing keys, active while the pointer is over the piano roll.
+/// The piano roll's selection and clipboard edits, run from keys and from
+/// the window menu's Edit and Select submenus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditOp {
+    SelectAll,
+    SelectNone,
+    InvertSelection,
+    Delete,
+    Cut,
+    Copy,
+    Paste,
+    Duplicate,
+    /// Move the selection by snap steps and semitones.
+    Move(i64, i8),
+}
+
 fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
     use egui::{Key, Modifiers};
+    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
+    let mut ops = Vec::new();
+    if pressed(Modifiers::COMMAND, Key::A) {
+        ops.push(EditOp::SelectAll);
+    }
+    // Esc clears a selection first; with none, it closes the window.
+    let any = !state.roll.selection.is_empty() || state.roll.time_selection.is_some();
+    if any && pressed(Modifiers::NONE, Key::Escape) {
+        ops.push(EditOp::SelectNone);
+    }
+    if pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace) {
+        ops.push(EditOp::Delete);
+    }
+    for (key, op) in [
+        (Key::C, EditOp::Copy),
+        (Key::X, EditOp::Cut),
+        (Key::V, EditOp::Paste),
+        (Key::B, EditOp::Duplicate),
+    ] {
+        if pressed(Modifiers::COMMAND, key) {
+            ops.push(op);
+        }
+    }
+    let moves = [
+        (Modifiers::SHIFT, Key::ArrowUp, 0, 1),
+        (Modifiers::SHIFT, Key::ArrowDown, 0, -1),
+        (Modifiers::COMMAND, Key::ArrowUp, 0, 12),
+        (Modifiers::COMMAND, Key::ArrowDown, 0, -12),
+        (Modifiers::SHIFT, Key::ArrowRight, 1, 0),
+        (Modifiers::SHIFT, Key::ArrowLeft, -1, 0),
+    ];
+    for (modifiers, key, steps, keys) in moves {
+        if pressed(modifiers, key) {
+            ops.push(EditOp::Move(steps, keys));
+        }
+    }
+    for op in ops {
+        edit_op(state, project, op, actions);
+    }
+}
+
+/// Runs one selection or clipboard edit on the selected channel's notes.
+fn edit_op(state: &mut UiState, project: &Project, op: EditOp, actions: &mut Vec<Action>) {
     let channel = state.selected_channel;
     let Some(id) = project.channels.get(channel).map(|c| c.id) else {
         return;
@@ -2410,74 +2568,68 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
         .copied()
         .collect();
     let snap = i64::from(state.roll.snap.ticks_at(0, &state.roll.meter));
-    let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
-
-    if pressed(Modifiers::COMMAND, Key::A) {
-        state.roll.selection = notes.iter().map(|n| (n.start, n.key)).collect();
-    }
-    // Esc clears a selection first; with none, it closes the window.
-    let any = !state.roll.selection.is_empty() || state.roll.time_selection.is_some();
-    if any && pressed(Modifiers::NONE, Key::Escape) {
-        state.roll.selection.clear();
-        state.roll.time_selection = None;
-    }
-    if pressed(Modifiers::NONE, Key::Delete) || pressed(Modifiers::NONE, Key::Backspace) {
-        actions.extend(remove_notes(channel, &selected).map(Action::Run));
-        state.roll.selection.clear();
-    }
-    let copy = pressed(Modifiers::COMMAND, Key::C);
-    let cut = pressed(Modifiers::COMMAND, Key::X);
-    if (copy || cut) && !selected.is_empty() {
-        let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
-        state.roll.clipboard = selected
-            .iter()
-            .map(|n| Note {
-                start: n.start - first,
-                ..*n
-            })
-            .collect();
-        if cut {
+    match op {
+        EditOp::SelectAll => {
+            state.roll.selection = notes.iter().map(|n| (n.start, n.key)).collect();
+        }
+        EditOp::SelectNone => {
+            state.roll.selection.clear();
+            state.roll.time_selection = None;
+        }
+        EditOp::InvertSelection => {
+            state.roll.selection = notes
+                .iter()
+                .map(|n| (n.start, n.key))
+                .filter(|k| !state.roll.selection.contains(k))
+                .collect();
+        }
+        EditOp::Delete => {
             actions.extend(remove_notes(channel, &selected).map(Action::Run));
             state.roll.selection.clear();
         }
-    }
-    if pressed(Modifiers::COMMAND, Key::V) && !state.roll.clipboard.is_empty() {
-        let at = state.roll.hover_tick.unwrap_or(0);
-        actions.extend(add_notes(channel, &state.roll.clipboard, at).map(Action::Run));
-        state.roll.selection = state
-            .roll
-            .clipboard
-            .iter()
-            .map(|n| (n.start + at, n.key))
-            .collect();
-    }
-    if pressed(Modifiers::COMMAND, Key::B) && !selected.is_empty() {
-        let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
-        let end = selected
-            .iter()
-            .map(|n| n.start + n.length)
-            .max()
-            .unwrap_or(first);
-        let span = (end - first).div_ceil(snap.max(1) as u32) * snap.max(1) as u32;
-        actions.extend(add_notes(channel, &selected, span).map(Action::Run));
-        state.roll.selection = selected.iter().map(|n| (n.start + span, n.key)).collect();
-    }
-    let moves = [
-        (Modifiers::SHIFT, Key::ArrowUp, 0, 1),
-        (Modifiers::SHIFT, Key::ArrowDown, 0, -1),
-        (Modifiers::COMMAND, Key::ArrowUp, 0, 12),
-        (Modifiers::COMMAND, Key::ArrowDown, 0, -12),
-        (Modifiers::SHIFT, Key::ArrowRight, snap, 0),
-        (Modifiers::SHIFT, Key::ArrowLeft, -snap, 0),
-    ];
-    for (modifiers, key, dt, dk) in moves {
-        if pressed(modifiers, key) && !selected.is_empty() {
-            let (dt, dk) = clamp_delta(&selected, dt, dk);
+        EditOp::Copy | EditOp::Cut if !selected.is_empty() => {
+            let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
+            state.roll.clipboard = selected
+                .iter()
+                .map(|n| Note {
+                    start: n.start - first,
+                    ..*n
+                })
+                .collect();
+            if op == EditOp::Cut {
+                actions.extend(remove_notes(channel, &selected).map(Action::Run));
+                state.roll.selection.clear();
+            }
+        }
+        EditOp::Paste if !state.roll.clipboard.is_empty() => {
+            let at = state.roll.hover_tick.unwrap_or(0);
+            actions.extend(add_notes(channel, &state.roll.clipboard, at).map(Action::Run));
+            state.roll.selection = state
+                .roll
+                .clipboard
+                .iter()
+                .map(|n| (n.start + at, n.key))
+                .collect();
+        }
+        EditOp::Duplicate if !selected.is_empty() => {
+            let first = selected.iter().map(|n| n.start).min().unwrap_or(0);
+            let end = selected
+                .iter()
+                .map(|n| n.start + n.length)
+                .max()
+                .unwrap_or(first);
+            let span = (end - first).div_ceil(snap.max(1) as u32) * snap.max(1) as u32;
+            actions.extend(add_notes(channel, &selected, span).map(Action::Run));
+            state.roll.selection = selected.iter().map(|n| (n.start + span, n.key)).collect();
+        }
+        EditOp::Move(steps, keys) if !selected.is_empty() => {
+            let (dt, dk) = clamp_delta(&selected, steps * snap, i32::from(keys));
             if let Some(invocation) = move_notes(channel, &selected, dt, dk) {
                 actions.push(Action::Run(invocation));
                 state.roll.selection = selected.iter().map(|n| shifted(n, dt, dk)).collect();
             }
         }
+        _ => {}
     }
 }
 
@@ -3081,5 +3233,43 @@ mod tests {
         assert_eq!(fit_to_scale(61, c_major), 60, "C# goes down to C");
         assert_eq!(fit_to_scale(64, c_major), 64);
         assert_eq!(fit_to_scale(61, None), 61);
+    }
+
+    #[test]
+    fn select_invert_and_menu_moves_use_the_shared_edits() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "channel.add_synth",
+            "note.add 1 0t 24t 60 100",
+            "note.add 1 48t 24t 64 100",
+        ] {
+            session.run_line(line).unwrap();
+        }
+        let project = session.project().clone();
+        let mut state = UiState::default();
+        state.roll.selection.insert((0, 60));
+        let mut actions = Vec::new();
+        edit_op(&mut state, &project, EditOp::InvertSelection, &mut actions);
+        assert!(actions.is_empty());
+        assert_eq!(
+            state.roll.selection.iter().copied().collect::<Vec<_>>(),
+            [(48, 64)]
+        );
+        edit_op(&mut state, &project, EditOp::Move(0, 1), &mut actions);
+        let ran: Vec<String> = actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::Run(i) => Some(i.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ran, ["note.move 1 48t 64 48t 65"]);
+        assert_eq!(
+            state.roll.selection.iter().copied().collect::<Vec<_>>(),
+            [(48, 65)]
+        );
     }
 }
