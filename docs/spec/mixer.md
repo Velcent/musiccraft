@@ -163,6 +163,20 @@ Ranges and defaults are defined in `musiccraft-params`.
   Delete), then the common items.
 - The selected strip is lifted to the raised tone with a thin accent edge
   around the whole strip, and its meter well is outlined in the accent.
+- Several tracks can be selected. Ctrl+Shift+click on a number cell, name or
+  meter adds the track to the selection or takes it out; Ctrl+A over the
+  mixer selects every track and Esc goes back to one. A plain click on a
+  number, name or meter selects that track alone. The last track clicked is
+  the primary one: the slot panel, the title and the routing arrows follow
+  it, and only it gets the accent edge; the others are lifted and have their
+  meter outlined. Clicking a fader, knob or light of a track outside the
+  selection selects that track alone; one inside keeps the selection.
+- Faders, pan knobs and enable lights are ganged across the selection.
+  Dragging a selected fader moves every selected fader by the same share of
+  its travel, and a pan knob moves every selected pan by the same amount,
+  each clamped to its range; the whole drag is one undo step. Clicking a
+  selected track's enable light mutes or unmutes every selected track to
+  match it (`mixer.set_mute`, one undo step).
 - Each strip is narrow and shows, top to bottom: the number cell (the number,
   or M for the master, on a cell tinted with the track's colour), the name
   written vertically beside the peak meter, a round enable light (lit while

@@ -51,6 +51,9 @@ pub fn show(
     if crate::chrome::placing(ctx, id) {
         ctx.data_mut(|d| d.insert_temp(settle, 4_u8));
     }
+    if crate::chrome::focused(ctx, id) {
+        keys(ctx, state, project);
+    }
     let frames = ctx.data(|d| d.get_temp::<u8>(settle)).unwrap_or(0);
     let mut window = crate::chrome::window(ctx, id, "Mixer", area, default, true);
     if frames < 4 {
@@ -473,6 +476,112 @@ fn knob_command(
     }
 }
 
+/// The selected mixer tracks, the primary one included, in order.
+fn selection(state: &UiState) -> Vec<usize> {
+    let mut all = state.mixer_selection.clone();
+    all.insert(state.selected_track);
+    all.into_iter().collect()
+}
+
+fn is_selected(state: &UiState, index: usize) -> bool {
+    state.selected_track == index || state.mixer_selection.contains(&index)
+}
+
+/// Selects `index` alone, or with `toggle` adds it to the selection (as the
+/// primary track) or takes it out.
+fn select(state: &mut UiState, index: usize, toggle: bool) {
+    if !toggle {
+        state.mixer_selection.clear();
+        state.selected_track = index;
+    } else if state.selected_track == index {
+        if let Some(next) = state.mixer_selection.pop_last() {
+            state.selected_track = next;
+        }
+    } else if !state.mixer_selection.remove(&index) {
+        state.mixer_selection.insert(state.selected_track);
+        state.selected_track = index;
+    }
+}
+
+/// Makes `index`, already selected, the primary track.
+fn make_primary(state: &mut UiState, index: usize) {
+    if state.mixer_selection.remove(&index) {
+        state.mixer_selection.insert(state.selected_track);
+        state.selected_track = index;
+    }
+}
+
+/// Moves the fader (`mixer.set_volume`) or pan (`mixer.set_pan`) of every
+/// track in `tracks` by as much as track `index` moves to `value`: faders by
+/// the same share of their travel, pans by the same amount, each clamped.
+fn ganged(project: &Project, tracks: &[usize], index: usize, name: &str, value: f32) -> Invocation {
+    let volume = name == "mixer.set_volume";
+    let position = |t: &MixerTrack| {
+        if volume {
+            widgets::gain_to_fader(t.volume, MAX_VOLUME)
+        } else {
+            t.pan
+        }
+    };
+    let to = if volume {
+        widgets::gain_to_fader(value, MAX_VOLUME)
+    } else {
+        value
+    };
+    let delta = project.mixer.get(index).map_or(0.0, |t| to - position(t));
+    let lines = tracks.iter().filter_map(|&t| {
+        let track = project.mixer.get(t)?;
+        let moved = if t == index {
+            value
+        } else if volume {
+            widgets::fader_to_gain((position(track) + delta).clamp(0.0, 1.0), MAX_VOLUME)
+        } else {
+            (position(track) + delta).clamp(-1.0, 1.0)
+        };
+        Some(Invocation::new(name, [t.to_string(), format!("{moved:.4}")]).to_string())
+    });
+    Invocation::new(musiccraft_commands::BATCH, lines)
+}
+
+/// Like `knob_command`, but a control of a track inside a multi-selection
+/// moves the whole selection.
+fn strip_control(
+    state: &mut UiState,
+    project: &Project,
+    index: usize,
+    out: &widgets::KnobOutput,
+    name: &str,
+    actions: &mut Vec<Action>,
+) {
+    let tracks = selection(state);
+    if tracks.len() < 2 || !tracks.contains(&index) {
+        knob_command(state, out, name, &index.to_string(), actions);
+        return;
+    }
+    if out.started {
+        state.begin_gesture();
+    }
+    if let Some(value) = out.changed {
+        let invocation = ganged(project, &tracks, index, name, value);
+        actions.push(Action::Coalesced(invocation, state.gesture()));
+    }
+}
+
+/// Window-local keys: Ctrl+A selects every track, Esc keeps only the primary.
+fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project) {
+    use egui::{Key, Modifiers};
+    if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::A)) {
+        state.mixer_selection = (0..project.mixer.len())
+            .filter(|&t| t != state.selected_track)
+            .collect();
+    }
+    if !state.mixer_selection.is_empty()
+        && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
+    {
+        state.mixer_selection.clear();
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn strip(
     ui: &mut egui::Ui,
@@ -484,7 +593,8 @@ fn strip(
     actions: &mut Vec<Action>,
 ) {
     let number = index.to_string();
-    let selected = state.selected_track == index;
+    let selected = is_selected(state, index);
+    let primary = state.selected_track == index;
     let color = track_color(index, track);
     let frame = egui::Frame::new()
         .fill(if selected {
@@ -523,7 +633,8 @@ fn strip(
                 .inner
                 .union(cell);
             if name.clicked() {
-                state.selected_track = index;
+                let toggle = ui.input(|i| i.modifiers.command && i.modifiers.shift);
+                select(state, index, toggle);
             }
             if name.double_clicked() {
                 // The name reads upward; the field is a plain row at its top.
@@ -567,9 +678,20 @@ fn strip(
                 );
             }
             let solo_key = ui.input(|i| i.modifiers.command);
+            let tracks = selection(state);
             if enable.clicked() {
                 if solo_key && index > 0 {
                     run(actions, "mixer.toggle_solo", [number.clone()]);
+                } else if selected && tracks.len() > 1 {
+                    let to = if track.mute { "off" } else { "on" };
+                    let lines = tracks.iter().map(|t| {
+                        Invocation::new("mixer.set_mute", [t.to_string(), to.to_owned()])
+                            .to_string()
+                    });
+                    actions.push(Action::Run(Invocation::new(
+                        musiccraft_commands::BATCH,
+                        lines,
+                    )));
                 } else {
                     run(actions, "mixer.toggle_mute", [number.clone()]);
                 }
@@ -597,7 +719,7 @@ fn strip(
             }
             let pan = widgets::knob(ui, track.pan, -1.0, 1.0, 0.0, true);
             crate::automation::menu(&pan.response, &format!("mixer:{index}:pan"), actions);
-            knob_command(state, &pan, "mixer.set_pan", &number, actions);
+            strip_control(state, project, index, &pan, "mixer.set_pan", actions);
             pan.response.hint(format!("Pan {}", format::pan(track.pan)));
             let below = if state.mixer_details { 84.0 } else { 0.0 } + 20.0;
             let fader_height = (ui.available_height() - below).max(60.0);
@@ -608,7 +730,7 @@ fn strip(
                 vec2(STRIP_WIDTH - 12.0, fader_height),
             );
             crate::automation::menu(&fader.response, &format!("mixer:{index}:volume"), actions);
-            knob_command(state, &fader, "mixer.set_volume", &number, actions);
+            strip_control(state, project, index, &fader, "mixer.set_volume", actions);
             fader
                 .response
                 .hint(format!("Level {}", format::level(track.volume)));
@@ -627,10 +749,15 @@ fn strip(
                 .interact_pos()
                 .is_some_and(|p| response.response.rect.contains(p))
     });
-    if clicked_here && ui.is_rect_visible(response.response.rect) {
-        state.selected_track = index;
+    let toggling = ui.input(|i| i.modifiers.command && i.modifiers.shift);
+    if clicked_here && ui.is_rect_visible(response.response.rect) && !toggling {
+        if is_selected(state, index) {
+            make_primary(state, index);
+        } else {
+            select(state, index, false);
+        }
     }
-    if selected {
+    if primary {
         ui.painter().rect_stroke(
             response.response.rect,
             2.0,
@@ -1441,5 +1568,35 @@ mod tests {
         track.to_master = false;
         track.sends.clear();
         assert_eq!(route_summary(&track), "none");
+    }
+
+    #[test]
+    fn toggling_tracks_keeps_the_last_one_clicked_primary() {
+        let mut state = UiState::default();
+        select(&mut state, 1, false);
+        select(&mut state, 3, true);
+        select(&mut state, 2, true);
+        assert_eq!(selection(&state), [1, 2, 3]);
+        assert_eq!(state.selected_track, 2);
+        select(&mut state, 2, true);
+        assert_eq!(selection(&state), [1, 3]);
+        assert!(!state.mixer_selection.contains(&state.selected_track));
+        make_primary(&mut state, 1);
+        assert_eq!(state.selected_track, 1);
+        select(&mut state, 4, false);
+        assert_eq!(selection(&state), [4]);
+    }
+
+    #[test]
+    fn ganged_pans_move_by_the_same_amount_and_clamp() {
+        let mut project = Project::default();
+        project.mixer[1].pan = 0.0;
+        project.mixer[2].pan = 0.9;
+        let invocation = ganged(&project, &[1, 2], 1, "mixer.set_pan", 0.25);
+        assert_eq!(invocation.name, musiccraft_commands::BATCH);
+        assert_eq!(
+            invocation.args,
+            ["mixer.set_pan 1 0.2500", "mixer.set_pan 2 1.0000"]
+        );
     }
 }

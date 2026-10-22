@@ -127,6 +127,15 @@ take precedence over the global keys.
 | Shift+4 | Zoom all the way out; again to go back |
 | Shift+5 | Zoom to the loop region |
 
+### Over the mixer
+
+Window-local keys, active while the mixer is the focused window; they take
+precedence over the global keys.
+
+| Chord | Action |
+| --- | --- |
+| Ctrl+A / Esc | Select every track / keep only the primary track selected |
+
 ## Sources
 
 - Space, L, Ctrl+M, F4, F5, F6, F7, F9, Alt+F8, Alt+T, numeric-keypad plus/minus,

@@ -3016,3 +3016,84 @@ fn right_clicking_the_snap_button_sets_the_new_note_length() {
         crate::geometry::Snap::Beat.ticks_at(0, &h.state.roll.meter)
     );
 }
+
+#[test]
+fn ctrl_shift_clicks_select_several_mixer_tracks_and_their_faders_move_together() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    let names: Vec<String> = h
+        .session
+        .project()
+        .mixer
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    let mut hint_at = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    let row = (0..40)
+        .map(|j| window.top() + 24.0 + 3.0 * j as f32)
+        .find(|&y| hint_at(&mut h, pos2(window.left() + 20.0, y)).starts_with("Master — click"))
+        .expect("the master's number cell");
+    // The middle of the run of points whose hint names the track.
+    let column = |h: &mut Harness, track: usize| {
+        let wanted = format!("{} — click", names[track]);
+        let xs: Vec<f32> = (0..)
+            .map(|j| window.left() + 4.0 + 2.0 * j as f32)
+            .take_while(|&x| x < window.right())
+            .filter(|&x| hint_at(h, pos2(x, row)).starts_with(&wanted))
+            .collect();
+        assert!(!xs.is_empty(), "no strip for track {track}");
+        (xs[0] + xs[xs.len() - 1]) / 2.0
+    };
+    let (one, two) = (column(&mut h, 1), column(&mut h, 2));
+    // Rest the pointer, so the scan's motion does not fling the strips
+    // sideways when the button is released.
+    let mut rest = |h: &mut Harness, p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        for _ in 0..30 {
+            h.frame(vec![]);
+        }
+    };
+    rest(&mut h, pos2(one, row));
+    h.click(pos2(one, row), PointerButton::Primary);
+    rest(&mut h, pos2(two, row));
+    h.modifiers = Modifiers::COMMAND | Modifiers::SHIFT;
+    h.click(pos2(two, row), PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(h.state.selected_track, 2, "the last click is the primary");
+    assert_eq!(
+        h.state.mixer_selection.iter().copied().collect::<Vec<_>>(),
+        [1]
+    );
+
+    let fader = (0..200)
+        .map(|j| row + 60.0 + 2.0 * j as f32)
+        .find(|&y| hint_at(&mut h, pos2(two, y)).starts_with("Level"))
+        .expect("track 2's fader")
+        + 30.0;
+    rest(&mut h, pos2(two, fader));
+    let before: Vec<f32> = h.session.project().mixer.iter().map(|t| t.volume).collect();
+    let ran = h.drag(pos2(two, fader), pos2(two, fader + 40.0));
+    assert!(ran.iter().any(|c| c.starts_with("edit.batch")), "{ran:?}");
+    let after: Vec<f32> = h.session.project().mixer.iter().map(|t| t.volume).collect();
+    assert!(after[2] != before[2], "{before:?} → {after:?}");
+    assert!((after[1] - after[2]).abs() < 1e-3, "{after:?}");
+    assert_eq!(after[3], before[3], "unselected tracks stay");
+    h.session.undo().unwrap();
+    let undone: Vec<f32> = h.session.project().mixer.iter().map(|t| t.volume).collect();
+    assert_eq!(undone, before, "the drag is one undo step");
+
+    h.key(egui::Key::A, Modifiers::COMMAND);
+    assert_eq!(h.state.mixer_selection.len() + 1, names.len());
+    h.key(egui::Key::Escape, Modifiers::NONE);
+    assert!(h.state.mixer_selection.is_empty());
+    assert_eq!(h.state.selected_track, 2);
+    rest(&mut h, pos2(one, row));
+    h.click(pos2(one, row), PointerButton::Primary);
+    assert_eq!(h.state.selected_track, 1);
+}

@@ -495,8 +495,11 @@ pub struct UiState {
     pub windows: Windows,
     /// Selected channel (0-based), shown in the piano roll.
     pub selected_channel: usize,
-    /// Selected mixer track (0 = master).
+    /// Selected mixer track (0 = master), the primary one when several are
+    /// selected.
     pub selected_track: usize,
+    /// The other mixer tracks selected along with `selected_track`.
+    pub mixer_selection: std::collections::BTreeSet<usize>,
     /// Effect slot shown in the mixer's effect editor (0-based).
     pub mixer_slot: usize,
     /// The mixer strips show their track switches (phase, swap, separation,
@@ -632,6 +635,7 @@ impl UiState {
             windows: Windows::default(),
             selected_channel: 0,
             selected_track: 0,
+            mixer_selection: std::collections::BTreeSet::new(),
             mixer_slot: 0,
             mixer_details: true,
             mixer_panel: true,
@@ -757,6 +761,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     if state.selected_track >= frame.project.mixer.len() {
         state.selected_track = 0;
     }
+    let tracks = frame.project.mixer.len();
+    state.mixer_selection.retain(|&t| t < tracks);
+    state.mixer_selection.remove(&state.selected_track);
 
     state.hint = hint::begin_frame(ui.ctx(), frame.settings.show_hints);
     automation::publish(ui.ctx(), frame.project, state.copied_control);
