@@ -240,6 +240,10 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - Vertical keyboard on the left (drawn as piano keys), time grid snapped to
   steps by default. Notes of other channels in the pattern show faintly in
   one neutral tone (ghost notes, `theme::GHOST_NOTE`).
+- **Snap values** (piano roll and playlist, finest first): None (single
+  ticks), 1/6 step, 1/4 step, 1/3 step, 1/2 step, Step, 1/3 beat, 1/2 beat,
+  Beat and Bar. The thirds and sixths are triplet grids. Beat fractions count
+  from the start of each beat, so they follow the time signature.
 - **Pattern play button** (header, after the pickers): a click plays the
   pattern from the playhead, switching to pattern mode first if the song was
   selected, or pauses while playing; a right-click stops and returns to the

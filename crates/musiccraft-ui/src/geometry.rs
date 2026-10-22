@@ -9,12 +9,20 @@ use musiccraft_project::params::TICKS_PER_STEP;
 pub enum Snap {
     /// No snapping (single ticks).
     Off,
+    /// A sixth of a step (triplet 1/64 notes).
+    SixthStep,
     /// A quarter of a step (1/64 note).
     QuarterStep,
+    /// A third of a step (1/48 note, triplet 1/32s).
+    ThirdStep,
     /// Half a step (1/32 note).
     HalfStep,
     /// One step (1/16 note).
     Step,
+    /// A third of a beat (triplet eighths in 4/4).
+    ThirdBeat,
+    /// Half a beat (eighths in 4/4).
+    HalfBeat,
     /// One beat of the time signature.
     Beat,
     /// One bar of the time signature.
@@ -23,11 +31,15 @@ pub enum Snap {
 
 impl Snap {
     /// Every option, finest first.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 10] = [
         Self::Off,
+        Self::SixthStep,
         Self::QuarterStep,
+        Self::ThirdStep,
         Self::HalfStep,
         Self::Step,
+        Self::ThirdBeat,
+        Self::HalfBeat,
         Self::Beat,
         Self::Bar,
     ];
@@ -38,9 +50,13 @@ impl Snap {
     pub fn ticks_at(self, tick: u32, meter: &Meter) -> u32 {
         match self {
             Self::Off => 1,
+            Self::SixthStep => TICKS_PER_STEP / 6,
             Self::QuarterStep => TICKS_PER_STEP / 4,
+            Self::ThirdStep => TICKS_PER_STEP / 3,
             Self::HalfStep => TICKS_PER_STEP / 2,
             Self::Step => TICKS_PER_STEP,
+            Self::ThirdBeat => (meter.sig_at(tick).beat_ticks() / 3).max(1),
+            Self::HalfBeat => (meter.sig_at(tick).beat_ticks() / 2).max(1),
             Self::Beat => meter.sig_at(tick).beat_ticks(),
             Self::Bar => meter.bar(tick).len,
         }
@@ -51,9 +67,13 @@ impl Snap {
     pub fn label(self) -> &'static str {
         match self {
             Self::Off => "None",
+            Self::SixthStep => "1/6 step",
             Self::QuarterStep => "1/4 step",
+            Self::ThirdStep => "1/3 step",
             Self::HalfStep => "1/2 step",
             Self::Step => "Step",
+            Self::ThirdBeat => "1/3 beat",
+            Self::HalfBeat => "1/2 beat",
             Self::Beat => "Beat",
             Self::Bar => "Bar",
         }
@@ -66,6 +86,11 @@ impl Snap {
         match self {
             Self::Beat => meter.floor_to_beat(tick),
             Self::Bar => meter.floor_to_bar(tick),
+            Self::ThirdBeat | Self::HalfBeat => {
+                let beat = meter.floor_to_beat(tick);
+                let grid = self.ticks_at(tick, meter);
+                beat + (tick - beat) / grid * grid
+            }
             _ => {
                 let grid = self.ticks_at(tick, meter);
                 tick / grid * grid
@@ -299,6 +324,28 @@ mod tests {
         assert_eq!(Snap::Bar.round(450.0, &m), 488);
         assert_eq!(Snap::Bar.ticks_at(10, &m), 200);
         assert_eq!(Snap::Beat.ticks_at(300, &m), 96);
+    }
+
+    #[test]
+    fn triplet_and_beat_fraction_snaps() {
+        let m = Meter::default();
+        assert_eq!(Snap::ThirdStep.ticks_at(0, &m), 8);
+        assert_eq!(Snap::SixthStep.round(13.0, &m), 12);
+        assert_eq!(Snap::ThirdBeat.floor(100.0, &m), 96);
+        assert_eq!(Snap::ThirdBeat.round(120.0, &m), 128);
+        assert_eq!(Snap::HalfBeat.floor(150.0, &m), 144);
+        // Beat fractions count from each beat, after a bar cut short.
+        let sig = |s: &str| s.parse::<musiccraft_project::TimeSig>().unwrap();
+        let m = Meter::with_changes(sig("4/4"), [(200, sig("4/4"))]);
+        assert_eq!(Snap::HalfBeat.floor(250.0, &m), 248);
+        let ticks: Vec<u32> = Snap::ALL
+            .iter()
+            .map(|s| s.ticks_at(0, &Meter::default()))
+            .collect();
+        assert!(
+            ticks.windows(2).all(|w| w[0] < w[1]),
+            "finest first: {ticks:?}"
+        );
     }
 
     #[test]
