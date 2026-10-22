@@ -148,7 +148,7 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
 - **Empty-grid gestures**:
   - Existing: left-click with Draw adds a note at the snapped position with the last-used length; dragging right straight after adding sets its length; Ctrl+drag (any tool) or a drag with Select draws a selection rectangle, Shift adding to the selection; Select's click on empty space clears the selection; wheel scrolls vertically, and Ctrl+wheel zooms horizontally around the pointer.
   - **Proposed (needs `piano-roll.md` updated first):** Shift+drag draws a note by its length; right-click on empty grid clears the selection; middle-drag pans in both directions (main-window section); Shift+wheel scrolls horizontally; Alt+wheel over a note changes the lane's property for that note (see K).
-  - **Proposed zoom keys (needs `keymap.md` updated first; window-local):** Page Up and Page Down zoom in and out horizontally around the pointer. Shift+1, Shift+2 and Shift+3 jump to three fixed zoom levels of our own choosing, Shift+4 fits the whole pattern, and Shift+5 zooms to the time selection. Plain 1–9 keep selecting patterns.
+  - **Zoom keys (existing, window-local):** Page Up and Page Down zoom in and out horizontally around the pointer. Shift+1, Shift+2 and Shift+3 jump to three fixed zoom levels of our own choosing (12, 24 and 48 points per step), Shift+4 fits the whole pattern, and Shift+5 zooms to the time selection. Plain 1–9 keep selecting patterns.
 
 ### F. Notes
 
@@ -432,7 +432,7 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 
 1. **Header pickers lack value text.** The pattern play button (A7) is in, after the pickers. Snap, scale and chord are square icon buttons with their value in the hint and ticked in their list, the note-tools button opens the tools list, colour/porta/slide sit on the corner block, velocity is in the window menu and the title has its channel chevron (A2–A5, A8). Still missing: the small value text after each picker when the window is wide, wheel and right-click on the pickers and the title, and the fit-to-scale item. `crates/musiccraft-ui/src/piano_roll.rs` (`pickers`, `channel_picker`).
 2. **Scroll/zoom row details.** The row, corner block, vertical bar and zoom box are in (`crates/musiccraft-ui/src/scrollbars.rs`). Missing: the bar-range readout in the hint while dragging a grip, right-drag on the thumb for two-way scrolling, incremental rail paging, the thin-bars setting, the lane zoom box (K6), and right-click on the corner block ("Apply this colour to the selected notes").
-3. **Vertical zoom only from the zoom box.** The zoom box sets the key-row height (6 to 30 points) and double-click resets it, but there are no zoom keys (Page Up/Down, Shift+1–5) in `docs/spec/keymap.md` or `default.keymap`, and no middle-drag panning.
+3. **Zoom details.** The zoom box sets the key-row height (6 to 30 points) and double-click resets it, and the horizontal zoom keys are bound. Page Up and Page Down keep the view's left edge instead of zooming around the pointer, and there is no middle-drag panning.
 4. **Ruler has no markers.** A click seeks, a drag makes a time selection (band, grid wash, notes selected), beat ticks rise from the bottom and numbers thin out when bars are narrow. Still missing: markers, time-signature and key tabs, the pattern's signature at the start, and the right-click menu. `crates/musiccraft-ui/src/piano_roll.rs` (`ruler`, `draw_ruler`).
 5. **Property lane details.** Stems have heads and length tails, take the selection tone when selected, show ghost stems behind, and the lane has quieter grid lines and a faint name watermark. Still missing: the splitter (fixed `LANE_HEIGHT`, matching the fixed height in `window-layout.md`), the lane zoom box, Shift+drag line drawing, Alt+click reset and the drag readout. `velocity_lane()`.
 6. **Ghost notes have no panel.** Other channels' notes are drawn in one neutral tone (`theme::GHOST_NOTE`), but there are no ghosts from overlapping clips, no ghost-channel panel or header button, and no double-right-click to switch channel.
@@ -444,7 +444,7 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 12. **Snap has no right-click.** Pressing a note with Draw or Paint now makes its length and velocity the new-note defaults; the snap picker still has no right-click menu.
 13. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
 14. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
-15. **Keymap**: Page Up/Down, Shift+1–5, Alt+V, Alt+C, Shift+F, Shift+Enter, N and I over the piano roll are new window-local bindings for `docs/spec/keymap.md` (a new "Over the piano roll" section) and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today.
+15. **Keymap**: Page Up/Down and Shift+1–5 are bound (`keymap.md`, "Over the piano roll"). Still unbound: Alt+V, Alt+C, Shift+F, Shift+Enter, N and I, which wait for the features they drive (ghost panel, colour apply, lane targets, lane hiding, Paint steps, Ramp).
 
 ## Sources
 

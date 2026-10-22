@@ -69,6 +69,23 @@ one, which a click anywhere in it makes; and the typing keyboard is off); they t
 | Ctrl+L | Route the selected channel to a free mixer track (`channel.route_free`) |
 | Shift+Ctrl+Left / Right | Shift the selected channel's steps |
 
+### Over the piano roll
+
+Window-local keys, active while the piano roll is the focused window (and
+the typing keyboard is off); they take precedence over the global keys.
+
+| Chord | Action |
+| --- | --- |
+| Ctrl+A / Esc | Select all notes / clear the selection |
+| Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste (at the pointer) |
+| Ctrl+B | Duplicate the selection after itself |
+| Delete / Backspace | Delete the selection |
+| Shift+Left / Right | Move the selection one snap step |
+| Shift+Up / Down, Ctrl+Up / Down | Transpose the selection a semitone / an octave |
+| Page Up / Page Down | Zoom in / out horizontally |
+| Shift+1, Shift+2, Shift+3 | Fixed zoom levels (12, 24 and 48 points per step) |
+| Shift+4 / Shift+5 | Fit the pattern / zoom to the time selection (or the selected notes) |
+
 ## Sources
 
 - Space, L, Ctrl+M, F4, F5, F6, F7, F9, Alt+F8, Alt+T, numeric-keypad plus/minus,

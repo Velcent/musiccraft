@@ -2457,3 +2457,21 @@ fn fitting_to_the_scale_draws_on_its_keys() {
     let added = h.click(h.roll_point(5, 61), PointerButton::Primary);
     assert_eq!(added, ["note.add 1 0t 24t 60 100"]);
 }
+
+#[test]
+fn piano_roll_zoom_keys_step_and_fit() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 1 60"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let before = h.state.roll.px_per_step;
+    h.key(egui::Key::PageUp, Modifiers::NONE);
+    assert!((h.state.roll.px_per_step - before * 1.5).abs() < 1e-3);
+    h.key(egui::Key::Num1, Modifiers::SHIFT);
+    assert!((h.state.roll.px_per_step - 12.0).abs() < 1e-3);
+    h.key(egui::Key::Num4, Modifiers::SHIFT);
+    let (_, clip) = h.state.roll.last_view.expect("roll drawn");
+    let steps = h.session.project().current_pattern().length_steps as f32;
+    let (low, high) = crate::piano_roll::STEP_WIDTH_RANGE;
+    let fit = ((clip.width() - crate::piano_roll::KEYS_WIDTH) / steps).clamp(low, high);
+    assert!((h.state.roll.px_per_step - fit).abs() < 1e-3);
+}

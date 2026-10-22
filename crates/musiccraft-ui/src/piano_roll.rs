@@ -15,7 +15,7 @@ use crate::geometry::{Grid, Hit, Snap, hit_test};
 use crate::icons::{self, Icon};
 use crate::{Action, Frame, UiState, theme};
 
-const KEYS_WIDTH: f32 = 52.0;
+pub(crate) const KEYS_WIDTH: f32 = 52.0;
 const RULER_HEIGHT: f32 = 18.0;
 /// Height of the velocity lane pinned to the bottom of the view.
 const LANE_HEIGHT: f32 = 96.0;
@@ -23,7 +23,7 @@ const LANE_HEIGHT: f32 = 96.0;
 const KEY_HEIGHT: f32 = 14.0;
 const KEY_HEIGHT_RANGE: (f32, f32) = (6.0, 30.0);
 /// Horizontal zoom range, in points per step.
-const STEP_WIDTH_RANGE: (f32, f32) = (6.0, 120.0);
+pub(crate) const STEP_WIDTH_RANGE: (f32, f32) = (6.0, 120.0);
 const KEYS: u32 = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,7 +99,7 @@ pub struct RollState {
     stroke: Vec<Note>,
     /// Notes swept by a right-button drag, deleted when it ends.
     pub(crate) right_erase: Vec<Note>,
-    px_per_step: f32,
+    pub(crate) px_per_step: f32,
     key_height: f32,
     pub(crate) snap: Snap,
     pub(crate) last_length: u32,
@@ -826,27 +826,20 @@ fn options_menu(
         }
     });
     ui.menu_button("Zoom", |ui| {
-        let zoom = |state: &mut UiState, factor: f32| {
-            state.roll.px_per_step =
-                (state.roll.px_per_step * factor).clamp(STEP_WIDTH_RANGE.0, STEP_WIDTH_RANGE.1);
-        };
-        if ui.button("Zoom in").clicked() {
-            zoom(state, 1.5);
-            ui.close();
-        }
-        if ui.button("Zoom out").clicked() {
-            zoom(state, 1.0 / 1.5);
-            ui.close();
-        }
-        if ui.button("Fit the pattern").clicked() {
-            let steps = project.current_pattern().length_steps.max(1) as f32;
-            if let Some((_, clip)) = state.roll.last_view {
-                let width = clip.width() - KEYS_WIDTH;
-                state.roll.px_per_step =
-                    (width / steps).clamp(STEP_WIDTH_RANGE.0, STEP_WIDTH_RANGE.1);
-                state.roll.jump = Some(vec2(0.0, state.roll.offset.y));
+        let items = [
+            ("Zoom in", "Page Up", Zoom::By(1.5)),
+            ("Zoom out", "Page Down", Zoom::By(1.0 / 1.5)),
+            ("Fit the pattern", "Shift+4", Zoom::Pattern),
+            ("Zoom to selection", "Shift+5", Zoom::Selection),
+        ];
+        for (label, keys, op) in items {
+            if ui
+                .add(egui::Button::new(label).shortcut_text(keys))
+                .clicked()
+            {
+                zoom(state, project, op);
+                ui.close();
             }
-            ui.close();
         }
     });
     ui.separator();
@@ -854,6 +847,55 @@ fn options_menu(
         ui.label("New-note velocity");
         ui.add(egui::DragValue::new(&mut state.roll.velocity).range(1..=127));
     });
+}
+
+/// Horizontal zoom from the window menu and the window-local keys.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Zoom {
+    /// Multiply the step width.
+    By(f32),
+    /// A fixed step width (Shift+1–3).
+    Level(f32),
+    /// The whole pattern in the window (Shift+4).
+    Pattern,
+    /// The time selection, or the selected notes (Shift+5).
+    Selection,
+}
+
+/// The fixed zoom levels of Shift+1, Shift+2 and Shift+3, in points per step.
+const ZOOM_LEVELS: [f32; 3] = [12.0, 24.0, 48.0];
+
+fn zoom(state: &mut UiState, project: &Project, zoom: Zoom) {
+    let clamp = |px: f32| px.clamp(STEP_WIDTH_RANGE.0, STEP_WIDTH_RANGE.1);
+    let range = match zoom {
+        Zoom::By(factor) => {
+            state.roll.px_per_step = clamp(state.roll.px_per_step * factor);
+            return;
+        }
+        Zoom::Level(px) => {
+            state.roll.px_per_step = clamp(px);
+            return;
+        }
+        Zoom::Pattern => Some((0, project.current_pattern().length_ticks().max(1))),
+        Zoom::Selection => state.roll.time_selection.or_else(|| {
+            let id = project.channels.get(state.selected_channel)?.id;
+            let picked = project
+                .current_pattern()
+                .notes_of(id)
+                .filter(|n| state.roll.selection.contains(&(n.start, n.key)));
+            picked.fold(None, |span, n| {
+                let (a, b) = span.unwrap_or((n.start, n.start + n.length));
+                Some((a.min(n.start), b.max(n.start + n.length)))
+            })
+        }),
+    };
+    let (Some((from, to)), Some((_, clip))) = (range, state.roll.last_view) else {
+        return;
+    };
+    let steps = (to.saturating_sub(from)).max(1) as f32 / TICKS_PER_STEP as f32;
+    state.roll.px_per_step = clamp((clip.width() - KEYS_WIDTH) / steps);
+    let x = from as f32 / TICKS_PER_STEP as f32 * state.roll.px_per_step;
+    state.roll.jump = Some(vec2(x, state.roll.offset.y));
 }
 
 /// The snap values, the current one ticked (header picker and window menu).
@@ -2552,6 +2594,20 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     }
     for op in ops {
         edit_op(state, project, op, actions);
+    }
+    let zooms = [
+        (Modifiers::NONE, Key::PageUp, Zoom::By(1.5)),
+        (Modifiers::NONE, Key::PageDown, Zoom::By(1.0 / 1.5)),
+        (Modifiers::SHIFT, Key::Num1, Zoom::Level(ZOOM_LEVELS[0])),
+        (Modifiers::SHIFT, Key::Num2, Zoom::Level(ZOOM_LEVELS[1])),
+        (Modifiers::SHIFT, Key::Num3, Zoom::Level(ZOOM_LEVELS[2])),
+        (Modifiers::SHIFT, Key::Num4, Zoom::Pattern),
+        (Modifiers::SHIFT, Key::Num5, Zoom::Selection),
+    ];
+    for (modifiers, key, op) in zooms {
+        if pressed(modifiers, key) {
+            zoom(state, project, op);
+        }
     }
 }
 
