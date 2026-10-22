@@ -115,11 +115,26 @@ enum Pending {
 }
 
 /// The answer to "save changes first?".
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum UnsavedChoice {
     Save,
     Discard,
     Cancel,
+}
+
+/// Enter answers the "save changes first?" box with its default button,
+/// Save, and Esc with Cancel.
+fn unsaved_key(ctx: &egui::Context) -> Option<UnsavedChoice> {
+    use egui::{Key, Modifiers};
+    ctx.input_mut(|i| {
+        if i.consume_key(Modifiers::NONE, Key::Enter) {
+            Some(UnsavedChoice::Save)
+        } else if i.consume_key(Modifiers::NONE, Key::Escape) {
+            Some(UnsavedChoice::Cancel)
+        } else {
+            None
+        }
+    })
 }
 
 /// Commands that replace the open project, losing unsaved changes.
@@ -1171,7 +1186,7 @@ impl App {
             Pending::Run(_) => "continuing",
         };
         let name = self.session.project().name().to_owned();
-        let mut choice = None;
+        let mut choice = unsaved_key(ctx);
         egui::Window::new("Unsaved changes")
             .collapsible(false)
             .resizable(false)
@@ -1181,13 +1196,16 @@ impl App {
                     "Save the changes to \u{201c}{name}\u{201d} before {before}?"
                 ));
                 ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
+                    // The default button (Enter) has an accent edge.
+                    let save = egui::Button::new("Save")
+                        .stroke(egui::Stroke::new(1.0, ui.visuals().selection.stroke.color));
+                    if ui.add(save).on_hover_text("Enter").clicked() {
                         choice = Some(UnsavedChoice::Save);
                     }
                     if ui.button("Don't save").clicked() {
                         choice = Some(UnsavedChoice::Discard);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button("Cancel").on_hover_text("Esc").clicked() {
                         choice = Some(UnsavedChoice::Cancel);
                     }
                 });
@@ -1419,4 +1437,35 @@ fn main() -> eframe::Result {
             Ok(Box::new(App::new(&options, &creation.egui_ctx)))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pressed(key: egui::Key) -> Option<UnsavedChoice> {
+        let ctx = egui::Context::default();
+        let event = |pressed| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let input = egui::RawInput {
+            events: vec![event(true), event(false)],
+            ..Default::default()
+        };
+        let mut choice = None;
+        let mut output = ctx.run_ui(input, |ui| choice = unsaved_key(ui.ctx()));
+        output.textures_delta.clear();
+        choice
+    }
+
+    #[test]
+    fn enter_saves_and_esc_cancels_the_unsaved_changes_box() {
+        assert_eq!(pressed(egui::Key::Enter), Some(UnsavedChoice::Save));
+        assert_eq!(pressed(egui::Key::Escape), Some(UnsavedChoice::Cancel));
+        assert_eq!(pressed(egui::Key::A), None);
+    }
 }
