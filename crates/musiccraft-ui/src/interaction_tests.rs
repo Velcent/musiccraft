@@ -2051,3 +2051,41 @@ fn double_clicking_a_channel_name_renames_it_in_place() {
     assert_eq!(out, ["channel.rename 1 Lead"]);
     assert!(h.state.renaming.is_none());
 }
+
+#[test]
+fn dropping_a_sound_on_a_sampler_row_replaces_its_sample() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick", "channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let span = |h: &Harness, index: usize| {
+        h.state
+            .rack_rows
+            .iter()
+            .find(|(i, _)| *i == index)
+            .map(|(_, span)| span.center())
+            .expect("the row is drawn")
+    };
+    let drop_at = |h: &mut Harness, y: f32| {
+        egui::DragAndDrop::set_payload(
+            &h.ctx,
+            crate::browser::Dragged::Sample("builtin:clap".to_owned()),
+        );
+        let at = pos2(rack.center().x, y);
+        h.frame(vec![Event::PointerMoved(at)]);
+        h.frame(vec![Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed: false,
+            modifiers: Modifiers::NONE,
+        }])
+    };
+    let sampler = span(&h, 0);
+    assert_eq!(
+        drop_at(&mut h, sampler),
+        ["channel.set_sample 1 builtin:clap"]
+    );
+    // Over the synth's row it is added as a new channel instead.
+    let synth = span(&h, 1);
+    assert_eq!(drop_at(&mut h, synth), ["channel.add_sampler builtin:clap"]);
+}

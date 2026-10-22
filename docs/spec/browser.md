@@ -52,7 +52,8 @@ their category.
 
 - Every entry is one full-width row: a narrow marker strip, an indent per
   level with faint tree lines from the parent, a type glyph, then the name,
-  cut short with an ellipsis when too long. Open folders show their name
+  cut short with an ellipsis when too long; hovering a cut-off name pops it
+  out in full in a raised box over the row. Open folders show their name
   stronger and a small down chevron at the right end.
 - Hovering a row lights the whole row. The selected row has a band and a
   short accent bar in the marker strip.
@@ -61,7 +62,9 @@ their category.
   Presets tabs, which open on their own.
 - Sounds: click selects and previews, double-click adds a sampler channel,
   right-click offers the "Add as" choices, and they can be dragged onto the
-  channel rack or the playlist.
+  channel rack or the playlist. Dropped on a sampler channel's row, a sound
+  replaces that channel's sample (the row is outlined while it hovers);
+  anywhere else in the rack it adds a sampler channel.
 - Generators, effects and presets: click selects; double-click adds a
   generator or preset as a new channel, or an effect to the selected mixer
   track. Generators and presets can be dragged onto the channel rack.

@@ -437,6 +437,8 @@ pub struct UiState {
     pub typing_keyboard: bool,
     /// The control position the control menu's Copy took.
     pub(crate) copied_control: Option<f32>,
+    /// Channel rack rows drawn last frame: channel index and vertical span.
+    pub(crate) rack_rows: Vec<(usize, egui::Rangef)>,
     /// The open type-in value box.
     pub(crate) type_in: Option<type_in::TypeIn>,
     /// A window arrangement asked for by a key, applied next frame.
@@ -549,6 +551,7 @@ impl UiState {
             typing_keyboard: false,
             copied_control: None,
             type_in: None,
+            rack_rows: Vec::new(),
             renaming: None,
             arrange: None,
             focused_window: None,

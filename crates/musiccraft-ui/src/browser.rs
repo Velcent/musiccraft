@@ -325,12 +325,35 @@ fn row(ui: &mut egui::Ui, row: &Row<'_>, sense: Sense) -> egui::Response {
     job.wrap = egui::text::TextWrapping::truncate_at_width((right - left).max(8.0));
     let galley = painter.layout_job(job);
     let pos = pos2(left, rect.center().y - galley.size().y / 2.0);
+    if galley.elided && response.hovered() {
+        pop_out(ui, pos, row);
+    }
     // Open branches are drawn a little stronger.
     if row.open == Some(true) {
         painter.galley(pos + vec2(0.4, 0.0), galley.clone(), row.color);
     }
     painter.galley(pos, galley, row.color);
     response
+}
+
+/// Shows a cut-off name in full: a raised box over the row, starting where
+/// the name starts and running past the panel's edge if it must.
+fn pop_out(ui: &egui::Ui, pos: egui::Pos2, row: &Row<'_>) {
+    let painter = ui.ctx().layer_painter(egui::LayerId::new(
+        egui::Order::Tooltip,
+        egui::Id::new("browser-name-pop-out"),
+    ));
+    let galley =
+        painter.layout_no_wrap(row.label.to_owned(), FontId::proportional(13.0), row.color);
+    let rect = Rect::from_min_size(pos, galley.size()).expand2(vec2(4.0, 2.0));
+    painter.rect(
+        rect,
+        2.0,
+        theme::RAISED,
+        Stroke::new(1.0, theme::WINDOW_EDGE),
+        egui::StrokeKind::Outside,
+    );
+    painter.galley(pos, galley, row.color);
 }
 
 /// A branch row: click opens or closes it, and `body` draws its children

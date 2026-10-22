@@ -493,12 +493,11 @@ Ordered by visual impact. Each item names the file(s) to change; behaviour chang
 5. **No undo history in This project.** Patterns, Channels, Effects, Controllers, Automation and Samples are listed; the undo history is not. `crates/musiccraft-ui/src/browser.rs` (`this_project`).
 6. **Drag and drop is partial.**
     - Effects cannot be dragged, and nothing can be dropped on the mixer.
-    - Dropping a sound on an existing channel row adds a new channel instead of replacing the sample.
     - Generators dropped on a mixer strip are not routed.
-    - Files: `crates/musiccraft-ui/src/browser.rs`, `crates/musiccraft-ui/src/mixer.rs` (no drop handling), `crates/musiccraft-ui/src/channel_rack.rs` (always adds a channel); specs `channel-rack.md`, `mixer.md`.
+    - Files: `crates/musiccraft-ui/src/browser.rs`, `crates/musiccraft-ui/src/mixer.rs` (no drop handling), `crates/musiccraft-ui/src/channel_rack.rs` (`drop_target`, which replaces samplers' samples only); specs `channel-rack.md`, `mixer.md`.
 7. **Only WAV files are listed.** Project files and presets on disk are never shown, and there are no "other file types" or "file extensions" options. `crates/musiccraft-ui/src/browser.rs` (`BrowserState::listing`).
 8. **No keyboard navigation.** Up/Down/Left/Right/Enter, Shift+Up/Down send, Backspace back, Ctrl+F, Shift+F, Alt+F, F2/F3, Ctrl+Up, Shift+wheel zoom and F8 are missing. `docs/spec/keymap.md`, `crates/musiccraft-ui/keymap/default.keymap`, and the key handling in `crates/musiccraft-ui/src/lib.rs` (`handle_keys`). Refresh gets no key because Ctrl+R is export.
-9. **Long names.** The simplified bar now sits on the column's outer (left) edge (`scrollbars::plain_area_left`); it moves to the right edge once docking right exists. Long names are cut with an ellipsis, but there is no pop-out of the full name. `crates/musiccraft-ui/src/browser.rs`.
+9. **Long names.** The simplified bar now sits on the column's outer (left) edge (`scrollbars::plain_area_left`); it moves to the right edge once docking right exists. Long names are cut with an ellipsis and pop out in full on hover. `crates/musiccraft-ui/src/browser.rs`.
 10. **Resize, dock and hide options are missing.** The panel resizes and collapses to its header, but there is no second remembered width, no dock-right, no floating mode and no auto-hide. `docs/spec/window-layout.md` first; then `crates/musiccraft-ui/src/browser.rs` (`egui::Panel::left`), `crates/musiccraft-ui/src/lib.rs` (`WindowState`).
 11. **No plugin chooser overlay** (F8). A new spec and a new module in `crates/musiccraft-ui/src/`.
 

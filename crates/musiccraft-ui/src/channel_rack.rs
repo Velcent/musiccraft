@@ -56,6 +56,7 @@ pub fn show(
                     .max_height(420.0);
                 let bars = (egui::Id::new("rack-bars"), 27.0);
                 crate::scrollbars::plain_area(ui, area, bars, |ui| {
+                    state.rack_rows.clear();
                     for (index, channel) in project.channels.iter().enumerate() {
                         let shown = state
                             .rack_group
@@ -99,25 +100,64 @@ pub fn show(
             keys(ctx, state, project, actions);
         }
         if over && egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ctx) {
-            ctx.layer_painter(egui::LayerId::new(
-                egui::Order::Foreground,
-                egui::Id::new("rack-drop"),
-            ))
-            .rect_stroke(
-                window.response.rect,
-                6.0,
-                egui::Stroke::new(2.0, theme::ACCENT),
-                egui::StrokeKind::Inside,
-            );
-            if ctx.input(|i| i.pointer.any_released()) {
-                if let Some(dragged) =
-                    egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ctx)
-                {
-                    actions.push(Action::Run(dragged.add_channel()));
-                }
-            }
+            drop_target(ctx, state, project, window.response.rect, actions);
         }
     }
+}
+
+/// A browser sound over a sampler channel's row replaces that channel's
+/// sample; anywhere else in the rack it (or a generator) adds a channel. The
+/// row or the whole rack is outlined to show which.
+fn drop_target(
+    ctx: &egui::Context,
+    state: &UiState,
+    project: &Project,
+    window: egui::Rect,
+    actions: &mut Vec<Action>,
+) {
+    let Some(pointer) = ctx.pointer_hover_pos() else {
+        return;
+    };
+    let dragged = egui::DragAndDrop::payload::<crate::browser::Dragged>(ctx);
+    let sample = dragged.as_ref().and_then(|d| d.sample().map(str::to_owned));
+    let sampler_row = sample.as_ref().and_then(|_| {
+        state.rack_rows.iter().find(|(index, span)| {
+            span.contains(pointer.y)
+                && matches!(
+                    project.channels.get(*index).map(|c| &c.instrument),
+                    Some(Instrument::Sampler { .. })
+                )
+        })
+    });
+    let outline = match sampler_row {
+        Some((_, span)) => {
+            egui::Rect::from_x_y_ranges(window.x_range(), *span).shrink2(egui::vec2(4.0, 0.0))
+        }
+        None => window,
+    };
+    ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("rack-drop"),
+    ))
+    .rect_stroke(
+        outline,
+        if sampler_row.is_some() { 2.0 } else { 6.0 },
+        egui::Stroke::new(2.0, theme::ACCENT),
+        egui::StrokeKind::Inside,
+    );
+    if !ctx.input(|i| i.pointer.any_released()) {
+        return;
+    }
+    let Some(dragged) = egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ctx) else {
+        return;
+    };
+    let invocation = match (sampler_row, sample) {
+        (Some((index, _)), Some(sample)) => {
+            Invocation::new("channel.set_sample", [(index + 1).to_string(), sample])
+        }
+        _ => dragged.add_channel(),
+    };
+    actions.push(Action::Run(invocation));
 }
 
 fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
@@ -367,6 +407,12 @@ fn row(
                         format!("MIDI Out: external gear on MIDI channel {midi_channel}")
                     }
                 });
+        // The row's height, where a sound dropped from the browser lands.
+        let clip = ui.clip_rect().y_range();
+        let span = response.rect.y_range();
+        if span.max > clip.min && span.min < clip.max {
+            state.rack_rows.push((index, span));
+        }
         if response.double_clicked() {
             // The first click opened the settings; keep them open.
             state.windows.channel_settings = true;
