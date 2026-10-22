@@ -81,7 +81,8 @@
   is one undo step. Turning a step on previews the channel's sound.
   A lit step is filled with the channel colour, one step darker in odd beat
   groups so the grouping survives, and dimmer for a lower velocity (with a
-  readable minimum); lit steps under the playhead light one step brighter.
+  readable minimum); a lit step under the playhead flashes bright as the
+  playhead enters it and fades back over the step's duration (own design).
   Melodic rows show a miniature roll whose alternate bars are shaded; a click
   on it opens the piano roll on that channel, or closes it when it already
   shows that channel.

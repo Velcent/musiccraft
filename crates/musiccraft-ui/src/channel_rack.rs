@@ -27,10 +27,14 @@ pub fn show(
     let project = frame.project;
     let area = state.workspace;
     state.step_layout.clear();
-    // The step under the playhead, while the current pattern plays.
+    // The step under the playhead, and how far into it, while the current
+    // pattern plays.
     let playing = crate::piano_roll::pattern_position(project, frame.engine.position_ticks)
         .filter(|_| frame.engine.playing)
-        .map(|tick| (tick / TICKS_PER_STEP) as usize);
+        .map(|tick| {
+            let into = (tick % TICKS_PER_STEP) as f32 / TICKS_PER_STEP as f32;
+            ((tick / TICKS_PER_STEP) as usize, into)
+        });
     let id = egui::Id::new("channel-rack");
     let default = egui::Rect::from_min_size(
         area.left_top() + egui::vec2(4.0, 4.0),
@@ -429,7 +433,7 @@ fn row(
     ui: &mut egui::Ui,
     state: &mut UiState,
     project: &Project,
-    at: (usize, Option<usize>, bool),
+    at: (usize, Option<(usize, f32)>, bool),
     channel: &Channel,
     actions: &mut Vec<Action>,
 ) {
@@ -857,7 +861,7 @@ fn steps(
     ui: &mut egui::Ui,
     state: &mut UiState,
     project: &Project,
-    at: (usize, Option<usize>),
+    at: (usize, Option<(usize, f32)>),
     channel: &Channel,
     actions: &mut Vec<Action>,
 ) {
@@ -960,10 +964,9 @@ fn steps(
         // Hover lifts an off step one tone, never darker than its group.
         let fill = if shown {
             let lit = theme::step_lit(crate::channel_color(project, index), odd, level);
-            if playing == Some(step) {
-                theme::mix(lit, theme::TEXT, 0.3)
-            } else {
-                lit
+            match playing {
+                Some((at, into)) if at == step => theme::mix(lit, theme::TEXT, step_flash(into)),
+                _ => lit,
             }
         } else if response.hovered() {
             theme::STEP_HOVER
@@ -971,10 +974,16 @@ fn steps(
             base
         };
         ui.painter().rect_filled(rect.shrink(1.0), 3.0, fill);
-        if playing == Some(step) {
+        if playing.is_some_and(|(at, _)| at == step) {
             ui.painter().rect_filled(rect, 2.0, theme::STEP_PLAYING);
         }
     }
+}
+
+/// How far a lit step under the playhead brightens toward the text colour,
+/// `into` its step: a flash at the step's start that fades by its end.
+fn step_flash(into: f32) -> f32 {
+    0.6 - 0.45 * into.clamp(0.0, 1.0)
 }
 
 /// Wraps several invocations into one undo step.
@@ -1462,6 +1471,17 @@ fn route_name(project: &Project, track: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_playing_step_flashes_and_fades_over_its_duration() {
+        let start = step_flash(0.0);
+        let middle = step_flash(0.5);
+        let end = step_flash(1.0);
+        assert!(start > middle && middle > end, "{start} {middle} {end}");
+        // It still reads brighter than a lit step at its end.
+        assert!(end > 0.1);
+        assert_eq!(step_flash(2.0), end);
+    }
 
     #[test]
     fn channels_added_while_a_group_is_shown_join_it() {

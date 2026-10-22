@@ -400,35 +400,33 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
    - The guide puts it in the step column under the focused channel's steps, hiding the other rows' steps, hanging below the window, with tabs along the bottom, value-following bar brightness and its own two-way resize corner.
    - Missing tabs: Key, Offset, Repeat. Missing gestures: Ctrl-scale, right-drag ramp, Alt reset.
    - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`graph_editor`), `crates/musiccraft-ui/src/piano_roll.rs` (`LaneMode::ALL`).
-4. **Step look.** Lit steps keep the beat grouping (one step darker in odd groups, `theme::step_lit`) and dim with velocity, and lit steps under the playhead brighten. Still missing: the brief flash of lit steps for the step's duration.
-   - File: `crates/musiccraft-ui/src/channel_rack.rs` (`steps`).
-5. **Scrolling, footer and placement.**
+4. **Scrolling, footer and placement.**
    - The rack has the simplified bars (rail, thumb and chevrons, shown only when the rows overflow; `scrollbars::plain_area`), but they scroll whole rows sideways, so mute, knobs and names scroll away with the steps. Only the step column should scroll horizontally.
    - The height is hard-capped (`max_height(420.0)`) instead of following a height mode.
    - The plus button is centred under the whole window rather than the name column (`window-layout.md` "Channel rack" says "centred under the rows" and changes first).
    - There is no corner grip, so there is no way to widen the rack to reveal or extend steps.
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`, `add_menu`).
-6. **Name button content.**
+5. **Name button content.**
    - No kind glyph, no padlock, no missing-file warning state.
    - Drag reorder is missing.
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
    - Files: `docs/spec/channel-rack.md` (`channel.solo`), `crates/musiccraft-project/src/model.rs`.
-7. **Note preview.**
+6. **Note preview.**
     - Left-click toggles the piano roll for that channel, but right-click "open at this point" is missing.
     - There is no all-rows piano-roll view.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`mini_roll`).
-8. **Channel context menu.**
+7. **Channel context menu.**
     - It has the two columns in the guide's order, without the duplicate clear item.
     - Colour, cut, copy and paste steps and the graph editor entry are in. Missing: the icon item, insert and replace, choke itself, MIDI items.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`context_menu`).
-9. **Group filter.**
+8. **Group filter.**
     - Right-click new, rename and remove are in, and Page Up/Down cycle the groups. The filter is still an egui drop-down rather than our styled field.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`header`, `add_menu`).
-10. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
+9. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
     - File: `crates/musiccraft-ui/src/channel_rack.rs`.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`).
-11. **Keymap.** Ctrl+K, Alt+M, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M hides the mixer-track column. Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
-12. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
+10. **Keymap.** Ctrl+K, Alt+M, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M hides the mixer-track column. Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
+11. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
 
 ## Sources
 
