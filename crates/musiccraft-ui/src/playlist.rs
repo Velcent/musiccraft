@@ -2122,6 +2122,7 @@ fn draw_ruler(
 /// Clicking or dragging on the ruler moves the playhead.
 /// Ruler gestures: click or drag to seek, Shift+drag to set the loop,
 /// right-click for markers and the loop.
+#[allow(clippy::too_many_lines)]
 fn ruler(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -2143,7 +2144,9 @@ fn ruler(
             Sense::click_and_drag(),
         )
         .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .hint("Click to seek · Shift+drag to loop · right-click for markers");
+        .hint(
+            "Click to seek · Shift+drag to loop · drag a marker to move it, double-click to rename · right-click for markers",
+        );
     let shift = ui.input(|i| i.modifiers.shift);
     let tick_at = |x: f32| grid.tick_at(x);
     let marker_at = |x: f32| {
@@ -2158,7 +2161,48 @@ fn ruler(
             state.playlist.loop_drag = Some((start, start));
         }
     }
-    if let Some((start, end)) = &mut state.playlist.loop_drag {
+    let moving = ui.id().with("marker-drag");
+    if response.drag_started() && !shift {
+        let press = ui.input(|i| i.pointer.press_origin());
+        if let Some(marker) = press.and_then(|p| marker_at(p.x)).filter(|m| movable(m)) {
+            ui.data_mut(|d| d.insert_temp(moving, (marker.tick, marker.tick)));
+        }
+    }
+    let marker_drag = ui.data(|d| d.get_temp::<(u32, u32)>(moving));
+    if response.double_clicked() {
+        let pos = response.interact_pointer_pos();
+        if let Some(marker) = pos.and_then(|p| marker_at(p.x)).filter(|m| movable(m)) {
+            let x = grid.x(marker.tick as f32);
+            let field = Rect::from_min_size(pos2(x, area.top()), vec2(120.0, RULER_HEIGHT));
+            state.rename_in_place(
+                crate::dialogs::Dialog::rename_marker(marker.tick, &marker.name),
+                field,
+            );
+        }
+    }
+    if let Some((from, to)) = marker_drag {
+        let to = match response.interact_pointer_pos() {
+            Some(pos) => snap.round(tick_at(pos.x).max(0.0), &meter),
+            None => to,
+        };
+        let x = grid.x(to as f32);
+        let painter = ui.painter_at(area);
+        painter.line_segment(
+            [pos2(x, area.top()), pos2(x, area.bottom())],
+            egui::Stroke::new(2.0, theme::ACCENT),
+        );
+        if response.drag_stopped() {
+            ui.data_mut(|d| d.remove::<(u32, u32)>(moving));
+            if to != from {
+                actions.push(Action::Run(Invocation::new(
+                    "playlist.move_marker",
+                    [format!("{from}t"), format!("{to}t")],
+                )));
+            }
+        } else {
+            ui.data_mut(|d| d.insert_temp(moving, (from, to)));
+        }
+    } else if let Some((start, end)) = &mut state.playlist.loop_drag {
         if let Some(pos) = response.interact_pointer_pos() {
             *end = Snap::Bar.round(tick_at(pos.x), &meter);
         }
@@ -2792,6 +2836,12 @@ fn drag_delta(state: &UiState, group: &[Clip]) -> (i64, i64, i64) {
             (dt, 0, -dt)
         }
     }
+}
+
+/// Whether a marker can be dragged or renamed on the ruler (time-signature
+/// changes have their own command).
+fn movable(marker: &musiccraft_project::Marker) -> bool {
+    !matches!(marker.action, MarkerAction::TimeSignature(_))
 }
 
 /// Whether `pos` is on the left edge of a clip's `rect` (its trim handle).

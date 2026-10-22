@@ -83,6 +83,12 @@
   markers (one per position; re-adding at a position renames the marker and keeps
   its action). UI: right-click the ruler → Add marker here, or Alt+T for a marker
   at the playhead (on the beat); clicking a marker's label jumps the playhead to it.
+  `playlist.move_marker <from> <to>` (undoable) moves a marker and keeps its
+  name and action; it is refused onto another marker's position and for
+  time-signature changes (those move with `playlist.set_time_signature`).
+  UI: drag a marker's label along the ruler (snapped like clips; an accent
+  line shows where it lands). Double-clicking a marker's label renames it in
+  place (`playlist.add_marker` at its position, which keeps its action).
   The window menu's Markers submenu also adds a pause marker at the playhead,
   adds a marker named after its bar every 4 or 8 bars through the end of the
   song (bars that have one keep it), and removes all markers except time

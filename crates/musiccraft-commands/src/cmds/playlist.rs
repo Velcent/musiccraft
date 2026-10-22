@@ -126,6 +126,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             add_marker,
         ),
         cmd(
+            "playlist.move_marker",
+            "playlist.move_marker <from bar> <to bar>",
+            "Move a marker, keeping its name and what it does.",
+            move_marker,
+        ),
+        cmd(
             "playlist.remove_marker",
             "playlist.remove_marker <bar>",
             "Remove the marker at a position.",
@@ -730,6 +736,33 @@ fn add_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     Ok(Outcome::undoable(
         format!("marker {name} at {tick}t"),
         inverse,
+    ))
+}
+
+fn move_marker(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let meter = project.song_meter();
+    let (from, to) = (args.bars(0, &meter)?, args.bars(1, &meter)?);
+    let markers = &mut project.playlist.markers;
+    let index = markers
+        .iter()
+        .position(|m| m.tick == from)
+        .ok_or_else(|| args.invalid(format!("there is no marker at {from}t")))?;
+    if matches!(markers[index].action, MarkerAction::TimeSignature(_)) {
+        return Err(args.invalid("a time signature change moves with playlist.set_time_signature"));
+    }
+    if from == to {
+        return Ok(Outcome::done("marker stays"));
+    }
+    if markers.iter().any(|m| m.tick == to) {
+        return Err(args.invalid(format!("there is already a marker at {to}t")));
+    }
+    markers[index].tick = to;
+    let name = markers[index].name.clone();
+    markers.sort_by_key(|m| m.tick);
+    Ok(Outcome::undoable(
+        format!("moved marker {name} to {to}t"),
+        Invocation::new(args.name(), [ticks(to), ticks(from)]),
     ))
 }
 

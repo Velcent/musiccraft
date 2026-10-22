@@ -145,6 +145,11 @@ impl Dialog {
         Self::new(Purpose::AddMarker(tick), String::new())
     }
 
+    /// Renames the marker at `tick` (re-adding a marker keeps its action).
+    pub fn rename_marker(tick: u32, current: &str) -> Self {
+        Self::new(Purpose::AddMarker(tick), current.to_owned())
+    }
+
     pub fn add_folder() -> Self {
         let home = std::env::var("HOME")
             .map(|h| format!("{h}/"))

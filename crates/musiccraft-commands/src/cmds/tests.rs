@@ -2235,3 +2235,26 @@ fn an_auto_pattern_length_follows_its_notes_in_whole_bars() {
     assert!(!pattern.auto_length && pattern.length_steps == 32);
     assert!(s.run_line("pattern.set_length 1 automatic").is_err());
 }
+
+#[test]
+fn moving_a_marker_keeps_its_name_and_action() {
+    let mut s = session();
+    run(&mut s, "playlist.add_marker 2 Drop");
+    run(&mut s, "playlist.set_marker_action 2 pause");
+    run(&mut s, "playlist.add_marker 4 End");
+    run(&mut s, "playlist.move_marker 2 6");
+    let markers = &s.project().playlist.markers;
+    let bar = TICKS_PER_BAR;
+    assert_eq!(
+        markers.iter().map(|m| m.tick).collect::<Vec<_>>(),
+        [4 * bar, 6 * bar]
+    );
+    assert_eq!(markers[1].name, "Drop");
+    assert_eq!(markers[1].action, musiccraft_project::MarkerAction::Pause);
+    fails(&mut s, "playlist.move_marker 6 4");
+    fails(&mut s, "playlist.move_marker 3 5");
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().playlist.markers[0].tick, 2 * bar);
+    run(&mut s, "playlist.set_time_signature 8 3/4");
+    fails(&mut s, "playlist.move_marker 8 9");
+}

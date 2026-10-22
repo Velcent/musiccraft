@@ -3605,3 +3605,37 @@ fn dragging_a_clips_left_edge_trims_its_start() {
     let c = h.session.project().playlist.clips[0];
     assert_eq!((c.start, c.length, c.offset), (bar, 2 * bar, 0));
 }
+
+#[test]
+fn dragging_a_marker_label_moves_it_and_double_click_renames_it() {
+    let mut h = Harness::new(&["playlist.add_marker 2 Drop"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, clip) = h.state.playlist.last_view.unwrap();
+    let on_ruler = |tick: u32| pos2(grid.x(tick as f32), clip.top() + 10.0);
+    let bar = TICKS_PER_BAR;
+    let out = h.drag(
+        on_ruler(2 * bar) + vec2(12.0, 0.0),
+        on_ruler(4 * bar) + vec2(4.0, 0.0),
+    );
+    assert_eq!(
+        out,
+        [format!("playlist.move_marker {}t {}t", 2 * bar, 4 * bar)]
+    );
+    assert_eq!(h.session.project().playlist.markers[0].tick, 4 * bar);
+    h.frame(vec![]);
+    let label = on_ruler(4 * bar) + vec2(12.0, 0.0);
+    h.click(label, PointerButton::Primary);
+    h.click(label, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.renaming.is_some(), "a double-click opens the field");
+    h.frame(vec![Event::Text("Build".to_owned())]);
+    let out = h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(out, [format!("playlist.add_marker {}t Build", 4 * bar)]);
+}
