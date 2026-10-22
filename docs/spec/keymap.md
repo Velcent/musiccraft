@@ -137,6 +137,7 @@ precedence over the global keys.
 | Chord | Action |
 | --- | --- |
 | Ctrl+A / Esc | Select every track / keep only the primary track selected |
+| Alt+Left / Alt+Right | Move the primary track left / right (`mixer.move_track`) |
 
 ## Sources
 

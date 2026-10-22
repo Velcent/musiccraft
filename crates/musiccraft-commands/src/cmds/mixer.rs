@@ -44,6 +44,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_track,
         ),
         cmd(
+            "mixer.move_track",
+            "mixer.move_track <track> <left|right>",
+            "Swap an insert with its left or right neighbour; routing, sends and automation follow.",
+            move_track,
+        ),
+        cmd(
             "mixer.rename",
             "mixer.rename <track> <name>",
             "Rename a mixer track.",
@@ -265,6 +271,52 @@ fn shift_sidechains(project: &mut Project, from: usize, delta: isize) {
             project.mixer[t].effects[s].values[index] = source.saturating_add_signed(delta) as f32;
         }
     }
+}
+
+fn move_track(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = insert_arg(project, args, 0)?;
+    let (other, back) = match args.str(1)? {
+        "left" => (index - 1, "right"),
+        "right" => (index + 1, "left"),
+        _ => return Err(args.invalid("expected left or right")),
+    };
+    if other == 0 || other >= project.mixer.len() {
+        return Err(args.invalid(format!("insert {index} cannot move further that way")));
+    }
+    let (low, high) = (index.min(other), index.max(other));
+    if project.mixer[low]
+        .sends
+        .iter()
+        .any(|send| send.target == high)
+    {
+        return Err(args.invalid(format!(
+            "insert {low} sends to insert {high}; sends must go to a higher number, so remove it first"
+        )));
+    }
+    let swap = |track: usize| match track {
+        t if t == index => other,
+        t if t == other => index,
+        t => t,
+    };
+    for channel in &mut project.channels {
+        channel.mixer_track = swap(channel.mixer_track);
+    }
+    for track in &mut project.mixer {
+        for send in &mut track.sends {
+            send.target = swap(send.target);
+        }
+        track.sends.sort_by_key(|send| send.target);
+    }
+    for (t, s, i, source) in sidechains(project) {
+        project.mixer[t].effects[s].values[i] = swap(source) as f32;
+    }
+    super::automation::map_tracks(project, swap);
+    project.mixer.swap(index, other);
+    Ok(Outcome::undoable(
+        format!("moved mixer track {index} to {other}"),
+        Invocation::new(args.name(), [other.to_string(), back.to_owned()]),
+    ))
 }
 
 pub(super) fn track_arg(

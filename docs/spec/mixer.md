@@ -39,6 +39,15 @@
   <left|middle|right>` (undoable, saved as `"dock"`, inserts only); UI: the
   track menu's Pin ▸ Left side / Scrolling area / Right side. Track numbers
   never change with the dock.
+- **Moving a track**: `mixer.move_track <track> <left|right>` (undoable, inserts
+  only) swaps an insert with its neighbour, so the two trade numbers. Every
+  reference follows the moved tracks: channel routing, sends, sidechain and
+  send-effect sources, peak controllers and automation targets. Moving insert 1
+  left or the last insert right is refused, and so is swapping two inserts
+  joined by a send (sends always go to a higher number). UI: the track menu's Shift left and
+  Shift right, Alt+Left / Alt+Right over the mixer (the primary track), and
+  Shift+wheel over a strip's number cell or name (down or towards you moves
+  it right); the selection follows the moved track.
 - **Track stereo options** (undoable, saved; right-click a strip's name):
   `mixer.set_separation <track> <-1..1>` (-1 folds the track to mono, 0
   leaves it, 1 doubles the side signal), `mixer.set_phase_invert <track>

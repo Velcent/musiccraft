@@ -405,7 +405,6 @@ Ordered by visual impact. File references are where the change lands. `docs/spec
 10. **Fader states.** Holding the rail glides the cap toward the pointer, but the cap has no selected or armed look. `crates/musiccraft-editors/src/widgets.rs` (`fader`).
 11. **Meter details.** Meters hold their peak as a thin line, show a clip mark for a few seconds and are outlined in the accent on the selected track, but there is no level strip with a scale. `crates/musiccraft-editors/src/widgets.rs` (`meter`), `mixer.rs`.
 12. **Missing commands behind the controls.**
-    - move a track left or right ("Shift left" / "Shift right", Shift+wheel);
     - gaps and groups;
     - "Play selected channels through this track" from the mixer side (proposed mixer-local Ctrl+L; today Ctrl+L is `channel.route_free` over the rack, `keymap.md`);
     - the "Feed" submenu's many-to-one and one-to-many sends, and "Make a bus from selected…";

@@ -654,11 +654,21 @@ pub(crate) fn targets_track(project: &Project, track: usize, slot: Option<usize>
 /// Shifts mixer track numbers in automation targets: tracks at or after
 /// `from` move by `delta`.
 pub(crate) fn shift_tracks(project: &mut Project, from: usize, delta: isize) {
+    map_tracks(project, |track| {
+        if track >= from {
+            track.saturating_add_signed(delta)
+        } else {
+            track
+        }
+    });
+}
+
+/// Renumbers the mixer tracks named by peak controllers and automation
+/// targets through `map`.
+pub(crate) fn map_tracks(project: &mut Project, map: impl Fn(usize) -> usize) {
     for controller in &mut project.controllers {
         if let musiccraft_project::ControllerKind::Peak { track, .. } = &mut controller.kind {
-            if *track >= from {
-                *track = track.saturating_add_signed(delta);
-            }
+            *track = map(*track);
         }
     }
     for target in targets_mut(project) {
@@ -668,8 +678,6 @@ pub(crate) fn shift_tracks(project: &mut Project, from: usize, delta: isize) {
             | AutomationTarget::EffectParam { track, .. } => track,
             _ => continue,
         };
-        if *track >= from {
-            *track = track.saturating_add_signed(delta);
-        }
+        *track = map(*track);
     }
 }

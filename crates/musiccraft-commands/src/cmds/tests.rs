@@ -1500,6 +1500,46 @@ fn removing_a_track_fixes_sends_pointing_at_and_past_it() {
 }
 
 #[test]
+fn moving_a_track_carries_its_routing_sends_and_automation() {
+    let mut s = session();
+    for line in [
+        "channel.add_synth",
+        "channel.route 1 2",
+        "mixer.rename 2 Bass",
+        "mixer.set_send 1 2 0.5",
+        "mixer.set_send 3 4 0.7",
+        "mixer.add_effect 2 delay",
+        "automation.create mixer:2:1:mix",
+    ] {
+        run(&mut s, line);
+    }
+    run(&mut s, "mixer.move_track 2 right");
+    let p = s.project();
+    assert_eq!(p.mixer[3].name, "Bass");
+    assert_eq!(p.channels[0].mixer_track, 3);
+    assert_eq!(p.mixer[1].sends[0].target, 3);
+    assert_eq!(
+        (p.mixer[2].sends[0].target, p.mixer[2].sends[0].level),
+        (4, 0.7)
+    );
+    assert!(matches!(
+        p.automations[0].target,
+        musiccraft_project::AutomationTarget::EffectParam { track: 3, .. }
+    ));
+    run(&mut s, "edit.undo");
+    let p = s.project();
+    assert_eq!(p.mixer[2].name, "Bass");
+    assert_eq!(p.channels[0].mixer_track, 2);
+    assert_eq!(p.mixer[1].sends[0].target, 2);
+    fails(&mut s, "mixer.move_track 1 left");
+    fails(&mut s, "mixer.move_track 0 right");
+    run(&mut s, "mixer.set_send 2 3 0.5");
+    fails(&mut s, "mixer.move_track 2 right");
+    let last = s.project().mixer.len() - 1;
+    fails(&mut s, &format!("mixer.move_track {last} right"));
+}
+
+#[test]
 fn automation_guards_mixer_edits() {
     let mut s = session();
     run(&mut s, "mixer.add_effect 2 delay");

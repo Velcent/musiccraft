@@ -52,7 +52,7 @@ pub fn show(
         ctx.data_mut(|d| d.insert_temp(settle, 4_u8));
     }
     if crate::chrome::focused(ctx, id) {
-        keys(ctx, state, project);
+        keys(ctx, state, project, actions);
     }
     let frames = ctx.data(|d| d.get_temp::<u8>(settle)).unwrap_or(0);
     let mut window = crate::chrome::window(ctx, id, "Mixer", area, default, true);
@@ -322,7 +322,7 @@ fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool, height: f32) -> 
 /// The wheel over `response` (a strip's name or number) scrolls the strips by
 /// whole strips.
 fn step_strips_on_wheel(ui: &egui::Ui, response: &egui::Response) {
-    let notches = if response.hovered() {
+    let notches = if response.hovered() && !ui.input(|i| i.modifiers.shift) {
         crate::scrollbars::wheel_notches(ui)
     } else {
         0.0
@@ -462,10 +462,13 @@ fn pin_menu(ui: &mut egui::Ui, index: usize, track: &MixerTrack, actions: &mut V
 fn track_menu(
     ui: &mut egui::Ui,
     state: &mut UiState,
+    project: &Project,
     index: usize,
-    track: &MixerTrack,
     actions: &mut Vec<Action>,
 ) {
+    let Some(track) = project.mixer.get(index) else {
+        return;
+    };
     let number = index.to_string();
     if ui.button("Rename…").clicked() {
         state.open_dialog(Dialog::rename_track(index, &track.name));
@@ -474,6 +477,13 @@ fn track_menu(
     colour_menu(ui, index, track, actions);
     if index > 0 {
         pin_menu(ui, index, track, actions);
+        for (label, right) in [("Shift left", false), ("Shift right", true)] {
+            let enabled = can_move(project, index, right);
+            if widgets::add_enabled(ui, enabled, egui::Button::new(label)).clicked() {
+                move_strip(state, index, right, actions);
+                ui.close();
+            }
+        }
     }
     ui.horizontal(|ui| {
         ui.label("Stereo separation");
@@ -571,6 +581,43 @@ fn select(state: &mut UiState, index: usize, toggle: bool) {
     }
 }
 
+/// Whether insert `index` can swap with its right (or left) neighbour: both
+/// are inserts and no send joins them (sends go to higher numbers).
+fn can_move(project: &Project, index: usize, right: bool) -> bool {
+    let other = if right {
+        index + 1
+    } else {
+        index.wrapping_sub(1)
+    };
+    let (low, high) = (index.min(other), index.max(other));
+    index > 0
+        && low > 0
+        && high < project.mixer.len()
+        && !project.mixer[low]
+            .sends
+            .iter()
+            .any(|send| send.target == high)
+}
+
+/// Swaps insert `index` with its neighbour (`mixer.move_track`); the
+/// selection follows the moved tracks.
+fn move_strip(state: &mut UiState, index: usize, right: bool, actions: &mut Vec<Action>) {
+    let other = if right { index + 1 } else { index - 1 };
+    let swap = |t: usize| match t {
+        t if t == index => other,
+        t if t == other => index,
+        t => t,
+    };
+    let way = if right { "right" } else { "left" };
+    run(
+        actions,
+        "mixer.move_track",
+        [index.to_string(), way.to_owned()],
+    );
+    state.selected_track = swap(state.selected_track);
+    state.mixer_selection = state.mixer_selection.iter().map(|&t| swap(t)).collect();
+}
+
 /// Makes `index`, already selected, the primary track.
 fn make_primary(state: &mut UiState, index: usize) {
     if state.mixer_selection.remove(&index) {
@@ -662,8 +709,15 @@ fn run_each(actions: &mut Vec<Action>, name: &str, tracks: &[usize], value: &str
 }
 
 /// Window-local keys: Ctrl+A selects every track, Esc keeps only the primary.
-fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project) {
+fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &mut Vec<Action>) {
     use egui::{Key, Modifiers};
+    for (key, right) in [(Key::ArrowLeft, false), (Key::ArrowRight, true)] {
+        let index = state.selected_track;
+        if can_move(project, index, right) && ctx.input_mut(|i| i.consume_key(Modifiers::ALT, key))
+        {
+            move_strip(state, index, right, actions);
+        }
+    }
     if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::A)) {
         state.mixer_selection = (0..project.mixer.len())
             .filter(|&t| t != state.selected_track)
@@ -700,7 +754,14 @@ fn strip(
         ui.set_height(height - 4.0);
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 3.0;
-            let hint = format!("{} — click to select, right-click for options", track.name);
+            let hint = if index == 0 {
+                format!("{} — click to select, right-click for options", track.name)
+            } else {
+                format!(
+                    "{} — click to select, right-click for options, Shift+wheel to move",
+                    track.name
+                )
+            };
             let cell = number_cell(ui, index, color, selected).hint(&hint);
             step_strips_on_wheel(ui, &cell);
             let block = (height * 0.22).clamp(56.0, 120.0);
@@ -732,7 +793,15 @@ fn strip(
                 let field = egui::Rect::from_min_size(name.rect.left_top(), vec2(120.0, 20.0));
                 state.rename_in_place(Dialog::rename_track(index, &track.name), field);
             }
-            name.context_menu(|ui| track_menu(ui, state, index, track, actions));
+            name.context_menu(|ui| track_menu(ui, state, project, index, actions));
+            if name.hovered() && ui.input(|i| i.modifiers.shift) {
+                // Shift+wheel moves the strip: down (towards you) to the right.
+                let notches = crate::scrollbars::wheel_notches(ui);
+                let right = notches < 0.0;
+                if notches != 0.0 && can_move(project, index, right) {
+                    move_strip(state, index, right, actions);
+                }
+            }
             let silenced = index > 0
                 && project
                     .mixer_audible()

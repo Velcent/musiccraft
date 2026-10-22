@@ -2201,6 +2201,39 @@ fn mixer_strip_lights_solo_on_ctrl_click() {
 }
 
 #[test]
+fn shift_wheel_over_a_mixer_strip_name_moves_the_track() {
+    let mut h = Harness::new(&["mixer.rename 2 Bass"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let mixer = window_rect(&h, "mixer-window");
+    let name = (0..100)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| mixer.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Bass — click"))
+        })
+        .expect("insert 2's name");
+    h.click(name, PointerButton::Primary);
+    assert_eq!(h.state.selected_track, 2);
+    h.modifiers = Modifiers::SHIFT;
+    let out = h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        modifiers: Modifiers::SHIFT,
+        phase: egui::TouchPhase::Move,
+    }]);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["mixer.move_track 2 right"]);
+    assert_eq!(h.session.project().mixer[3].name, "Bass");
+    assert_eq!(h.state.selected_track, 3, "the selection follows");
+}
+
+#[test]
 fn the_piano_roll_play_button_plays_the_pattern() {
     let mut h = Harness::new(&["channel.add_synth", "transport.set_mode song"]);
     h.state.windows.piano_roll = true;
