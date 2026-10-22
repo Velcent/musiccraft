@@ -90,7 +90,10 @@
   play a sampler channel's sample once from the clip start, unpitched (at the
   channel's root key), cut at the clip end. Dropping a sound from the browser on
   the playlist adds a sampler channel with one-shot off and an audio clip as long
-  as the sample. Removing the channel removes its audio clips (undo restores).
+  as the sample. While the sound hovers a lane, a ghost clip one bar long
+  marks the snapped spot (the sample's length is known only once it loads) and
+  the track's header gets an accent outline. Removing the channel removes its
+  audio clips (undo restores).
 - **Automation clips** (`playlist.add_automation_clip <automation> <track>
   <start> [length]`) move one parameter during song playback (see below).
 - `playlist.remove_clip`, `move_clip`, `resize_clip` and selection editing work

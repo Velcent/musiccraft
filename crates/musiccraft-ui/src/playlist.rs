@@ -2331,6 +2331,60 @@ fn tool_stroke(
     }
 }
 
+/// While a sound from the browser hovers a lane: a ghost clip one bar long
+/// at the snapped spot and an accent outline on that track's header.
+fn drop_ghost(
+    ui: &egui::Ui,
+    grid: &Grid,
+    clip: Rect,
+    (snap, meter): (&Snap, &Meter),
+    response: &egui::Response,
+) {
+    let Some(dragged) = egui::DragAndDrop::payload::<crate::browser::Dragged>(ui.ctx()) else {
+        return;
+    };
+    let lanes = Rect::from_min_max(
+        pos2(clip.left() + HEADER_WIDTH, clip.top() + RULER_HEIGHT),
+        clip.max,
+    );
+    let Some(pos) = response.hover_pos().filter(|p| lanes.contains(*p)) else {
+        return;
+    };
+    let (Some(row), Some(name)) = (grid.row_at(pos.y), dragged.sample()) else {
+        return;
+    };
+    let start = snap.floor(grid.tick_at(pos.x), meter);
+    let bar = meter.bar(start);
+    let length = bar.len.max(1);
+    let rect = grid.span(row, start, length).shrink2(vec2(0.0, 1.0));
+    let painter = ui.painter_at(lanes);
+    painter.rect(
+        rect,
+        2.0,
+        theme::SELECTION_FILL,
+        Stroke::new(1.0, theme::ACCENT),
+        egui::StrokeKind::Inside,
+    );
+    let label = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    painter.text(
+        rect.left_top() + vec2(4.0, 2.0),
+        egui::Align2::LEFT_TOP,
+        label,
+        egui::FontId::proportional(theme::FONT_CAPTION),
+        theme::TEXT_DIM,
+    );
+    let header = Rect::from_min_size(
+        pos2(clip.left(), grid.y(row)),
+        vec2(HEADER_WIDTH, grid.row_height),
+    );
+    ui.painter_at(clip).rect_stroke(
+        header.shrink(1.0),
+        2.0,
+        Stroke::new(1.0, theme::ACCENT),
+        egui::StrokeKind::Inside,
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 fn edit(
     ui: &egui::Ui,
@@ -2541,6 +2595,7 @@ fn edit(
             }
         }
     }
+    drop_ghost(ui, grid, clip, (&snap, &meter), response);
     // Sounds dropped from the browser become audio clips where they land.
     if response.contains_pointer() && ui.input(|i| i.pointer.any_released()) {
         if let Some(pos) = ui.ctx().pointer_hover_pos().filter(|p| editable(*p)) {
