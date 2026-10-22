@@ -236,6 +236,9 @@
   Shift+Right nudge it one snap step, Shift+Up and Shift+Down move it one
   track (nothing moves if a clip would leave the playlist). One undo step
   each. The window-local keys are listed in `keymap.md`, "Over the playlist".
+  The window menu's Select submenu also inverts the selection and selects
+  the muted clips, every clip of the selected clips' sources, or every clip
+  overlapping the loop region.
 - Ctrl+scroll zooms horizontally, and so do Page Up and Page Down, which
   keep the playhead where it is in the view. Shift+1 to Shift+3 pick fixed
   zooms (32, 96 and 240 points per bar), Shift+4 zooms all the way out and

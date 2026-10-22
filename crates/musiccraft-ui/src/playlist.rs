@@ -346,18 +346,28 @@ fn window_menu(
     });
     ui.menu_button("Clip", |ui| clip_menu(ui, state, frame, actions));
     ui.menu_button("Select", |ui| {
-        if ui.button("All (Ctrl+A)").clicked() {
-            state.playlist.selection = project
-                .playlist
-                .clips
-                .iter()
-                .map(|c| (c.track, c.start))
-                .collect();
-            ui.close();
-        }
-        if ui.button("None (Esc)").clicked() {
-            state.playlist.selection.clear();
-            ui.close();
+        let sources: Vec<ClipSource> = selected.iter().map(|c| c.source).collect();
+        let items = [
+            ("All (Ctrl+A)", Pick::All, true),
+            ("None (Esc)", Pick::None, true),
+            ("Invert", Pick::Invert, true),
+            ("Muted clips", Pick::Muted, true),
+            (
+                "Clips of the same source",
+                Pick::SameSource,
+                !sources.is_empty(),
+            ),
+            (
+                "Everything inside the loop region",
+                Pick::InLoop,
+                project.playlist.loop_range.is_some(),
+            ),
+        ];
+        for (label, pick, enabled) in items {
+            if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                state.playlist.selection = picked(state, project, pick, &sources);
+                ui.close();
+            }
         }
     });
     ui.menu_button("Snap", |ui| snap_list(ui, state));
@@ -374,6 +384,49 @@ fn window_menu(
             ui.close();
         }
     });
+}
+
+/// A Select menu item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pick {
+    All,
+    None,
+    Invert,
+    Muted,
+    /// Every clip that plays one of the selected clips' sources.
+    SameSource,
+    /// Every clip that overlaps the loop region.
+    InLoop,
+}
+
+/// The selection a Select menu item makes, as (track, start) pairs.
+fn picked(
+    state: &UiState,
+    project: &Project,
+    pick: Pick,
+    sources: &[ClipSource],
+) -> BTreeSet<(u32, u32)> {
+    let selected = &state.playlist.selection;
+    let in_loop = |c: &Clip| {
+        project
+            .playlist
+            .loop_range
+            .is_some_and(|(from, to)| c.start < to && c.end() > from)
+    };
+    project
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| match pick {
+            Pick::All => true,
+            Pick::None => false,
+            Pick::Invert => !selected.contains(&(c.track, c.start)),
+            Pick::Muted => c.muted,
+            Pick::SameSource => sources.contains(&c.source),
+            Pick::InLoop => in_loop(c),
+        })
+        .map(|c| (c.track, c.start))
+        .collect()
 }
 
 /// A change of the playlist's horizontal zoom.
@@ -2966,6 +3019,29 @@ mod tests {
             offset: 0,
             muted: false,
         }
+    }
+
+    #[test]
+    fn select_items_pick_inverted_muted_same_source_and_looped_clips() {
+        let mut project = Project::default();
+        let mut muted = pattern_clip(1, 384, 384);
+        muted.muted = true;
+        let mut other = pattern_clip(2, 1536, 384);
+        other.source = ClipSource::Pattern(PatternId(2));
+        project.playlist.clips = vec![pattern_clip(0, 0, 384), muted, other];
+        project.playlist.loop_range = Some((300, 500));
+        let mut state = UiState::default();
+        state.playlist.selection = BTreeSet::from([(0, 0)]);
+        let pick = |state: &UiState, pick, sources: &[ClipSource]| {
+            picked(state, &project, pick, sources)
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(pick(&state, Pick::Invert, &[]), [(1, 384), (2, 1536)]);
+        assert_eq!(pick(&state, Pick::Muted, &[]), [(1, 384)]);
+        let first = [ClipSource::Pattern(PatternId(1))];
+        assert_eq!(pick(&state, Pick::SameSource, &first), [(0, 0), (1, 384)]);
+        assert_eq!(pick(&state, Pick::InLoop, &[]), [(0, 0), (1, 384)]);
     }
 
     #[test]
