@@ -130,6 +130,9 @@
   pattern (as `pattern.add`, undoable) and selects it. Selecting an existing
   pattern is not undoable. F4 runs it and then offers to name the pattern
   (a rename prompt; Escape keeps the name).
+- **First empty pattern**: `pattern.first_empty` does the same from the
+  first pattern on, so it finds gaps before the selected one too. Shift+F4
+  and a right-click on the toolbar's new-pattern button run it.
 - **Swing** is one amount for the whole project: `project.set_swing <0-100>`
   (undoable; saved as `"swing"`, 0–1). Notes that start exactly on an off-beat
   sixteenth (steps 1, 3, 5, …) are delayed by up to half a step: 12 ticks ×

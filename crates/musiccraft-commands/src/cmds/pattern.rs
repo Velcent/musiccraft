@@ -14,6 +14,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             next_empty,
         ),
         cmd(
+            "pattern.first_empty",
+            "pattern.first_empty",
+            "Select the first pattern with no notes, adding one if there is none.",
+            first_empty,
+        ),
+        cmd(
             "pattern.add",
             "pattern.add [name]",
             "Create an empty pattern and select it.",
@@ -217,6 +223,17 @@ fn select(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
 fn next_empty(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(0, 0)?;
     match project.next_empty_pattern() {
+        Some(index) => {
+            project.current_pattern = index;
+            Ok(selected(project))
+        }
+        None => add(project, args),
+    }
+}
+
+fn first_empty(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(0, 0)?;
+    match project.first_empty_pattern() {
         Some(index) => {
             project.current_pattern = index;
             Ok(selected(project))

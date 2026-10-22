@@ -349,6 +349,12 @@ impl Project {
         std::mem::replace(&mut self.step_edit, on)
     }
 
+    /// The first pattern with no notes.
+    #[must_use]
+    pub fn first_empty_pattern(&self) -> Option<usize> {
+        self.patterns.iter().position(|p| p.notes.is_empty())
+    }
+
     /// The first pattern after the selected one with no notes.
     #[must_use]
     pub fn next_empty_pattern(&self) -> Option<usize> {

@@ -180,6 +180,20 @@ fn patterns_menu(
 ) {
     let project = frame.project;
     let number = project.current_pattern + 1;
+    menu_item(
+        ui,
+        state,
+        "First empty pattern",
+        "pattern.first_empty",
+        actions,
+    );
+    menu_item(
+        ui,
+        state,
+        "Next empty pattern",
+        "ui.next_empty_pattern",
+        actions,
+    );
     menu_item(ui, state, "New pattern", "pattern.add", actions);
     if ui.button("Clone pattern").clicked() {
         run(actions, &format!("pattern.clone {number}"));
@@ -1332,16 +1346,18 @@ fn pattern_panel(
                 }
             }
         });
-    if icons::button(
+    let add = icons::button(
         ui,
         Icon::Plus,
         false,
         theme::ACCENT,
-        "New pattern (F4: next empty pattern)",
-    )
-    .clicked()
-    {
+        "New pattern · right-click: first empty pattern (Shift+F4) · F4: next empty pattern",
+    );
+    if add.clicked() {
         run(actions, "pattern.add");
+    }
+    if add.secondary_clicked() {
+        run(actions, "pattern.first_empty");
     }
 }
 

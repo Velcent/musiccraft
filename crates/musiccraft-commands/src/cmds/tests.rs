@@ -585,6 +585,27 @@ fn next_empty_selects_an_empty_pattern_or_adds_one() {
 }
 
 #[test]
+fn first_empty_looks_from_the_first_pattern() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "note.add 1 0 1 C5");
+    run(&mut s, "pattern.add");
+    run(&mut s, "pattern.add");
+    run(&mut s, "note.add 1 0 1 C5 @3");
+    // From pattern 3, the empty pattern 2 lies behind: next_empty would add.
+    s.run_line("pattern.select 3").unwrap();
+    let depth = s.undo_depth();
+    run(&mut s, "pattern.first_empty");
+    assert_eq!(s.project().current_pattern, 1);
+    assert_eq!(s.undo_depth(), depth);
+    run(&mut s, "note.add 1 0 1 C5 @2");
+    run(&mut s, "pattern.first_empty");
+    assert_eq!(s.project().patterns.len(), 4);
+    assert_eq!(s.project().current_pattern, 3);
+    fails(&mut s, "pattern.first_empty 1");
+}
+
+#[test]
 fn recording_state_and_options_stay_out_of_history() {
     use musiccraft_project::RecordMode;
     let mut s = session();

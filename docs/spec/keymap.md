@@ -43,6 +43,7 @@
 | F10 | Settings |
 | F1 | Show or hide the keyboard shortcut list (help) |
 | F4 | Next empty pattern (adds one if none), then name it |
+| Shift+F4 | First empty pattern (adds one if none) |
 | Plus / Minus | Next / previous pattern |
 | 1–9 | Select pattern 1–9 (over the channel rack: mute channels instead) |
 | P B D E C T Y Z | Tools: draw, paint, delete, select, slice, mute, play, zoom (piano roll and playlist) |
