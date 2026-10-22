@@ -51,7 +51,9 @@ Right-clicking any automatable knob or fader opens the same menu:
 - Under a dim "Control from" heading: "Add controller" with its kinds, and
   "Remove controller" while one drives the control.
 - Under a dim "Value" heading: "Copy", "Paste" (disabled until something is
-  copied), "Enter exact value…" and "Reset to default".
+  copied), "Enter exact value…" and "Reset to default", which shows the
+  default at its right in dim text, as a percentage of the range like the
+  type-in box.
 
 Paste and Reset run `control.set <target> <position 0-1>` and
 `control.reset <target>`, each one undo step. Targets are named as for

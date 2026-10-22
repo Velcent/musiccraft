@@ -75,10 +75,17 @@ struct Source {
 struct Published {
     driven: Arc<HashMap<String, Source>>,
     copied: Option<f32>,
+    /// The open menu's target and its default position.
+    default: Option<(String, f32)>,
 }
 
 fn published_id() -> egui::Id {
     egui::Id::new("control-menus")
+}
+
+/// The target whose control menu was open last frame.
+fn open_menu_id() -> egui::Id {
+    egui::Id::new("control-menu-open")
 }
 
 /// Records which controls automation clips and controllers drive, so their
@@ -102,9 +109,17 @@ pub(crate) fn publish(ctx: &egui::Context, project: &Project, copied: Option<f32
             }
         }
     }
+    // Only the open menu's default is looked up, a frame after it opens.
+    let default = ctx
+        .data_mut(|d| d.remove_temp::<String>(open_menu_id()))
+        .and_then(|target| {
+            let info = musiccraft_commands::control_info(project, &target)?;
+            Some((target, info.default))
+        });
     let published = Published {
         driven: Arc::new(driven),
         copied,
+        default,
     };
     ctx.data_mut(|d| d.insert_temp(published_id(), published));
 }
@@ -147,6 +162,7 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
     };
     let target_arg = || vec![target.to_owned()];
     response.context_menu(|ui| {
+        ui.data_mut(|d| d.insert_temp(open_menu_id(), target.to_owned()));
         if ui.button("Create automation clip").clicked() {
             run(actions, "ui.automate", target_arg());
             ui.close();
@@ -220,7 +236,15 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
             );
             ui.close();
         }
-        if ui.button("Reset to default").clicked() {
+        let default = published
+            .default
+            .as_ref()
+            .filter(|(t, _)| t == target)
+            .map(|(_, position)| format!("{:.0}%", position * 100.0))
+            .unwrap_or_default();
+        let reset = egui::Button::new("Reset to default")
+            .right_text(RichText::new(default).color(theme::TEXT_DIM));
+        if ui.add(reset).clicked() {
             run(actions, "control.reset", target_arg());
             ui.close();
         }
@@ -537,5 +561,31 @@ fn canvas(
                 theme::TEXT,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_open_control_menu_gets_its_default_a_frame_later() {
+        let ctx = egui::Context::default();
+        let project = Project::default();
+        publish(&ctx, &project, None);
+        let published = |ctx: &egui::Context| {
+            ctx.data(|d| d.get_temp::<Published>(published_id()))
+                .unwrap_or_default()
+        };
+        assert!(published(&ctx).default.is_none());
+        // The menu for the master's pan was drawn open.
+        ctx.data_mut(|d| d.insert_temp(open_menu_id(), "mixer:0:pan".to_owned()));
+        publish(&ctx, &project, None);
+        let (target, position) = published(&ctx).default.expect("the default");
+        assert_eq!(target, "mixer:0:pan");
+        assert!((position - 0.5).abs() < 1e-6);
+        // Closed again: nothing is looked up.
+        publish(&ctx, &project, None);
+        assert!(published(&ctx).default.is_none());
     }
 }
