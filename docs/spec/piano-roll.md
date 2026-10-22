@@ -319,8 +319,10 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   as one undo step, and clear the channel's notes in the danger tone), **Tools**
   (Quantize and the note tools), **Chord** and **Snap** (the same lists as
   the header buttons), **Select** (All, None, Invert, muted notes, notes of
-  the current colour) and **Zoom** (in, out, fit the pattern to the window,
-  zoom to the selection), then the new-note velocity field. The
+  the current colour), **View** (ghost notes and note labels on or off, and
+  Keyboard labels: C keys, white keys, all keys, keys of the scale or none;
+  every key but C needs rows at least 9 points tall) and **Zoom** (in, out,
+  fit the pattern to the window, zoom to the selection), then the new-note velocity field. The
   Edit and Select items do exactly what their keys do, and show the keys.
 - The window opens over the right half of the workspace, about half its
   width and height.
@@ -334,7 +336,8 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   adds them to the selection). Middle-drag on the keyboard zooms the key
   rows (up grows them, down shrinks them, within the zoom box's range),
   keeping the key first pressed under the pointer. Middle-drag elsewhere in
-  the view pans it.
+  the view pans it. Right-clicking the keyboard offers the Keyboard labels
+  choices. These view choices are not saved with the project.
 
 ## Sources
 

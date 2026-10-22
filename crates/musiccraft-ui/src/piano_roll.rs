@@ -136,6 +136,64 @@ pub struct RollState {
     offset: Vec2,
     /// Scroll offset asked for by the scroll bars, applied next frame.
     jump: Option<Vec2>,
+    /// Which keys of the keyboard carry their name.
+    pub(crate) key_labels: KeyLabels,
+    /// Other channels' notes are drawn behind.
+    pub(crate) ghosts: bool,
+    /// Notes carry their key name.
+    pub(crate) note_labels: bool,
+}
+
+/// Which keys of the piano roll's keyboard are labelled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeyLabels {
+    C,
+    White,
+    All,
+    Scale,
+    None,
+}
+
+impl KeyLabels {
+    const ALL: [(Self, &'static str); 5] = [
+        (Self::C, "C keys"),
+        (Self::White, "White keys"),
+        (Self::All, "All keys"),
+        (Self::Scale, "Keys of the scale"),
+        (Self::None, "None"),
+    ];
+
+    /// Whether `key` is labelled; the C keys always fit, the others need
+    /// rows at least `LABEL_ROWS` points tall.
+    fn shows(self, key: u8, row_height: f32, scale: Option<(u8, usize)>) -> bool {
+        let fits = row_height >= LABEL_ROWS;
+        match self {
+            Self::C => key % 12 == 0,
+            Self::White => fits && !is_black(key),
+            Self::All => fits,
+            Self::Scale => {
+                fits && scale.is_some_and(|(root, s)| {
+                    musiccraft_project::music::SCALES
+                        .get(s)
+                        .is_some_and(|(_, d)| musiccraft_project::music::in_scale(key, root, d))
+                })
+            }
+            Self::None => false,
+        }
+    }
+}
+
+/// The shortest key row that takes a label (other than the C keys).
+const LABEL_ROWS: f32 = 9.0;
+
+/// The Keyboard labels choices, as radio items.
+fn key_labels_list(ui: &mut egui::Ui, state: &mut UiState) {
+    for (labels, text) in KeyLabels::ALL {
+        if ui.radio(state.roll.key_labels == labels, text).clicked() {
+            state.roll.key_labels = labels;
+            ui.close();
+        }
+    }
 }
 
 impl Default for RollState {
@@ -170,6 +228,9 @@ impl Default for RollState {
             time_selection: None,
             offset: Vec2::ZERO,
             jump: None,
+            key_labels: KeyLabels::C,
+            ghosts: true,
+            note_labels: true,
         }
     }
 }
@@ -962,6 +1023,11 @@ fn options_menu(
             }
         }
     });
+    ui.menu_button("View", |ui| {
+        ui.checkbox(&mut state.roll.ghosts, "Ghost notes");
+        ui.menu_button("Keyboard labels", |ui| key_labels_list(ui, state));
+        ui.checkbox(&mut state.roll.note_labels, "Note labels");
+    });
     ui.menu_button("Zoom", |ui| {
         let items = [
             ("Zoom in", "Page Up", Zoom::By(1.5)),
@@ -1135,12 +1201,17 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         }
 
         // Ghost notes: other channels' notes, in one neutral tone.
-        for note in pattern.notes.iter().filter(|n| n.channel != channel.id) {
+        let ghosts = pattern
+            .notes
+            .iter()
+            .filter(|n| state.roll.ghosts && n.channel != channel.id);
+        for note in ghosts {
             let r = grid.span(row_of_key(note.key), note.start, note.length);
             painter.rect_filled(r.shrink2(vec2(0.5, 1.0)), 2.0, theme::GHOST_NOTE);
         }
         let notes: Vec<&Note> = pattern.notes_of(channel.id).collect();
         let color = crate::channel_color(project, channel_index);
+        let labels = state.roll.note_labels;
         // While dragging, the affected notes are drawn at their new place.
         let moving: Vec<Note> = match state.roll.drag {
             Some(d) if d.kind == DragKind::Create => Vec::new(),
@@ -1192,7 +1263,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     note.key,
                     127,
                     theme::NOTE_SELECTED,
-                    false,
+                    (false, labels),
                 );
             } else {
                 draw_note(
@@ -1203,7 +1274,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     note.key,
                     note.velocity,
                     tint,
-                    false,
+                    (false, labels),
                 );
             }
             let mark = if selected && !note.props.muted {
@@ -1252,7 +1323,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     note.key,
                     note.velocity,
                     color,
-                    true,
+                    (true, labels),
                 );
             }
         }
@@ -1266,7 +1337,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     drag.key,
                     state.roll.velocity,
                     color,
-                    true,
+                    (true, labels),
                 );
             } else {
                 let dt = i64::from(drag.start) - i64::from(drag.original.start);
@@ -1293,7 +1364,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                         key,
                         note.velocity,
                         color,
-                        true,
+                        (true, labels),
                     );
                 }
             }
@@ -1616,7 +1687,7 @@ fn draw_note(
     key: u8,
     velocity: u8,
     color: Color32,
-    ghost: bool,
+    (ghost, label): (bool, bool),
 ) {
     let rect = grid
         .span(row_of_key(key), start, length)
@@ -1636,7 +1707,7 @@ fn draw_note(
     );
     // The key name, cut short with an ellipsis when the note is narrow.
     let room = rect.width() - 6.0;
-    if room > 8.0 && rect.height() >= 8.0 {
+    if label && room > 8.0 && rect.height() >= 8.0 {
         let mut job = egui::text::LayoutJob::simple_singleline(
             key_name(key),
             FontId::proportional(theme::FONT_CAPTION),
@@ -3177,7 +3248,7 @@ fn keyboard(
         .map(key_of_row);
     let response = match hovered {
         Some(key) => response.hint(format!(
-            "{} · click to hear · Ctrl+click selects its notes, Ctrl+drag a range · middle-drag zooms",
+            "{} · click to hear · Ctrl+click selects its notes, Ctrl+drag a range · middle-drag zooms · right-click for labels",
             key_name(key)
         )),
         None => response,
@@ -3226,7 +3297,11 @@ fn keyboard(
                 );
             }
         }
-        if key % 12 == 0 {
+        if state
+            .roll
+            .key_labels
+            .shows(key, grid.row_height, state.roll.scale)
+        {
             painter.text(
                 r.right_center() - vec2(3.0, 0.0),
                 Align2::RIGHT_CENTER,
@@ -3237,6 +3312,9 @@ fn keyboard(
         }
     }
     middle_zoom(ui, state, (grid, clip), keys_rect);
+    response.context_menu(|ui| {
+        ui.menu_button("Keyboard labels", |ui| key_labels_list(ui, state));
+    });
     // Ctrl+click selects every note of the key, Ctrl+drag every note of the
     // keys it crosses; Shift adds to the selection. (A preview already
     // sounding still gets its note-off below.)
@@ -3627,5 +3705,30 @@ mod tests {
         actions.clear();
         edit_op(&mut state, &project, EditOp::ApplyColour, &mut actions);
         assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn keyboard_labels_pick_their_keys_and_need_room() {
+        let c_major = Some((0, 0));
+        let tall = LABEL_ROWS;
+        assert!(
+            KeyLabels::C.shows(60, 6.0, None),
+            "C keys are labelled at any height"
+        );
+        assert!(!KeyLabels::C.shows(62, tall, None));
+        assert!(KeyLabels::White.shows(62, tall, None));
+        assert!(!KeyLabels::White.shows(61, tall, None));
+        assert!(
+            !KeyLabels::White.shows(62, tall - 1.0, None),
+            "short rows stay bare"
+        );
+        assert!(KeyLabels::All.shows(61, tall, None));
+        assert!(KeyLabels::Scale.shows(64, tall, c_major));
+        assert!(!KeyLabels::Scale.shows(61, tall, c_major));
+        assert!(
+            !KeyLabels::Scale.shows(64, tall, None),
+            "no scale, no labels"
+        );
+        assert!(!KeyLabels::None.shows(60, tall, None));
     }
 }
