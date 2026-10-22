@@ -69,7 +69,7 @@ fn with_editor(
     let mut editor = InstrumentEditor::new(
         kind_of(&channel.instrument),
         &channel.params.0,
-        theme::palette(index),
+        theme::palette(channel.color_index()),
         egui::Id::new(("channel-settings", number)),
         &mut edits,
         &mut menu,
@@ -812,7 +812,12 @@ fn sampler(
     section(ui, "SAMPLE", |ui| {
         sample_row(ui, state, index, sample, "Load another sample");
         let slices = channel.params.get(inst::SLICES).round().max(1.0) as u32;
-        instrument::waveform(ui, frame.waveform, theme::palette(index), slices);
+        instrument::waveform(
+            ui,
+            frame.waveform,
+            crate::channel_color(frame.project, index),
+            slices,
+        );
         crate::sample_editor::show(ui, state, frame, index, actions);
         let mut slice_actions = Vec::new();
         with_editor(ui, state, index, channel, actions, |ui, e| {
@@ -845,7 +850,12 @@ fn granular(
 ) {
     section(ui, "GRAINS", |ui| {
         sample_row(ui, state, index, sample, "Load another sample");
-        instrument::waveform(ui, frame.waveform, theme::palette(index), 1);
+        instrument::waveform(
+            ui,
+            frame.waveform,
+            crate::channel_color(frame.project, index),
+            1,
+        );
         crate::sample_editor::show(ui, state, frame, index, actions);
         with_editor(ui, state, index, channel, actions, |ui, e| e.granular(ui));
     });

@@ -40,6 +40,9 @@ const SCRIPT: &[&str] = &[
     "channel.set_group 3 Low end",
     "channel.set_group 1 Drums",
     "channel.set_group 3",
+    "channel.set_color 2 7",
+    "channel.set_color 2 none",
+    "channel.set_color 1 16",
     "channel.set_volume 1 0.5",
     "channel.set_pan 2 -0.25",
     "channel.set_mute 2 on",
@@ -904,6 +907,28 @@ fn channel_groups_are_saved_and_undoable() {
     assert!(s.project().channels[0].group.is_empty());
     run(&mut s, "edit.undo");
     assert_eq!(s.project().channels[0].group, "Drums");
+}
+
+#[test]
+fn channel_colours_are_saved_undoable_and_follow_the_channel() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "channel.add_synth");
+    let auto = (
+        s.project().channels[0].color_index(),
+        s.project().channels[1].color_index(),
+    );
+    assert_ne!(auto.0, auto.1);
+    // Reordering keeps each channel's automatic colour.
+    run(&mut s, "channel.move 1 2");
+    assert_eq!(s.project().channels[1].color_index(), auto.0);
+    run(&mut s, "channel.set_color 1 9");
+    assert_eq!(s.project().channels[0].color_index(), 8);
+    let json = s.project().to_json().unwrap();
+    assert!(json.contains("\"color\": 8"));
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().channels[0].color, None);
+    fails(&mut s, "channel.set_color 1 17");
 }
 
 #[test]

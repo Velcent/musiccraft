@@ -127,6 +127,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             move_channel,
         ),
         cmd(
+            "channel.set_color",
+            "channel.set_color <channel> <1-16|none>",
+            "Colour a channel (none: the automatic colour, which follows the channel).",
+            set_color,
+        ),
+        cmd(
             "channel.set_group",
             "channel.set_group <channel> [group]",
             "Put a channel in a group for the group filter (no group name: none).",
@@ -678,6 +684,31 @@ fn move_channel(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comma
     Ok(Outcome::undoable(
         format!("moved channel {} to {}", from + 1, to + 1),
         Invocation::new(args.name(), [(to + 1).to_string(), (from + 1).to_string()]),
+    ))
+}
+
+fn set_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = channel_arg(project, args, 0)?;
+    let color = match args.str(1)? {
+        "none" => None,
+        _ => {
+            let n = args.number(1, "colour")?;
+            if !(1..=16).contains(&n) {
+                return Err(args.invalid("colours are 1 to 16"));
+            }
+            Some(u8::try_from(n - 1).unwrap_or(0))
+        }
+    };
+    let previous = std::mem::replace(&mut project.channels[index].color, color);
+    let label = |c: Option<u8>| c.map_or_else(|| "none".to_owned(), |c| (c + 1).to_string());
+    let message = format!("channel {} colour {}", index + 1, label(color));
+    if previous == color {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(args.name(), [(index + 1).to_string(), label(previous)]),
     ))
 }
 

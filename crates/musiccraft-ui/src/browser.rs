@@ -1165,7 +1165,7 @@ fn this_project(
                             &Row::new(
                                 &key,
                                 2,
-                                Glyph::Icon(Icon::Keyboard, theme::palette(*i)),
+                                Glyph::Icon(Icon::Keyboard, crate::channel_color(project, *i)),
                                 &channel.name,
                             ),
                             Sense::click(),

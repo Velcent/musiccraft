@@ -114,7 +114,13 @@ pub(crate) fn show(
                 );
                 return;
             }
-            strip(ui, state, frame, channel, theme::palette(channel));
+            strip(
+                ui,
+                state,
+                frame,
+                channel,
+                crate::channel_color(frame.project, channel),
+            );
             let selection = state
                 .sample_edit
                 .selection

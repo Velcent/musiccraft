@@ -31,6 +31,14 @@
   that starts on that step (the highest, when several do): velocity, pan,
   release, fine pitch, Mod A or Mod B. Dragging a bar sets that note's value
   through the usual note commands; one drag is one undo step.
+- **Colour**: every channel has a colour from the 16-colour palette. Until
+  the user picks one it follows the channel's identity, so reordering
+  channels keeps their colours. `channel.set_color <n> <1-16|none>`
+  (undoable, saved as `"color"`, 0-based; `none` returns to the automatic
+  colour) sets it; UI: right-click a channel → Colour ▸ (the shared colour
+  grid). The colour fills the name button in a muted shade (the selected
+  channel's button in full), lights its steps and marks its notes and its
+  channel window.
 - **Group filter**: `channel.set_group <n> [group]` (undoable,
   saved as `"group"`; no name removes it) puts a channel in a named group. The
   rack's group menu (always at the top left of the rack) shows All, one

@@ -424,10 +424,14 @@ fn row(
         } else {
             theme::TEXT
         }))
-        .fill(if selected {
-            theme::palette(index)
-        } else {
-            theme::RAISED
+        .fill({
+            // The channel's colour: full when selected, muted otherwise.
+            let color = crate::channel_color(project, index);
+            if selected {
+                color
+            } else {
+                theme::mix(theme::RAISED, color, 0.35)
+            }
         })
         .truncate();
         let response =
@@ -541,6 +545,16 @@ fn channel_items(
             ui.close();
         }
     }
+    ui.menu_button("Colour", |ui| {
+        if let Some(choice) = crate::swatches::grid(ui, channel.color) {
+            run(
+                actions,
+                "channel.set_color",
+                [number.clone(), crate::swatches::arg(choice)],
+            );
+            ui.close();
+        }
+    });
     if ui.button("Group…").clicked() {
         state.open_dialog(crate::dialogs::Dialog::channel_group(index, &channel.group));
         ui.close();
@@ -638,7 +652,8 @@ fn steps(
     ui.add_space(6.0);
     if !is_step_only(&notes) {
         let bar_steps = (pattern.time_signature.bar_ticks() / TICKS_PER_STEP).max(1);
-        mini_roll(ui, state, (index, bar_steps), &notes, count);
+        let color = crate::channel_color(project, index);
+        mini_roll(ui, state, (index, bar_steps, color), &notes, count);
         return;
     }
     let mut on = vec![false; count as usize];
@@ -726,7 +741,7 @@ fn steps(
         };
         // Hover lifts an off step one tone, never darker than its group.
         let fill = if shown {
-            let lit = theme::step_lit(theme::palette(index), odd, level);
+            let lit = theme::step_lit(crate::channel_color(project, index), odd, level);
             if playing == Some(step) {
                 theme::mix(lit, theme::TEXT, 0.3)
             } else {
@@ -772,7 +787,7 @@ pub(crate) struct StepStroke {
 fn mini_roll(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    (index, bar_steps): (usize, u32),
+    (index, bar_steps, color): (usize, u32, egui::Color32),
     notes: &[&musiccraft_project::Note],
     steps: u32,
 ) {
@@ -797,7 +812,6 @@ fn mini_roll(
         .fold((127_u8, 0_u8), |(lo, hi), n| (lo.min(n.key), hi.max(n.key)));
     let span = f32::from(hi.saturating_sub(lo).max(1));
     let total = (steps * TICKS_PER_STEP) as f32;
-    let color = theme::palette(index);
     for note in notes {
         let x0 = rect.left() + note.start as f32 / total * rect.width();
         let x1 = rect.left() + (note.start + note.length) as f32 / total * rect.width();
@@ -1133,7 +1147,7 @@ fn graph_editor(
     if response.drag_stopped() || (!response.dragged() && !response.clicked()) {
         state.graph_drag = None;
     }
-    let color = theme::palette(channel);
+    let color = crate::channel_color(project, channel);
     let base = if mode.centred() {
         rect.center().y
     } else {

@@ -791,8 +791,14 @@ fn audio_section(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
         };
         let selected = state.playlist.paint_audio == Some(id);
         let name = &project.channels[index].name;
-        let response = glyph_row(ui, Icon::Wave, name, theme::palette(index), selected)
-            .hint("Click to paint this audio clip on the playlist");
+        let response = glyph_row(
+            ui,
+            Icon::Wave,
+            name,
+            crate::channel_color(project, index),
+            selected,
+        )
+        .hint("Click to paint this audio clip on the playlist");
         if response.clicked() {
             state.playlist.paint_audio = Some(id);
             state.playlist.paint_automation = None;
@@ -1516,7 +1522,7 @@ fn clip_identity<'a>(project: &'a Project, clip: &Clip) -> (Color32, &'a str, Ic
         ClipSource::Audio(id) => {
             let index = project.channel_position(id).unwrap_or(0);
             (
-                theme::palette(index),
+                crate::channel_color(project, index),
                 project.channels.get(index).map_or("", |c| c.name.as_str()),
                 Icon::Wave,
             )
@@ -1697,7 +1703,7 @@ fn note_tint(project: &Project, note: &musiccraft_project::Note) -> Color32 {
     if note.props.color > 0 {
         theme::note_color(note.props.color)
     } else {
-        theme::palette(project.channel_position(note.channel).unwrap_or(0))
+        crate::channel_color(project, project.channel_position(note.channel).unwrap_or(0))
     }
 }
 

@@ -1016,7 +1016,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             painter.rect_filled(r.shrink2(vec2(0.5, 1.0)), 2.0, theme::GHOST_NOTE);
         }
         let notes: Vec<&Note> = pattern.notes_of(channel.id).collect();
-        let color = theme::palette(channel_index);
+        let color = crate::channel_color(project, channel_index);
         // While dragging, the affected notes are drawn at their new place.
         let moving: Vec<Note> = match state.roll.drag {
             Some(d) if d.kind == DragKind::Create => Vec::new(),
@@ -1243,7 +1243,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             state,
             (&grid, clip),
             (&notes, &ghosts),
-            channel_index,
+            (channel_index, crate::channel_color(project, channel_index)),
             actions,
         );
         if response.hovered() {
@@ -1264,9 +1264,14 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         body,
         view,
         (&notes, visible_ticks, bar),
-        theme::palette(channel_index),
+        crate::channel_color(project, channel_index),
     );
-    corner(ui, state, body, channel_index);
+    corner(
+        ui,
+        state,
+        body,
+        crate::channel_color(project, channel_index),
+    );
 }
 
 /// The scroll/zoom row, the vertical zoom box and the vertical scroll bar.
@@ -1341,13 +1346,13 @@ fn overview(
 
 /// The corner block above the keyboard: the colour group of new notes, with
 /// the Porta and Slide toggles on its right edge.
-fn corner(ui: &egui::Ui, state: &mut UiState, body: Rect, channel: usize) {
+fn corner(ui: &egui::Ui, state: &mut UiState, body: Rect, own: Color32) {
     let block = Rect::from_min_size(
         body.min,
         vec2(KEYS_WIDTH, crate::scrollbars::BAR + RULER_HEIGHT),
     );
     let group = state.roll.color;
-    let fill = group_color(group, channel);
+    let fill = group_color(group, own);
     let swatch = ui
         .interact(block, egui::Id::new("roll-corner"), Sense::click())
         .hint(format!(
@@ -1411,20 +1416,20 @@ fn corner(ui: &egui::Ui, state: &mut UiState, body: Rect, channel: usize) {
     egui::Popup::menu(&swatch)
         .id(egui::Id::new("roll-colour-groups"))
         .open_memory(toggle)
-        .show(|ui| colour_groups(ui, state, channel));
+        .show(|ui| colour_groups(ui, state, own));
 }
 
-/// Colour group `group` (0 is the channel's own colour).
-fn group_color(group: u8, channel: usize) -> Color32 {
+/// Colour group `group` (0 is the channel's own colour, `own`).
+fn group_color(group: u8, own: Color32) -> Color32 {
     if group == 0 {
-        theme::palette(channel)
+        own
     } else {
         theme::note_color(group)
     }
 }
 
 /// The 4 × 4 grid of colour groups, numbered down each column.
-fn colour_groups(ui: &mut egui::Ui, state: &mut UiState, channel: usize) {
+fn colour_groups(ui: &mut egui::Ui, state: &mut UiState, own: Color32) {
     ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
     for row in 0..4_u8 {
         ui.horizontal(|ui| {
@@ -1432,7 +1437,7 @@ fn colour_groups(ui: &mut egui::Ui, state: &mut UiState, channel: usize) {
                 let group = column * 4 + row;
                 let (rect, response) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
                 let painter = ui.painter();
-                painter.rect_filled(rect, 2.0, group_color(group, channel));
+                painter.rect_filled(rect, 2.0, group_color(group, own));
                 if group == state.roll.color || response.hovered() {
                     painter.rect_stroke(
                         rect,
@@ -2845,7 +2850,7 @@ fn velocity_lane(
     state: &mut UiState,
     (grid, clip): (&Grid, Rect),
     (notes, ghosts): (&[&Note], &[&Note]),
-    channel: usize,
+    (channel, color): (usize, Color32),
     actions: &mut Vec<Action>,
 ) {
     let mode = state.roll.lane_mode;
@@ -2915,7 +2920,7 @@ fn velocity_lane(
     if response.drag_stopped() || (!response.dragged() && !response.clicked()) {
         state.roll.lane_drag = None;
     }
-    let color = theme::palette(channel);
+
     let stem = Stem {
         lane,
         centred: mode.centred(),

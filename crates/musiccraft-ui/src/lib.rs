@@ -859,6 +859,17 @@ fn handle_keys(ctx: &egui::Context, state: &UiState, frame: &Frame<'_>, actions:
     }
 }
 
+/// The colour of channel `index` (its stored colour, or the one that follows
+/// its id); the palette by index when there is no such channel.
+pub(crate) fn channel_color(project: &musiccraft_project::Project, index: usize) -> egui::Color32 {
+    theme::palette(
+        project
+            .channels
+            .get(index)
+            .map_or(index, musiccraft_project::Channel::color_index),
+    )
+}
+
 /// Cut, copy or paste in an editor window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ClipboardKey {
@@ -1088,6 +1099,24 @@ mod tests {
     fn frame_for(project: &Project) -> (EngineStatus, History) {
         let _ = project;
         (EngineStatus::default(), History::default())
+    }
+
+    #[test]
+    fn channel_colours_follow_the_channel_and_its_stored_choice() {
+        let mut s = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in ["channel.add_synth", "channel.add_synth"] {
+            s.run_line(line).unwrap();
+        }
+        let first = channel_color(s.project(), 0);
+        assert_ne!(first, channel_color(s.project(), 1));
+        // The first channel is second after the move, and keeps its colour.
+        s.run_line("channel.move 1 2").unwrap();
+        assert_eq!(channel_color(s.project(), 1), first);
+        s.run_line("channel.set_color 2 5").unwrap();
+        assert_eq!(channel_color(s.project(), 1), theme::palette(4));
     }
 
     #[test]

@@ -340,9 +340,21 @@ pub struct Channel {
     /// Display filter group ("" = none): the rack can show one group at a time.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub group: String,
+    /// Colour index 0–15 (shown as 1–16) set by the user; `None` follows the
+    /// channel's id (see [`Channel::color_index`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<u8>,
 }
 
 impl Channel {
+    /// The channel's palette index: the colour the user picked, or one taken
+    /// from its id, which reordering does not change.
+    #[must_use]
+    pub fn color_index(&self) -> usize {
+        self.color
+            .map_or(self.id.0.saturating_sub(1) as usize, usize::from)
+    }
+
     /// A channel with default settings.
     #[must_use]
     pub fn new(id: ChannelId, name: impl Into<String>, instrument: Instrument) -> Self {
@@ -361,6 +373,7 @@ impl Channel {
             mute: false,
             mixer_track: 0,
             group: String::new(),
+            color: None,
         }
     }
 }
