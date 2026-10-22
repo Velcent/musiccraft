@@ -199,13 +199,7 @@ fn patterns_menu(
         run(actions, &format!("pattern.clone {number}"));
         ui.close();
     }
-    if ui.button("Rename pattern…").clicked() {
-        state.open_dialog(crate::dialogs::Dialog::rename_pattern(
-            project.current_pattern,
-            &project.current_pattern().name,
-        ));
-        ui.close();
-    }
+    menu_item(ui, state, "Rename pattern…", "ui.rename_pattern", actions);
     crate::widgets::enabled_ui(ui, project.patterns.len() > 1, |ui| {
         if ui.button("Delete pattern").clicked() {
             run(actions, &format!("pattern.remove {number}"));

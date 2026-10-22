@@ -1145,6 +1145,13 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                 out.push(Action::Run(Invocation::bare("pattern.next_empty")));
                 state.dialog = Some(dialogs::Dialog::rename_pattern(index, &name));
             }
+            "ui.rename_pattern" => {
+                let project = frame.project;
+                state.dialog = Some(dialogs::Dialog::rename_pattern(
+                    project.current_pattern,
+                    &project.current_pattern().name,
+                ));
+            }
             "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
             "ui.export_stems" => state.dialog = Some(dialogs::Dialog::export_stems(frame.project)),
             "ui.export_midi" => state.dialog = Some(dialogs::Dialog::export_midi(frame.project)),

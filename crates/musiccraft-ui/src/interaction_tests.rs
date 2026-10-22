@@ -2998,7 +2998,21 @@ fn rack_keys_copy_steps_toggle_the_graph_and_step_groups() {
     h.key(egui::Key::M, Modifiers::ALT);
     assert!(h.state.rack_hide_tracks);
     h.key(egui::Key::F2, Modifiers::NONE);
-    assert!(h.state.dialog.is_some(), "F2 renames the selected channel");
+    assert!(
+        format!("{:?}", h.state.dialog).contains("RenameChannel"),
+        "F2 over the rack renames the selected channel"
+    );
+}
+
+#[test]
+fn f2_elsewhere_renames_the_selected_pattern() {
+    let mut h = Harness::new(&["pattern.add Verse"]);
+    h.settle();
+    h.frame(vec![Event::PointerMoved(pos2(700.0, 600.0))]);
+    h.key(egui::Key::F2, Modifiers::NONE);
+    let dialog = format!("{:?}", h.state.dialog);
+    assert!(dialog.contains("RenamePattern(1)"), "{dialog}");
+    assert!(dialog.contains("Verse"), "{dialog}");
 }
 
 #[test]
