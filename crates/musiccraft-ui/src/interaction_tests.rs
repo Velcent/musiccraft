@@ -2439,3 +2439,21 @@ fn an_effect_dropped_on_a_mixer_strip_goes_into_that_track() {
     }]);
     assert_eq!(ran, ["mixer.add_effect 2 delay"]);
 }
+
+#[test]
+fn fitting_to_the_scale_draws_on_its_keys() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.piano_roll = true;
+    h.state.roll.scale = Some((0, 0));
+    h.settle();
+    // Off: the clicked key is used as it is.
+    let added = h.click(h.roll_point(5, 61), PointerButton::Primary);
+    assert_eq!(added, ["note.add 1 0t 24t 61 100"]);
+    h.session.run_line("edit.undo").unwrap();
+    h.settle();
+    // On: C# in C major lands on C.
+    h.state.roll.fit_scale = true;
+    h.settle();
+    let added = h.click(h.roll_point(5, 61), PointerButton::Primary);
+    assert_eq!(added, ["note.add 1 0t 24t 60 100"]);
+}

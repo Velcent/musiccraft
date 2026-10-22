@@ -113,7 +113,9 @@ pub struct RollState {
     /// Chord drawn by a click, or `None` for single notes.
     chord: Option<&'static str>,
     /// Highlighted scale: (root pitch class, scale index).
-    scale: Option<(u8, usize)>,
+    pub(crate) scale: Option<(u8, usize)>,
+    /// Whether drawn and moved notes land on the highlighted scale's keys.
+    pub(crate) fit_scale: bool,
     /// Note whose velocity is being dragged in the lane.
     lane_drag: Option<Note>,
     /// What the bottom lane edits.
@@ -157,6 +159,7 @@ impl Default for RollState {
             last_view: None,
             chord: None,
             scale: None,
+            fit_scale: false,
             lane_drag: None,
             lane_mode: LaneMode::Velocity,
             selection: BTreeSet::new(),
@@ -600,7 +603,7 @@ fn pickers(
     picker(
         ui,
         ("roll-scale", Icon::Scale),
-        (scale.is_none(), false),
+        (scale.is_none(), scale.is_some() && state.roll.fit_scale),
         &format!(
             "Scale: {} · click to highlight a scale's keys",
             scale_name(scale)
@@ -661,6 +664,16 @@ fn scale_list(ui: &mut egui::Ui, state: &mut UiState) {
                 }
             }
         });
+    });
+    ui.separator();
+    let mut fit = state.roll.fit_scale;
+    ui.add_enabled_ui(state.roll.scale.is_some(), |ui| {
+        if ui
+            .checkbox(&mut fit, "Fit edited notes to the scale")
+            .changed()
+        {
+            state.roll.fit_scale = fit;
+        }
     });
 }
 
@@ -1392,6 +1405,26 @@ fn draw_background(
     }
 }
 
+/// `key` moved to the nearest key of `scale` (ties go down, as in
+/// `note.to_scale`); unchanged without a scale.
+fn fit_to_scale(key: u8, scale: Option<(u8, usize)>) -> u8 {
+    let Some((root, degrees)) = scale.and_then(|(root, s)| {
+        musiccraft_project::music::SCALES
+            .get(s)
+            .map(|(_, d)| (root, *d))
+    }) else {
+        return key;
+    };
+    let fits = |k: i32| {
+        u8::try_from(k)
+            .ok()
+            .filter(|k| *k <= 127 && musiccraft_project::music::in_scale(*k, root, degrees))
+    };
+    (0..12)
+        .find_map(|d| fits(i32::from(key) - d).or_else(|| fits(i32::from(key) + d)))
+        .unwrap_or(key)
+}
+
 /// A key row's tone. Without a scale, black-key rows are darker. With one,
 /// that shading is replaced: in-scale rows a step lighter than white-key
 /// rows (the root's with a faint accent), the rest like black-key rows.
@@ -2078,8 +2111,11 @@ fn edit(
     };
     let snap = state.roll.snap;
     let meter = state.roll.meter.clone();
-    let at =
-        |p: Pos2| -> (f32, Option<u8>) { (grid.tick_at(p.x), grid.row_at(p.y).map(key_of_row)) };
+    let fit = state.roll.scale.filter(|_| state.roll.fit_scale);
+    let at = |p: Pos2| -> (f32, Option<u8>) {
+        let key = grid.row_at(p.y).map(key_of_row);
+        (grid.tick_at(p.x), key.map(|k| fit_to_scale(k, fit)))
+    };
     let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
     state.roll.hover_tick = response
         .hover_pos()
@@ -3037,5 +3073,13 @@ mod tests {
         assert_eq!(row_fill(60, d_major), theme::BLACK_KEY_ROW);
         // The root row differs from other in-scale rows.
         assert_ne!(row_fill(62, d_major), row_fill(64, d_major));
+    }
+
+    #[test]
+    fn fitting_moves_keys_onto_the_scale() {
+        let c_major = Some((0, 0));
+        assert_eq!(fit_to_scale(61, c_major), 60, "C# goes down to C");
+        assert_eq!(fit_to_scale(64, c_major), 64);
+        assert_eq!(fit_to_scale(61, None), 61);
     }
 }

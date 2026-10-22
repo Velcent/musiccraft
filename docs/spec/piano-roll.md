@@ -33,7 +33,11 @@
   dorian, mixolydian, major and minor pentatonic) on any root. The usual
   black/white key-row shading is replaced: rows in the scale are a step
   lighter than white-key rows, the root's rows also get a faint accent, and
-  rows outside the scale are drawn like black-key rows. Display only.
+  rows outside the scale are drawn like black-key rows. The last item of the
+  scale menu, "Fit edited notes to the scale" (a tick, off by default, only
+  while a scale is highlighted), makes drawn and moved notes land on the
+  nearest key of the scale (ties go down, as in `note.to_scale`); the scale
+  button is lit while it is on.
 - With recording armed (REC button or R) and playback running, notes played on
   a MIDI keyboard or the typing keyboard are written into the selected pattern on
   the selected channel at the playhead position (folded into the pattern length
