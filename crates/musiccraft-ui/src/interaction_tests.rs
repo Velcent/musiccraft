@@ -3357,3 +3357,69 @@ fn the_tempo_chevrons_step_it_one_bpm_a_click() {
         "each click is its own undo step"
     );
 }
+
+#[test]
+fn ctrl_pressing_a_channel_name_previews_it_and_shift_wheel_moves_it() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.rename 2 Pad",
+    ]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let synth = (0..40)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(8.0 + 4.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some("Synth")
+        })
+        .expect("a channel's name")
+        + vec2(6.0, 4.0);
+    let at = |h: &Harness, name: &str| {
+        h.session
+            .project()
+            .channels
+            .iter()
+            .position(|c| c.name == name)
+    };
+    let first = h.session.project().channels[at(&h, "Pad").unwrap() - 1]
+        .name
+        .clone();
+
+    h.modifiers = Modifiers::COMMAND;
+    h.press(synth, PointerButton::Primary);
+    h.release(synth, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    let previews: Vec<bool> = h
+        .other
+        .iter()
+        .filter_map(|a| match a {
+            Action::Preview { on, .. } => Some(*on),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(previews, [true, false], "{:?}", h.other);
+    assert!(
+        !h.state.windows.channel_settings,
+        "Ctrl+click only previews"
+    );
+
+    // Shift+wheel down over the first synth's name moves it below Pad.
+    let before = at(&h, &first).unwrap();
+    h.modifiers = Modifiers::SHIFT;
+    h.frame(vec![
+        Event::PointerMoved(synth),
+        Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: vec2(0.0, -1.0),
+            modifiers: Modifiers::SHIFT,
+            phase: egui::TouchPhase::Move,
+        },
+    ]);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(at(&h, &first), Some(before + 1), "moved down a row");
+}

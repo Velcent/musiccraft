@@ -312,6 +312,54 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
 
 /// One channel's row; `at` is the channel's index and the playing step.
 /// Opens an extra channel window for `channel` (no-op if one is open).
+/// Ctrl+press on a channel's name plays its C5 until the button is let go.
+fn name_preview(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    index: usize,
+    ctrl: bool,
+    actions: &mut Vec<Action>,
+) {
+    let id = response.id.with("preview");
+    let sounding = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
+    let held = ctrl && response.is_pointer_button_down_on();
+    let key = musiccraft_project::STEP_KEY;
+    if held && !sounding {
+        actions.push(Action::Preview {
+            channel: index,
+            key,
+            on: true,
+        });
+        ui.data_mut(|d| d.insert_temp(id, true));
+    } else if !held && sounding {
+        actions.push(Action::Preview {
+            channel: index,
+            key,
+            on: false,
+        });
+        ui.data_mut(|d| d.insert_temp(id, false));
+    }
+}
+
+/// Shift+wheel over a channel's name moves the channel up or down a row.
+fn name_wheel(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    (index, count): (usize, usize),
+    actions: &mut Vec<Action>,
+) {
+    if !response.hovered() || !ui.input(|i| i.modifiers.shift) {
+        return;
+    }
+    let notches = crate::scrollbars::wheel_notches(ui);
+    let number = (index + 1).to_string();
+    if notches > 0.0 && index > 0 {
+        run(actions, "channel.move", [number, index.to_string()]);
+    } else if notches < 0.0 && index + 1 < count {
+        run(actions, "channel.move", [number, (index + 2).to_string()]);
+    }
+}
+
 fn keep_window(state: &mut UiState, channel: musiccraft_project::ChannelId) {
     if !state.kept_channels.iter().any(|(c, _)| *c == channel) {
         state.kept_channels.push((channel, state.channel_tab));
@@ -526,7 +574,12 @@ fn row(
         if span.max > clip.min && span.min < clip.max {
             state.rack_rows.push((index, span));
         }
-        if response.double_clicked() {
+        let ctrl = ui.input(|i| i.modifiers.command);
+        name_preview(ui, &response, index, ctrl, actions);
+        name_wheel(ui, &response, (index, project.channels.len()), actions);
+        if ctrl {
+            // Ctrl+press only previews.
+        } else if response.double_clicked() {
             // The first click opened the settings; keep them open.
             state.windows.channel_settings = true;
             state.rename_in_place(Dialog::rename_channel(index, &channel.name), response.rect);

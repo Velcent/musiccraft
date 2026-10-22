@@ -76,6 +76,9 @@
   Melodic rows show a miniature roll whose alternate bars are shaded; a click
   on it opens the piano roll on that channel, or closes it when it already
   shows that channel.
+- Holding Ctrl while pressing a channel's name previews it (C5, held until
+  the button is released) and opens nothing. Shift+wheel over a name moves
+  that channel one slot per notch (`channel.move`, as Alt+Up / Alt+Down).
 - Right-clicking a channel's name opens its menu in two columns. First: Open
   in piano roll, Channel settings; Rename…, Change sample… (samplers),
   Colour ▸, Group…; Clone, Delete. Second: Cut steps, Copy steps, Paste

@@ -93,11 +93,10 @@ There is no per-channel looping and no online loop-library tool in MusicCraft. L
 5. **Name button.** The widest control on the row.
    - **Content:** the channel's name, centred (an option aligns it left), cut short with an ellipsis (existing). **Proposed:** a small kind glyph at its right end (see Icons), a padlock when the channel is locked to a controller, and a warning glyph when its sample or plugin is missing.
    - **Fill:** a muted version of the channel's own colour, so every row is identifiable by colour at a glance even when nothing is selected (needs a stored channel colour; see gaps).
-   - **Left-click:** opens the channel settings window and makes this the focused channel (existing). **Proposed (needs `channel-rack.md` updated first):** a second click closes the window if it is already showing this channel.
+   - **Left-click:** opens the channel settings window and makes this the focused channel (existing). A second click closes the window if it is already showing this channel (existing).
    - **Right-click:** opens the channel menu (existing; section 9).
+   - **Ctrl+press** previews the channel's sound without opening anything, and **Shift+scroll** moves the channel up or down one slot per notch, as Alt+Up/Down does for the selected channel (existing).
    - **Proposed (needs `channel-rack.md` updated first):**
-     - Ctrl+click previews the channel's sound without opening anything.
-     - Shift+scroll moves the channel up or down one slot per notch. Alt+Up/Down already does the same for the selected channel (existing).
      - A vertical press-and-drag past a small threshold starts a reorder. An insertion line shows where the channel will land, and dropping it is one undo step. This drag is our own design.
    - **Missing state:** if the sample file or plugin cannot be found, the whole button takes the warning fill and the hint gives the missing path (proposed; today the spec only plays silence and warns).
 6. **Selection switch and activity light.** A thin, tall pill set between the name button and the steps, with a small gap on each side (layout target; today it sits at the row's end).
@@ -412,7 +411,7 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`, `add_menu`).
 6. **Name button content.**
    - No kind glyph, no padlock, no missing-file warning state.
-   - Left-click opens settings, but close-on-second-click, Ctrl+click preview, Shift+scroll reorder and drag reorder are missing.
+   - Drag reorder is missing.
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
    - Files: `docs/spec/channel-rack.md` (`channel.solo`), `crates/musiccraft-project/src/model.rs`.
 7. **Note preview.**
