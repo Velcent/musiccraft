@@ -414,7 +414,7 @@ Ordered by visual impact. File references are where the change lands. `docs/spec
     - mixer-track arming. Today audio recording arms *playlist* rows (`playlist.toggle_track_arm`, `docs/spec/playlist.md`, "Audio recording"), so the strip's arm switch needs the owner's decision before it is specified.
     `crates/musiccraft-commands`.
 13. **Drag and drop.** Nothing can be dropped on strips or slots, and slots cannot be dragged to reorder. `crates/musiccraft-ui/src/mixer.rs`; `crates/musiccraft-ui/src/browser.rs` (effects are not draggable today).
-14. **Scrolling.** The strips and the slot panel have the simplified bars (`scrollbars::plain_area`), but the wheel over names does not step the strips by whole strips. `crates/musiccraft-ui/src/mixer.rs`.
+14. **Scrolling.** The strips and the slot panel have the simplified bars (`scrollbars::plain_area`) and the wheel over a strip's name steps whole strips, but the wheel over the number cells and empty strip space does nothing yet. `crates/musiccraft-ui/src/mixer.rs`.
 15. **Input row.** The input picker changes the one global input device (Settings › Audio) from whichever track is selected, and its hint now says so. The input glyph is decorative only. `crates/musiccraft-ui/src/mixer.rs` (`input_row`).
 16. **Specs to change first.** `docs/spec/mixer.md` ("Layout", "Routing") and `docs/spec/window-layout.md` ("Window header", "Mixer") for every layout and order change above; `docs/spec/mixer.md` for each item marked Proposed; `docs/spec/keymap.md` for the mixer-local keys. The main-window section's mixer-header gap ("only icons, the layout selector, the title and the window buttons") is consistent with this section: the add, strip-details and slot-panel buttons are icons.
 

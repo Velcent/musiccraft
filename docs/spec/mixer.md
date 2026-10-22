@@ -175,6 +175,8 @@ Ranges and defaults are defined in `musiccraft-params`.
   list (built-in effects, then plugin effects), and the effect goes into the
   first free slot. A loaded slot's menu has
   Open window, Bypass (or Enable), Move up, Move down and Remove.
+- The mouse wheel over a strip's name moves the strips one whole strip per
+  notch. Elsewhere over the strips the wheel is left to the knobs and faders.
 
 ## Effect rack
 

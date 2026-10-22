@@ -1885,3 +1885,21 @@ fn double_clicking_the_tempo_display_types_a_tempo() {
     assert_eq!(out, ["project.set_tempo 98.500"]);
     assert!(!h.state.windows.playlist, "Enter stays in the field");
 }
+
+#[test]
+fn mixer_strips_step_by_whole_strips() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let bars = egui::Id::new("mixer-strip-bars");
+    let offset = |h: &Harness| crate::scrollbars::plain_offset(&h.ctx, bars).x;
+    let before = offset(&h);
+    // What one wheel notch over a strip's name asks for.
+    crate::scrollbars::plain_step(&h.ctx, bars, vec2(42.0, 0.0));
+    h.settle();
+    assert!(
+        (offset(&h) - before - 42.0).abs() < 0.5,
+        "{before} → {}",
+        offset(&h)
+    );
+}

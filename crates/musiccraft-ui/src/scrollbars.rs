@@ -426,8 +426,44 @@ fn plain<R>(
     ui.data_mut(|d| {
         d.insert_temp(key, state);
         d.insert_temp(id.with("offset"), offset);
+        d.insert_temp(id.with("rect"), inner);
     });
     output.inner
+}
+
+/// Mouse-wheel notches this frame (up positive), one per wheel event
+/// whatever its size, so stepped views move by whole items.
+pub fn wheel_notches(ui: &Ui) -> f32 {
+    ui.input(|i| {
+        i.raw
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                egui::Event::MouseWheel { delta, .. } if delta.y != 0.0 => Some(delta.y.signum()),
+                _ => None,
+            })
+            .sum::<f32>()
+    })
+}
+
+/// Where the `plain_area` with bars `id` showed its contents last frame.
+pub fn plain_rect(ctx: &egui::Context, id: Id) -> Option<Rect> {
+    ctx.data(|d| d.get_temp(id.with("rect")))
+}
+
+/// Scrolls the `plain_area` with bars `id` by `delta` points next frame.
+pub fn plain_step(ctx: &egui::Context, id: Id, delta: egui::Vec2) {
+    let key = id.with("plain-bars");
+    let offset: egui::Vec2 = ctx
+        .data(|d| d.get_temp(id.with("offset")))
+        .unwrap_or_default();
+    ctx.data_mut(|d| {
+        let (x, y, _) = d
+            .get_temp::<(bool, bool, Option<egui::Vec2>)>(key)
+            .unwrap_or_default();
+        d.insert_temp(key, (x, y, Some((offset + delta).max(egui::Vec2::ZERO))));
+    });
+    ctx.request_repaint();
 }
 
 /// The scroll offset `plain_area` had in the last frame.

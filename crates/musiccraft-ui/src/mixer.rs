@@ -76,14 +76,21 @@ pub fn show(
                 } else {
                     0.0
                 };
+                // The wheel over a strip's name steps whole strips
+                // (`vertical_name`); elsewhere it is left to the controls.
+                let strip_bars = egui::Id::new(STRIP_BARS);
                 let area = egui::ScrollArea::horizontal()
+                    .scroll_source(egui::scroll_area::ScrollSource {
+                        mouse_wheel: false,
+                        ..egui::scroll_area::ScrollSource::ALL
+                    })
                     .id_salt("mixer-strips")
                     .max_width((ui.available_width() - panel).max(160.0))
                     .auto_shrink([!state.mixer_panel, true]);
                 // The strips' bar sits under them, inside the 16 points the
                 // strip height leaves free.
                 ui.vertical(|ui| {
-                    let bars = (egui::Id::new("mixer-strip-bars"), 42.0);
+                    let bars = (strip_bars, 42.0);
                     crate::scrollbars::plain_area(ui, area, bars, |ui| {
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
@@ -171,6 +178,9 @@ fn window_menu(
 
 const EFFECTS_WIDTH: f32 = 270.0;
 
+/// Id of the strips' scroll bars.
+const STRIP_BARS: &str = "mixer-strip-bars";
+
 /// Width of the name beside the meter in a strip's upper block.
 const NAME_WIDTH: f32 = 22.0;
 
@@ -193,6 +203,15 @@ fn vertical_name(ui: &mut egui::Ui, name: &str, selected: bool, height: f32) -> 
         egui::epaint::TextShape::new(pos, galley, theme::TEXT)
             .with_angle(-std::f32::consts::FRAC_PI_2),
     );
+    let notches = if response.hovered() {
+        crate::scrollbars::wheel_notches(ui)
+    } else {
+        0.0
+    };
+    if notches != 0.0 {
+        let step = vec2(-notches * (STRIP_WIDTH + 2.0), 0.0);
+        crate::scrollbars::plain_step(ui.ctx(), egui::Id::new(STRIP_BARS), step);
+    }
     response
 }
 

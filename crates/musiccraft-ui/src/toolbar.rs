@@ -896,19 +896,7 @@ fn tempo(
         }
     }
     let notch = if lcd.hovered() {
-        // One step per wheel notch, whatever its size.
-        ui.input(|i| {
-            i.raw
-                .events
-                .iter()
-                .filter_map(|e| match e {
-                    egui::Event::MouseWheel { delta, .. } if delta.y != 0.0 => {
-                        Some(delta.y.signum())
-                    }
-                    _ => None,
-                })
-                .sum::<f32>()
-        })
+        crate::scrollbars::wheel_notches(ui)
     } else {
         0.0
     };
