@@ -26,6 +26,11 @@
   `mixer.toggle_solo`, `mixer.set_send`, `mixer.route_to_master`, `mixer.add_effect`, `mixer.remove_effect`,
   `mixer.move_effect`, `mixer.set_effect_param`, `mixer.set_effect_enabled`,
   `mixer.toggle_effect`. Effect slots are numbered from 1. All are undoable.
+- **Track colour**: `mixer.set_track_color <track> <1-16|none>` (undoable,
+  saved as `"color"`, 0-based). Without one, the master uses the highlight
+  tone and each insert a palette colour by position. UI: the track menu
+  (right-click the number or name) and the window menu's Tracks → Colour ▸
+  (the shared colour grid). The colour tints the number cell.
 - **Track stereo options** (undoable, saved; right-click a strip's name):
   `mixer.set_separation <track> <-1..1>` (-1 folds the track to mono, 0
   leaves it, 1 doubles the side signal), `mixer.set_phase_invert <track>

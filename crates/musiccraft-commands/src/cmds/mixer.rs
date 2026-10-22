@@ -68,6 +68,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_phase_invert,
         ),
         cmd(
+            "mixer.set_track_color",
+            "mixer.set_track_color <track> <1-16|none>",
+            "Colour a mixer track (none: its automatic colour).",
+            set_track_color,
+        ),
+        cmd(
             "mixer.set_swap_sides",
             "mixer.set_swap_sides <track> <on|off>",
             "Exchange a mixer track's left and right sides.",
@@ -529,6 +535,30 @@ fn set_phase_invert(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
         |t| &mut t.phase_invert,
         |v| on_off(v).to_owned(),
         "phase invert",
+    ))
+}
+
+fn set_track_color(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    let value = match args.str(1)? {
+        "none" => None,
+        _ => {
+            let n = args.number(1, "colour")?;
+            if !(1..=16).contains(&n) {
+                return Err(args.invalid("colours are 1 to 16"));
+            }
+            Some(u8::try_from(n - 1).unwrap_or(0))
+        }
+    };
+    Ok(set_track_field(
+        project,
+        args,
+        index,
+        value,
+        |t| &mut t.color,
+        |c| c.map_or_else(|| "none".to_owned(), |c| (c + 1).to_string()),
+        "colour",
     ))
 }
 

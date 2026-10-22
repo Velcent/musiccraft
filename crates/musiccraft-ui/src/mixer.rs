@@ -165,6 +165,7 @@ fn window_menu(
             state.open_dialog(Dialog::rename_track(index, &track.name));
             ui.close();
         }
+        colour_menu(ui, index, track, actions);
         if index > 0
             && ui
                 .button(RichText::new("Delete").color(theme::DANGER))
@@ -302,6 +303,30 @@ fn number_cell(
     response
 }
 
+/// A mixer track's colour: the one picked for it, or the master's highlight
+/// or a palette colour by position.
+pub(crate) fn track_color(index: usize, track: &MixerTrack) -> egui::Color32 {
+    match track.color {
+        Some(c) => theme::palette(usize::from(c)),
+        None if index == 0 => theme::HIGHLIGHT,
+        None => theme::palette(index + 3),
+    }
+}
+
+/// The colour grid for track `index`, in the track menus.
+fn colour_menu(ui: &mut egui::Ui, index: usize, track: &MixerTrack, actions: &mut Vec<Action>) {
+    ui.menu_button("Colour", |ui| {
+        if let Some(choice) = crate::swatches::grid(ui, track.color) {
+            run(
+                actions,
+                "mixer.set_track_color",
+                [index.to_string(), crate::swatches::arg(choice)],
+            );
+            ui.close();
+        }
+    });
+}
+
 /// The track menu (right-click on the number or name).
 fn track_menu(
     ui: &mut egui::Ui,
@@ -315,6 +340,7 @@ fn track_menu(
         state.open_dialog(Dialog::rename_track(index, &track.name));
         ui.close();
     }
+    colour_menu(ui, index, track, actions);
     ui.horizontal(|ui| {
         ui.label("Stereo separation");
         let mut separation = track.separation;
@@ -396,11 +422,7 @@ fn strip(
 ) {
     let number = index.to_string();
     let selected = state.selected_track == index;
-    let color = if index == 0 {
-        theme::HIGHLIGHT
-    } else {
-        theme::palette(index + 3)
-    };
+    let color = track_color(index, track);
     let frame = egui::Frame::new()
         .fill(if selected {
             theme::RAISED

@@ -761,6 +761,10 @@ pub struct MixerTrack {
     /// The built-in three-band EQ.
     #[serde(default, skip_serializing_if = "TrackEq::is_flat")]
     pub eq: TrackEq,
+    /// Colour index 0–15 (shown as 1–16) set by the user; `None` uses the
+    /// track's automatic colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<u8>,
 }
 
 impl MixerTrack {
@@ -780,6 +784,7 @@ impl MixerTrack {
             phase_invert: false,
             swap_sides: false,
             eq: TrackEq::default(),
+            color: None,
         }
     }
 }

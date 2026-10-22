@@ -98,6 +98,8 @@ const SCRIPT: &[&str] = &[
     "mixer.set_phase_invert 1 on",
     "mixer.set_swap_sides 1 on",
     "mixer.set_swap_sides 1 off",
+    "mixer.set_track_color 1 3",
+    "mixer.set_track_color 1 none",
     "mixer.rename 1 Kick bus",
     "mixer.set_volume 1 0.7",
     "mixer.set_pan 0 0.1",

@@ -1102,6 +1102,22 @@ mod tests {
     }
 
     #[test]
+    fn mixer_track_colours_use_the_stored_choice() {
+        let mut s = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        let mixer = &s.project().mixer;
+        assert_eq!(mixer::track_color(0, &mixer[0]), theme::HIGHLIGHT);
+        assert_eq!(mixer::track_color(2, &mixer[2]), theme::palette(5));
+        s.run_line("mixer.set_track_color 2 1").unwrap();
+        s.run_line("mixer.set_track_color 0 3").unwrap();
+        let mixer = &s.project().mixer;
+        assert_eq!(mixer::track_color(2, &mixer[2]), theme::palette(0));
+        assert_eq!(mixer::track_color(0, &mixer[0]), theme::palette(2));
+    }
+
+    #[test]
     fn channel_colours_follow_the_channel_and_its_stored_choice() {
         let mut s = musiccraft_commands::Session::new(
             Project::default(),
