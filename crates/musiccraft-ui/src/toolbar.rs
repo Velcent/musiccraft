@@ -1,7 +1,7 @@
 //! Menu bar, transport bar and status bar.
 
 use crate::hint::Hint;
-use egui::{RichText, vec2};
+use egui::{Rect, RichText, Sense, pos2, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::{MAX_TEMPO_BPM, MIN_TEMPO_BPM, PlayMode};
 
@@ -827,7 +827,7 @@ fn lower_rack(
         );
     });
     divider(ui);
-    pattern_panel(ui, project, actions);
+    pattern_panel(ui, state, frame, actions);
 }
 
 /// Record's fill: the danger tone, pulsing while a take runs.
@@ -1004,21 +1004,84 @@ fn tempo_entry(
 /// The pattern list and the plus that adds the next empty pattern.
 fn pattern_panel(
     ui: &mut egui::Ui,
-    project: &musiccraft_project::Project,
+    state: &mut UiState,
+    frame: &Frame<'_>,
     actions: &mut Vec<Action>,
 ) {
+    let project = frame.project;
     let current = project.current_pattern;
-    egui::ComboBox::from_id_salt("pattern-select")
-        .width(118.0)
-        .selected_text(
-            RichText::new(format!(
-                "{}  {}",
-                current + 1,
-                project.current_pattern().name
-            ))
-            .color(crate::pattern_text(project.current_pattern())),
-        )
-        .show_ui(ui, |ui| {
+    let options = icons::header_button(ui, Icon::ChevronDown, false, false, "Pattern options");
+    let toggle =
+        (options.clicked() || options.secondary_clicked()).then_some(egui::SetOpenCommand::Toggle);
+    egui::Popup::menu(&options)
+        .open_memory(toggle)
+        .show(|ui| patterns_menu(ui, state, frame, actions));
+    let (rect, field) = ui.allocate_exact_size(vec2(118.0, 22.0), Sense::click());
+    let field = field.hint(
+        "Pattern: click for the list · wheel or arrows step (Plus / Minus) · double-click renames · Ctrl+click shows it in the playlist",
+    );
+    let arrows = Rect::from_min_max(pos2(rect.right() - 12.0, rect.top()), rect.max);
+    let painter = ui.painter();
+    let fill = if field.hovered() {
+        theme::RAISED_HOVER
+    } else {
+        theme::RAISED
+    };
+    painter.rect_filled(rect, 2.0, fill);
+    painter.text(
+        pos2(rect.left() + 6.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        format!("{}  {}", current + 1, project.current_pattern().name),
+        egui::FontId::proportional(theme::FONT_LABEL),
+        crate::pattern_text(project.current_pattern()),
+    );
+    let (up, down) = (
+        Rect::from_min_max(arrows.min, pos2(arrows.right(), arrows.center().y)),
+        Rect::from_min_max(pos2(arrows.left(), arrows.center().y), arrows.max),
+    );
+    for (half, tip) in [(up, -1.0), (down, 1.0)] {
+        let c = half.center();
+        let stroke = egui::Stroke::new(1.0, theme::TEXT_DIM);
+        painter.line_segment(
+            [pos2(c.x - 3.0, c.y - tip * 1.5), pos2(c.x, c.y + tip * 1.5)],
+            stroke,
+        );
+        painter.line_segment(
+            [pos2(c.x, c.y + tip * 1.5), pos2(c.x + 3.0, c.y - tip * 1.5)],
+            stroke,
+        );
+    }
+    let pointer = field.interact_pointer_pos();
+    let on = |r: Rect| pointer.is_some_and(|p| r.contains(p));
+    let ctrl = ui.input(|i| i.modifiers.command);
+    let mut list = None;
+    if field.clicked() && on(up) {
+        run(actions, "pattern.prev");
+    } else if field.clicked() && on(down) {
+        run(actions, "pattern.next");
+    } else if field.double_clicked() {
+        state.rename_in_place(
+            crate::dialogs::Dialog::rename_pattern(current, &project.current_pattern().name),
+            rect,
+        );
+    } else if field.clicked() && ctrl {
+        state.windows.playlist = true;
+        crate::playlist::show_pattern(state, project, project.current_pattern().id);
+    } else if field.clicked() || field.secondary_clicked() {
+        list = Some(egui::SetOpenCommand::Toggle);
+    }
+    if field.hovered() {
+        let wheel = crate::scrollbars::wheel_notches(ui);
+        if wheel > 0.0 {
+            run(actions, "pattern.prev");
+        } else if wheel < 0.0 {
+            run(actions, "pattern.next");
+        }
+    }
+    egui::Popup::menu(&field)
+        .open_memory(list)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .show(|ui| {
             for (i, pattern) in project.patterns.iter().enumerate() {
                 let text = RichText::new(format!("{}  {}", i + 1, pattern.name))
                     .color(crate::pattern_text(pattern));
@@ -1026,9 +1089,7 @@ fn pattern_panel(
                     run(actions, &format!("pattern.select {}", i + 1));
                 }
             }
-        })
-        .response
-        .hint("Selected pattern (Plus / Minus)");
+        });
     if icons::button(
         ui,
         Icon::Plus,

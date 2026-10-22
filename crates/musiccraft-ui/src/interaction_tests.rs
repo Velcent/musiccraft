@@ -2526,3 +2526,49 @@ fn playlist_keys_zoom_nudge_and_move_tracks() {
     h.key(egui::Key::Num4, Modifiers::SHIFT);
     assert!((h.state.playlist.px_per_bar - 32.0).abs() < 1e-3);
 }
+
+#[test]
+fn the_toolbar_pattern_field_steps_renames_and_reveals() {
+    let mut h = Harness::new(&["pattern.add", "playlist.add_clip 2 1 6"]);
+    h.state.windows.playlist = false;
+    h.settle();
+    let field = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..170).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Pattern: click"))
+        })
+        .expect("the pattern field in the toolbar");
+    let wheel = |y: f32| Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, y),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(h.session.project().current_pattern, 1);
+    assert_eq!(h.frame(vec![wheel(1.0)]), ["pattern.prev"]);
+    assert_eq!(h.frame(vec![wheel(-1.0)]), ["pattern.next"]);
+    assert_eq!(h.session.project().current_pattern, 1);
+
+    // Double-click renames in place; Esc cancels.
+    h.click(field, PointerButton::Primary);
+    h.click(field, PointerButton::Primary);
+    assert!(h.state.renaming.is_some());
+    h.key(egui::Key::Escape, Modifiers::NONE);
+    h.settle();
+    assert!(h.state.renaming.is_none());
+
+    // Ctrl+click opens the playlist at the pattern's first clip.
+    h.modifiers = Modifiers::COMMAND;
+    h.click(field, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert!(h.state.windows.playlist);
+    h.settle();
+    let offset = h.state.playlist.offset;
+    assert!(offset.x > 0.0, "scrolled to bar 7: {offset:?}");
+}

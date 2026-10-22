@@ -103,8 +103,11 @@ stay our own. The full target look, window by window, is the style guide in
   - **lower rack**: the master volume knob, the mode switch (Pattern over
     Song, one button wide; right-click a half to open the channel rack or the
     playlist), play (a pause glyph while playing), stop, record, the tempo
-    display, TAP and the time signature, the pattern panel (the pattern list
-    and a plus) and the window buttons (Playlist, Channel rack, Piano roll,
+    display, TAP and the time signature, the pattern panel (an options
+    chevron with the Patterns menu's items; the pattern field, whose click
+    or right-click lists the patterns, wheel or stacked up/down arrows step
+    them, double-click renames in place and Ctrl+click shows the pattern's
+    first clip in the playlist; and a plus) and the window buttons (Playlist, Channel rack, Piano roll,
     Browser, Mixer).
 - Option toggles all light the same way: an accent fill with a dark glyph.
 - The time display shows bar.beat.step, minutes:seconds.hundredths or

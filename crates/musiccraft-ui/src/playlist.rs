@@ -53,7 +53,7 @@ pub struct PlaylistState {
     pub(crate) px_per_bar: f32,
     row_height: f32,
     /// Scroll offset of the last frame, in points.
-    offset: Vec2,
+    pub(crate) offset: Vec2,
     /// Scroll offset asked for by the scroll bars, applied next frame.
     jump: Option<Vec2>,
     snap: Snap,
@@ -431,6 +431,15 @@ fn zoom(state: &mut UiState, project: &Project, op: Zoom) {
     list.px_per_bar = clamp((view.width() - HEADER_WIDTH - 12.0) / bars);
     let x = from as f32 / ZOOM_TICKS as f32 * list.px_per_bar;
     list.jump = Some(vec2(x, list.offset.y));
+}
+
+/// Scrolls the playlist to the first clip of `pattern` (Show in playlist).
+pub(crate) fn show_pattern(
+    state: &mut UiState,
+    project: &Project,
+    pattern: musiccraft_project::PatternId,
+) {
+    show_source(state, project, ClipSource::Pattern(pattern));
 }
 
 /// Scrolls the playlist to the first clip of `source` (Show in playlist).
