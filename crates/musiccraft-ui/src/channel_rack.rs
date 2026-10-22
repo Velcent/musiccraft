@@ -63,7 +63,14 @@ pub fn show(
                             .as_ref()
                             .is_none_or(|group| *group == channel.group);
                         if shown {
-                            row(ui, state, project, (index, playing), channel, actions);
+                            row(
+                                ui,
+                                state,
+                                project,
+                                (index, playing, frame.settings.keep_instrument_windows),
+                                channel,
+                                actions,
+                            );
                         }
                     }
                     if project.channels.is_empty() {
@@ -289,15 +296,22 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
 }
 
 /// One channel's row; `at` is the channel's index and the playing step.
+/// Opens an extra channel window for `channel` (no-op if one is open).
+fn keep_window(state: &mut UiState, channel: musiccraft_project::ChannelId) {
+    if !state.kept_channels.iter().any(|(c, _)| *c == channel) {
+        state.kept_channels.push((channel, state.channel_tab));
+    }
+}
+
 fn row(
     ui: &mut egui::Ui,
     state: &mut UiState,
     project: &Project,
-    at: (usize, Option<usize>),
+    at: (usize, Option<usize>, bool),
     channel: &Channel,
     actions: &mut Vec<Action>,
 ) {
-    let (index, playing) = at;
+    let (index, playing, keep_windows) = at;
     let number = (index + 1).to_string();
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
@@ -502,10 +516,17 @@ fn row(
             state.windows.channel_settings = true;
             state.rename_in_place(Dialog::rename_channel(index, &channel.name), response.rect);
         } else if response.clicked() {
-            // Clicking the selected channel again closes its settings.
-            let reopen = state.selected_channel != index || !state.windows.channel_settings;
-            state.selected_channel = index;
-            state.windows.channel_settings = reopen;
+            let alt = ui.input(|i| i.modifiers.alt);
+            let other = state.selected_channel != index && state.windows.channel_settings;
+            if alt || (keep_windows && other) {
+                // Another window, beside the one already open.
+                keep_window(state, channel.id);
+            } else {
+                // Clicking the selected channel again closes its settings.
+                let reopen = state.selected_channel != index || !state.windows.channel_settings;
+                state.selected_channel = index;
+                state.windows.channel_settings = reopen;
+            }
         }
         response.context_menu(|ui| context_menu(ui, state, project, index, channel, actions));
 

@@ -168,16 +168,53 @@ pub fn show(
     frame: &Frame<'_>,
     actions: &mut Vec<Action>,
 ) {
-    let mut open = state.windows.channel_settings;
-    if !open {
-        return;
+    if state.windows.channel_settings {
+        let mut open = true;
+        let id = egui::Id::new("channel-settings");
+        show_window(
+            ctx,
+            state,
+            frame,
+            (state.selected_channel, id, 0),
+            &mut open,
+            actions,
+        );
+        state.windows.channel_settings = open;
     }
-    let index = state.selected_channel;
+    // Windows opened with Alt+click stay on their own channel and page.
+    let project = frame.project;
+    let main_tab = state.channel_tab;
+    let mut kept = std::mem::take(&mut state.kept_channels);
+    kept.retain_mut(|(channel, tab)| {
+        let Some(index) = project.channel_position(*channel) else {
+            return false;
+        };
+        let mut open = true;
+        let id = egui::Id::new(("channel-settings", channel.0));
+        state.channel_tab = *tab;
+        let cascade = index % 8 + 1;
+        show_window(ctx, state, frame, (index, id, cascade), &mut open, actions);
+        *tab = state.channel_tab;
+        open
+    });
+    state.channel_tab = main_tab;
+    state.kept_channels = kept;
+}
+
+/// One channel window: channel `index`, window `id`, offset `cascade` steps
+/// down and left from the default place.
+fn show_window(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    (index, id, cascade): (usize, egui::Id, usize),
+    open: &mut bool,
+    actions: &mut Vec<Action>,
+) {
     let Some(channel) = frame.project.channels.get(index) else {
         return;
     };
     let area = state.workspace;
-    let id = egui::Id::new("channel-settings");
     let title = format!(
         "{} — {}",
         channel.name,
@@ -187,8 +224,11 @@ pub fn show(
             .get(channel.mixer_track)
             .map_or("Master", |t| t.name.as_str())
     );
-    let default =
-        egui::Rect::from_min_size(area.right_top() + vec2(-470.0, 30.0), vec2(440.0, 0.0));
+    let step = 24.0 * cascade as f32;
+    let default = egui::Rect::from_min_size(
+        area.right_top() + vec2(-470.0 - step, 30.0 + step),
+        vec2(440.0, 0.0),
+    );
     // Never narrower than the strip; wide pages (Antiserum) widen it to at
     // most half the workspace.
     let min_width = 3.0 * 40.0 + STRIP_CONTROLS;
@@ -202,7 +242,7 @@ pub fn show(
     window.show(ctx, |ui| {
         let folded = crate::chrome::Header::new(id, &title).fixed_size().show(
             ui,
-            &mut open,
+            open,
             &mut (&mut *state, &mut *actions),
             |ui, (state, actions)| {
                 crate::channel_rack::context_menu(
@@ -224,7 +264,6 @@ pub fn show(
             contents(ui, state, frame, index, channel, actions);
         }
     });
-    state.windows.channel_settings = open;
 }
 
 fn contents(

@@ -2913,3 +2913,53 @@ fn a_saved_window_layout_comes_back_on_the_next_start() {
     assert!(again.folded.contains(&"mixer".to_owned()));
     assert!(!again.open.contains(&"piano_roll".to_owned()));
 }
+
+#[test]
+fn alt_clicking_a_channel_name_opens_another_channel_window() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.rename 2 Pad",
+    ]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    // Name buttons hint their kind; the second row's is below the first.
+    let find = |h: &mut Harness, below: f32| {
+        (0..40)
+            .flat_map(|j| (0..60).map(move |i| (i, j)))
+            .map(|(i, j)| rack.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 3.0 * j as f32))
+            .filter(|p| p.y > below)
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state.hint.as_deref() == Some("Synth")
+            })
+            .expect("a channel's name")
+    };
+    let synth = find(&mut h, 0.0);
+    let pad = find(&mut h, synth.y + 28.0);
+    h.click(synth, PointerButton::Primary);
+    h.settle();
+    assert!(h.state.windows.channel_settings);
+    h.modifiers = Modifiers::ALT;
+    h.click(pad, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    assert_eq!(
+        h.state.selected_channel, 0,
+        "the first window keeps its channel"
+    );
+    let pad_id = h.session.project().channels[1].id;
+    assert_eq!(h.state.kept_channels.len(), 1);
+    assert_eq!(h.state.kept_channels[0].0, pad_id);
+    let kept = h
+        .ctx
+        .memory(|m| m.area_rect(egui::Id::new(("channel-settings", pad_id.0))));
+    assert!(kept.is_some(), "the second window is drawn");
+    // Alt+clicking the same channel again opens no third window.
+    h.modifiers = Modifiers::ALT;
+    h.click(pad, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(h.state.kept_channels.len(), 1);
+}

@@ -22,7 +22,9 @@
   button re-lists ports. The typing keyboard toggle lives here
   as well as on the toolbar.
 - **General**: interface scale (75–200 %), hint bar on/off, autosave on/off,
-  start with an empty project instead of the starter kit.
+  start with an empty project instead of the starter kit, keep instrument
+  windows open (a click on another channel's name opens its own channel
+  window instead of switching the open one; off by default).
 - The settings file also keeps the window arrangement at the last close
   (`window_layout`; no tab shows it, see `window-layout.md`).
 - **Folders**: browser folders (add, remove) and extra plugin folders (add,

@@ -34,8 +34,8 @@ These are the windows where a user shapes one sound at a time: a channel's instr
 - **Channel windows**
   - Clicking a channel's name opens its channel window, and clicking the same name again closes it (today's behaviour).
   - By default there is one channel window, and it follows the clicked channel while keeping the same tab (today).
-  - **Proposed (needs `channel-rack.md` updated first):** Alt+click on a channel's name opens an additional channel window for that channel and leaves the others open. Plain click keeps today's behaviour.
-  - **Proposed (needs `settings.md` updated first):** a setting **Keep instrument windows open** (Settings → General). When on, every name click opens its own window instead of reusing the current one. Off by default.
+  - Alt+click on a channel's name opens an additional channel window for that channel and leaves the others open. Plain click keeps today's behaviour.
+  - A setting **Keep instrument windows open** (Settings → General). When on, every name click opens its own window instead of reusing the current one. Off by default.
 - **Effect windows**
   - There is one window per mixer slot, and any number can be open. Clicking the slot's name toggles its window (today).
   - Removing the slot closes its window (today). **Proposed (needs `mixer.md` updated first):** moving the slot up or down keeps the window open, with an updated title.
@@ -433,8 +433,7 @@ Ordered by visual impact.
    - The plugin's own window is titled with the plugin name only (`crates/musiccraft-app/src/plugins.rs`, `set_editor`).
 4. **There is no Plugin (details) tab** for hosted plugins (C4). Format, maker, file and the rescan/reload buttons are not shown in the channel window. There is no editor-scale choice for hosted editors and no processing options; `docs/spec/plugins.md` says nothing about either.
 5. **The keyboard strip is partial.** The KEYBOARD box (C7) shows the root key, Reset, preview and right-click to set the root, over a fixed C1–B8 range. Still missing: the fine-tune knob, the ruler with a draggable key range (needs a key-range parameter) and the zoom/scroll bar under the keys.
-6. **Only one channel window can exist.** `crates/musiccraft-ui/src/lib.rs` holds a single `windows.channel_settings` flag plus `selected_channel`. There is no Alt+click to open more, and no "Keep instrument windows open" setting.
-7. **There is no detaching** to a desktop window (future item, main-window section).
+6. **There is no detaching** to a desktop window (future item, main-window section).
 
 ## Sources
 

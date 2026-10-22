@@ -60,6 +60,9 @@ pub struct Settings {
     /// Windows path prefixes (`C:`, `D:/Samples`) and the folders they stand
     /// for here.
     pub drive_map: Vec<(String, PathBuf)>,
+    /// A click on another channel's name opens a window of its own instead
+    /// of switching the open channel window.
+    pub keep_instrument_windows: bool,
     /// The window arrangement when the app last closed, restored on start.
     pub window_layout: Option<WindowLayout>,
 }
@@ -95,6 +98,7 @@ impl Default for Settings {
             fl_factory: None,
             fl_user: None,
             drive_map: Vec::new(),
+            keep_instrument_windows: false,
             window_layout: None,
         }
     }
@@ -564,6 +568,12 @@ fn general(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
         "Start with an empty project",
         settings.start_empty,
         |s, v| s.start_empty = v,
+    );
+    toggle(
+        ui,
+        "Keep instrument windows open (a click on another channel opens its own window)",
+        settings.keep_instrument_windows,
+        |s, v| s.keep_instrument_windows = v,
     );
 }
 

@@ -546,6 +546,9 @@ pub struct UiState {
     pub path_drafts: [String; 4],
     /// The channel settings window's page.
     pub channel_tab: channel_settings::ChannelTab,
+    /// Extra channel windows (Alt+click on a channel name), each on its own
+    /// channel and page.
+    pub(crate) kept_channels: Vec<(musiccraft_project::ChannelId, channel_settings::ChannelTab)>,
     /// The channel rack shows only this group (the group filter; `None`: all).
     pub rack_group: Option<String>,
     /// The channel rack's step graph editor: open, what it edits, and the
@@ -652,6 +655,7 @@ impl UiState {
             taps: Vec::new(),
             sig_draft: (4, 4),
             channel_tab: channel_settings::ChannelTab::default(),
+            kept_channels: Vec::new(),
             time_mode: TimeMode::Bars,
             path_drafts: Default::default(),
             rack_group: None,

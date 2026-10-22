@@ -361,7 +361,14 @@ square partials), normalized to a 0.9 peak and faded out at the end.
 
 ## Channel settings window
 
-- Clicking a channel's name opens its settings window. Its header title is
+- Clicking a channel's name opens its settings window; the one window
+  follows the clicked channel and keeps its page, and clicking the shown
+  channel again closes it. Alt+click opens an additional window for that
+  channel and leaves the others open; each additional window stays on its
+  own channel and page, cascades a little down and left of the first, and
+  closes on its own (one per channel). With Settings → General → "Keep
+  instrument windows open" on, a plain click on another channel does the
+  same as Alt+click while a channel window is open. Its header title is
   the channel's name, an em dash and the mixer track it feeds ("Lead —
   Insert 3", or "Kick — Master"). For instruments with factory presets
   (synth, drum synth, pluck, FM, keys, additive) the header also holds the
