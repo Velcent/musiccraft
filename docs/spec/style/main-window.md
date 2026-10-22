@@ -188,7 +188,7 @@ Placement rules:
 
 - A plain surface, the quietest tone in the interface. It shows only where no window covers it, including the narrow gaps between tiled windows.
 - When it is empty, our faint "MusicCraft" mark sits in its bottom-right corner (own; the current watermark). Nothing else is drawn there: no grid and no hints.
-- Click: clears focus from all windows. Right-click (proposed, own): a small menu listing the editor windows (show/hide) and the `Windows layout ▸` submenu. Wheel: nothing.
+- Click: clears focus from all windows. Right-click (own): a small menu listing the editor windows (show/hide) and, for now, the default layout; the full `Windows layout ▸` submenu is still to come. Wheel: nothing.
 - An optional user picture or plain colour for this surface may come later. It is user-chosen and stays behind the windows.
 
 ### F. Scroll and zoom bars (playlist, piano roll; simplified elsewhere)
@@ -398,13 +398,12 @@ Ordered by visual impact. Each needs `docs/spec/window-layout.md` (or the spec n
     - There is no `Windows layout ▸` submenu and no saved custom layout.
 4. **Missing window shortcuts**: Tab (cycle focus) and Ctrl+F11 (hide toolbar). Enter, Ctrl+Shift+H, Esc, F12, Alt+F12 and Ctrl+F12 are bound. Tab needs care: egui uses it to move keyboard focus between widgets, and a widget holding focus blocks every shortcut, so it has to be taken from the raw input before egui sees it (`crates/musiccraft-app/src/main.rs`). F10 is already bound to `ui.settings`, so no window or project-info shortcut may take F10. `keymap.md` changes first.
 5. **Browser chrome and placement** (`crates/musiccraft-ui/src/browser.rs`, `show`):
-    - The header is a "Browser" label with a refresh glyph: no window menu, fold-all, collapse or close, and the tools come after the title rather than before it.
     - It cannot dock right, float or auto-hide.
     - Its divider has no second stored width.
 6. **No detaching or multiple screens.** Editors cannot become their own OS windows (an egui viewport would do it).
     - Hosted plugin views already open in separate OS windows on Linux (`crates/musiccraft-plugin-window`), without our header.
     - There is no "Bring every window into view".
-7. **Workspace context.** Right-clicking the empty workspace does nothing.
+7. **Workspace context.** Right-clicking the empty workspace lists the editor windows and the default layout, but not the rest of the `Windows layout ▸` submenu (second layout, saved layout, bring into view).
 8. **No floating hint panel**, and no View-menu toggle for one. Optional; low priority.
 9. **Main window chrome.** The app keeps the OS title bar (`crates/musiccraft-app/src/main.rs`, `ViewportBuilder`). It has no own minimize/maximize/close at the toolbar's end, no drag-the-toolbar-to-move, and no "maximize across all screens". This is lowest priority and platform-dependent.
 10. **No touch support.** Header gestures and corner hot spots (see Touch) are later work.

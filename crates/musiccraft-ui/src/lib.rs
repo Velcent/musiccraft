@@ -242,6 +242,29 @@ fn toggle_window(state: &mut UiState, which: &str) {
     *flag = !*flag;
 }
 
+/// The empty workspace's right-click menu: the editor windows and the
+/// default layout.
+fn workspace_menu(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) {
+    let response = ui.interact(
+        ui.max_rect(),
+        egui::Id::new("workspace-background"),
+        egui::Sense::click(),
+    );
+    response.context_menu(|ui| {
+        let w = &mut state.windows;
+        ui.checkbox(&mut w.playlist, "Playlist (F5)");
+        ui.checkbox(&mut w.channel_rack, "Channel rack (F6)");
+        ui.checkbox(&mut w.piano_roll, "Piano roll (F7)");
+        ui.checkbox(&mut w.browser, "Browser (Alt+F8)");
+        ui.checkbox(&mut w.mixer, "Mixer (F9)");
+        ui.separator();
+        if ui.button("Default layout (Ctrl+Shift+H)").clicked() {
+            actions.push(Action::Run(Invocation::bare("view.default_layout")));
+            ui.close();
+        }
+    });
+}
+
 /// A window in the workspace that the window keys can close.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Slot {
@@ -617,7 +640,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     }
     let workspace = egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(theme::BACKGROUND).inner_margin(6.0))
-        .show(ui, |ui| theme::watermark(ui))
+        .show(ui, |ui| {
+            theme::watermark(ui);
+            workspace_menu(ui, state, &mut actions);
+        })
         .response
         .rect;
     state.workspace = workspace;

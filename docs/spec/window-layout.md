@@ -20,6 +20,9 @@ stay our own. The full target look, window by window, is the style guide in
   or restores it, opening it first if it was closed. Neither key acts while a
   dialog is open or a text field has focus.
 
+- Right-clicking the empty workspace opens a small menu: a tick item for each
+  editor window (show or hide) and "Default layout (Ctrl+Shift+H)".
+
 ## Focus
 
 - The focused window is the topmost one; clicking anywhere in a window brings

@@ -1795,3 +1795,20 @@ fn esc_closes_the_focused_window_and_f12_hides_them_all() {
     let w = &h.state.windows;
     assert!(!w.channel_rack && !w.mixer && !w.piano_roll && !w.playlist);
 }
+
+#[test]
+fn right_clicking_the_empty_workspace_opens_the_window_menu() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    h.click(rack.center(), PointerButton::Secondary);
+    h.settle();
+    assert!(
+        !egui::Popup::is_any_open(&h.ctx),
+        "a window takes its own clicks"
+    );
+    h.click(pos2(1200.0, 800.0), PointerButton::Secondary);
+    h.settle();
+    assert!(egui::Popup::is_any_open(&h.ctx));
+}
