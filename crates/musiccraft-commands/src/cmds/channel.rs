@@ -171,8 +171,14 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         cmd(
             "channel.solo",
             "channel.solo <channel>",
-            "Mute every other channel; if already solo, unmute all.",
+            "Make a channel the only soloed one; if it already is, clear every solo.",
             solo,
+        ),
+        cmd(
+            "channel.set_solo",
+            "channel.set_solo <channel> <on|off>",
+            "Solo or unsolo one channel (while any channel is soloed, only soloed channels play).",
+            set_solo,
         ),
         cmd(
             "channel.route_free",
@@ -825,25 +831,25 @@ fn toggle_mute(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Comman
 fn solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
     args.expect(1, 1)?;
     let index = channel_arg(project, args, 0)?;
-    let already_solo = project
+    let only = project
         .channels
         .iter()
         .enumerate()
-        .all(|(i, c)| c.mute == (i != index));
+        .all(|(i, c)| c.solo == (i == index));
     let mut undo = Vec::new();
     for (i, channel) in project.channels.iter_mut().enumerate() {
-        let mute = !already_solo && i != index;
-        if channel.mute != mute {
+        let solo = !only && i == index;
+        if channel.solo != solo {
             undo.push(format!(
-                "channel.set_mute {} {}",
+                "channel.set_solo {} {}",
                 i + 1,
-                on_off(channel.mute)
+                on_off(channel.solo)
             ));
-            channel.mute = mute;
+            channel.solo = solo;
         }
     }
-    let message = if already_solo {
-        "all channels unmuted".to_owned()
+    let message = if only {
+        "no channel soloed".to_owned()
     } else {
         format!("channel {} solo", index + 1)
     };
@@ -851,6 +857,24 @@ fn solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError>
         return Ok(Outcome::done(message));
     }
     Ok(Outcome::undoable(message, Invocation::new(BATCH, undo)))
+}
+
+fn set_solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = channel_arg(project, args, 0)?;
+    let solo = args.flag(1)?;
+    let previous = std::mem::replace(&mut project.channels[index].solo, solo);
+    let message = format!("channel {} solo {}", index + 1, on_off(solo));
+    if previous == solo {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(
+            args.name(),
+            [(index + 1).to_string(), on_off(previous).to_owned()],
+        ),
+    ))
 }
 
 /// Routes a channel to the first insert that nothing feeds and that has no

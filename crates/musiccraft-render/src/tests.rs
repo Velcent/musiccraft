@@ -2421,3 +2421,31 @@ fn the_channel_pitch_knob_transposes_antiserum() {
         "an octave up: {plain} -> {up}"
     );
 }
+
+#[test]
+fn a_soloed_channel_silences_the_others_without_muting_them() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         channel.add_synth
+         note.add 1 0 16 A5
+         note.add 2 0 16 A5
+         channel.solo 2
+         channel.set_mute 2 on",
+    );
+    let options = RenderOptions {
+        max_tail_seconds: 0.0,
+        ..RenderOptions::default()
+    };
+    // Channel 2 is soloed but muted, so nothing plays; channel 1 is silenced
+    // by the solo, though not muted itself.
+    assert!(!s.project().channels[0].mute);
+    let (out, _, _) = render(s.project(), options);
+    assert!(rms(&out) < 1e-6);
+    run(&mut s, "channel.set_mute 2 off");
+    let (soloed, _, _) = render(s.project(), options);
+    run(&mut s, "channel.solo 2");
+    let (both, _, _) = render(s.project(), options);
+    assert!(rms(&soloed) > 0.01 && rms(&both) > rms(&soloed) * 1.2);
+}

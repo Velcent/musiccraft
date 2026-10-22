@@ -49,6 +49,9 @@ const SCRIPT: &[&str] = &[
     "channel.toggle_mute 2",
     "channel.solo 1",
     "channel.solo 1",
+    "channel.set_solo 2 on",
+    "channel.solo 1",
+    "channel.set_solo 1 off",
     "channel.route 1 2",
     "channel.set_sample 1 builtin:clap",
     "channel.set_param 3 cutoff 1200",
@@ -931,6 +934,43 @@ fn channel_colours_are_saved_undoable_and_follow_the_channel() {
     run(&mut s, "edit.undo");
     assert_eq!(s.project().channels[0].color, None);
     fails(&mut s, "channel.set_color 1 17");
+}
+
+#[test]
+fn solo_is_its_own_state_and_leaves_mutes_alone() {
+    let mut s = session();
+    for line in [
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.set_mute 3 on",
+    ] {
+        run(&mut s, line);
+    }
+    run(&mut s, "channel.solo 2");
+    let p = s.project();
+    assert_eq!(
+        p.channels
+            .iter()
+            .map(|c| (c.mute, c.solo))
+            .collect::<Vec<_>>(),
+        [(false, false), (false, true), (true, false)]
+    );
+    assert_eq!(
+        (0..3).map(|i| p.channel_plays(i)).collect::<Vec<_>>(),
+        [false, true, false]
+    );
+    assert!(p.to_json().unwrap().contains("\"solo\": true"));
+    // Soloing the only soloed channel again clears solo; mutes stay.
+    run(&mut s, "channel.solo 2");
+    let p = s.project();
+    assert!(p.channels.iter().all(|c| !c.solo));
+    assert_eq!(
+        (0..3).map(|i| p.channel_plays(i)).collect::<Vec<_>>(),
+        [true, true, false]
+    );
+    run(&mut s, "edit.undo");
+    assert!(s.project().channels[1].solo);
 }
 
 #[test]

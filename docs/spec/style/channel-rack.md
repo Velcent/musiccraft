@@ -78,7 +78,7 @@ There is no per-channel looping and no online loop-library tool in MusicCraft. L
    - Live playing from a MIDI keyboard or the typing keyboard still sounds while the channel is muted.
    - **Proposed (needs `channel-rack.md` updated first):**
      - Right-click opens a small menu: "Solo" or "Unsolo", and "Unmute all".
-     - Ctrl+click solos the channel: it mutes every other channel, and a second Ctrl+click unmutes all (the same rule as `channel.solo`).
+     - Ctrl+click solos the channel: it becomes the only soloed channel, and a second Ctrl+click clears solo (the same rule as `channel.solo`; solo is its own state, so mutes are left alone).
      - Alt+click applies the mute or solo to the channel's group.
      - Shift+click locks the mute state so that solo actions skip this channel. A tiny padlock then replaces the light.
 2. **Pan knob.** A small knob whose arc grows outward from the centre. Behaviour follows `controls.md`; a reset returns it to the centre. The hint bar shows the value while hovering or dragging (existing).
@@ -414,31 +414,27 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
    - No kind glyph, no padlock, no missing-file warning state.
    - Left-click opens settings, but close-on-second-click, Ctrl+click preview, Shift+scroll reorder and drag reorder are missing.
    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
-7. **Solo is stored as mutes.** `channel.solo` mutes every other channel, so "silenced by solo" cannot be told apart from "muted", and there is no soloed state to ring. The solo light roles need solo kept as its own state.
    - Files: `docs/spec/channel-rack.md` (`channel.solo`), `crates/musiccraft-project/src/model.rs`.
-8. **Note preview.**
+7. **Note preview.**
     - Left-click toggles the piano roll for that channel, but right-click "open at this point" is missing.
     - There is no all-rows piano-roll view.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`mini_roll`).
-9. **Channel context menu.**
+8. **Channel context menu.**
     - It has the two columns in the guide's order, without the duplicate clear item.
     - Missing: colour and icon items, insert and replace, cut, copy and paste steps, choke itself, MIDI items, graph editor entry.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`context_menu`).
-10. **Mute light.** Ctrl+click solos and right-click offers Mute and Solo, but there is no Shift+click lock.
+9. **Mute light.** Ctrl+click solos and right-click offers Mute and Solo, but there is no Shift+click lock.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
-11. **Mixer-track box.**
-    - The column hides with Alt+M or the window menu, and channel stacks and MIDI outputs show a dim dash. Nothing else is missing here.
-    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
-12. **Group filter.**
+10. **Group filter.**
     - No right-click new, rename or delete (Page Up/Down cycling is in).
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`header`, `add_menu`).
-13. **Pattern length.** The length box takes 1–1024 steps and offers whole-bar lengths on right-click, but there is no "auto" length.
+11. **Pattern length.** The length box takes 1–1024 steps and offers whole-bar lengths on right-click, but there is no "auto" length.
     - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`).
-14. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
+12. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
     - File: `crates/musiccraft-ui/src/channel_rack.rs`.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`).
-15. **Keymap.** Ctrl+K, Alt+M, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M hides the mixer-track column. Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
-16. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
+13. **Keymap.** Ctrl+K, Alt+M, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M hides the mixer-track column. Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
+14. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
 
 ## Sources
 

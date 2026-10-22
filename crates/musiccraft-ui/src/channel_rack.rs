@@ -305,8 +305,26 @@ fn row(
     let number = (index + 1).to_string();
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        let light = widgets::dot(ui, !channel.mute, theme::ACCENT)
-            .hint("Mute · Ctrl+click: solo · right-click for options");
+        // Lit: plays. Soloed: a ring in the highlight tone. Silenced by
+        // another channel's solo: lit at reduced strength.
+        let silenced = !channel.mute && !project.channel_plays(index);
+        let tone = if silenced {
+            theme::at_strength(theme::ACCENT, 90)
+        } else {
+            theme::ACCENT
+        };
+        let light = widgets::dot(ui, !channel.mute, tone).hint(if silenced {
+            "Silenced by another channel's solo · click: mute · Ctrl+click: solo"
+        } else {
+            "Mute · Ctrl+click: solo · right-click for options"
+        });
+        if channel.solo {
+            ui.painter().circle_stroke(
+                light.rect.center(),
+                6.5,
+                egui::Stroke::new(1.5, theme::HIGHLIGHT),
+            );
+        }
         if light.clicked() {
             let solo = ui.input(|i| i.modifiers.command);
             let command = if solo {
@@ -322,8 +340,27 @@ fn row(
                 run(actions, "channel.toggle_mute", [number.clone()]);
                 ui.close();
             }
-            if ui.button("Solo").clicked() {
-                run(actions, "channel.solo", [number.clone()]);
+            let solo = if channel.solo { "Unsolo" } else { "Solo" };
+            if ui.button(solo).clicked() {
+                let on = if channel.solo { "off" } else { "on" };
+                run(actions, "channel.set_solo", [number.clone(), on.to_owned()]);
+                ui.close();
+            }
+            let muted: Vec<String> = project
+                .channels
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.mute)
+                .map(|(i, _)| format!("channel.set_mute {} off", i + 1))
+                .collect();
+            if ui
+                .add_enabled(!muted.is_empty(), egui::Button::new("Unmute all"))
+                .clicked()
+            {
+                actions.push(Action::Run(Invocation::new(
+                    musiccraft_commands::BATCH,
+                    muted,
+                )));
                 ui.close();
             }
         });

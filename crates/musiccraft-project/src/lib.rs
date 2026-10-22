@@ -511,6 +511,16 @@ impl Project {
         self.patterns.iter().position(|p| p.id == id)
     }
 
+    /// Whether channel `index` sounds: not muted, and soloed whenever any
+    /// channel is.
+    #[must_use]
+    pub fn channel_plays(&self, index: usize) -> bool {
+        let any_solo = self.channels.iter().any(|c| c.solo);
+        self.channels
+            .get(index)
+            .is_some_and(|c| !c.mute && (!any_solo || c.solo))
+    }
+
     /// The selected pattern.
     #[must_use]
     pub fn current_pattern(&self) -> &Pattern {

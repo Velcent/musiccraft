@@ -152,7 +152,13 @@ fn start_mode(project: &Project) -> Start {
     }
 }
 
-fn channel_params(channel: &Channel, pan_law: PanLaw, master_pitch: f32) -> ChannelParams {
+/// `silent`: muted, or silenced by another channel's solo.
+fn channel_params(
+    channel: &Channel,
+    silent: bool,
+    pan_law: PanLaw,
+    master_pitch: f32,
+) -> ChannelParams {
     let mut instrument = channel.params.0;
     // The master pitch transposes every built-in instrument.
     if let Some(pitch) = instrument.get_mut(musiccraft_params::inst::PITCH) {
@@ -162,7 +168,7 @@ fn channel_params(channel: &Channel, pan_law: PanLaw, master_pitch: f32) -> Chan
         volume: channel.volume,
         pan: channel.pan,
         pan_law,
-        mute: channel.mute,
+        mute: silent,
         track: u16::try_from(channel.mixer_track).unwrap_or(0),
         instrument,
     }
@@ -330,7 +336,11 @@ fn describe(
         channels: project
             .channels
             .iter()
-            .map(|c| channel_params(c, pan_law, project.master_pitch))
+            .enumerate()
+            .map(|(i, c)| {
+                let silent = !project.channel_plays(i);
+                channel_params(c, silent, pan_law, project.master_pitch)
+            })
             .collect(),
         tracks: project
             .mixer

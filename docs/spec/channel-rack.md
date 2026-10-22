@@ -49,8 +49,13 @@
   Down and Page Up step the filter through All, each group and No group.
 - The rack's window menu shows or hides the graph editor (Ctrl+K) and the
   mixer-track column (Alt+M); both are view choices, not saved.
-- `channel.solo <n>` mutes every other channel; running it again on an already
-  soloed channel unmutes all channels.
+- **Solo** is its own state, separate from mute (saved as `"solo"`). While
+  any channel is soloed, only soloed channels that are not muted play; the
+  others are silenced by solo, and their mutes are left as they were.
+  `channel.solo <n>` makes channel n the only soloed channel; running it on
+  the only soloed channel clears every solo. `channel.set_solo <n> <on|off>`
+  sets one channel's solo (both undoable). Old projects saved with the
+  earlier mute-based solo keep their mutes.
 - **Steps** are sixteenth notes. `step.toggle <channel> <step>` (0-based step)
   adds a one-step note at key C5 (60) and velocity 100 if the channel has no note
   starting there, otherwise removes every note of that channel starting there.
@@ -73,7 +78,10 @@
 - Shift+wheel over the rack's header row steps to the next or previous
   pattern (`pattern.next`, `pattern.prev`).
 - The mute light: a click mutes or unmutes, Ctrl+click solos the channel
-  (`channel.solo`), and right-click offers Mute or Unmute and Solo.
+  (`channel.solo`), and right-click offers Mute or Unmute, Solo or Unsolo,
+  and Unmute all. Lit: the channel plays. Dark: muted. A soloed channel's
+  light has a ring in the highlight tone; a channel silenced by another's
+  solo shows its light at reduced strength.
   The pattern length box takes 1 to 1024 steps; right-click it for 1, 2, 4, 8
   or 16 whole bars in the pattern's time signature.
 - **Row layout** (UI), left to right: mute dot, pan knob, volume knob, the

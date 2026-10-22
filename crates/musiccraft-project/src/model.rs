@@ -334,6 +334,10 @@ pub struct Channel {
     /// Whether the channel is silenced.
     #[serde(default)]
     pub mute: bool,
+    /// Whether the channel is soloed: while any channel is, only soloed
+    /// channels play (see [`Project::channel_plays`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub solo: bool,
     /// Mixer track receiving this channel; 0 is master.
     #[serde(default)]
     pub mixer_track: usize,
@@ -371,6 +375,7 @@ impl Channel {
             volume: DEFAULT_CHANNEL_VOLUME,
             pan: 0.0,
             mute: false,
+            solo: false,
             mixer_track: 0,
             group: String::new(),
             color: None,
