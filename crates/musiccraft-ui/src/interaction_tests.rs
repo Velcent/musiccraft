@@ -1847,3 +1847,41 @@ fn piano_roll_cursors_follow_the_tool() {
     h.frame(vec![Event::PointerMoved(body)]);
     assert_eq!(h.cursor, egui::CursorIcon::Default);
 }
+
+#[test]
+fn double_clicking_the_tempo_display_types_a_tempo() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let spot = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..160).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Tempo "))
+        })
+        .expect("a tempo display in the toolbar");
+    h.click(spot, PointerButton::Primary);
+    h.click(spot, PointerButton::Primary);
+    h.settle();
+    h.frame(vec![Event::Key {
+        key: egui::Key::A,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::COMMAND,
+    }]);
+    h.frame(vec![Event::Text("98.5".to_owned())]);
+    let out = h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(out, ["project.set_tempo 98.500"]);
+    assert!(!h.state.windows.playlist, "Enter stays in the field");
+}

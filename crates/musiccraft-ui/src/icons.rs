@@ -876,10 +876,21 @@ pub const ROW: f32 = 22.0;
 pub fn display(
     ui: &mut Ui,
     width: f32,
-    (big, small): (&str, &str),
+    parts: (&str, &str),
     caption: &str,
     sense: Sense,
 ) -> Response {
+    display_split(ui, width, parts, caption, sense).0
+}
+
+/// [`display`], also returning the x where the small part begins.
+pub fn display_split(
+    ui: &mut Ui,
+    width: f32,
+    (big, small): (&str, &str),
+    caption: &str,
+    sense: Sense,
+) -> (Response, f32) {
     let (rect, response) = ui.allocate_exact_size(vec2(width, ROW), sense);
     let painter = ui.painter_at(rect);
     well(&painter, rect);
@@ -896,6 +907,7 @@ pub fn display(
     let x = rect.left() + 5.0;
     let base = rect.bottom() - 3.0;
     let big_w = big.size().x;
+    let split = x + big_w;
     painter.galley(pos2(x, base - big.size().y), big, theme::LCD_TEXT);
     painter.galley(
         pos2(x + big_w, base - small.size().y - 1.0),
@@ -909,7 +921,7 @@ pub fn display(
         egui::FontId::proportional(theme::FONT_CAPTION - 1.5),
         theme::TEXT_DIM,
     );
-    response
+    (response, split)
 }
 
 /// A recessed display well.

@@ -107,6 +107,12 @@ stay our own. The full target look, window by window, is the style guide in
   while counting in or waiting for the first note they read COUNT-IN or
   WAITING instead. The tempo display shows whole BPM large and three
   decimals smaller. Each display has a tiny caption in its top-right corner.
+- Tempo display: dragging up or down on the whole digits steps 1 BPM every
+  6 points (0.1 BPM with Shift); on the decimals it moves 0.01 BPM a point
+  (0.001 with Shift). Each scroll notch steps 1 BPM (0.01 with Shift).
+  Double-click opens a type-in field (Enter applies, Esc cancels). Right-click
+  offers "Enter a tempo…", round tempos (60, 90, 120, 140, 174), "Copy" and
+  "Reset to 130". The whole gesture is one undo step.
 - Record pulses while a take is running.
 - When the window is narrower than 1000 points it falls back to two bands:
   menus, hint field and window buttons, then the two racks without the

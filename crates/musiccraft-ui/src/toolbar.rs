@@ -821,7 +821,31 @@ fn record_tone(ui: &egui::Ui, taking: bool) -> egui::Color32 {
     theme::mix(theme::PANEL, theme::DANGER, strength)
 }
 
-/// The tempo display: whole BPM large, decimals small; drag or scroll.
+/// Round tempos offered on the tempo display's menu.
+const ROUND_TEMPOS: [f64; 5] = [60.0, 90.0, 120.0, 140.0, 174.0];
+
+/// The tempo a drag on the display reaches: `distance` points upwards from
+/// where it started at `start` BPM, on the whole digits or the decimals.
+fn dragged_tempo(start: f64, on_whole: bool, distance: f32, fine: bool) -> f64 {
+    let distance = f64::from(distance);
+    let change = match (on_whole, fine) {
+        (true, false) => (distance / 6.0).trunc(),
+        (true, true) => (distance / 6.0).trunc() * 0.1,
+        (false, false) => distance * 0.01,
+        (false, true) => distance * 0.001,
+    };
+    let value = start + change;
+    // Whole-digit drags keep the decimals; others land on the display's grid.
+    let value = if on_whole {
+        value
+    } else {
+        (value * 1000.0).round() / 1000.0
+    };
+    value.clamp(MIN_TEMPO_BPM, MAX_TEMPO_BPM)
+}
+
+/// The tempo display: whole BPM large, decimals small. Drag either part,
+/// scroll, double-click to type, right-click for the menu.
 fn tempo(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -831,33 +855,141 @@ fn tempo(
     let tempo = project.tempo_bpm();
     let text = format!("{tempo:.3}");
     let (whole, decimals) = text.split_once('.').unwrap_or((text.as_str(), "000"));
-    let tempo_lcd = icons::display(
+    let id = egui::Id::new("tempo-display");
+    let typing = ui.data(|d| d.get_temp::<String>(id.with("typing")));
+    if let Some(typed) = typing {
+        tempo_entry(ui, state, id, typed, actions);
+        return;
+    }
+    let (lcd, split) = icons::display_split(
         ui,
         74.0,
         (whole, &format!(".{decimals}")),
         "BPM",
         egui::Sense::click_and_drag(),
-    )
-    .hint(format!(
-        "Tempo: {tempo:.3} BPM · drag up/down or scroll (Shift for fine steps)"
+    );
+    let lcd = lcd.hint(format!(
+        "Tempo {tempo:.3} BPM · drag the whole digits or the decimals (Shift: fine) · double-click to type"
     ));
-    let fine = ui.input(|i| i.modifiers.shift);
-    let scroll = if tempo_lcd.hovered() {
-        ui.input(|i| i.smooth_scroll_delta.y)
-    } else {
-        0.0
-    };
-    if tempo_lcd.drag_started() || (scroll != 0.0 && !tempo_lcd.dragged()) {
-        state.begin_gesture();
-    }
-    let delta = -tempo_lcd.drag_delta().y * if fine { 0.02 } else { 0.25 }
-        + scroll * if fine { 0.01 } else { 0.05 };
-    if delta != 0.0 {
-        let value = (tempo + f64::from(delta)).clamp(MIN_TEMPO_BPM, MAX_TEMPO_BPM);
+    let set = |actions: &mut Vec<Action>, state: &UiState, value: f64| {
         actions.push(Action::Coalesced(
             Invocation::new("project.set_tempo", [format!("{value:.3}")]),
             state.gesture(),
         ));
+    };
+    let fine = ui.input(|i| i.modifiers.shift);
+    if lcd.drag_started() {
+        state.begin_gesture();
+        let on_whole = ui
+            .input(|i| i.pointer.press_origin())
+            .is_some_and(|p| p.x < split);
+        ui.data_mut(|d| d.insert_temp(id.with("drag"), (tempo, on_whole)));
+    }
+    if lcd.dragged() {
+        let start = ui.data(|d| d.get_temp::<(f64, bool)>(id.with("drag")));
+        let origin = ui.input(|i| i.pointer.press_origin());
+        if let (Some((start, on_whole)), Some(origin), Some(now)) =
+            (start, origin, lcd.interact_pointer_pos())
+        {
+            let value = dragged_tempo(start, on_whole, origin.y - now.y, fine);
+            if (value - tempo).abs() > 1e-9 {
+                set(actions, state, value);
+            }
+        }
+    }
+    let notch = if lcd.hovered() {
+        // One step per wheel notch, whatever its size.
+        ui.input(|i| {
+            i.raw
+                .events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::MouseWheel { delta, .. } if delta.y != 0.0 => {
+                        Some(delta.y.signum())
+                    }
+                    _ => None,
+                })
+                .sum::<f32>()
+        })
+    } else {
+        0.0
+    };
+    if notch != 0.0 {
+        state.begin_gesture();
+        let step = if fine { 0.01 } else { 1.0 };
+        let value = (tempo + f64::from(notch) * step).clamp(MIN_TEMPO_BPM, MAX_TEMPO_BPM);
+        set(actions, state, value);
+    }
+    if lcd.double_clicked() {
+        ui.data_mut(|d| d.insert_temp(id.with("typing"), format!("{tempo:.3}")));
+    }
+    lcd.context_menu(|ui| {
+        if ui.button("Enter a tempo…").clicked() {
+            ui.data_mut(|d| d.insert_temp(id.with("typing"), format!("{tempo:.3}")));
+            ui.close();
+        }
+        ui.separator();
+        for round in ROUND_TEMPOS {
+            if ui.button(format!("{round:.0} BPM")).clicked() {
+                state.begin_gesture();
+                set(actions, state, round);
+                ui.close();
+            }
+        }
+        ui.separator();
+        if ui.button("Copy").clicked() {
+            ui.ctx().copy_text(format!("{tempo:.3}"));
+            ui.close();
+        }
+        let reset = musiccraft_project::DEFAULT_TEMPO_BPM;
+        if ui.button(format!("Reset to {reset:.0}")).clicked() {
+            state.begin_gesture();
+            set(actions, state, reset);
+            ui.close();
+        }
+    });
+}
+
+/// The tempo display's type-in field: Enter applies, Esc cancels.
+fn tempo_entry(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    id: egui::Id,
+    mut typed: String,
+    actions: &mut Vec<Action>,
+) {
+    let field = ui.add(
+        egui::TextEdit::singleline(&mut typed)
+            .id(id.with("field"))
+            .desired_width(74.0 - 8.0)
+            .font(egui::FontId::monospace(theme::FONT_VALUE)),
+    );
+    if !field.has_focus() && !field.lost_focus() {
+        field.request_focus();
+    }
+    // Taken here so neither key also reaches the window shortcuts.
+    let (enter, escape) = ui.input_mut(|i| {
+        (
+            i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+            i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+        )
+    });
+    if escape || (field.lost_focus() && !enter) {
+        ui.data_mut(|d| d.remove::<String>(id.with("typing")));
+    } else if enter {
+        ui.data_mut(|d| d.remove::<String>(id.with("typing")));
+        if let Ok(value) = typed.trim().parse::<f64>() {
+            state.begin_gesture();
+            actions.push(Action::Coalesced(
+                Invocation::new(
+                    "project.set_tempo",
+                    [format!("{:.3}", value.clamp(MIN_TEMPO_BPM, MAX_TEMPO_BPM))],
+                ),
+                state.gesture(),
+            ));
+        }
+    } else {
+        ui.data_mut(|d| d.insert_temp(id.with("typing"), typed));
     }
 }
 
@@ -960,5 +1092,26 @@ fn record_options(
             )));
             ui.close();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dragged_tempo;
+
+    #[test]
+    fn tempo_drags_step_whole_digits_or_decimals() {
+        // Whole digits: 1 BPM per 6 points, keeping the decimals.
+        assert!((dragged_tempo(120.5, true, 13.0, false) - 122.5).abs() < 1e-9);
+        assert!((dragged_tempo(120.5, true, -5.0, false) - 120.5).abs() < 1e-9);
+        assert!((dragged_tempo(120.0, true, 12.0, true) - 120.2).abs() < 1e-9);
+        // Decimals: 0.01 BPM per point, 0.001 with Shift.
+        assert!((dragged_tempo(120.0, false, 10.0, false) - 120.1).abs() < 1e-9);
+        assert!((dragged_tempo(120.0, false, -3.0, true) - 119.997).abs() < 1e-9);
+        // The range holds.
+        assert!(
+            (dragged_tempo(15.0, true, -600.0, false) - musiccraft_project::MIN_TEMPO_BPM).abs()
+                < 1e-9
+        );
     }
 }
