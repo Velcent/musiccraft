@@ -409,7 +409,6 @@ Ordered by visual impact. Per `CLAUDE.md`, update the specs (`docs/spec/window-l
     - Options lacks the recording switches.
     - Tools lacks panic, clean-up, last-moved-control and the played-notes log.
     - Help lacks the user guide and What's new.
-    - "Record audio input" sits in File instead of Options.
     - File: `crates/musiccraft-ui/src/toolbar.rs` (`file_menu` … `help_menu`).
 12. **No toolbar context menu or customising.** There are no dividers toggle, layouts, hide (Ctrl+F11) or narrow-width reflow beyond the one-band/two-band switch. Files: `crates/musiccraft-ui/src/toolbar.rs`, `docs/spec/window-layout.md`.
 13. **Keymap gaps.** The default keymap has no F2, F8, F11, Shift+F4, Ctrl+F11, Shift+F12, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+F or Alt+1…Alt+0. All are proposed new bindings; none clashes with an existing one. (F12, Alt+F12, Ctrl+F12 and Ctrl+Shift+H are now bound, main-window section.) Files: `crates/musiccraft-ui/keymap/default.keymap`, `docs/spec/keymap.md`.

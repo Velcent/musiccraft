@@ -291,7 +291,7 @@ fn audio(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
                 }
             })
             .response
-            .hint("Recorded by File → Record audio input");
+            .hint("Recorded by Options → Record audio input");
     });
     row(ui, "Output device", |ui| {
         let current = settings

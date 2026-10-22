@@ -99,9 +99,6 @@ fn file_menu(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) 
         }
     }
     ui.separator();
-    ui.checkbox(&mut state.record_audio, "Record audio input")
-        .hint("With REC armed in song mode, capture the audio input as a clip");
-    ui.separator();
     if ui.button("Exit").clicked() {
         actions.push(Action::Quit);
     }
@@ -257,6 +254,8 @@ fn options_menu(
         &mut state.typing_keyboard,
         "Play notes from the computer keyboard",
     );
+    ui.checkbox(&mut state.record_audio, "Record audio input")
+        .hint("With REC armed in song mode, capture the audio input as a clip");
 }
 
 fn tools_menu(ui: &mut egui::Ui, frame: &Frame<'_>, state: &UiState, actions: &mut Vec<Action>) {

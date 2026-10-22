@@ -195,7 +195,7 @@
 
 ## Audio recording
 
-- With File → Record audio input on, REC armed and the transport playing in song
+- With Options → Record audio input on, REC armed and the transport playing in song
   mode, the input device chosen in Settings → Audio (the system default unless
   set) is captured. When playback stops or REC is
   disarmed, the take is written as a 32-bit float WAV to `recordings/` beside the
