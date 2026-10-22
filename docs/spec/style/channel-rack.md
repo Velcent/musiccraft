@@ -76,11 +76,10 @@ There is no per-channel looping and no online loop-library tool in MusicCraft. L
    - Lit means the channel plays; dark means it is muted. Left-click toggles it (existing).
    - Number keys 1–0 mute channels 1–10 and Ctrl+1–0 solo them while the pointer is over the rack (existing, `keymap.md`).
    - Live playing from a MIDI keyboard or the typing keyboard still sounds while the channel is muted.
-   - **Proposed (needs `channel-rack.md` updated first):**
-     - Right-click opens a small menu: "Solo" or "Unsolo", and "Unmute all".
-     - Ctrl+click solos the channel: it becomes the only soloed channel, and a second Ctrl+click clears solo (the same rule as `channel.solo`; solo is its own state, so mutes are left alone).
-     - Alt+click applies the mute or solo to the channel's group.
-     - Shift+click locks the mute state so that solo actions skip this channel. A tiny padlock then replaces the light.
+   - Right-click opens a small menu: "Solo" or "Unsolo", "Keep out of solo" and "Unmute all" (existing).
+   - Ctrl+click solos the channel: it becomes the only soloed channel, and a second Ctrl+click clears solo (the same rule as `channel.solo`; solo is its own state, so mutes are left alone) (existing).
+   - Alt+click applies the mute or solo to the channel's group (existing).
+   - Shift+click locks the mute state so that solo actions skip this channel. A tiny padlock then replaces the light (existing).
 2. **Pan knob.** A small knob whose arc grows outward from the centre. Behaviour follows `controls.md`; a reset returns it to the centre. The hint bar shows the value while hovering or dragging (existing).
 3. **Volume knob.** The same size, with an arc from the left. A reset returns it to the default channel volume. The hint shows the value (existing).
 4. **Mixer-track box.** A small dark number box.
@@ -422,16 +421,14 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
     - It has the two columns in the guide's order, without the duplicate clear item.
     - Colour, cut, copy and paste steps and the graph editor entry are in. Missing: the icon item, insert and replace, choke itself, MIDI items.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`context_menu`).
-9. **Mute light.** Ctrl+click solos and right-click offers Mute and Solo, but there is no Shift+click lock.
-    - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
-10. **Group filter.**
+9. **Group filter.**
     - Right-click new, rename and remove are in, and Page Up/Down cycle the groups. The filter is still an egui drop-down rather than our styled field.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`header`, `add_menu`).
-11. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
+10. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
     - File: `crates/musiccraft-ui/src/channel_rack.rs`.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`show`).
-12. **Keymap.** Ctrl+K, Alt+M, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M hides the mixer-track column. Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
-13. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
+11. **Keymap.** Ctrl+K, Alt+M, Page Up/Down, Ctrl+C/X/V and F2 are bound over the rack (`keymap.md`, "Over the channel rack"); F2 opens the rename prompt, not yet the combined name-and-look dialog. Alt+M hides the mixer-track column. Alt+G, Alt+Z and Alt+U wait for the features they drive (hiding the mixer-track column, groups dialog, folding).
+12. **Naming.** `crates/musiccraft-ui/src/rack_view.rs` is the mixer's effect-rack body, not part of the channel rack. Nothing in it needs to change for this guide.
 
 ## Sources
 

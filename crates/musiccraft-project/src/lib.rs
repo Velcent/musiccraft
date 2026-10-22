@@ -518,7 +518,7 @@ impl Project {
         let any_solo = self.channels.iter().any(|c| c.solo);
         self.channels
             .get(index)
-            .is_some_and(|c| !c.mute && (!any_solo || c.solo))
+            .is_some_and(|c| !c.mute && (!any_solo || c.solo || c.solo_lock))
     }
 
     /// When any insert is soloed: which tracks stay audible. A soloed track keeps

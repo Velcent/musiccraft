@@ -360,6 +360,65 @@ fn name_wheel(
     }
 }
 
+/// Alt+click on a grouped channel's mute light: mutes or unmutes the whole
+/// group to match the opposite of this channel's state, or with Ctrl solos
+/// exactly that group (again on a group that is the whole solo clears it).
+/// One undo step either way.
+fn group_light(project: &Project, index: usize, solo: bool) -> Option<Action> {
+    let group = &project.channels.get(index)?.group;
+    let members = |i: usize| project.channels[i].group == *group;
+    let mut lines = Vec::new();
+    if solo {
+        let only = (0..project.channels.len()).all(|i| project.channels[i].solo == members(i));
+        for (i, c) in project.channels.iter().enumerate() {
+            let want = !only && members(i);
+            if c.solo != want {
+                let on = if want { "on" } else { "off" };
+                lines.push(Invocation::new(
+                    "channel.set_solo",
+                    [(i + 1).to_string(), on.into()],
+                ));
+            }
+        }
+    } else {
+        let mute = !project.channels[index].mute;
+        for (i, c) in project.channels.iter().enumerate() {
+            if members(i) && c.mute != mute {
+                let on = if mute { "on" } else { "off" };
+                lines.push(Invocation::new(
+                    "channel.set_mute",
+                    [(i + 1).to_string(), on.into()],
+                ));
+            }
+        }
+    }
+    batch(lines).map(Action::Run)
+}
+
+/// The mute light of a channel kept out of solo: a small padlock whose body
+/// is lit while the channel is not muted.
+fn padlock(ui: &mut egui::Ui, plays: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
+    let painter = ui.painter();
+    let c = rect.center();
+    let stroke = egui::Stroke::new(1.2, theme::TEXT_DIM);
+    let body = egui::Rect::from_center_size(c + egui::vec2(0.0, 2.0), egui::vec2(9.0, 6.5));
+    let fill = if plays {
+        theme::ACCENT
+    } else {
+        theme::PANEL_DARK
+    };
+    painter.rect(body, 1.5, fill, stroke, egui::StrokeKind::Middle);
+    let arch: Vec<egui::Pos2> = (0..=8)
+        .map(|i| {
+            let a = std::f32::consts::PI * i as f32 / 8.0;
+            c + egui::vec2(-2.8 * a.cos(), -1.2 - 3.2 * a.sin())
+        })
+        .collect();
+    painter.line(arch, stroke);
+    response
+}
+
 fn keep_window(state: &mut UiState, channel: musiccraft_project::ChannelId) {
     if !state.kept_channels.iter().any(|(c, _)| *c == channel) {
         state.kept_channels.push((channel, state.channel_tab));
@@ -386,11 +445,16 @@ fn row(
         } else {
             theme::ACCENT
         };
-        let light = widgets::dot(ui, !channel.mute, tone).hint(if silenced {
-            "Silenced by another channel's solo · click: mute · Ctrl+click: solo"
+        let light = if channel.solo_lock {
+            padlock(ui, !channel.mute)
+                .hint("Mute (kept out of solo) · Shift+click: unlock · Ctrl+click: solo")
         } else {
-            "Mute · Ctrl+click: solo · right-click for options"
-        });
+            widgets::dot(ui, !channel.mute, tone).hint(if silenced {
+                "Silenced by another channel's solo · click: mute · Ctrl+click: solo · Shift+click: lock"
+            } else {
+                "Mute · Ctrl+click: solo · Shift+click: lock out of solo · right-click for options"
+            })
+        };
         if channel.solo {
             ui.painter().circle_stroke(
                 light.rect.center(),
@@ -399,13 +463,20 @@ fn row(
             );
         }
         if light.clicked() {
-            let solo = ui.input(|i| i.modifiers.command);
-            let command = if solo {
-                "channel.solo"
+            let modifiers = ui.input(|i| i.modifiers);
+            if modifiers.shift {
+                let lock = if channel.solo_lock { "off" } else { "on" };
+                run(actions, "channel.set_solo_lock", [number.clone(), lock.to_owned()]);
+            } else if modifiers.alt && !channel.group.is_empty() {
+                actions.extend(group_light(project, index, modifiers.command));
             } else {
-                "channel.toggle_mute"
-            };
-            run(actions, command, [number.clone()]);
+                let command = if modifiers.command {
+                    "channel.solo"
+                } else {
+                    "channel.toggle_mute"
+                };
+                run(actions, command, [number.clone()]);
+            }
         }
         light.context_menu(|ui| {
             let mute = if channel.mute { "Unmute" } else { "Mute" };
@@ -417,6 +488,12 @@ fn row(
             if ui.button(solo).clicked() {
                 let on = if channel.solo { "off" } else { "on" };
                 run(actions, "channel.set_solo", [number.clone(), on.to_owned()]);
+                ui.close();
+            }
+            let mut lock = channel.solo_lock;
+            if ui.checkbox(&mut lock, "Keep out of solo").clicked() {
+                let on = if lock { "on" } else { "off" };
+                run(actions, "channel.set_solo_lock", [number.clone(), on.to_owned()]);
                 ui.close();
             }
             let muted: Vec<String> = project

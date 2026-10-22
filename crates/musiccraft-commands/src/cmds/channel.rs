@@ -187,6 +187,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             set_solo,
         ),
         cmd(
+            "channel.set_solo_lock",
+            "channel.set_solo_lock <channel> <on|off>",
+            "Keep a channel out of solo: another channel's solo never silences it.",
+            set_solo_lock,
+        ),
+        cmd(
             "channel.route_free",
             "channel.route_free <channel>",
             "Route a channel to a free mixer track (adding one if needed) named after it.",
@@ -901,6 +907,24 @@ fn set_solo(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandEr
     let previous = std::mem::replace(&mut project.channels[index].solo, solo);
     let message = format!("channel {} solo {}", index + 1, on_off(solo));
     if previous == solo {
+        return Ok(Outcome::done(message));
+    }
+    Ok(Outcome::undoable(
+        message,
+        Invocation::new(
+            args.name(),
+            [(index + 1).to_string(), on_off(previous).to_owned()],
+        ),
+    ))
+}
+
+fn set_solo_lock(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = channel_arg(project, args, 0)?;
+    let lock = args.flag(1)?;
+    let previous = std::mem::replace(&mut project.channels[index].solo_lock, lock);
+    let message = format!("channel {} solo lock {}", index + 1, on_off(lock));
+    if previous == lock {
         return Ok(Outcome::done(message));
     }
     Ok(Outcome::undoable(

@@ -61,6 +61,15 @@
   the only soloed channel clears every solo. `channel.set_solo <n> <on|off>`
   sets one channel's solo (both undoable). Old projects saved with the
   earlier mute-based solo keep their mutes.
+- **Solo lock**: `channel.set_solo_lock <n> <on|off>` (undoable, saved as
+  `"solo_lock"`) keeps a channel out of solo: another channel's solo never
+  silences it, so only its own mute decides whether it plays. Shift+click on
+  the mute light toggles it, and a small padlock replaces the light while it
+  is on (the light's right-click menu offers it too).
+- Alt+click on a grouped channel's mute light mutes or unmutes every channel
+  in its group (to the opposite of the clicked channel's mute);
+  Ctrl+Alt+click solos exactly that group, and again clears solo. Each is one
+  undo step (a batch of `channel.set_mute` or `channel.set_solo`).
 - **Steps** are sixteenth notes. `step.toggle <channel> <step>` (0-based step)
   adds a one-step note at key C5 (60) and velocity 100 if the channel has no note
   starting there, otherwise removes every note of that channel starting there.
@@ -443,6 +452,8 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   erase when dragged follow the step sequencer workflow described in the FL
   Studio online manual, "Channel Rack". The routing box's labels and the
   browser's select-then-double-click behaviour are our own design.
+- The solo lock (Shift+click on the mute light) follows the FL Studio online
+  manual, "Channel Rack", "12. Mute Control"; the padlock is our own glyph.
 - F4 selecting the next empty pattern and offering to name it follows the FL
   Studio online manual, "Keyboard shortcuts" and the pattern selector.
   "Empty" meaning "no notes" and adding a pattern when none is left are our

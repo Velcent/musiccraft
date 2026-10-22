@@ -1935,6 +1935,83 @@ fn ctrl_clicking_a_mute_light_solos_the_channel() {
 }
 
 #[test]
+fn shift_clicking_a_mute_light_keeps_the_channel_out_of_solo() {
+    let mut h = Harness::new(&["channel.add_synth", "channel.add_synth"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let light = (0..40)
+        .flat_map(|j| (0..40).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 3.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Mute · Ctrl+click"))
+        })
+        .expect("a mute light");
+    h.modifiers = Modifiers::SHIFT;
+    let out = h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(out, ["channel.set_solo_lock 1 on"]);
+    assert!(h.session.project().channels[0].solo_lock);
+    h.frame(vec![Event::PointerMoved(light)]);
+    h.frame(vec![]);
+    let hint = h.state.hint.clone().unwrap_or_default();
+    assert!(hint.starts_with("Mute (kept out of solo)"), "{hint}");
+}
+
+#[test]
+fn alt_clicking_a_mute_light_mutes_or_solos_the_whole_group() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.set_group 1 Drums",
+        "channel.set_group 2 Drums",
+    ]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let light = (0..40)
+        .flat_map(|j| (0..40).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 3.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Mute · Ctrl+click"))
+        })
+        .expect("a mute light");
+    let states = |h: &Harness| {
+        h.session
+            .project()
+            .channels
+            .iter()
+            .map(|c| (c.mute, c.solo))
+            .collect::<Vec<_>>()
+    };
+    h.modifiers = Modifiers::ALT;
+    h.click(light, PointerButton::Primary);
+    assert_eq!(
+        states(&h)[..3],
+        [(true, false), (true, false), (false, false)]
+    );
+    h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::ALT | Modifiers::COMMAND;
+    h.click(light, PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    assert_eq!(
+        states(&h)[..3],
+        [(false, true), (false, true), (false, false)]
+    );
+}
+
+#[test]
 fn shift_wheel_over_the_rack_header_steps_patterns() {
     let mut h = Harness::new(&["pattern.add", "pattern.add"]);
     h.state.windows.channel_rack = true;

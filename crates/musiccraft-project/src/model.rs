@@ -340,6 +340,10 @@ pub struct Channel {
     /// channels play (see [`Project::channel_plays`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub solo: bool,
+    /// Whether the channel is kept out of solo: another channel's solo never
+    /// silences it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub solo_lock: bool,
     /// Mixer track receiving this channel; 0 is master.
     #[serde(default)]
     pub mixer_track: usize,
@@ -378,6 +382,7 @@ impl Channel {
             pan: 0.0,
             mute: false,
             solo: false,
+            solo_lock: false,
             mixer_track: 0,
             group: String::new(),
             color: None,

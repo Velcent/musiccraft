@@ -981,6 +981,41 @@ fn solo_is_its_own_state_and_leaves_mutes_alone() {
 }
 
 #[test]
+fn a_solo_locked_channel_keeps_playing_through_another_solo() {
+    let mut s = session();
+    for line in [
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.add_synth",
+        "channel.set_solo_lock 3 on",
+        "channel.solo 1",
+    ] {
+        run(&mut s, line);
+    }
+    let plays = |s: &Session| {
+        (0..3)
+            .map(|i| s.project().channel_plays(i))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(plays(&s), [true, false, true]);
+    assert!(
+        s.project()
+            .to_json()
+            .unwrap()
+            .contains("\"solo_lock\": true")
+    );
+    // Its own mute still silences it.
+    run(&mut s, "channel.set_mute 3 on");
+    assert_eq!(plays(&s), [true, false, false]);
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert!(!s.project().channels[2].solo_lock);
+    assert_eq!(plays(&s), [true, true, true]);
+    fails(&mut s, "channel.set_solo_lock 3 maybe");
+}
+
+#[test]
 fn pattern_navigation_clamps() {
     let mut s = session();
     run(&mut s, "pattern.add");
