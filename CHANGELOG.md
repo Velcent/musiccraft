@@ -29,6 +29,12 @@ commit; this file says what they add up to.
 
 ### Fixes
 
+- A VST3 plugin that crashes while it is scanned no longer takes MusicCraft
+  down. Each module is scanned in a child process; one that crashes, hangs or
+  fails to load is skipped and listed under plugin problems in the settings,
+  and the scan carries on. Bundles with no binary for this system (for
+  example Windows-only plugins on Linux) say so. A module is loaded into
+  MusicCraft only when one of its plugins is used.
 - Rendering a project twice in a DAW gives the same audio. A host reset,
   which DAWs do before a render, now makes every plugin as good as new:
   - Antiserum stops its voices and effect tails at once, where it used to

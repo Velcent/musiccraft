@@ -29,6 +29,14 @@ pub fn plugin_host() -> Option<PluginHost> {
     .clone()
 }
 
+/// Call first thing in `main`. Lets [`plugin_host`] scan each VST3 module in a
+/// child process of this program, so a module that crashes while loading is
+/// skipped instead of taking the program down. In such a child this does the
+/// scan and exits.
+pub fn serve_plugin_probe() {
+    musiccraft_vst3::serve_probe();
+}
+
 /// A registry with every command; exports run plugins from [`plugin_host`].
 #[must_use]
 pub fn full_registry() -> Registry {
