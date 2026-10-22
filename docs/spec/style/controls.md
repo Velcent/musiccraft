@@ -449,7 +449,7 @@ Ordered by visual impact.
 8. **Scroll bars have no chevrons, zoom grips or vertical zoom box** (main-window section, gap list). Views use egui `ScrollArea`; zoom is by keys and wheel only. Files: `crates/musiccraft-ui/src/playlist.rs`, `piano_roll.rs`.
 9. **Preset arrows do nothing on right-click.** They are now chevron tiles (`widgets::chevron_button`), but right-click on them does not open the preset list. Files: `crates/musiccraft-editors/src/instrument.rs`, `effect.rs`, `antiserum.rs`.
 10. **The colour grid has no recent row, random or sequence colouring, and no live preview.** Tracks and patterns share `swatches::grid`; channels and inserts have no colour picker. File: `crates/musiccraft-ui/src/swatches.rs`.
-11. **No default detent, keyboard focus, pointer hiding or Alt-click reset** on knobs and faders (all proposals above). File: `crates/musiccraft-editors/src/widgets.rs`.
+11. **No keyboard focus or pointer hiding** on knobs and faders. The default detent (with its light) and Alt-click reset are in. File: `crates/musiccraft-editors/src/widgets.rs`.
 12. **Knob track tones.** Both knob sizes now draw their unlit track in `PANEL` and value text in `theme::LCD_TEXT`; the guide's dedicated track token is still to add. File: `crates/musiccraft-editors/src/theme.rs`.
 13. **Group boxes have no fold chevron or bypass light.** `instrument::section` already draws the darker rounded box with its title inside, as S asks. Files: `crates/musiccraft-editors/src/instrument.rs`, `effect.rs`.
 14. **File dialogs are the system's own**, so there is no favourite-folders control of ours; nothing is planned here (dialogs section).

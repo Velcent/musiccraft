@@ -14,7 +14,11 @@ everywhere.
 - **Middle-click** resets the control to its default: a fader to unity
   (0 dB), a channel volume to the default channel level, a pan to centre, an
   effect or synth parameter to its table default, a mixer send to unity.
-  **Double-click** does the same.
+  **Double-click** and **Alt-click** do the same.
+- **Default detent.** A drag that reaches or crosses a knob's default (a
+  fader's unity) stops there until the pointer has travelled a further
+  tenth of the range, while a small light marks the default. Holding Ctrl
+  while dragging skips the pause.
 - **Right-click** opens the control's menu (see "Control menu"). Right or middle dragging never moves the value, so
   opening the menu or resetting cannot nudge it by accident.
 - A reset is one undo step, like any other change.

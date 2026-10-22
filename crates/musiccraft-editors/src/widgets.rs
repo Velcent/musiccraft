@@ -20,7 +20,63 @@ pub struct KnobOutput {
 /// or a double-click (see `docs/spec/controls.md`).
 #[must_use]
 pub fn wants_reset(response: &Response) -> bool {
-    response.middle_clicked() || response.double_clicked()
+    response.middle_clicked()
+        || response.double_clicked()
+        || (response.clicked() && response.ctx.input(|i| i.modifiers.alt))
+}
+
+/// How far past the default (as a share of the range) a drag must travel
+/// before it leaves the detent.
+const DETENT: f32 = 0.1;
+
+fn detent_id(widget: egui::Id) -> egui::Id {
+    widget.with("detent")
+}
+
+/// Whether `response`'s control is parked at its default by the detent.
+fn at_detent(response: &Response) -> bool {
+    response
+        .ctx
+        .data(|d| d.get_temp::<f32>(detent_id(response.id)))
+        .is_some()
+}
+
+/// Applies the default detent to a drag from `t` to `proposed` (0..1
+/// positions): crossing or reaching `default` parks the value there until the
+/// drag has gone [`DETENT`] further. Ctrl skips it.
+fn detent(ui: &Ui, response: &Response, t: f32, proposed: f32, default: f32) -> f32 {
+    let id = detent_id(response.id);
+    let parked = ui.data(|d| d.get_temp::<f32>(id));
+    let skip = ui.input(|i| i.modifiers.command);
+    let (value, parked) = match parked {
+        _ if skip => (proposed, None),
+        Some(past) => {
+            let past = past + (proposed - t);
+            if past.abs() > DETENT {
+                (default + past - DETENT * past.signum(), None)
+            } else {
+                (default, Some(past))
+            }
+        }
+        None => {
+            let crosses = t != default
+                && (proposed == default || (t - default).signum() != (proposed - default).signum());
+            if crosses {
+                (default, Some(0.0))
+            } else {
+                (proposed, None)
+            }
+        }
+    };
+    ui.data_mut(|d| match parked {
+        Some(past) => {
+            d.insert_temp(id, past);
+        }
+        None => {
+            d.remove_temp::<f32>(id);
+        }
+    });
+    value.clamp(0.0, 1.0)
 }
 
 fn status_id(widget: egui::Id) -> egui::Id {
@@ -73,8 +129,17 @@ fn knob_input(ui: &Ui, response: &Response, t: f32, default: f32) -> Option<f32>
         let fine = ui.input(|i| i.modifiers.shift);
         let delta = -response.drag_delta().y / if fine { KNOB_DRAG_FINE } else { KNOB_DRAG };
         if delta != 0.0 {
-            changed = Some((t + delta).clamp(0.0, 1.0));
+            changed = Some(detent(
+                ui,
+                response,
+                t,
+                (t + delta).clamp(0.0, 1.0),
+                default,
+            ));
         }
+    }
+    if response.drag_stopped() {
+        ui.data_mut(|d| d.remove_temp::<f32>(detent_id(response.id)));
     }
     if response.hovered() {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y);
@@ -151,6 +216,11 @@ pub fn knob(
         arc(from, t),
         Stroke::new(2.0, theme::ACCENT),
     ));
+    if at_detent(&response) {
+        let a = angle_of(to_t(default));
+        let tick = center + vec2(a.cos(), a.sin()) * (radius + 1.0);
+        painter.circle_filled(tick, 1.5, theme::HIGHLIGHT);
+    }
     let a = angle_of(t);
     painter.line_segment(
         [center, center + vec2(a.cos(), a.sin()) * (radius - 2.0)],
@@ -204,6 +274,11 @@ pub fn labeled_knob(
         arc(from, shown),
         Stroke::new(3.0, theme::ACCENT),
     ));
+    if at_detent(&response) {
+        let a = angle(default);
+        let tick = center + vec2(a.cos(), a.sin()) * (radius + 1.0);
+        painter.circle_filled(tick, 2.0, theme::HIGHLIGHT);
+    }
     let a = angle(shown);
     painter.line_segment(
         [
@@ -263,8 +338,14 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
         let fine = ui.input(|i| i.modifiers.shift);
         let delta = -response.drag_delta().y / travel.height() * if fine { 0.25 } else { 1.0 };
         if delta != 0.0 {
-            changed = Some(fader_to_gain(position + delta, max));
+            let unity = gain_to_fader(1.0, max);
+            let proposed = (position + delta).clamp(0.0, 1.0);
+            let moved = detent(ui, &response, position, proposed, unity);
+            changed = Some(fader_to_gain(moved, max));
         }
+    }
+    if response.drag_stopped() {
+        ui.data_mut(|d| d.remove_temp::<f32>(detent_id(response.id)));
     }
     if response.hovered() {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y);
@@ -600,6 +681,79 @@ mod tests {
             (total(&tiny) - total(&medium)).abs() < 1e-4,
             "{tiny:?} {medium:?}"
         );
+    }
+
+    /// Drags a knob that keeps the value it reports, as the app does, and
+    /// returns the value after each frame.
+    fn drag_knob(start: f32, default: f32, frames: Vec<Vec<egui::Event>>) -> Vec<f32> {
+        let ctx = egui::Context::default();
+        let mut value = start;
+        let mut seen = Vec::new();
+        for (i, events) in frames.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 400.0))),
+                time: Some(i as f64 / 60.0),
+                events,
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| {
+                if let Some(v) = knob(ui, value, 0.0, 1.0, default, false).changed {
+                    value = v;
+                }
+            })
+            .textures_delta
+            .clear();
+            seen.push(value);
+        }
+        seen
+    }
+
+    #[test]
+    fn alt_click_resets_a_knob() {
+        let alt = |events: Vec<egui::Event>| {
+            let mut with = vec![egui::Event::ModifiersChanged(egui::Modifiers::ALT)];
+            with.extend(events.into_iter().map(|e| match e {
+                egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed,
+                    ..
+                } => egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed,
+                    modifiers: egui::Modifiers::ALT,
+                },
+                other => other,
+            }));
+            with
+        };
+        let frames = click(pos2(10.0, 12.0), PointerButton::Primary)
+            .into_iter()
+            .map(alt)
+            .collect();
+        let run = drive(frames, |ui| knob(ui, 0.3, 0.0, 1.0, 0.8, false));
+        assert_eq!(run, [(0.8, true)]);
+    }
+
+    #[test]
+    fn dragging_through_the_default_pauses_there() {
+        let at = pos2(10.0, 12.0);
+        // 0.06 of the range per frame upward, from 0.3 toward a 0.5 default.
+        let frames = |n: usize| {
+            let mut frames = drag(at, at, PointerButton::Primary);
+            frames.truncate(2);
+            for i in 1..=n {
+                frames.push(vec![egui::Event::PointerMoved(
+                    at - vec2(0.0, 9.0 * i as f32),
+                )]);
+            }
+            frames
+        };
+        let seen = drag_knob(0.3, 0.5, frames(8));
+        let parked = seen.iter().filter(|v| (**v - 0.5).abs() < 1e-6).count();
+        assert!(parked >= 2, "held at the default for a while: {seen:?}");
+        assert!(*seen.last().unwrap() > 0.5, "then carries on: {seen:?}");
     }
 
     #[test]
