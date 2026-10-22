@@ -1270,6 +1270,7 @@ impl eframe::App for App {
         let history = History {
             undo: self.session.undo_label().map(ToString::to_string),
             can_redo: self.session.redo_depth() > 0,
+            unsaved: self.has_unsaved_changes(),
         };
         self.update_overview();
         self.update_clip_audio();

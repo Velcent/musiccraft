@@ -90,7 +90,9 @@ stay our own. The full target look, window by window, is the style guide in
 - The toolbar is one band across the top of the main window, in the panel
   tone, two button rows tall. At the left a recessed column holds the menu
   bar (File, Edit, Add, Patterns, View, Options, Tools, Help) over the hint
-  field (the project name, then the hint or last message). Beside it are two
+  field (the project name with a small highlight dot while there are unsaved
+  changes, then the hint or last message; right-click copies the message).
+  Beside it are two
   racks, each packed to the left:
   - **upper rack**: the option toggles (Metronome, Wait for input,
     Count-in, Blend recording, Loop recording, Computer keyboard as piano,

@@ -312,7 +312,8 @@ fn hint_field(ui: &mut egui::Ui, state: &UiState, frame: &Frame<'_>, width: f32)
         None if state.status.error => (state.status.text.as_str(), theme::DANGER),
         None => (state.status.text.as_str(), theme::TEXT_DIM),
     };
-    let (rect, _) = ui.allocate_exact_size(vec2(width.max(60.0), icons::ROW), egui::Sense::hover());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(width.max(60.0), icons::ROW), egui::Sense::click());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 3.0, theme::PANEL_DARK);
     painter.rect_stroke(
@@ -329,8 +330,28 @@ fn hint_field(ui: &mut egui::Ui, state: &UiState, frame: &Frame<'_>, width: f32)
         let galley = painter.layout_job(job);
         painter.galley(egui::pos2(rect.left() + 5.0, y), galley, color);
     };
-    line(frame.project.name(), theme::TEXT_DIM, rect.top() + 1.0);
+    let name = frame.project.name();
+    line(name, theme::TEXT_DIM, rect.top() + 1.0);
+    if frame.history.unsaved {
+        // A small dot after the project name while there are unsaved changes.
+        let width = painter
+            .layout_no_wrap(name.to_owned(), font.clone(), theme::TEXT_DIM)
+            .size()
+            .x;
+        let at = egui::pos2(
+            (rect.left() + 5.0 + width + 5.0).min(rect.right() - 5.0),
+            rect.top() + 1.0 + theme::FONT_CAPTION * 0.65,
+        );
+        painter.circle_filled(at, 2.0, theme::HIGHLIGHT);
+    }
     line(text, color, rect.center().y);
+    let shown = text.to_owned();
+    response.context_menu(|ui| {
+        if ui.button("Copy").clicked() {
+            ui.ctx().copy_text(shown.clone());
+            ui.close();
+        }
+    });
 }
 
 /// Width the one-band toolbar needs: the menu column and both racks.
@@ -743,15 +764,16 @@ fn lower_rack(
         if icons::button(ui, icon, playing, theme::ACCENT, hint).clicked() {
             run(actions, "transport.toggle");
         }
-        if icons::button(
+        let stop = icons::button(
             ui,
             Icon::Stop,
             false,
             theme::TEXT,
-            "Stop and return to the start",
-        )
-        .clicked()
-        {
+            "Stop and return to the start · double-click to silence every sound",
+        );
+        if stop.double_clicked() {
+            run(actions, "transport.panic");
+        } else if stop.clicked() {
             run(actions, "transport.stop");
         }
         ui.add_space(3.0);

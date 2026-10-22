@@ -2137,3 +2137,24 @@ fn the_piano_roll_play_button_plays_the_pattern() {
     let out = h.click(button, PointerButton::Primary);
     assert_eq!(out, ["transport.set_mode pattern", "transport.play"]);
 }
+
+#[test]
+fn double_clicking_stop_silences_every_sound() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    let stop = [14.0, 38.0, 60.0]
+        .into_iter()
+        .flat_map(|y| (0..170).map(move |i| pos2(8.0 + 8.0 * i as f32, y)))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|hint| hint.starts_with("Stop and return"))
+        })
+        .expect("a stop button in the toolbar");
+    let mut out = h.click(stop, PointerButton::Primary);
+    out.extend(h.click(stop, PointerButton::Primary));
+    assert_eq!(out, ["transport.stop", "transport.panic"]);
+}

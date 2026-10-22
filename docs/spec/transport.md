@@ -11,6 +11,8 @@
 - `transport.play` starts playback. If already playing it does nothing and reports so.
 - `transport.stop` halts playback and returns the playhead to the start of the
   loop. If already stopped it does nothing and reports so.
+  Double-clicking the toolbar's stop button also runs `transport.panic`,
+  silencing every sounding note.
 - `transport.toggle` plays when stopped and stops when playing. The default keymap
   binds it to the space bar.
 - `transport.pause` halts playback and keeps the playhead (state `paused`);

@@ -148,6 +148,8 @@ pub struct History {
     pub undo: Option<String>,
     /// Whether `edit.redo` is possible.
     pub can_redo: bool,
+    /// Whether the project has changes since it was last saved or opened.
+    pub unsaved: bool,
 }
 
 /// Which floating windows are open.
