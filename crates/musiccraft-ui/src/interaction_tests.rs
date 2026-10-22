@@ -2990,3 +2990,29 @@ fn the_toolbar_utilities_open_help_and_the_sample_editor() {
     h.click(sample, PointerButton::Primary);
     assert!(h.state.windows.channel_settings);
 }
+
+#[test]
+fn right_clicking_the_snap_button_sets_the_new_note_length() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let window = window_rect(&h, "piano-roll");
+    let snap = (0..60)
+        .map(|i| window.left_top() + vec2(4.0 + 6.0 * i as f32, 12.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Snap:"))
+        })
+        .expect("the snap button");
+    h.state.roll.snap = crate::geometry::Snap::Beat;
+    h.state.roll.last_length = 1;
+    h.click(snap, PointerButton::Secondary);
+    assert_eq!(
+        h.state.roll.last_length,
+        crate::geometry::Snap::Beat.ticks_at(0, &h.state.roll.meter)
+    );
+}

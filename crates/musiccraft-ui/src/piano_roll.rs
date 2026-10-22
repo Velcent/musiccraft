@@ -264,6 +264,34 @@ fn add_notes(channel: usize, notes: &[Note], offset: u32) -> Option<Invocation> 
     )
 }
 
+/// Tests a note against the current colour, for the Select menu.
+type NotePick = fn(&Note, u8) -> bool;
+
+/// A window-menu item that sets one property: label, notes, property, value.
+type PropItem<'a> = (&'a str, Vec<Note>, &'a str, &'a str);
+
+/// Sets property `prop` to `value` on each of `notes`, as one undo step.
+fn set_notes_prop(channel: usize, notes: &[Note], prop: &str, value: &str) -> Option<Invocation> {
+    let ch = (channel + 1).to_string();
+    batch(
+        notes
+            .iter()
+            .map(|n| {
+                Invocation::new(
+                    "note.set_prop",
+                    [
+                        ch.clone(),
+                        ticks(n.start),
+                        n.key.to_string(),
+                        prop.to_owned(),
+                        value.to_owned(),
+                    ],
+                )
+            })
+            .collect(),
+    )
+}
+
 fn remove_notes(channel: usize, notes: &[Note]) -> Option<Invocation> {
     let ch = (channel + 1).to_string();
     batch(
@@ -560,7 +588,7 @@ fn picker(
     look: (bool, bool),
     hint: &str,
     list: impl FnOnce(&mut egui::Ui),
-) {
+) -> egui::Response {
     let popup = egui::Id::new(key);
     let open = egui::Popup::is_id_open(ui.ctx(), popup);
     let response = icons::picker(ui, icon, open, look, hint);
@@ -569,6 +597,7 @@ fn picker(
         .id(popup)
         .open_memory(toggle)
         .show(list);
+    response
 }
 
 fn scale_name(scale: Option<(u8, usize)>) -> String {
@@ -593,7 +622,7 @@ fn pickers(
 ) {
     ui.spacing_mut().item_spacing.x = 1.0;
     let selected = selected_of(state, project);
-    picker(
+    let _ = picker(
         ui,
         ("roll-note-tools", Icon::Wand),
         (false, false),
@@ -601,15 +630,19 @@ fn pickers(
         |ui| tools_menu(ui, state, number, &selected, actions, true),
     );
     let snap = state.roll.snap;
-    picker(
+    let button = picker(
         ui,
         ("roll-snap", Icon::Snap),
         (snap == Snap::Off, false),
-        &format!("Snap: {} · click to choose", snap.label()),
+        &format!(
+            "Snap: {} · click to choose · right-click: new notes this long · wheel steps",
+            snap.label()
+        ),
         |ui| snap_list(ui, state),
     );
+    snap_shortcuts(ui, state, &button);
     let scale = state.roll.scale;
-    picker(
+    let _ = picker(
         ui,
         ("roll-scale", Icon::Scale),
         (scale.is_none(), scale.is_some() && state.roll.fit_scale),
@@ -620,7 +653,7 @@ fn pickers(
         |ui| scale_list(ui, state),
     );
     let chord = state.roll.chord;
-    picker(
+    let _ = picker(
         ui,
         ("roll-chord", Icon::Chord),
         (false, chord.is_some()),
@@ -630,6 +663,29 @@ fn pickers(
         ),
         |ui| chord_list(ui, state),
     );
+}
+
+/// Right-click on the snap button makes new notes one snap step long; the
+/// wheel over it steps through the snap values.
+fn snap_shortcuts(ui: &egui::Ui, state: &mut UiState, button: &egui::Response) {
+    let snap = state.roll.snap;
+    if button.secondary_clicked() && snap != Snap::Off {
+        state.roll.last_length = snap.ticks_at(0, &state.roll.meter);
+    }
+    let notches = if button.hovered() {
+        crate::scrollbars::wheel_notches(ui)
+    } else {
+        0.0
+    };
+    if notches != 0.0 {
+        let at = Snap::ALL.iter().position(|s| *s == snap).unwrap_or(0);
+        let next = if notches > 0.0 {
+            at.saturating_sub(1)
+        } else {
+            (at + 1).min(Snap::ALL.len() - 1)
+        };
+        state.roll.snap = Snap::ALL[next];
+    }
 }
 
 /// "No scale", then the root notes side by side with the scale types.
@@ -805,6 +861,47 @@ fn options_menu(
             ui.close();
         }
         ui.separator();
+        let selected = selected_of(state, project);
+        let channel = state.selected_channel;
+        let color = (state.roll.color + 1).to_string();
+        let props: [PropItem; 3] = [
+            (
+                "Mute",
+                selected
+                    .iter()
+                    .filter(|n| !n.props.muted)
+                    .copied()
+                    .collect(),
+                "muted",
+                "on",
+            ),
+            (
+                "Unmute",
+                selected.iter().filter(|n| n.props.muted).copied().collect(),
+                "muted",
+                "off",
+            ),
+            (
+                "Apply the current colour",
+                selected
+                    .iter()
+                    .filter(|n| n.props.color != state.roll.color)
+                    .copied()
+                    .collect(),
+                "color",
+                &color,
+            ),
+        ];
+        for (label, notes, prop, value) in props {
+            let invocation = set_notes_prop(channel, &notes, prop, value);
+            if crate::widgets::add_enabled(ui, invocation.is_some(), egui::Button::new(label))
+                .clicked()
+            {
+                actions.extend(invocation.map(Action::Run));
+                ui.close();
+            }
+        }
+        ui.separator();
         if ui
             .button(RichText::new("Clear the channel's notes").color(theme::DANGER))
             .clicked()
@@ -840,6 +937,27 @@ fn options_menu(
                 .clicked()
             {
                 edit_op(state, project, op, actions);
+                ui.close();
+            }
+        }
+        ui.separator();
+        let notes: Vec<Note> = project
+            .channels
+            .get(state.selected_channel)
+            .map(|c| project.current_pattern().notes_of(c.id).copied().collect())
+            .unwrap_or_default();
+        let color = state.roll.color;
+        let picks: [(&str, NotePick); 2] = [
+            ("Muted notes", |n, _| n.props.muted),
+            ("Notes of the current colour", |n, c| n.props.color == c),
+        ];
+        for (label, pick) in picks {
+            if ui.button(label).clicked() {
+                state.roll.selection = notes
+                    .iter()
+                    .filter(|n| pick(n, color))
+                    .map(|n| (n.start, n.key))
+                    .collect();
                 ui.close();
             }
         }
@@ -3357,5 +3475,37 @@ mod tests {
             state.roll.selection.iter().copied().collect::<Vec<_>>(),
             [(48, 65)]
         );
+    }
+
+    #[test]
+    fn note_props_are_set_on_the_given_notes_as_one_undo_step() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "channel.add_synth",
+            "note.add 1 0t 24t 60 100",
+            "note.add 1 48t 24t 64 100",
+        ] {
+            session.run_line(line).unwrap();
+        }
+        let notes_of = |session: &musiccraft_commands::Session| -> Vec<Note> {
+            let p = session.project();
+            let id = p.channels[0].id;
+            p.current_pattern().notes_of(id).copied().collect()
+        };
+        let notes = notes_of(&session);
+        assert!(set_notes_prop(0, &[], "muted", "on").is_none());
+        let mute = set_notes_prop(0, &notes, "muted", "on").unwrap();
+        session.run(&mute).unwrap();
+        assert!(notes_of(&session).iter().all(|n| n.props.muted));
+        let recolour = set_notes_prop(0, &notes[..1], "color", "3").unwrap();
+        session.run(&recolour).unwrap();
+        let colours: Vec<u8> = notes_of(&session).iter().map(|n| n.props.color).collect();
+        assert_eq!(colours, [2, 0]);
+        session.undo().unwrap();
+        session.undo().unwrap();
+        assert!(notes_of(&session).iter().all(|n| !n.props.muted));
     }
 }

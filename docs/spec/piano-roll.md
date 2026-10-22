@@ -304,15 +304,19 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   button, the tools, the title and a chevron that opens the channel list
   (channels with notes in the pattern are ticked). Snap, scale and chord name
   their value in the hint and tick it in their list; a dimmed glyph means
-  none is set. In a narrow window the groups fold into the "more" button
+  none is set. Right-clicking the snap button makes one snap step the
+  length of new notes (unless snap is off), and the wheel over it steps
+  through the snap list. In a narrow window the groups fold into the "more" button
   instead of wrapping.
 - The window menu has submenus: **File** (export the song as a MIDI file),
   **Edit** (Cut, Copy, Paste, Duplicate, Delete, move the selection one snap
   step left or right, transpose it a semitone, transpose the channel an
-  octave, and clear the channel's notes in the danger tone), **Tools**
+  octave, mute, unmute or apply the current colour to the selected notes
+  as one undo step, and clear the channel's notes in the danger tone), **Tools**
   (Quantize and the note tools), **Chord** and **Snap** (the same lists as
-  the header buttons), **Select** (All, None, Invert) and **Zoom** (in, out,
-  fit the pattern to the window), then the new-note velocity field. The
+  the header buttons), **Select** (All, None, Invert, muted notes, notes of
+  the current colour) and **Zoom** (in, out, fit the pattern to the window,
+  zoom to the selection), then the new-note velocity field. The
   Edit and Select items do exactly what their keys do, and show the keys.
 - The window opens over the right half of the workspace, about half its
   width and height.
