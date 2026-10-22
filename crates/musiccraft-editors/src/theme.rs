@@ -7,6 +7,9 @@ pub const BACKGROUND: Color32 = Color32::from_rgb(0x1b, 0x1f, 0x26);
 pub const PANEL: Color32 = Color32::from_rgb(0x24, 0x29, 0x32);
 pub const PANEL_DARK: Color32 = Color32::from_rgb(0x16, 0x19, 0x1f);
 pub const RAISED: Color32 = Color32::from_rgb(0x2e, 0x34, 0x3f);
+/// The selected mixer strip's fill: the pressable tone, so it lifts off the
+/// `PANEL_DARK` strips beside it.
+pub const STRIP_SELECTED: Color32 = RAISED;
 pub const RAISED_HOVER: Color32 = Color32::from_rgb(0x3a, 0x42, 0x50);
 pub const LCD_BG: Color32 = Color32::from_rgb(0x0f, 0x12, 0x17);
 pub const LCD_EDGE: Color32 = Color32::from_rgb(0x2a, 0x30, 0x3a);

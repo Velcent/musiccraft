@@ -521,6 +521,44 @@ impl Project {
             .is_some_and(|c| !c.mute && (!any_solo || c.solo))
     }
 
+    /// When any insert is soloed: which tracks stay audible. A soloed track keeps
+    /// everything that feeds it and everything it feeds through sends.
+    #[must_use]
+    pub fn mixer_audible(&self) -> Option<Vec<bool>> {
+        let mixer = &self.mixer;
+        if !mixer.iter().skip(1).any(|t| t.solo) {
+            return None;
+        }
+        let edges: Vec<(usize, usize)> = mixer
+            .iter()
+            .enumerate()
+            .flat_map(|(i, t)| t.sends.iter().map(move |s| (i, s.target)))
+            .collect();
+        let mut audible: Vec<bool> = mixer.iter().map(|t| t.solo).collect();
+        // Downstream: sends point to higher indices, so one forward pass suffices.
+        for i in 0..mixer.len() {
+            if audible[i] {
+                for (from, to) in &edges {
+                    if *from == i && *to < audible.len() {
+                        audible[*to] = true;
+                    }
+                }
+            }
+        }
+        // Upstream from the originally soloed tracks: one backward pass.
+        let mut feeds: Vec<bool> = mixer.iter().map(|t| t.solo).collect();
+        for i in (0..mixer.len()).rev() {
+            if feeds[i] {
+                for (from, to) in &edges {
+                    if *to == i {
+                        feeds[*from] = true;
+                    }
+                }
+            }
+        }
+        Some(audible.iter().zip(&feeds).map(|(a, f)| *a || *f).collect())
+    }
+
     /// The selected pattern.
     #[must_use]
     pub fn current_pattern(&self) -> &Pattern {

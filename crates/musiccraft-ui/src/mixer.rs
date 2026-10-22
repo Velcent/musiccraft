@@ -425,7 +425,7 @@ fn strip(
     let color = track_color(index, track);
     let frame = egui::Frame::new()
         .fill(if selected {
-            theme::RAISED
+            theme::STRIP_SELECTED
         } else {
             theme::PANEL_DARK
         })
@@ -468,18 +468,41 @@ fn strip(
                 state.rename_in_place(Dialog::rename_track(index, &track.name), field);
             }
             name.context_menu(|ui| track_menu(ui, state, index, track, actions));
-            let heard = if track.mute { "muted" } else { "on" };
+            let silenced = index > 0
+                && project
+                    .mixer_audible()
+                    .is_some_and(|audible| !audible.get(index).copied().unwrap_or(true));
+            let heard = if track.mute {
+                "muted"
+            } else if track.solo {
+                "soloed"
+            } else if silenced {
+                "silenced by solo"
+            } else {
+                "on"
+            };
             let enable = light(
                 ui,
                 10.0,
                 !track.mute,
-                theme::ACCENT,
+                if silenced {
+                    theme::ACCENT_DIM
+                } else {
+                    theme::ACCENT
+                },
                 &if index > 0 {
                     format!("Enable ({heard}) · click to mute or unmute · Ctrl+click to solo")
                 } else {
                     format!("Enable ({heard}) · click to mute or unmute")
                 },
             );
+            if track.solo {
+                ui.painter().circle_stroke(
+                    enable.rect.center(),
+                    6.5,
+                    egui::Stroke::new(1.0, theme::HIGHLIGHT),
+                );
+            }
             let solo_key = ui.input(|i| i.modifiers.command);
             if enable.clicked() {
                 if solo_key && index > 0 {
@@ -543,6 +566,14 @@ fn strip(
     });
     if clicked_here && ui.is_rect_visible(response.response.rect) {
         state.selected_track = index;
+    }
+    if selected {
+        ui.painter().rect_stroke(
+            response.response.rect,
+            2.0,
+            egui::Stroke::new(1.0, theme::ACCENT),
+            egui::StrokeKind::Inside,
+        );
     }
     effect_drop(ui, index, response.response.rect, actions);
 }

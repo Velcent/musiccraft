@@ -153,11 +153,15 @@ Ranges and defaults are defined in `musiccraft-params`.
   title (`Mixer — <track>`) at the right end before the window buttons. The
   window menu holds View (Strip details, Slot panel) and Tracks (Rename…,
   Delete), then the common items.
+- The selected strip is lifted to the raised tone with a thin accent edge
+  around the whole strip, and its meter well is outlined in the accent.
 - Each strip is narrow and shows, top to bottom: the number cell (the number,
   or M for the master, on a cell tinted with the track's colour), the name
   written vertically beside the peak meter, a round enable light (lit while
   the track is heard; click mutes, Ctrl+click solos, right-click offers Mute
-  and Solo), the S (solo) switch as a tiny round light
+  and Solo; a soloed track's light gains a ring in the highlight tone, and a
+  track silenced by another track's solo shows its light in the dim accent),
+  the S (solo) switch as a tiny round light
   under it (not on the master), the pan knob, the fader, then the track
   switches: invert phase, swap left and right, the stereo separation knob and
   the effect count, lit while any effect runs; clicking it bypasses all the
