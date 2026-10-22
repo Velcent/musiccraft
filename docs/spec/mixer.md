@@ -242,7 +242,8 @@ Ranges and defaults are defined in `musiccraft-params`.
   Windows of removed slots close.
 - Every effect window's header holds the window menu (the slot's own items:
   Bypass or Enable, Move up, Move down, Remove), and for built-in effects the
-  presets: previous, list, next; "(custom)" when no preset matches. Under the
+  presets: previous, list, next; "(custom)" when no preset matches, and
+  right-click on an arrow opens the list. Under the
   header a slim strip shows, flush right, the On light (bypass,
   `mixer.toggle_effect`) and the Mix knob (`mixer.set_effect_mix`, the same
   value as the slot's knob). (The plugin editors keep a bypass dot and the

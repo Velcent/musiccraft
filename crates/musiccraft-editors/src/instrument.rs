@@ -291,13 +291,11 @@ impl<'a> InstrumentEditor<'a> {
             .iter()
             .position(|p| p.matches(INSTRUMENT_PARAMS, self.values));
         let mut chosen = None;
-        if crate::widgets::chevron_button(ui, true)
-            .hint("Previous preset")
-            .clicked()
-        {
+        let salt = ("instrument-preset", self.salt, list.as_ptr() as usize);
+        if crate::widgets::preset_arrow(ui, true, salt).clicked() {
             chosen = Some(current.map_or(n - 1, |c| (c + n - 1) % n));
         }
-        egui::ComboBox::from_id_salt(("instrument-preset", self.salt, list.as_ptr() as usize))
+        egui::ComboBox::from_id_salt(salt)
             .width(130.0)
             .selected_text(
                 current
@@ -314,10 +312,7 @@ impl<'a> InstrumentEditor<'a> {
                     }
                 }
             });
-        if crate::widgets::chevron_button(ui, false)
-            .hint("Next preset")
-            .clicked()
-        {
+        if crate::widgets::preset_arrow(ui, false, salt).clicked() {
             chosen = Some(current.map_or(0, |c| (c + 1) % n));
         }
         let Some(preset) = chosen.and_then(|i| list.get(i)) else {

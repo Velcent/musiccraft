@@ -518,6 +518,32 @@ pub fn chevron_button(ui: &mut Ui, left: bool) -> Response {
     response
 }
 
+/// A previous (`left`) or next preset arrow beside the preset list whose
+/// `ComboBox` uses `list_salt` in this `ui`. Right-click opens that list, as
+/// a click on the list does. The list opens on the next frame so the
+/// right-click does not count as a click outside it; the previous arrow,
+/// drawn before the list, opens it.
+pub fn preset_arrow(ui: &mut Ui, left: bool, list_salt: impl egui::AsIdSalt) -> Response {
+    let popup = ui
+        .make_persistent_id(egui::IdSalt::new(&list_salt))
+        .with("popup");
+    let pending = popup.with("open-from-arrow");
+    if left && ui.data_mut(|d| d.remove_temp::<bool>(pending)).is_some() {
+        egui::Popup::open_id(ui.ctx(), popup);
+    }
+    let hint = if left {
+        "Previous preset · right-click for the list"
+    } else {
+        "Next preset · right-click for the list"
+    };
+    let response = crate::hint::Hint::hint(chevron_button(ui, left), hint);
+    if response.secondary_clicked() {
+        ui.data_mut(|d| d.insert_temp(pending, true));
+        ui.ctx().request_repaint();
+    }
+    response
+}
+
 /// A vertical stereo peak meter.
 pub fn meter(ui: &mut Ui, levels: (f32, f32), size: Vec2) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, Sense::hover());

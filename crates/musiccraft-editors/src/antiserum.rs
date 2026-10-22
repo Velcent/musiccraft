@@ -246,7 +246,7 @@ impl AntiserumEditor {
                 let from = current.map_or(if delta > 0 { -1 } else { 0 }, |c| c as isize);
                 ((from + delta).rem_euclid(n.max(1))) as usize
             };
-            if crate::widgets::chevron_button(ui, true).hint("Previous preset").clicked()
+            if crate::widgets::preset_arrow(ui, true, "antiserum-presets").clicked()
                 && let Some(p) = bank.get(step(-1))
             {
                 edits.push(AntiserumEdit::Preset(p.name.clone()));
@@ -289,7 +289,7 @@ impl AntiserumEditor {
                         }
                     }
                 });
-            if crate::widgets::chevron_button(ui, false).hint("Next preset").clicked()
+            if crate::widgets::preset_arrow(ui, false, "antiserum-presets").clicked()
                 && let Some(p) = bank.get(step(1))
             {
                 edits.push(AntiserumEdit::Preset(p.name.clone()));

@@ -2231,6 +2231,14 @@ fn the_effect_window_strip_bypasses_and_its_header_steps_presets() {
     h.click(previous, PointerButton::Primary);
     h.settle();
     assert_ne!(h.session.project().mixer[1].effects[0].values, before);
+    // Right-clicking an arrow opens the preset list instead of stepping.
+    let stepped = h.session.project().mixer[1].effects[0].values;
+    let next = find(&mut h, "Next preset");
+    assert!(!egui::Popup::is_any_open(&h.ctx));
+    h.click(next, PointerButton::Secondary);
+    h.settle();
+    assert!(egui::Popup::is_any_open(&h.ctx), "the preset list opened");
+    assert_eq!(h.session.project().mixer[1].effects[0].values, stepped);
 }
 
 #[test]
@@ -2244,7 +2252,10 @@ fn instrument_presets_step_from_the_channel_window_header() {
         .find(|p| {
             h.frame(vec![Event::PointerMoved(*p)]);
             h.frame(vec![]);
-            h.state.hint.as_deref() == Some("Previous preset")
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Previous preset"))
         })
         .expect("the header's previous-preset chevron");
     let before = h.session.project().channels[0].params;

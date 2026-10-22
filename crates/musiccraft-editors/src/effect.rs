@@ -126,14 +126,12 @@ pub fn preset_picker(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits
         ((from + delta).rem_euclid(n.max(1))) as usize
     };
     let mut chosen = None;
-    if crate::widgets::chevron_button(ui, true)
-        .hint("Previous preset")
-        .clicked()
-    {
+    let salt = id.with("preset");
+    if crate::widgets::preset_arrow(ui, true, salt).clicked() {
         chosen = Some(step(-1));
     }
     let name = current.map_or("(custom)", |i| list[i].name);
-    egui::ComboBox::from_id_salt(id.with("preset"))
+    egui::ComboBox::from_id_salt(salt)
         .width(170.0)
         .selected_text(name)
         .show_ui(ui, |ui| {
@@ -146,10 +144,7 @@ pub fn preset_picker(ui: &mut egui::Ui, id: egui::Id, effect: &EffectView, edits
                 }
             }
         });
-    if crate::widgets::chevron_button(ui, false)
-        .hint("Next preset")
-        .clicked()
-    {
+    if crate::widgets::preset_arrow(ui, false, salt).clicked() {
         chosen = Some(step(1));
     }
     if let Some(preset) = chosen.and_then(|i| list.get(i)) {

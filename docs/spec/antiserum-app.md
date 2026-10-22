@@ -105,7 +105,8 @@ the editor from `musiccraft-editors::antiserum`. It reports edits, which the
 app turns into the commands above. A plugin can turn them into host gestures
 later.
 
-- **Preset bar:** the preset's name, previous/next, a menu by category with a
+- **Preset bar:** the preset's name, previous/next (right-click on
+  either opens the list), a menu by category with a
   search box that matches names and tags, plus save and open.
 - **Modulation sources strip:** chips for envelopes 1–4, LFOs 1–8, macros
   1–8, velocity, note, mod wheel, aftertouch and random. **Drag a chip onto

@@ -346,8 +346,8 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   the channel's name, an em dash and the mixer track it feeds ("Lead —
   Insert 3", or "Kick — Master"). For instruments with factory presets
   (synth, drum synth, pluck, FM, keys, additive) the header also holds the
-  presets: previous, the list ("(custom)" when none matches) and next; each
-  choice is one undo step. The exported plugins, which have no header, keep a
+  presets: previous, the list ("(custom)" when none matches) and next;
+  right-click on either arrow opens the list. Each choice is one undo step. The exported plugins, which have no header, keep a
   preset row at the top of the Sound page.
 - Under the header, one fixed **strip** stays at the top:
   - At the left, the **tabs** as square glyph cells: *Sound* (a sine wave:
