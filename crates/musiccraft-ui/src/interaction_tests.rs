@@ -3273,3 +3273,38 @@ fn the_piano_roll_splitter_resizes_hides_and_restores_the_property_lane() {
         "right-click restores the default"
     );
 }
+
+#[test]
+fn the_mixer_slot_panel_can_sit_left_of_the_strips() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    let master_at = |h: &mut Harness| {
+        let mut hint_at = |p: Pos2| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            h.state.hint.clone().unwrap_or_default()
+        };
+        (0..40)
+            .flat_map(|j| (0..120).map(move |i| (i, j)))
+            .map(|(i, j)| {
+                pos2(
+                    window.left() + 4.0 + 6.0 * i as f32,
+                    window.top() + 24.0 + 3.0 * j as f32,
+                )
+            })
+            .find(|&p| hint_at(p).starts_with("Master — click"))
+            .expect("the master's number cell")
+            .x
+    };
+    let right = master_at(&mut h);
+    assert!(right < window.left() + 40.0, "{right} {window:?}");
+    h.state.mixer_panel_left = true;
+    h.settle();
+    let left = master_at(&mut h);
+    assert!(
+        left > right + 200.0,
+        "the panel now comes first: {right} → {left}"
+    );
+}

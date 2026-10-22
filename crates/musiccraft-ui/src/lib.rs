@@ -507,6 +507,12 @@ pub struct UiState {
     pub mixer_details: bool,
     /// The mixer shows the selected track's slot panel.
     pub mixer_panel: bool,
+    /// The slot panel sits left of the strips instead of right.
+    pub mixer_panel_left: bool,
+    /// How strongly each track's colour tints its strip: 0 off to 3 strong.
+    pub mixer_tint: u8,
+    /// Hairlines part the mixer strips.
+    pub mixer_hairlines: bool,
     /// Keyboard shortcuts.
     pub keymap: Keymap,
     /// Last command result.
@@ -639,6 +645,9 @@ impl UiState {
             mixer_slot: 0,
             mixer_details: true,
             mixer_panel: true,
+            mixer_panel_left: false,
+            mixer_tint: 1,
+            mixer_hairlines: false,
             keymap,
             status: StatusLine::default(),
             meters: Vec::new(),

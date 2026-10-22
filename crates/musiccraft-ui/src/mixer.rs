@@ -78,11 +78,15 @@ pub fn show(
             ui.horizontal_top(|ui| {
                 // The panel, the separator and the gaps around it, so the
                 // row never outgrows the window.
-                let panel = if state.mixer_panel {
+                let panel = if state.mixer_panel && !state.mixer_panel_left {
                     EFFECTS_WIDTH + 2.0 * ui.spacing().item_spacing.x + 8.0
                 } else {
                     0.0
                 };
+                if state.mixer_panel && state.mixer_panel_left {
+                    effects(ui, state, frame, actions);
+                    ui.separator();
+                }
                 // The master and the tracks pinned left sit in a fixed left
                 // dock, the tracks pinned right in a fixed right dock; darker
                 // dividers separate them from the scrolling middle.
@@ -136,7 +140,7 @@ pub fn show(
                         strip(ui, state, project, index, track, height, actions);
                     }
                 }
-                if state.mixer_panel {
+                if state.mixer_panel && !state.mixer_panel_left {
                     ui.separator();
                     effects(ui, state, frame, actions);
                 }
@@ -198,6 +202,17 @@ fn window_menu(
     ui.menu_button("View", |ui| {
         ui.checkbox(&mut state.mixer_details, "Strip details");
         ui.checkbox(&mut state.mixer_panel, "Slot panel");
+        ui.checkbox(&mut state.mixer_panel_left, "Slot panel on the left");
+        ui.checkbox(&mut state.mixer_hairlines, "Hairlines between strips");
+        ui.menu_button("Strip colour", |ui| {
+            for (tint, label) in TINT_NAMES.iter().enumerate() {
+                let tint = tint as u8;
+                if ui.radio(state.mixer_tint == tint, *label).clicked() {
+                    state.mixer_tint = tint;
+                    ui.close();
+                }
+            }
+        });
     });
     let index = state.selected_track;
     let Some(track) = project.mixer.get(index) else {
@@ -258,6 +273,22 @@ fn idle_inserts(project: &Project) -> Vec<usize> {
 }
 
 const EFFECTS_WIDTH: f32 = 270.0;
+
+/// The strip colour choices, and how much of the track colour each mixes
+/// into the strip.
+const TINT_NAMES: [&str; 4] = ["Off", "Faint", "Medium", "Strong"];
+const TINTS: [f32; 4] = [0.0, 0.08, 0.16, 0.28];
+
+/// A strip's fill: its base tone with the track colour mixed in.
+fn strip_fill(selected: bool, color: egui::Color32, tint: u8) -> egui::Color32 {
+    let base = if selected {
+        theme::STRIP_SELECTED
+    } else {
+        theme::PANEL_DARK
+    };
+    let amount = TINTS.get(usize::from(tint)).copied().unwrap_or(0.0);
+    theme::mix(base, color, amount)
+}
 
 /// Id of the strips' scroll bars.
 const STRIP_BARS: &str = "mixer-strip-bars";
@@ -659,12 +690,9 @@ fn strip(
     let selected = is_selected(state, index);
     let primary = state.selected_track == index;
     let color = track_color(index, track);
+    let tint = if index == 0 { 0 } else { state.mixer_tint };
     let frame = egui::Frame::new()
-        .fill(if selected {
-            theme::STRIP_SELECTED
-        } else {
-            theme::PANEL_DARK
-        })
+        .fill(strip_fill(selected, color, tint))
         .corner_radius(2.0)
         .inner_margin(egui::Margin::symmetric(0, 2));
     let response = frame.show(ui, |ui| {
@@ -812,6 +840,14 @@ fn strip(
         } else {
             select(state, index, false);
         }
+    }
+    if state.mixer_hairlines {
+        let r = response.response.rect;
+        let x = r.right() + 1.0;
+        ui.painter().line_segment(
+            [egui::pos2(x, r.top()), egui::pos2(x, r.bottom())],
+            egui::Stroke::new(1.0, theme::WINDOW_EDGE),
+        );
     }
     if primary {
         ui.painter().rect_stroke(
@@ -1738,5 +1774,14 @@ mod tests {
             session.run(batch).unwrap();
         }
         assert_eq!(session.project().mixer.len(), 5);
+    }
+
+    #[test]
+    fn strip_colour_mixes_more_of_the_track_colour_as_it_strengthens() {
+        let red = egui::Color32::from_rgb(220, 40, 40);
+        assert_eq!(strip_fill(false, red, 0), theme::PANEL_DARK);
+        assert_eq!(strip_fill(true, red, 0), theme::STRIP_SELECTED);
+        let reds: Vec<u8> = (0..4).map(|t| strip_fill(false, red, t).r()).collect();
+        assert!(reds.windows(2).all(|w| w[0] < w[1]), "{reds:?}");
     }
 }
