@@ -31,6 +31,14 @@
   tone and each insert a palette colour by position. UI: the track menu
   (right-click the number or name) and the window menu's Tracks → Colour ▸
   (the shared colour grid). The colour tints the number cell.
+- **Docks**: the strips sit in three docks, left to right: a fixed left dock
+  (the master, then inserts pinned left), the scrolling middle (every other
+  insert), and a fixed right dock (inserts pinned right; absent until one
+  is). Each dock lists its tracks in number order, and darker dividers about
+  a quarter strip wide separate the docks. `mixer.set_dock <track>
+  <left|middle|right>` (undoable, saved as `"dock"`, inserts only); UI: the
+  track menu's Pin ▸ Left side / Scrolling area / Right side. Track numbers
+  never change with the dock.
 - **Track stereo options** (undoable, saved; right-click a strip's name):
   `mixer.set_separation <track> <-1..1>` (-1 folds the track to mono, 0
   leaves it, 1 doubles the side signal), `mixer.set_phase_invert <track>

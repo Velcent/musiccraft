@@ -2439,6 +2439,8 @@ fn an_effect_dropped_on_a_mixer_strip_goes_into_that_track() {
                 .is_some_and(|t| t.starts_with(&format!("{name} — click")))
         })
         .expect("track 2's number cell");
+    // Hover reaches a few points past a widget's edge: step well inside.
+    let strip = strip + vec2(8.0, 0.0);
     egui::DragAndDrop::set_payload(
         &h.ctx,
         crate::browser::Dragged::Effect {
@@ -2830,5 +2832,49 @@ fn track_headers_select_a_track_and_take_dropped_sounds() {
     assert!(
         ran.contains(&"playlist.rename_track 2 clap".to_owned()),
         "{ran:?}"
+    );
+}
+
+#[test]
+fn a_track_pinned_right_sits_after_the_scrolling_strips() {
+    let mut h = Harness::new(&["mixer.set_dock 3 right"]);
+    h.state.windows.mixer = true;
+    h.settle();
+    let window = window_rect(&h, "mixer-window");
+    let mut hint_at = |p: Pos2| {
+        h.frame(vec![Event::PointerMoved(p)]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    let row = (0..40)
+        .map(|j| window.top() + 24.0 + 3.0 * j as f32)
+        .find(|&y| hint_at(pos2(window.left() + 20.0, y)).starts_with("Master — click"))
+        .expect("the master's number cell, at the left");
+    let mut strips = Vec::new();
+    let mut x = window.left() + 4.0;
+    while x < window.right() {
+        let hint = hint_at(pos2(x, row));
+        if let Some((name, _)) = hint.split_once(" — click") {
+            if strips.last() != Some(&name.to_owned()) {
+                strips.push(name.to_owned());
+            }
+        }
+        x += 6.0;
+    }
+    let names: Vec<String> = h
+        .session
+        .project()
+        .mixer
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    let at = |n: usize| strips.iter().position(|s| *s == names[n]);
+    assert_eq!(at(0), Some(0), "{strips:?}");
+    assert_eq!(at(1), Some(1), "{strips:?}");
+    assert!(at(2) < at(4), "{strips:?}");
+    assert_eq!(
+        at(3),
+        Some(strips.len() - 1),
+        "track 3 is pinned right: {strips:?}"
     );
 }

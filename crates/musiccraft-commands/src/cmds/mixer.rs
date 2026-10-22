@@ -2,8 +2,8 @@ use musiccraft_project::params::{
     EFFECT_KINDS, EffectKind, MAX_EFFECT_SLOTS, MAX_MIXER_TRACKS, index_of,
 };
 use musiccraft_project::{
-    ChannelId, EffectSlot, MAX_SENDS, MixerSend, MixerTrack, Project, ProjectError, check_pan,
-    check_volume,
+    ChannelId, Dock, EffectSlot, MAX_SENDS, MixerSend, MixerTrack, Project, ProjectError,
+    check_pan, check_volume,
 };
 use serde::{Deserialize, Serialize};
 
@@ -72,6 +72,12 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "mixer.set_track_color <track> <1-16|none>",
             "Colour a mixer track (none: its automatic colour).",
             set_track_color,
+        ),
+        cmd(
+            "mixer.set_dock",
+            "mixer.set_dock <track> <left|middle|right>",
+            "Pin an insert's strip to the mixer's fixed left or right dock, or return it to the scrolling middle.",
+            set_dock,
         ),
         cmd(
             "mixer.set_swap_sides",
@@ -535,6 +541,25 @@ fn set_phase_invert(project: &mut Project, args: &Args<'_>) -> Result<Outcome, C
         |t| &mut t.phase_invert,
         |v| on_off(v).to_owned(),
         "phase invert",
+    ))
+}
+
+fn set_dock(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = track_arg(project, args, 0)?;
+    if index == 0 {
+        return Err(args.invalid("the master always sits in the left dock"));
+    }
+    let dock =
+        Dock::parse(args.str(1)?).ok_or_else(|| args.invalid("docks are left, middle or right"))?;
+    Ok(set_track_field(
+        project,
+        args,
+        index,
+        dock,
+        |t| &mut t.dock,
+        |d| d.arg().to_owned(),
+        "dock",
     ))
 }
 

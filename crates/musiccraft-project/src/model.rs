@@ -772,6 +772,48 @@ pub struct MixerTrack {
     /// track's automatic colour.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<u8>,
+    /// Where the mixer shows the strip: fixed at the left or right, or in
+    /// the scrolling middle (the default).
+    #[serde(default, skip_serializing_if = "Dock::is_middle")]
+    pub dock: Dock,
+}
+
+/// Where a mixer strip sits in the mixer window.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Dock {
+    /// The fixed dock at the left, with the master.
+    Left,
+    /// The scrolling middle.
+    #[default]
+    Middle,
+    /// The fixed dock at the right.
+    Right,
+}
+
+impl Dock {
+    /// Every dock, left to right.
+    pub const ALL: [Self; 3] = [Self::Left, Self::Middle, Self::Right];
+
+    /// The command argument.
+    #[must_use]
+    pub fn arg(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Middle => "middle",
+            Self::Right => "right",
+        }
+    }
+
+    /// Reads a command argument.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.arg() == text)
+    }
+
+    fn is_middle(&self) -> bool {
+        *self == Self::Middle
+    }
 }
 
 impl MixerTrack {
@@ -792,6 +834,7 @@ impl MixerTrack {
             swap_sides: false,
             eq: TrackEq::default(),
             color: None,
+            dock: Dock::Middle,
         }
     }
 }

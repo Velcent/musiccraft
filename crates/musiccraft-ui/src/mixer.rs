@@ -4,7 +4,7 @@ use crate::hint::Hint;
 use egui::{Color32, RichText, vec2};
 use musiccraft_commands::Invocation;
 use musiccraft_project::params::{EFFECT_KINDS, MAX_EFFECT_SLOTS};
-use musiccraft_project::{MAX_VOLUME, MixerTrack, Project};
+use musiccraft_project::{Dock, MAX_VOLUME, MixerTrack, Project};
 
 use crate::dialogs::Dialog;
 use crate::icons::{self, Icon};
@@ -76,6 +76,29 @@ pub fn show(
                 } else {
                     0.0
                 };
+                // The master and the tracks pinned left sit in a fixed left
+                // dock, the tracks pinned right in a fixed right dock; darker
+                // dividers separate them from the scrolling middle.
+                let docked = |dock: Dock| {
+                    project.mixer.iter().enumerate().filter(move |(i, t)| {
+                        if *i == 0 {
+                            dock == Dock::Left
+                        } else {
+                            t.dock == dock
+                        }
+                    })
+                };
+                let right = docked(Dock::Right).count();
+                let right_width = if right == 0 {
+                    0.0
+                } else {
+                    right as f32 * (STRIP_WIDTH + 2.0) + DOCK_DIVIDER + ui.spacing().item_spacing.x
+                };
+                ui.spacing_mut().item_spacing.x = 2.0;
+                for (index, track) in docked(Dock::Left) {
+                    strip(ui, state, project, index, track, height, actions);
+                }
+                dock_divider(ui, height);
                 // The wheel over a strip's name steps whole strips
                 // (`vertical_name`); elsewhere it is left to the controls.
                 let strip_bars = egui::Id::new(STRIP_BARS);
@@ -85,7 +108,7 @@ pub fn show(
                         ..egui::scroll_area::ScrollSource::ALL
                     })
                     .id_salt("mixer-strips")
-                    .max_width((ui.available_width() - panel).max(160.0))
+                    .max_width((ui.available_width() - panel - right_width).max(120.0))
                     .auto_shrink([!state.mixer_panel, true]);
                 // The strips' bar sits under them, inside the 16 points the
                 // strip height leaves free.
@@ -94,15 +117,18 @@ pub fn show(
                     crate::scrollbars::plain_area(ui, area, bars, |ui| {
                         ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
-                            for (index, track) in project.mixer.iter().enumerate() {
+                            for (index, track) in docked(Dock::Middle) {
                                 strip(ui, state, project, index, track, height, actions);
-                                if index == 0 {
-                                    ui.add_space(6.0);
-                                }
                             }
                         });
                     });
                 });
+                if right > 0 {
+                    dock_divider(ui, height);
+                    for (index, track) in docked(Dock::Right) {
+                        strip(ui, state, project, index, track, height, actions);
+                    }
+                }
                 if state.mixer_panel {
                     ui.separator();
                     effects(ui, state, frame, actions);
@@ -111,6 +137,16 @@ pub fn show(
         });
     state.windows.mixer = open;
     crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
+}
+
+/// Width of the divider between the master's dock and the inserts.
+const DOCK_DIVIDER: f32 = 10.0;
+
+/// The dark gap between the left dock and the scrolling inserts.
+fn dock_divider(ui: &mut egui::Ui, height: f32) {
+    let (rect, _) = ui.allocate_exact_size(vec2(DOCK_DIVIDER, height), egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect.shrink2(vec2(2.0, 0.0)), 1.0, theme::PANEL_DARK);
 }
 
 /// The shortest the strips get; the fader gives up travel first.
@@ -328,6 +364,26 @@ fn colour_menu(ui: &mut egui::Ui, index: usize, track: &MixerTrack, actions: &mu
 }
 
 /// The track menu (right-click on the number or name).
+/// Pin ▸: which dock the strip sits in.
+fn pin_menu(ui: &mut egui::Ui, index: usize, track: &MixerTrack, actions: &mut Vec<Action>) {
+    ui.menu_button("Pin", |ui| {
+        for (dock, label) in [
+            (Dock::Left, "Left side"),
+            (Dock::Middle, "Scrolling area"),
+            (Dock::Right, "Right side"),
+        ] {
+            if ui.selectable_label(track.dock == dock, label).clicked() {
+                run(
+                    actions,
+                    "mixer.set_dock",
+                    [index.to_string(), dock.arg().to_owned()],
+                );
+                ui.close();
+            }
+        }
+    });
+}
+
 fn track_menu(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -341,6 +397,9 @@ fn track_menu(
         ui.close();
     }
     colour_menu(ui, index, track, actions);
+    if index > 0 {
+        pin_menu(ui, index, track, actions);
+    }
     ui.horizontal(|ui| {
         ui.label("Stereo separation");
         let mut separation = track.separation;

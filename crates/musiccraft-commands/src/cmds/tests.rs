@@ -103,6 +103,9 @@ const SCRIPT: &[&str] = &[
     "mixer.set_swap_sides 1 off",
     "mixer.set_track_color 1 3",
     "mixer.set_track_color 1 none",
+    "mixer.set_dock 2 right",
+    "mixer.set_dock 3 left",
+    "mixer.set_dock 2 middle",
     "mixer.rename 1 Kick bus",
     "mixer.set_volume 1 0.7",
     "mixer.set_pan 0 0.1",
@@ -2038,4 +2041,21 @@ fn playlist_track_heights_are_saved_undoable_and_bounded() {
     run(&mut s, "edit.undo");
     run(&mut s, "edit.undo");
     assert_eq!(s.project().playlist.track_heights.get(&1), Some(&150));
+}
+
+#[test]
+fn mixer_docks_are_saved_undoable_and_never_move_the_master() {
+    let mut s = session();
+    run(&mut s, "mixer.set_dock 4 right");
+    assert_eq!(s.project().mixer[4].dock, musiccraft_project::Dock::Right);
+    assert!(
+        s.project()
+            .to_json()
+            .unwrap()
+            .contains("\"dock\": \"right\"")
+    );
+    assert!(s.run_line("mixer.set_dock 0 right").is_err());
+    assert!(s.run_line("mixer.set_dock 4 top").is_err());
+    run(&mut s, "edit.undo");
+    assert_eq!(s.project().mixer[4].dock, musiccraft_project::Dock::Middle);
 }
