@@ -407,7 +407,7 @@ Ordered by visual impact. Per `CLAUDE.md`, update the specs (`docs/spec/window-l
     - Patterns lacks reveal, colour, transpose, move, one-pattern-per-channel and render.
     - View lacks the Toolbar and Windows layout submenus and the Plugins window.
     - Options lacks the recording switches.
-    - Tools lacks panic, clean-up, last-moved-control and the played-notes log.
+    - Tools has Panic ▸ All notes off but lacks Cancel recording, clean-up, last-moved-control and the played-notes log.
     - Help lacks the user guide and What's new.
     - File: `crates/musiccraft-ui/src/toolbar.rs` (`file_menu` … `help_menu`).
 12. **No toolbar context menu or customising.** There are no dividers toggle, layouts, hide (Ctrl+F11) or narrow-width reflow beyond the one-band/two-band switch. Files: `crates/musiccraft-ui/src/toolbar.rs`, `docs/spec/window-layout.md`.

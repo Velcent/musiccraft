@@ -27,7 +27,8 @@
   note is released at once, including one-shot samples, live keys, plugin
   instruments (all notes off) and MIDI Out channels (a note off for every
   note they started), and the browser preview stops. Playback is not stopped;
-  later notes play as usual. Effect tails (reverb, delay) ring out.
+  later notes play as usual. Effect tails (reverb, delay) ring out. It is
+  also in the main menu under Tools › Panic › All notes off.
 - `transport.set_mode pattern|song` chooses what plays: `pattern` loops the
   selected pattern; `song` plays the playlist arrangement and loops at its end.
   `transport.toggle_mode` switches between them (default key: `L`).

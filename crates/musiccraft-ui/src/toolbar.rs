@@ -273,6 +273,10 @@ fn options_menu(
 }
 
 fn tools_menu(ui: &mut egui::Ui, frame: &Frame<'_>, state: &UiState, actions: &mut Vec<Action>) {
+    ui.menu_button("Panic", |ui| {
+        menu_item(ui, state, "All notes off", "transport.panic", actions);
+    });
+    ui.separator();
     if ui.button("Rescan plugins").clicked() {
         actions.push(Action::RescanPlugins);
         ui.close();
