@@ -178,7 +178,7 @@ fn is_black(key: u8) -> bool {
     matches!(key % 12, 1 | 3 | 6 | 8 | 10)
 }
 
-fn key_of_row(row: u32) -> u8 {
+pub(crate) fn key_of_row(row: u32) -> u8 {
     u8::try_from(KEYS - 1 - row.min(KEYS - 1)).unwrap_or(0)
 }
 
@@ -1117,7 +1117,9 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             scales: None,
         };
         state.roll.last_view = Some((grid, clip));
-        if let Some(offset) = crate::scrollbars::middle_pan(ui, clip, clip.min - rect.min) {
+        // The keyboard keeps middle-drag for zooming.
+        let lanes = Rect::from_min_max(pos2(clip.left() + KEYS_WIDTH, clip.top()), clip.max);
+        if let Some(offset) = crate::scrollbars::middle_pan(ui, lanes, clip.min - rect.min) {
             state.roll.jump = Some(offset);
         }
         let painter = ui.painter_at(clip);
@@ -3175,7 +3177,7 @@ fn keyboard(
         .map(key_of_row);
     let response = match hovered {
         Some(key) => response.hint(format!(
-            "{} · click to hear · Ctrl+click selects its notes",
+            "{} · click to hear · Ctrl+click selects its notes, Ctrl+drag a range · middle-drag zooms",
             key_name(key)
         )),
         None => response,
@@ -3234,10 +3236,33 @@ fn keyboard(
             );
         }
     }
-    // Ctrl+click selects every note of the key; Shift adds to the selection.
-    // (A preview already sounding still gets its note-off below.)
+    middle_zoom(ui, state, (grid, clip), keys_rect);
+    // Ctrl+click selects every note of the key, Ctrl+drag every note of the
+    // keys it crosses; Shift adds to the selection. (A preview already
+    // sounding still gets its note-off below.)
     let (ctrl, shift) = ui.input(|i| (i.modifiers.command, i.modifiers.shift));
     if ctrl && state.roll.preview.is_none() {
+        let from = ui
+            .input(|i| i.pointer.press_origin())
+            .and_then(|p| grid.row_at(p.y))
+            .map(key_of_row);
+        let to = response
+            .interact_pointer_pos()
+            .and_then(|p| grid.row_at(p.y))
+            .map(key_of_row);
+        if let (true, Some(a), Some(b)) = (response.dragged_by(PointerButton::Primary), from, to) {
+            let range = a.min(b)..=a.max(b);
+            if !shift {
+                state.roll.selection.clear();
+            }
+            state.roll.selection.extend(
+                notes
+                    .iter()
+                    .filter(|n| range.contains(&n.key))
+                    .map(|n| (n.start, n.key)),
+            );
+            return;
+        }
         if let Some(key) = response
             .clicked()
             .then(|| response.interact_pointer_pos())
@@ -3294,6 +3319,33 @@ fn keyboard(
         }
         _ => {}
     }
+}
+
+/// Middle-drag on the keyboard zooms the key rows: up to grow them, down to
+/// shrink them, keeping the key first pressed under the pointer.
+fn middle_zoom(ui: &egui::Ui, state: &mut UiState, (grid, clip): (&Grid, Rect), keys: Rect) {
+    let (down, origin, dy) = ui.input(|i| {
+        (
+            i.pointer.button_down(PointerButton::Middle),
+            i.pointer.press_origin(),
+            i.pointer.delta().y,
+        )
+    });
+    let Some(origin) = origin.filter(|o| down && keys.contains(*o)) else {
+        return;
+    };
+    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    let height = state.roll.key_height;
+    let zoomed = (height * (-dy / 100.0).exp()).clamp(KEY_HEIGHT_RANGE.0, KEY_HEIGHT_RANGE.1);
+    if dy == 0.0 || zoomed == height {
+        return;
+    }
+    // The pressed point's place in the rows stays at the same height on screen.
+    let rows = (origin.y - grid.origin.y) / height;
+    let top = origin.y - RULER_HEIGHT - rows * zoomed;
+    let left = grid.origin.x - KEYS_WIDTH;
+    state.roll.key_height = zoomed;
+    state.roll.jump = Some(vec2(clip.left() - left, (clip.top() - top).max(0.0)));
 }
 
 #[cfg(test)]

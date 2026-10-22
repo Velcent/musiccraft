@@ -127,7 +127,8 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
 - **Behaviour**:
   - Click and hold plays the key on the current channel (existing). Dragging up and down glides the preview from key to key.
   - Wheel scrolls vertically (existing, through the scroll area).
-  - **Proposed (needs `piano-roll.md` updated first):** Ctrl+click selects every note of that key and Ctrl+drag selects a range of keys; middle-drag up or down zooms vertically around the clicked key; right-click opens the key menu (L3).
+  - Ctrl+click selects every note of that key and Ctrl+drag selects a range of keys; middle-drag up or down zooms vertically around the clicked key.
+  - **Proposed (needs `piano-roll.md` updated first):** right-click opens the key menu (L3).
 
 ### E. Note grid
 
@@ -437,7 +438,7 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 4. **Ruler has no markers.** A click seeks, a drag makes a time selection (band, grid wash, notes selected), beat ticks rise from the bottom and numbers thin out when bars are narrow. Still missing: markers, time-signature and key tabs, the pattern's signature at the start, and the right-click menu. `crates/musiccraft-ui/src/piano_roll.rs` (`ruler`, `draw_ruler`).
 5. **Property lane details.** Stems have heads and length tails, take the selection tone when selected, show ghost stems behind, and the lane has quieter grid lines and a faint name watermark. Still missing: the splitter (fixed `LANE_HEIGHT`, matching the fixed height in `window-layout.md`), the lane zoom box, Shift+drag line drawing, Alt+click reset and the drag readout. `velocity_lane()`.
 6. **Ghost notes have no panel.** Other channels' notes are drawn in one neutral tone (`theme::GHOST_NOTE`), but there are no ghosts from overlapping clips, no ghost-channel panel or header button, and no double-right-click to switch channel.
-7. **Keyboard labels and menu.** Keys shade on hover with their name in the hint, and Ctrl+click selects a key's notes. Still missing: the key menu and custom key names, the labels choice (only C keys are labelled), Ctrl+drag across keys and middle-drag zoom. `keyboard()`.
+7. **Keyboard labels and menu.** Keys shade on hover with their name in the hint, and Ctrl+click selects a key's notes. Ctrl+drag selects a range of keys and middle-drag zooms. Still missing: the key menu and custom key names, and the labels choice (only C keys are labelled). `keyboard()`.
 8. **No tool switching from the wheel.** The tools follow the target order and Audition (renamed from Play) has its own glyph, but there is no right-hold + wheel tool switching, and the optional Paint steps and Ramp tools are not there.
 9. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
 10. **No tall-row property view.** Note labels are cut with an ellipsis, but the label size is fixed. `draw_note()`.

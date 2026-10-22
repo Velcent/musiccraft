@@ -329,8 +329,12 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   pointer (the latest-starting one when notes overlap); one drag is one undo step.
 - Clicking a key on the keyboard previews the note on the selected channel.
   The hovered key is shaded (white keys darker, black keys lighter) and its
-  name shows in the hint. Ctrl+click on a key selects every note of that key
-  (Shift adds them to the selection).
+  name shows in the hint. Ctrl+click on a key selects every note of that key,
+  and Ctrl+drag across keys selects every note of the keys crossed (Shift
+  adds them to the selection). Middle-drag on the keyboard zooms the key
+  rows (up grows them, down shrinks them, within the zoom box's range),
+  keeping the key first pressed under the pointer. Middle-drag elsewhere in
+  the view pans it.
 
 ## Sources
 

@@ -3187,3 +3187,45 @@ fn middle_dragging_pans_the_piano_roll_and_the_playlist() {
         origin(&h)
     );
 }
+
+#[test]
+fn ctrl_dragging_keys_selects_a_range_and_middle_dragging_them_zooms() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 1 60",
+        "note.add 1 4 1 62",
+        "note.add 1 8 1 64",
+        "note.add 1 12 1 67",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let step = TICKS_PER_STEP;
+    let (_, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let key = |h: &Harness, k: u8| pos2(clip.left() + 40.0, h.roll_point(0, k).y);
+    h.modifiers = Modifiers::COMMAND;
+    let ran = h.drag(key(&h, 60), key(&h, 64));
+    h.modifiers = Modifiers::NONE;
+    h.settle();
+    assert!(ran.is_empty(), "{ran:?}");
+    let selected: Vec<_> = h.state.roll.selection.iter().copied().collect();
+    assert_eq!(selected, [(0, 60), (4 * step, 62), (8 * step, 64)]);
+    assert!(h.state.roll.preview.is_none());
+
+    let row = |h: &Harness| {
+        h.state
+            .roll
+            .last_view
+            .expect("piano roll drawn")
+            .0
+            .row_height
+    };
+    let before = row(&h);
+    let at = key(&h, 62);
+    h.drag_with(at, at - vec2(0.0, 40.0), PointerButton::Middle);
+    h.settle();
+    assert!(row(&h) > before, "{before} → {}", row(&h));
+    // The key first pressed stays under the press point.
+    let (grid, _) = h.state.roll.last_view.expect("piano roll drawn");
+    let held = grid.row_at(at.y).map(crate::piano_roll::key_of_row);
+    assert_eq!(held, Some(62));
+}
