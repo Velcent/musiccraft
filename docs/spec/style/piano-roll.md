@@ -448,7 +448,7 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 16. **Wording**:
     - The Shape item "Claw every 2nd" (line 1243) and its command `note.claw` (`crates/musiccraft-commands/src/cmds/note_gen.rs`, the `articulate_and_claw` test in `crates/musiccraft-commands/src/cmds/tests.rs`, and `docs/spec/piano-roll.md`) borrow a word from a coined tool name. Rename the label to "Keep every 2nd" and the command to, for example, `note.keep_every`, with its spec and test; the spec changes first.
     - "Chop to grid", "Glue", "Flip horizontally" and "Flip vertically" in `tools_menu()` (from line 1103) follow the manual's tool list too closely; proposed renames are in Labels.
-17. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins) and the ruler and keyboard keep the plain pointer.
+17. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
 18. **Keymap**: Page Up/Down, Shift+1–5, Alt+V, Alt+C, Shift+F, Shift+Enter, N and I over the piano roll are new window-local bindings for `docs/spec/keymap.md` (a new "Over the piano roll" section) and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today.
 
 ## Sources

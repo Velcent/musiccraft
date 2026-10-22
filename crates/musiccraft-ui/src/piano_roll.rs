@@ -2702,11 +2702,13 @@ fn keyboard(
         pos2(clip.left(), clip.top() + RULER_HEIGHT),
         pos2(clip.left() + KEYS_WIDTH, clip.bottom() - LANE_HEIGHT),
     );
-    let response = ui.interact(
-        keys_rect,
-        ui.id().with("roll-keys"),
-        Sense::click_and_drag(),
-    );
+    let response = ui
+        .interact(
+            keys_rect,
+            ui.id().with("roll-keys"),
+            Sense::click_and_drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
     let painter = ui.painter_at(keys_rect);
     let first = grid.row_at(keys_rect.top()).unwrap_or(0);
     let last = grid.row_at(keys_rect.bottom() - 1.0).unwrap_or(KEYS - 1);

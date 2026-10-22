@@ -62,7 +62,8 @@
 - Pointer shapes: a crosshair over empty grid (a cell cursor with Ctrl or the
   Select tool), a four-way move cursor over a note body (grabbing while a
   move drags), horizontal resize over a note's right end, and the plain
-  pointer for the Delete, Mute, Slice, Play and Zoom tools.
+  pointer for the Delete, Mute, Slice, Play and Zoom tools. The ruler and the
+  keyboard show a pointing hand.
 - Pressing a note with the Draw or Paint tool makes its length and velocity
   the ones the next new notes take.
 - New notes take the toolbar's colour and Portamento setting. Fine pitch,
