@@ -16,6 +16,7 @@ mod effect_window;
 mod geometry;
 mod icons;
 mod mixer;
+mod note_props;
 mod piano_roll;
 mod playlist;
 mod plugins;
@@ -819,6 +820,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
         mixer::show(&ctx, state, frame, &mut actions);
     }
     piano_roll::show(&ctx, state, frame, &mut actions);
+    note_props::show(&ctx, state, frame, &mut actions);
     channel_settings::show(&ctx, state, frame, &mut actions);
     automation::show(&ctx, state, frame, &mut actions);
     dialogs::show(&ctx, state, frame, &mut actions);

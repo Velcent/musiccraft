@@ -91,6 +91,8 @@ impl Tool {
 pub struct RollState {
     /// The active tool.
     pub(crate) tool: Tool,
+    /// The note (start, key) whose properties window is open.
+    pub(crate) props_note: Option<(u32, u8)>,
     /// The selected pattern's bars and beats, refreshed every frame.
     pub(crate) meter: Meter,
     /// New notes are slide notes.
@@ -239,6 +241,7 @@ impl Default for RollState {
             fit_scale: false,
             lane_drag: None,
             lane_mode: LaneMode::Velocity,
+            props_note: None,
             selection: BTreeSet::new(),
             selection_for: None,
             marquee: None,
@@ -1666,7 +1669,7 @@ fn corner(
 }
 
 /// Colour group `group` (0 is the channel's own colour, `own`).
-fn group_color(group: u8, own: Color32) -> Color32 {
+pub(crate) fn group_color(group: u8, own: Color32) -> Color32 {
     if group == 0 {
         own
     } else {
@@ -1674,9 +1677,19 @@ fn group_color(group: u8, own: Color32) -> Color32 {
     }
 }
 
-/// The 4 × 4 grid of colour groups, numbered down each column.
+/// The 4 × 4 grid of colour groups for new notes.
 fn colour_groups(ui: &mut egui::Ui, state: &mut UiState, own: Color32) {
+    if let Some(group) = colour_grid(ui, state.roll.color, own) {
+        state.roll.color = group;
+        ui.close();
+    }
+}
+
+/// The 4 × 4 grid of colour groups, numbered down each column, with
+/// `current` outlined; returns the group clicked.
+pub(crate) fn colour_grid(ui: &mut egui::Ui, current: u8, own: Color32) -> Option<u8> {
     ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
+    let mut picked = None;
     for row in 0..4_u8 {
         ui.horizontal(|ui| {
             for column in 0..4_u8 {
@@ -1684,7 +1697,7 @@ fn colour_groups(ui: &mut egui::Ui, state: &mut UiState, own: Color32) {
                 let (rect, response) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
                 let painter = ui.painter();
                 painter.rect_filled(rect, 2.0, group_color(group, own));
-                if group == state.roll.color || response.hovered() {
+                if group == current || response.hovered() {
                     painter.rect_stroke(
                         rect,
                         2.0,
@@ -1704,12 +1717,12 @@ fn colour_groups(ui: &mut egui::Ui, state: &mut UiState, own: Color32) {
                     .hint(format!("Colour group {n} (MIDI channel {n} for plugins)"))
                     .clicked()
                 {
-                    state.roll.color = group;
-                    ui.close();
+                    picked = Some(group);
                 }
             }
         });
     }
+    picked
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2893,6 +2906,14 @@ fn edit(
             }
         }
     }
+    if response.double_clicked() && matches!(state.roll.tool, Tool::Draw | Tool::Select) {
+        let pos = response.interact_pointer_pos().filter(|p| editable(*p));
+        if let Some(Hit::Body(i) | Hit::Edge(i)) = pos.map(|p| hit_test(boxes.iter().copied(), p))
+            && let Some(note) = notes.get(i)
+        {
+            state.roll.props_note = Some((note.start, note.key));
+        }
+    }
     if let Some(pos) = response.hover_pos().filter(|p| editable(*p)) {
         alt_wheel(ui, state, pos, (notes, boxes), channel, actions);
         let moving = state.roll.drag.is_some_and(|d| d.kind == DragKind::Move);
@@ -3147,6 +3168,19 @@ impl LaneMode {
             Self::Fine => (f32::from(p.fine) + 100.0) / 200.0,
             Self::ModX => f32::from(p.mod_x) / 127.0,
             Self::ModY => f32::from(p.mod_y) / 127.0,
+        }
+    }
+
+    /// The note's value as text, for knob captions.
+    pub(crate) fn shown(self, note: &Note) -> String {
+        let p = note.props;
+        match self {
+            Self::Velocity => note.velocity.to_string(),
+            Self::Pan => musiccraft_editors::format::pan(f32::from(note.pan) / 100.0),
+            Self::Release => p.release.to_string(),
+            Self::Fine => format!("{:+} cents", p.fine),
+            Self::ModX => p.mod_x.to_string(),
+            Self::ModY => p.mod_y.to_string(),
         }
     }
 

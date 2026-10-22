@@ -3674,3 +3674,47 @@ fn alt_wheel_over_a_note_steps_its_velocity_in_one_undo_step() {
     h.session.run_line("edit.undo").unwrap();
     assert_eq!(h.session.project().current_pattern().notes[0].velocity, 64);
 }
+
+#[test]
+fn double_clicking_a_note_opens_its_properties_and_reset_restores_them() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "note.add 1 0 4 C5 40",
+        "note.set_pan 1 0 C5 -50",
+        "note.set_prop 1 0 C5 porta on",
+    ]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let note = h.roll_point(24, 60);
+    h.click(note, PointerButton::Primary);
+    h.click(note, PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.roll.props_note, Some((0, 60)));
+    let window = window_rect(&h, "note-properties");
+    let reset = (0..60)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 4.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Every property back"))
+        })
+        .expect("the Reset button");
+    h.click(reset, PointerButton::Primary);
+    let n = h.session.project().current_pattern().notes[0];
+    assert_eq!((n.velocity, n.pan, n.props.porta), (100, 0, false));
+    h.session.run_line("edit.undo").unwrap();
+    let n = h.session.project().current_pattern().notes[0];
+    assert_eq!(
+        (n.velocity, n.pan, n.props.porta),
+        (40, -50, true),
+        "one undo step"
+    );
+    // Deleting the note closes the window.
+    h.session.run_line("note.remove 1 0 C5").unwrap();
+    h.settle();
+    assert_eq!(h.state.roll.props_note, None);
+}
