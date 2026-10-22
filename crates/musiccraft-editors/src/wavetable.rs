@@ -187,7 +187,7 @@ impl WavetableEditor {
                     }
                 });
             ui.label(format!("Frame {} / {frames}", self.selected + 1));
-            ui.checkbox(&mut self.all_frames, "All")
+            crate::widgets::led_switch(ui, &mut self.all_frames, "All")
                 .hint("Apply the tools and formulas to every frame");
             let tools = [
                 (Tool::Normalize, "Normalize", "Scale to a peak of 1"),

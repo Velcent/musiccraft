@@ -221,7 +221,7 @@ pub(crate) fn list(
         let n = i + 1;
         ui.horizontal(|ui| {
             let mut enabled = controller.enabled;
-            if ui.checkbox(&mut enabled, "").changed() {
+            if crate::widgets::led_switch(ui, &mut enabled, "").changed() {
                 let flag = if enabled { "on" } else { "off" };
                 actions.push(Action::Run(set(n, "enabled", flag.to_owned())));
             }

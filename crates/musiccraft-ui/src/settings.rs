@@ -462,12 +462,12 @@ fn midi(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut
         output(ui, port, Some(port.clone()));
     }
     let mut clock = settings.midi_clock;
-    if ui
-        .checkbox(
-            &mut clock,
-            "Send MIDI clock (24 per beat) with start and stop",
-        )
-        .changed()
+    if crate::widgets::led_switch(
+        ui,
+        &mut clock,
+        "Send MIDI clock (24 per beat) with start and stop",
+    )
+    .changed()
     {
         changed(
             actions,
@@ -489,7 +489,8 @@ fn midi(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut
         actions.push(Action::RefreshDevices);
     }
     ui.add_space(8.0);
-    ui.checkbox(
+    crate::widgets::led_switch(
+        ui,
         &mut state.typing_keyboard,
         "Typing keyboard plays notes (Z–M, Q–P rows)",
     );
@@ -528,7 +529,7 @@ fn general(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
     });
     let mut toggle = |ui: &mut egui::Ui, label: &str, value: bool, set: fn(&mut Settings, bool)| {
         let mut on = value;
-        if ui.checkbox(&mut on, label).changed() {
+        if crate::widgets::led_switch(ui, &mut on, label).changed() {
             let mut next = settings.clone();
             set(&mut next, on);
             changed(actions, next);

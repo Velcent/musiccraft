@@ -274,6 +274,50 @@ pub fn dot(ui: &mut Ui, on: bool, color: Color32) -> Response {
     response
 }
 
+/// An LED switch: a round light with its label to the right. Clicking the
+/// light or the label toggles `on`; the response reports `changed()`.
+pub fn led_switch(ui: &mut Ui, on: &mut bool, label: impl Into<egui::WidgetText>) -> Response {
+    let galley = label.into().into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Body,
+    );
+    let gap = if galley.size().x > 0.0 { 5.0 } else { 0.0 };
+    let size = vec2(14.0 + gap + galley.size().x, galley.size().y.max(16.0));
+    let (rect, mut response) = ui.allocate_exact_size(size, Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    let centre = pos2(rect.left() + 7.0, rect.center().y);
+    let painter = ui.painter();
+    let ring = if response.hovered() {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
+    painter.circle_filled(centre, 5.5, theme::PANEL_DARK);
+    if *on {
+        painter.circle_filled(centre, 4.0, theme::ACCENT);
+    }
+    painter.circle_stroke(centre, 5.5, Stroke::new(1.0, ring));
+    let text = if ui.is_enabled() {
+        theme::TEXT
+    } else {
+        theme::TEXT_FAINT
+    };
+    painter.galley(
+        pos2(
+            rect.left() + 14.0 + gap,
+            rect.center().y - galley.size().y / 2.0,
+        ),
+        galley,
+        text,
+    );
+    response
+}
+
 /// Converts linear gain to a 0..1 meter position (-60 dB .. +6 dB).
 fn meter_position(gain: f32) -> f32 {
     if gain <= 1e-6 {
@@ -477,6 +521,34 @@ mod tests {
             fader(ui, 0.2, 1.25, vec2(30.0, 120.0))
         });
         assert_eq!(fader_run, [(1.0, true)]);
+    }
+
+    #[test]
+    fn clicking_an_led_switch_label_toggles_it() {
+        let ctx = egui::Context::default();
+        let mut on = false;
+        let mut changes = 0;
+        // The label starts 19 points in; click on it, past the light.
+        for (i, events) in click(pos2(40.0, 10.0), PointerButton::Primary)
+            .into_iter()
+            .enumerate()
+        {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(400.0, 400.0))),
+                time: Some(i as f64 / 60.0),
+                events,
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| {
+                if led_switch(ui, &mut on, "Reverse playback").changed() {
+                    changes += 1;
+                }
+            })
+            .textures_delta
+            .clear();
+        }
+        assert!(on);
+        assert_eq!(changes, 1);
     }
 
     #[test]

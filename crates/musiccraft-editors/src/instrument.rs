@@ -208,7 +208,10 @@ impl<'a> InstrumentEditor<'a> {
     /// A checkbox for an on/off parameter.
     pub fn toggle(&mut self, ui: &mut Ui, index: usize, text: &str, hint: &str) {
         let mut on = self.get(index) >= 0.5;
-        if ui.checkbox(&mut on, text).hint(hint).changed() {
+        if crate::widgets::led_switch(ui, &mut on, text)
+            .hint(hint)
+            .changed()
+        {
             self.set_once(index, if on { 1.0 } else { 0.0 });
         }
     }

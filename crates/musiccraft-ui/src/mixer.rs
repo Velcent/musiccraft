@@ -1049,7 +1049,7 @@ fn routing(
     ui.separator();
     ui.horizontal(|ui| {
         let mut to_master = track.to_master;
-        if ui.checkbox(&mut to_master, "To master").changed() {
+        if crate::widgets::led_switch(ui, &mut to_master, "To master").changed() {
             run(
                 actions,
                 "mixer.route_to_master",

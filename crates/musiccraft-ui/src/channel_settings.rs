@@ -335,7 +335,7 @@ fn header(
         }
         ui.vertical(|ui| {
             let mut mute = channel.mute;
-            if ui.checkbox(&mut mute, "Mute").changed() {
+            if crate::widgets::led_switch(ui, &mut mute, "Mute").changed() {
                 actions.push(Action::Run(Invocation::new(
                     "channel.toggle_mute",
                     [number.to_string()],
@@ -604,7 +604,7 @@ fn midi_out(
                 .response
                 .hint("The MIDI channel (1–16) this channel's notes are sent on");
             let mut mute = channel.mute;
-            if ui.checkbox(&mut mute, "Mute").changed() {
+            if crate::widgets::led_switch(ui, &mut mute, "Mute").changed() {
                 actions.push(Action::Run(Invocation::new(
                     "channel.toggle_mute",
                     [number.to_string()],
@@ -692,7 +692,7 @@ fn layer(
                 continue;
             }
             let mut on = children.contains(&other.id);
-            if ui.checkbox(&mut on, &other.name).changed() {
+            if crate::widgets::led_switch(ui, &mut on, &other.name).changed() {
                 let mut next: Vec<usize> = frame
                     .project
                     .channels
