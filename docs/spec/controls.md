@@ -28,6 +28,15 @@ Hints and captions share one formatter per kind of value
   "−∞ dB" at silence.
 - Pans read as a percent with the side: "25% left", "Centre", "100% right".
 
+## Driven controls
+
+A knob or fader that an automation clip or a project controller drives shows
+a small dot in the automation tone: just outside a knob's track at about one
+o'clock, or at the top-right corner of a fader's cap. Its hint ends with the
+source, for example "Level 0.0 dB · automated (clip 'Master fade')" or
+"Pan Centre · driven by LFO 1". A clip wins over a controller when both
+drive the same control.
+
 ## Sources
 
 - Own design. Middle-click and double-click to reset are common conventions

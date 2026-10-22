@@ -645,6 +645,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     }
 
     state.hint = hint::begin_frame(ui.ctx(), frame.settings.show_hints);
+    automation::publish(ui.ctx(), frame.project);
     toolbar::show(ui, state, frame, &mut actions);
     if state.windows.browser {
         browser::show(ui, state, frame, &mut actions);

@@ -1952,3 +1952,30 @@ fn shift_wheel_over_the_rack_header_steps_patterns() {
     h.modifiers = Modifiers::NONE;
     assert!(stepped, "no header spot stepped the pattern");
 }
+
+#[test]
+fn automated_controls_name_their_source_in_the_hint() {
+    let mut h = Harness::new(&["channel.add_synth", "automation.create channel:1:pan"]);
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let hints: Vec<String> = (0..40)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 3.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .filter_map(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            h.state.hint.clone()
+        })
+        .collect();
+    let pan = hints
+        .iter()
+        .find(|t| t.starts_with("Pan "))
+        .expect("the pan knob's hint");
+    assert!(pan.contains(" · automated (clip '"), "{pan}");
+    let volume = hints
+        .iter()
+        .find(|t| t.starts_with("Volume") || t.starts_with("Level"))
+        .expect("the volume knob's hint");
+    assert!(!volume.contains("automated"), "{volume}");
+}

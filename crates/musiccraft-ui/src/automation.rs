@@ -4,7 +4,12 @@
 use crate::hint::Hint;
 use egui::{Align2, FontId, PointerButton, Pos2, RichText, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::{BATCH, Invocation};
-use musiccraft_project::{Automation, AutomationPoint, Curve, Meter, PLAYLIST_TRACKS, Project};
+use musiccraft_editors::widgets;
+use musiccraft_project::{
+    Automation, AutomationPoint, AutomationTarget, Curve, Meter, PLAYLIST_TRACKS, Project,
+};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::geometry::Snap;
 use crate::{Action, Frame, UiState, theme};
@@ -33,9 +38,76 @@ pub(crate) fn create_invocation(project: &Project, target: &str) -> Invocation {
     )
 }
 
+/// The command syntax for `target` (`channel:2:volume`, `mixer:3:1:mix`), as
+/// the control menus name their targets.
+fn target_name(project: &Project, target: &AutomationTarget) -> Option<String> {
+    let channel = |id| project.channel_position(id).map(|i| i + 1);
+    Some(match target {
+        AutomationTarget::ChannelVolume { channel: id } => {
+            format!("channel:{}:volume", channel(*id)?)
+        }
+        AutomationTarget::ChannelPan { channel: id } => format!("channel:{}:pan", channel(*id)?),
+        AutomationTarget::ChannelParam { channel: id, param } => {
+            format!("channel:{}:{param}", channel(*id)?)
+        }
+        AutomationTarget::MixerVolume { track } => format!("mixer:{track}:volume"),
+        AutomationTarget::MixerPan { track } => format!("mixer:{track}:pan"),
+        AutomationTarget::EffectParam { track, slot, param } => {
+            format!("mixer:{track}:{}:{param}", slot + 1)
+        }
+    })
+}
+
+/// What drives each control this frame, by target name: the text the hint
+/// bar appends, such as " · automated (clip 'Master fade')".
+#[derive(Clone, Default)]
+struct Driven(Arc<HashMap<String, String>>);
+
+fn driven_id() -> egui::Id {
+    egui::Id::new("driven-controls")
+}
+
+/// Records which controls automation clips and controllers drive, so their
+/// menus can mark them (style guide, controls M). Call once per frame.
+pub(crate) fn publish(ctx: &egui::Context, project: &Project) {
+    let mut driven = HashMap::new();
+    for automation in &project.automations {
+        if let Some(name) = target_name(project, &automation.target) {
+            driven.insert(name, format!(" · automated (clip '{}')", automation.name));
+        }
+    }
+    for controller in &project.controllers {
+        if let Some(name) = target_name(project, &controller.target) {
+            driven
+                .entry(name)
+                .or_insert_with(|| format!(" · driven by {}", controller.name));
+        }
+    }
+    ctx.data_mut(|d| d.insert_temp(driven_id(), Driven(Arc::new(driven))));
+}
+
+/// Draws the status dot on a driven control and adds its source to the hint.
+fn mark(response: &egui::Response, target: &str) {
+    let driven = response
+        .ctx
+        .data(|d| d.get_temp::<Driven>(driven_id()))
+        .unwrap_or_default();
+    let source = driven.0.get(target).cloned();
+    if source.is_some() {
+        let painter = response
+            .ctx
+            .layer_painter(response.layer_id)
+            .with_clip_rect(response.interact_rect.expand(6.0));
+        widgets::status_dot(&painter, widgets::status_anchor(response));
+    }
+    musiccraft_editors::hint::set_suffix(&response.ctx, response.id, source);
+}
+
 /// Adds a right-click menu that automates `target` (command syntax such as
-/// `mixer:0:volume`). The UI resolves the request with the current project.
+/// `mixer:0:volume`), and marks the control when something drives it. The UI
+/// resolves the request with the current project.
 pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Action>) {
+    mark(response, target);
     response.context_menu(|ui| {
         if ui.button("Create automation clip").clicked() {
             actions.push(Action::Run(Invocation::new(

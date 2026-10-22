@@ -23,6 +23,42 @@ pub fn wants_reset(response: &Response) -> bool {
     response.middle_clicked() || response.double_clicked()
 }
 
+fn status_id(widget: egui::Id) -> egui::Id {
+    widget.with("status-anchor")
+}
+
+/// Records where `response`'s control wants its status dot: just outside a
+/// knob's track at one o'clock, or on a fader cap's top edge.
+fn set_status_anchor(response: &Response, pos: Pos2) {
+    response
+        .ctx
+        .data_mut(|d| d.insert_temp(status_id(response.id), pos));
+}
+
+/// Where the status dot of `response`'s control goes: the spot the control
+/// recorded, or its top-right corner.
+#[must_use]
+pub fn status_anchor(response: &Response) -> Pos2 {
+    response
+        .ctx
+        .data(|d| d.get_temp(status_id(response.id)))
+        .unwrap_or(response.rect.right_top() + vec2(-3.0, 3.0))
+}
+
+/// The point at `angle` (radians, 0 = twelve o'clock, clockwise) on a circle.
+fn clock(center: Pos2, radius: f32, angle: f32) -> Pos2 {
+    center + vec2(angle.sin(), -angle.cos()) * radius
+}
+
+/// One o'clock, in radians from twelve.
+const ONE_OCLOCK: f32 = PI / 6.0;
+
+/// The status dot that marks an automated or driven control (style guide,
+/// controls M): a small filled dot in the automation tone.
+pub fn status_dot(painter: &egui::Painter, pos: Pos2) {
+    painter.circle_filled(pos, 2.0, theme::AUTOMATION);
+}
+
 /// A rotary knob. Drag vertically to change; middle-click or double-click
 /// resets to `default`.
 pub fn knob(
@@ -73,6 +109,7 @@ pub fn knob(
         [center, center + vec2(a.cos(), a.sin()) * (radius - 2.0)],
         Stroke::new(2.0, theme::TEXT),
     );
+    set_status_anchor(&response, clock(center, radius + 3.0, ONE_OCLOCK));
     // A reset is its own undo step.
     let started = response.drag_started_by(PointerButton::Primary) || wants_reset(&response);
     KnobOutput {
@@ -146,6 +183,7 @@ pub fn labeled_knob(
         ],
         Stroke::new(2.0, theme::TEXT),
     );
+    set_status_anchor(&response, clock(center, radius + 5.0, ONE_OCLOCK));
     let active = response.hovered() || response.dragged();
     painter.text(
         pos2(rect.center().x, rect.bottom() - 9.0),
@@ -251,6 +289,7 @@ pub fn fader(ui: &mut Ui, gain: f32, max: f32, size: Vec2) -> KnobOutput {
         ],
         Stroke::new(2.0, theme::ACCENT),
     );
+    set_status_anchor(&response, cap.right_top() + vec2(-4.0, 4.0));
     let started = (response.drag_started_by(PointerButton::Primary) && !on_rail)
         || glide_started
         || wants_reset(&response)
