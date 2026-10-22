@@ -22,7 +22,8 @@ use crate::{Action, Frame, UiState, theme, widgets};
 
 const HEADER_WIDTH: f32 = 124.0;
 const RULER_HEIGHT: f32 = 20.0;
-const LIST_WIDTH: f32 = 130.0;
+/// The clip list's widths: narrow, normal and wide.
+const LIST_WIDTHS: [(&str, f32); 3] = [("Narrow", 100.0), ("Normal", 130.0), ("Wide", 180.0)];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DragKind {
@@ -109,8 +110,20 @@ pub(crate) struct ViewOptions {
     pub(crate) separators: bool,
     /// During song playback the view pages along with the playhead.
     pub(crate) follow: bool,
-    /// The clip list column at the left.
+    /// The clip list column.
     pub(crate) clip_list: bool,
+    /// The clip list sits at the right instead of the left.
+    pub(crate) list_right: bool,
+    /// Index into `LIST_WIDTHS`.
+    pub(crate) list_width: usize,
+}
+
+impl ViewOptions {
+    fn list_width(self) -> f32 {
+        LIST_WIDTHS
+            .get(self.list_width)
+            .map_or(LIST_WIDTHS[1].1, |w| w.1)
+    }
 }
 
 impl Default for ViewOptions {
@@ -120,6 +133,8 @@ impl Default for ViewOptions {
             separators: true,
             follow: true,
             clip_list: true,
+            list_right: false,
+            list_width: 1,
         }
     }
 }
@@ -259,10 +274,27 @@ pub fn show(
                 return;
             }
             ui.horizontal_top(|ui| {
-                if state.playlist.view.clip_list {
+                let view = state.playlist.view;
+                if !view.clip_list {
+                    canvas(ui, state, frame, actions);
+                } else if view.list_right {
+                    // The list takes its column at the right edge and the
+                    // lanes fill what is left of the row.
+                    let row = ui.available_rect_before_wrap();
+                    let gap = ui.spacing().item_spacing.x;
+                    let split = row.right() - view.list_width() - gap;
+                    let lanes = egui::Rect::from_min_max(row.min, pos2(split, row.bottom()));
+                    let list = egui::Rect::from_min_max(pos2(split + gap, row.top()), row.max);
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(lanes), |ui| {
+                        canvas(ui, state, frame, actions);
+                    });
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
+                        pattern_list(ui, state, frame.project, actions);
+                    });
+                } else {
                     pattern_list(ui, state, frame.project, actions);
+                    canvas(ui, state, frame, actions);
                 }
-                canvas(ui, state, frame, actions);
             });
         });
     crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
@@ -432,6 +464,15 @@ fn window_menu(
         let view = &mut state.playlist.view;
         ui.add(egui::Checkbox::new(&mut view.clip_list, "Clip list"))
             .hint("Alt+P shows or hides the clip list");
+        ui.checkbox(&mut view.list_right, "Clip list on the right side");
+        ui.menu_button("Clip list width", |ui| {
+            for (i, (label, _)) in LIST_WIDTHS.iter().enumerate() {
+                if ui.radio(view.list_width == i, *label).clicked() {
+                    view.list_width = i;
+                    ui.close();
+                }
+            }
+        });
         ui.checkbox(&mut view.shading, "Bar-group shading");
         ui.checkbox(&mut view.separators, "Track separators");
         ui.checkbox(&mut view.follow, "Follow the playhead");
@@ -743,12 +784,13 @@ fn pattern_list(
     actions: &mut Vec<Action>,
 ) {
     state.playlist.picker_items.clear();
+    let width = state.playlist.view.list_width();
     ui.vertical(|ui| {
-        ui.set_width(LIST_WIDTH);
+        ui.set_width(width);
         // Kind switches: one lit shows only that kind; none lit shows all.
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            ui.add_space(((LIST_WIDTH - 3.0 * 28.0 - 4.0) / 2.0).max(0.0));
+            ui.add_space(((width - 3.0 * 28.0 - 4.0) / 2.0).max(0.0));
             for (picker, icon, hint) in [
                 (
                     Picker::Patterns,

@@ -3119,3 +3119,38 @@ fn alt_p_hides_the_playlist_clip_list_and_the_lanes_take_its_width() {
     assert!(h.state.playlist.view.clip_list);
     assert_eq!(lanes(&h).left(), shown.left());
 }
+
+#[test]
+fn the_playlist_clip_list_can_sit_on_the_right_and_change_width() {
+    let mut h = Harness::new(&["pattern.add"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let lanes = |h: &Harness| h.state.playlist.last_view.expect("playlist drawn").1;
+    let left = lanes(&h);
+    h.state.playlist.view.list_width = 2;
+    h.settle();
+    assert!(
+        (lanes(&h).left() - left.left() - 50.0).abs() < 1.0,
+        "wide adds 50 points"
+    );
+    h.state.playlist.view.list_width = 1;
+    h.state.playlist.view.list_right = true;
+    h.settle();
+    let right = lanes(&h);
+    assert!(right.left() < left.left() - 100.0, "{left:?} → {right:?}");
+    assert!(right.right() < left.right() - 100.0, "{left:?} → {right:?}");
+    // The list still works from its new side: its kind switches are there.
+    let window = window_rect(&h, "playlist-window");
+    let hint = (0..60)
+        .map(|j| pos2(right.right() + 10.0 + 2.0 * j as f32, window.top() + 40.0))
+        .filter(|&p| p.x < window.right())
+        .find_map(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .clone()
+                .filter(|t| t.starts_with("Patterns: show only"))
+        });
+    assert!(hint.is_some(), "the kind switches sit right of the lanes");
+}
