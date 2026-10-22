@@ -2158,3 +2158,41 @@ fn double_clicking_stop_silences_every_sound() {
     out.extend(h.click(stop, PointerButton::Primary));
     assert_eq!(out, ["transport.stop", "transport.panic"]);
 }
+
+#[test]
+fn the_channel_strip_switches_pages_mutes_and_routes_to_a_free_track() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let find = |h: &mut Harness, prefix: &str| -> Pos2 {
+        (0..14)
+            .flat_map(|j| (0..80).map(move |i| (i, j)))
+            .map(|(i, j)| window.left_top() + vec2(4.0 + 6.0 * i as f32, 24.0 + 5.0 * j as f32))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state
+                    .hint
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with(prefix))
+            })
+            .unwrap_or_else(|| panic!("no strip control hinted {prefix:?}"))
+    };
+    let functions = find(&mut h, "Functions —");
+    h.click(functions, PointerButton::Primary);
+    h.settle();
+    assert_eq!(
+        h.state.channel_tab,
+        crate::channel_settings::ChannelTab::Functions
+    );
+    let on = find(&mut h, "On:");
+    h.click(on, PointerButton::Primary);
+    h.settle();
+    assert!(h.session.project().channels[0].mute);
+    let before = h.session.project().channels[0].mixer_track;
+    let caption = find(&mut h, "Click to route this channel to a free mixer track");
+    h.click(caption, PointerButton::Primary);
+    h.settle();
+    assert_ne!(h.session.project().channels[0].mixer_track, before);
+}

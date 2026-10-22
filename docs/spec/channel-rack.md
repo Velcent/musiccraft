@@ -342,14 +342,27 @@ square partials), normalized to a 0.9 peak and faded out at the end.
 
 ## Channel settings window
 
-- Clicking a channel's name opens its
-  settings window. A **fixed header** stays at the top: the channel name and
-  instrument, volume, pan and pitch knobs, mute, and the mixer track it feeds
-  as a number box (drag or type; `channel.route`).
-- Below it, **tabs**: *Sound* (the instrument's own sections: sample, oscillators,
-  operators, plugin parameters…), *Envelope* (the amplitude envelope, for
-  instruments that use it) and *Functions* (boxes tiled two to a row:
-  VOICES | TIMING with swing, ARPEGGIATOR full width, CHOKE | ECHO). Only the tab's contents scroll. The last tab used stays
+- Clicking a channel's name opens its settings window. Its header title is
+  the channel's name, an em dash and the mixer track it feeds ("Lead —
+  Insert 3", or "Kick — Master").
+- Under the header, one fixed **strip** stays at the top:
+  - At the left, the **tabs** as square glyph cells: *Sound* (a sine wave:
+    the instrument's own sections, such as sample, oscillators, operators or
+    plugin parameters), *Envelope* (an envelope shape: the amplitude
+    envelope, for instruments that use it) and *Functions* (three climbing
+    squares). The active cell takes the page's tone, so it reads as joined
+    to the page. Each cell's hint names the page; the Sound hint also names
+    the instrument.
+  - At the right, flush right: the **On** light (lit while the channel plays;
+    click toggles mute), Pan (shared pan text, "25% left" / "Centre"),
+    Volume, Pitch, a gap, then the **Track** box (drag or type,
+    `channel.route`; "M" is the master). Pitch stays in its place for hosted
+    plugins, drawn disabled, so the strip never shifts. Clicking the
+    "Track" caption routes to a free mixer track (`channel.route_free`).
+    Double-clicking the box opens the mixer with that track selected.
+- The **page** under the strip is the selected tab's contents: Functions
+  tiles its boxes two to a row (VOICES | TIMING with swing, ARPEGGIATOR full
+  width, CHOKE | ECHO). Only the page scrolls. The last tab used stays
   selected while the window is open.
 - MIDI Out channels have no sound settings: the window shows their MIDI page
   only.

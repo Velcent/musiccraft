@@ -183,7 +183,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 | Mixer columns | insert tracks (strips); the first is Master; default names "Insert *n*" | `mixer.rs` |
 | Effect list beside the strips | slots ("empty", "+ add effect") | `mixer.rs` |
 | File and plugin tree | Browser (proposed title "Browser" in place of today's capitalised caption). Roots today: Current project, Controllers (*n*) and a plugin-tree root. Proposed (browser section): This project, Controllers (*n*), Instruments & effects, Presets, then user folders | `browser.rs`, `controllers.rs` |
-| Channel window | "Channel settings" in menus and hints; title "Channel — *name*" today, proposed "*channel* — *track*" ("Lead — Insert 3") | `channel_settings.rs` |
+| Channel window | "Channel settings" in menus and hints; title "*channel* — *track*" ("Lead — Insert 3") | `channel_settings.rs` |
 | Effect window | title "*track* › *effect*" today, proposed "*effect* — *track*" ("Equaliser — Lead") | `effect_window.rs` |
 | Automation window | Automation — *name* | `automation.rs` |
 | Settings | Settings | `settings.rs` |
@@ -412,7 +412,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 - **Group-box titles** in editor pages: small bold capitals in `TEXT_DIM` inside the box's top-left corner (OSCILLATORS, FILTER, LFO, ENVELOPE in the synth; SAMPLE, PLUGIN in channel windows).
 - **Menu headings:** small dim sentence-case text on a heading band ("Control from", "Value").
 - **List headings:** none. Today's PATTERNS / AUDIO / AUTOMATION headings in the playlist's left column are dropped (playlist section).
-- **Window titles**, existing: "Channel rack", "Playlist" (with "Arrangement" in `TEXT_DIM`), "Piano roll — *channel*", "Mixer — *track*", "Channel — *name*", "*track* › *effect*", "Automation — *name*", "Settings", "Keyboard shortcuts", "Spectrum analyser". Proposed renames: the browser's capitalised caption → "Browser"; channel windows → "*channel* — *track*"; effect windows → "*effect* — *track*"; "Playlist" → "Playlist — *arrangement*" once arrangements exist.
+- **Window titles**, existing: "Channel rack", "Playlist" (with "Arrangement" in `TEXT_DIM`), "Piano roll — *channel*", "Mixer — *track*", "*channel* — *track*", "*effect* — *track*", "Automation — *name*", "Settings", "Keyboard shortcuts", "Spectrum analyser". Proposed renames: the browser's capitalised caption → "Browser"; "Playlist" → "Playlist — *arrangement*" once arrangements exist.
 - **Display captions:** BAR.BEAT.STEP, MIN:SEC, BPM, CPU.
 - **Switches:** today PAT / SONG, TAP, ON, S, "Graph", "Slide", "Porta", "Clip", "Snap". Proposed renames: PAT / SONG → "Pattern" / "Song" (toolbar section); "Graph" becomes an icon toggle named "Graph editor" in its hint (channel-rack section); ON becomes a round light (mixer section).
 - **Group filter:** "Group filter" in hints, "No group" for the unfiltered choice (channel-rack section). Today's hint uses a coined term (see Gaps).

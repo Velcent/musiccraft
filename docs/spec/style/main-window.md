@@ -315,8 +315,8 @@ Tokens are in `crates/musiccraft-editors/src/theme.rs`. Names marked "new" are p
   - `Channel rack`
   - `Piano roll — <channel>`
   - `Mixer — <track>` (`Mixer — Master` when the master is selected)
-  - `Channel — <channel>`
-  - `<track> › <effect>` for effect windows
+  - `<channel> — <track>` for channel windows
+  - `<effect> — <track>` for effect windows
   - `Automation — <name>`
   - `Spectrum analyser`
   - `Keyboard shortcuts`

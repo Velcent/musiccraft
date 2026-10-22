@@ -410,17 +410,6 @@ fn drawn_shape(effect: &EffectView) -> bool {
         && value(effect, "shape").round() as i32 == musiccraft_dsp::character::DRAWN_SHAPE
 }
 
-/// Short label for a pan position: `L`, `C`, `R`, or a percentage.
-fn pan_label(pan: f32) -> String {
-    match pan {
-        p if p <= -0.99 => "L".to_owned(),
-        p if p >= 0.99 => "R".to_owned(),
-        p if p.abs() < 0.01 => "C".to_owned(),
-        p if p < 0.0 => format!("{:.0}L", -p * 100.0),
-        p => format!("{:.0}R", p * 100.0),
-    }
-}
-
 /// A parameter name for display: `low_gain` → `Low gain`.
 /// Long labels lose their tail under a knob; these words shorten them.
 const ABBREVIATIONS: [(&str, &str); 5] = [
@@ -1114,7 +1103,7 @@ pub fn graph(
                 painter.text(
                     pos2(x + 4.0, y),
                     egui::Align2::LEFT_TOP,
-                    pan_label(value(effect, &format!("tap{tap}_pan"))),
+                    crate::format::pan(value(effect, &format!("tap{tap}_pan"))),
                     egui::FontId::proportional(10.0),
                     theme::TEXT_DIM,
                 );

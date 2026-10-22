@@ -118,6 +118,10 @@ pub enum Icon {
     Check,
     /// Output (a small circle with a short arrow leaving to the right).
     Out,
+    /// Envelope page (a filled rise, fall, shelf and fall).
+    Envelope,
+    /// Functions page (three small squares climbing).
+    Steps,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -739,6 +743,35 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 vec![p(r, 0.72, 0.28), p(r, 0.95, 0.5), p(r, 0.72, 0.72)],
                 stroke,
             ));
+        }
+        Icon::Envelope => {
+            painter.add(Shape::convex_polygon(
+                vec![p(r, 0.0, 0.95), p(r, 0.2, 0.1), p(r, 0.4, 0.45)],
+                color,
+                Stroke::NONE,
+            ));
+            painter.add(Shape::convex_polygon(
+                vec![
+                    p(r, 0.4, 0.95),
+                    p(r, 0.4, 0.45),
+                    p(r, 0.75, 0.45),
+                    p(r, 1.0, 0.95),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+            painter.add(Shape::convex_polygon(
+                vec![p(r, 0.0, 0.95), p(r, 0.4, 0.45), p(r, 0.4, 0.95)],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Steps => {
+            let side = r.width() * 0.3;
+            for (x, y) in [(0.0, 0.7), (0.35, 0.35), (0.7, 0.0)] {
+                let min = p(r, x, y);
+                painter.rect_filled(Rect::from_min_size(min, vec2(side, side)), 1.0, color);
+            }
         }
         Icon::SlideRamp => {
             painter.add(Shape::convex_polygon(

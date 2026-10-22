@@ -15,6 +15,7 @@ use musiccraft_project::params::{INSTRUMENT_PARAMS, MIDI_CCS, ParamSpec, inst};
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME};
 
 use crate::dialogs::Dialog;
+use crate::icons::{self, Icon};
 use crate::{Action, Frame, UiState, theme, widgets};
 
 /// Pages of the channel settings window.
@@ -175,7 +176,15 @@ pub fn show(
     };
     let area = state.workspace;
     let id = egui::Id::new("channel-settings");
-    let title = format!("Channel — {}", channel.name);
+    let title = format!(
+        "{} — {}",
+        channel.name,
+        frame
+            .project
+            .mixer
+            .get(channel.mixer_track)
+            .map_or("Master", |t| t.name.as_str())
+    );
     let default =
         egui::Rect::from_min_size(area.right_top() + vec2(-470.0, 30.0), vec2(440.0, 0.0));
     let mut window = crate::chrome::window(ctx, id, "Channel settings", area, default, false)
@@ -216,23 +225,6 @@ fn contents(
     actions: &mut Vec<Action>,
 ) {
     let number = index + 1;
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(channel.instrument.label()).color(theme::TEXT_DIM));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let track = channel.mixer_track;
-            let name = frame
-                .project
-                .mixer
-                .get(track)
-                .map_or("", |t| t.name.as_str());
-            ui.label(
-                RichText::new(format!("Mixer {track} · {name}"))
-                    .small()
-                    .color(theme::TEXT_DIM),
-            );
-        });
-    });
-    ui.add_space(4.0);
     if let Instrument::MidiOut { midi_channel } = &channel.instrument {
         // Sound settings do not apply to external gear.
         egui::ScrollArea::vertical()
@@ -242,24 +234,12 @@ fn contents(
             });
         return;
     }
-    header(ui, state, frame, number, channel, actions);
-    ui.add_space(4.0);
     let has_envelope = instrument::has_envelope(kind_of(&channel.instrument));
     if state.channel_tab == ChannelTab::Envelope && !has_envelope {
         state.channel_tab = ChannelTab::Sound;
     }
-    ui.horizontal(|ui| {
-        for (tab, label, shown) in [
-            (ChannelTab::Sound, "Sound", true),
-            (ChannelTab::Envelope, "Envelope", has_envelope),
-            (ChannelTab::Functions, "Functions", true),
-        ] {
-            if shown {
-                ui.selectable_value(&mut state.channel_tab, tab, label);
-            }
-        }
-    });
-    ui.separator();
+    strip(ui, state, frame, number, channel, has_envelope, actions);
+    ui.add_space(4.0);
     egui::ScrollArea::vertical()
         .id_salt("channel-settings-scroll")
         .auto_shrink([false, false])
@@ -274,8 +254,176 @@ fn contents(
         });
 }
 
-/// The fixed header: volume, pan, pitch, mute and the mixer track.
-fn header(
+/// The fixed strip under the header: the page tabs as glyph cells at the
+/// left; the On light, pan, volume, pitch and the mixer track flush right.
+fn strip(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    number: usize,
+    channel: &Channel,
+    has_envelope: bool,
+    actions: &mut Vec<Action>,
+) {
+    egui::Frame::new()
+        .fill(theme::PANEL_DARK)
+        .corner_radius(3.0)
+        .inner_margin(egui::Margin::symmetric(0, 0))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                let tabs = [
+                    (
+                        ChannelTab::Sound,
+                        Icon::Sine,
+                        format!("Sound — the {}'s own controls", channel.instrument.label()),
+                        true,
+                    ),
+                    (
+                        ChannelTab::Envelope,
+                        Icon::Envelope,
+                        "Envelope — how each note's level rises and falls".to_owned(),
+                        has_envelope,
+                    ),
+                    (
+                        ChannelTab::Functions,
+                        Icon::Steps,
+                        "Functions — voices, timing, choke, arpeggiator and echo".to_owned(),
+                        true,
+                    ),
+                ];
+                for (tab, icon, hint, shown) in tabs {
+                    if shown && tab_cell(ui, icon, state.channel_tab == tab, &hint).clicked() {
+                        state.channel_tab = tab;
+                    }
+                }
+                // The mixing controls sit flush right; the gap in the middle
+                // takes what is left.
+                ui.add_space((ui.available_width() - STRIP_CONTROLS).max(8.0));
+                ui.spacing_mut().item_spacing.x = 4.0;
+                on_light(ui, number, channel, actions);
+                pan_knob(ui, state, number, channel, actions);
+                volume_knob(ui, state, number, channel, actions);
+                ui.add_enabled_ui(channel.instrument.plugin().is_none(), |ui| {
+                    param_knob(ui, state, number, channel, inst::PITCH, "Pitch", actions);
+                });
+                ui.add_space(24.0);
+                track_box(ui, state, frame, number, channel, actions);
+            });
+        });
+}
+
+/// Width of the strip's right group: On, three knobs, the gap and the track
+/// box, with their spacing and the right margin.
+const STRIP_CONTROLS: f32 = 28.0 + 3.0 * 52.0 + 24.0 + 40.0 + 6.0 * 4.0 + 8.0;
+
+/// One square tab cell: the active one takes the page's tone.
+fn tab_cell(ui: &mut egui::Ui, icon: Icon, active: bool, hint: &str) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(40.0, 40.0), egui::Sense::click());
+    let fill = if active {
+        theme::PANEL
+    } else if response.hovered() {
+        theme::RAISED
+    } else {
+        theme::PANEL_DARK
+    };
+    ui.painter().rect_filled(rect, 2.0, fill);
+    let color = if active {
+        theme::ACCENT
+    } else {
+        theme::TEXT_DIM
+    };
+    icons::paint(ui.painter(), rect.shrink(9.0), icon, color);
+    response.hint(hint)
+}
+
+fn on_light(ui: &mut egui::Ui, number: usize, channel: &Channel, actions: &mut Vec<Action>) {
+    ui.vertical(|ui| {
+        ui.set_width(28.0);
+        ui.add_space(16.0);
+        ui.vertical_centered(|ui| {
+            let light = widgets::dot(ui, !channel.mute, theme::ACCENT)
+                .hint("On: lit while the channel plays · click to mute");
+            if light.clicked() {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.toggle_mute",
+                    [number.to_string()],
+                )));
+            }
+            ui.add_space(10.0);
+            ui.label(RichText::new("On").small().color(theme::TEXT_DIM));
+        });
+    });
+}
+
+fn volume_knob(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    let volume = widgets::labeled_knob(
+        ui,
+        "Volume",
+        channel.volume / MAX_VOLUME,
+        DEFAULT_CHANNEL_VOLUME / MAX_VOLUME,
+        false,
+        &format!("{:.0}%", channel.volume * 100.0),
+    );
+    crate::automation::menu(
+        &volume.response,
+        &format!("channel:{number}:volume"),
+        actions,
+    );
+    if volume.started {
+        state.begin_gesture();
+    }
+    if let Some(t) = volume.changed {
+        actions.push(Action::Coalesced(
+            Invocation::new(
+                "channel.set_volume",
+                [number.to_string(), format!("{:.3}", t * MAX_VOLUME)],
+            ),
+            state.gesture(),
+        ));
+    }
+}
+
+fn pan_knob(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    number: usize,
+    channel: &Channel,
+    actions: &mut Vec<Action>,
+) {
+    let pan = widgets::labeled_knob(
+        ui,
+        "Pan",
+        (channel.pan + 1.0) / 2.0,
+        0.5,
+        true,
+        &crate::format::pan(channel.pan),
+    );
+    crate::automation::menu(&pan.response, &format!("channel:{number}:pan"), actions);
+    if pan.started {
+        state.begin_gesture();
+    }
+    if let Some(t) = pan.changed {
+        actions.push(Action::Coalesced(
+            Invocation::new(
+                "channel.set_pan",
+                [number.to_string(), format!("{:.3}", t * 2.0 - 1.0)],
+            ),
+            state.gesture(),
+        ));
+    }
+}
+
+/// The mixer track box: "M" or the insert number over a "Track" caption that
+/// routes to a free track when clicked; double-click opens the mixer there.
+fn track_box(
     ui: &mut egui::Ui,
     state: &mut UiState,
     frame: &Frame<'_>,
@@ -283,81 +431,79 @@ fn header(
     channel: &Channel,
     actions: &mut Vec<Action>,
 ) {
-    ui.horizontal(|ui| {
-        let volume = widgets::labeled_knob(
-            ui,
-            "Volume",
-            channel.volume / MAX_VOLUME,
-            DEFAULT_CHANNEL_VOLUME / MAX_VOLUME,
-            false,
-            &format!("{:.0}%", channel.volume * 100.0),
-        );
-        crate::automation::menu(
-            &volume.response,
-            &format!("channel:{number}:volume"),
-            actions,
-        );
-        if volume.started {
-            state.begin_gesture();
-        }
-        if let Some(t) = volume.changed {
-            actions.push(Action::Coalesced(
-                Invocation::new(
-                    "channel.set_volume",
-                    [number.to_string(), format!("{:.3}", t * MAX_VOLUME)],
-                ),
-                state.gesture(),
-            ));
-        }
-        let pan = widgets::labeled_knob(
-            ui,
-            "Pan",
-            (channel.pan + 1.0) / 2.0,
-            0.5,
-            true,
-            &format!("{:+.0}", channel.pan * 100.0),
-        );
-        crate::automation::menu(&pan.response, &format!("channel:{number}:pan"), actions);
-        if pan.started {
-            state.begin_gesture();
-        }
-        if let Some(t) = pan.changed {
-            actions.push(Action::Coalesced(
-                Invocation::new(
-                    "channel.set_pan",
-                    [number.to_string(), format!("{:.3}", t * 2.0 - 1.0)],
-                ),
-                state.gesture(),
-            ));
-        }
-        if channel.instrument.plugin().is_none() {
-            param_knob(ui, state, number, channel, inst::PITCH, "Pitch", actions);
-        }
-        ui.vertical(|ui| {
-            let mut mute = channel.mute;
-            if crate::widgets::led_switch(ui, &mut mute, "Mute").changed() {
+    ui.vertical(|ui| {
+        ui.set_width(40.0);
+        ui.add_space(16.0);
+        ui.vertical_centered(|ui| {
+            let last = frame.project.mixer.len().saturating_sub(1);
+            let mut track = channel.mixer_track;
+            let name = frame
+                .project
+                .mixer
+                .get(track)
+                .map_or("", |t| t.name.as_str());
+            let response = ui.add(
+                egui::DragValue::new(&mut track)
+                    .range(0..=last)
+                    .custom_formatter(|n, _| track_label(n as usize))
+                    .custom_parser(|text| parse_track(text).map(|n| n as f64)),
+            );
+            if response.changed() {
                 actions.push(Action::Run(Invocation::new(
-                    "channel.toggle_mute",
+                    "channel.route",
+                    [number.to_string(), track.to_string()],
+                )));
+            }
+            if response.double_clicked() {
+                state.selected_track = channel.mixer_track;
+                state.windows.mixer = true;
+                state.arrange = Some(crate::Arrange::Raise("mixer-window"));
+            }
+            response.hint(format!(
+                "Mixer track: {name} · drag or type to route · double-click opens the mixer"
+            ));
+            ui.add_space(6.0);
+            let caption = ui
+                .add(
+                    egui::Label::new(RichText::new("Track").small().color(theme::TEXT_DIM))
+                        .sense(egui::Sense::click()),
+                )
+                .hint("Click to route this channel to a free mixer track");
+            if caption.hovered() {
+                ui.painter().text(
+                    caption.rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Track",
+                    egui::FontId::proportional(theme::FONT_CAPTION),
+                    theme::TEXT,
+                );
+            }
+            if caption.clicked() {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.route_free",
                     [number.to_string()],
                 )));
             }
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Track").small().color(theme::TEXT_DIM));
-                let last = frame.project.mixer.len().saturating_sub(1);
-                let mut track = channel.mixer_track;
-                if ui
-                    .add(egui::DragValue::new(&mut track).range(0..=last))
-                    .hint("Mixer track this channel feeds (0 = master)")
-                    .changed()
-                {
-                    actions.push(Action::Run(Invocation::new(
-                        "channel.route",
-                        [number.to_string(), track.to_string()],
-                    )));
-                }
-            });
         });
     });
+}
+
+/// "M" for the master, else the insert number.
+fn track_label(track: usize) -> String {
+    if track == 0 {
+        "M".to_owned()
+    } else {
+        track.to_string()
+    }
+}
+
+fn parse_track(text: &str) -> Option<usize> {
+    let text = text.trim();
+    if text.eq_ignore_ascii_case("m") {
+        Some(0)
+    } else {
+        text.parse().ok()
+    }
 }
 
 /// The Sound page: the instrument's own sections.
