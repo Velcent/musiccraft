@@ -131,9 +131,9 @@ impl Tab {
 #[derive(Debug, Clone, Default)]
 pub struct BrowserState {
     search: String,
-    tab: Tab,
+    pub(crate) tab: Tab,
     /// Branches opened or closed by hand, by key.
-    open: BTreeMap<String, bool>,
+    pub(crate) open: BTreeMap<String, bool>,
     /// After "Fold all", branches that open by default start closed too.
     folded: bool,
     /// The column is rolled up to its header.
@@ -1102,7 +1102,23 @@ fn this_project(
         .controllers
         .iter()
         .any(|c| matches(&search, &c.name));
+    let history = &frame.history;
+    let redo: Vec<(usize, &String)> = history
+        .redo_steps
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, s)| matches(&search, s))
+        .collect();
+    let undo: Vec<(usize, &String)> = history
+        .steps
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| matches(&search, s))
+        .collect();
     let has_match = !patterns.is_empty()
+        || !redo.is_empty()
+        || !undo.is_empty()
         || !channels.is_empty()
         || !effects.is_empty()
         || !automations.is_empty()
@@ -1270,8 +1286,56 @@ fn this_project(
                     }
                 },
             );
+            let label = format!("History ({})", history.steps.len());
+            branch(
+                ui,
+                state,
+                "project/history",
+                1,
+                folder,
+                &label,
+                false,
+                !redo.is_empty() || !undo.is_empty(),
+                |ui, _| history_rows(ui, &redo, &undo, actions),
+            );
         },
     );
+}
+
+/// This project › History: redo steps (dim) above the undo steps, newest
+/// first, as in Edit › History. A click undoes or redoes to just after it.
+fn history_rows(
+    ui: &mut egui::Ui,
+    redo: &[(usize, &String)],
+    undo: &[(usize, &String)],
+    actions: &mut Vec<Action>,
+) {
+    use crate::toolbar::HistoryPick;
+    let rows = redo
+        .iter()
+        .map(|(i, step)| (HistoryPick::Redo(*i), *step, true))
+        .chain(
+            undo.iter()
+                .map(|(i, step)| (HistoryPick::Undo(*i), *step, false)),
+        );
+    for (pick, step, ahead) in rows {
+        let key = format!("history:{pick:?}");
+        let mut shown = Row::new(&key, 2, Glyph::Icon(Icon::Undo, theme::TEXT_DIM), step);
+        if ahead {
+            shown.color = theme::TEXT_DIM;
+        }
+        let hint = if ahead {
+            "Click to redo up to this step"
+        } else {
+            "Click to undo back to just after this step"
+        };
+        if row(ui, &shown, Sense::click()).hint(hint).clicked() {
+            let (name, times) = pick.runs();
+            for _ in 0..times {
+                actions.push(Action::Run(Invocation::new(name, Vec::<String>::new())));
+            }
+        }
+    }
 }
 
 /// A folder on disk, its subfolders first and then its WAV files.

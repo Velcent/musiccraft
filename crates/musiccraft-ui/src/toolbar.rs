@@ -530,7 +530,7 @@ fn history_menu(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>)
 
 /// A row picked in Edit › History, counted from the current state.
 #[derive(Debug, Clone, Copy)]
-enum HistoryPick {
+pub(crate) enum HistoryPick {
     /// The undo step this many back (0: the latest), keeping it.
     Undo(usize),
     /// The redo step this many ahead (0: the next), re-running it.
@@ -539,7 +539,7 @@ enum HistoryPick {
 
 impl HistoryPick {
     /// The command to repeat and how many times.
-    fn runs(self) -> (&'static str, usize) {
+    pub(crate) fn runs(self) -> (&'static str, usize) {
         match self {
             Self::Undo(i) => ("edit.undo", i),
             Self::Redo(i) => ("edit.redo", i + 1),

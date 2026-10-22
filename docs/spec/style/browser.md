@@ -490,16 +490,15 @@ Ordered by visual impact. Each item names the file(s) to change; behaviour chang
 2. **Search has no tags, Type filter or Any/All.** Search sits in the footer now, but the Tags toggle, "search this folder", the magnifier and the tags panel (with tag storage) are missing. `crates/musiccraft-ui/src/browser.rs` (`show`, `BrowserState`).
 3. **No preview strip or preview controls.** A click always previews the whole file at a fixed level. There is no waveform, playhead, volume, loop or info line, and no short-preview default. `crates/musiccraft-ui/src/browser.rs`; `Action::PreviewSample` in `crates/musiccraft-app/src/main.rs` (fixed gain); `Preview` in `crates/musiccraft-engine/src/graph.rs`.
 4. **No favourites.** No star on rows and no Favourites tab. `crates/musiccraft-ui/src/browser.rs`; favourites need a per-user store (`crates/musiccraft-ui/src/settings.rs`, `docs/spec/settings.md`).
-5. **No undo history in This project.** Patterns, Channels, Effects, Controllers, Automation and Samples are listed; the undo history is not. `crates/musiccraft-ui/src/browser.rs` (`this_project`).
-6. **Drag and drop is partial.**
+5. **Drag and drop is partial.**
     - Effects cannot be dragged, and nothing can be dropped on the mixer.
     - Generators dropped on a mixer strip are not routed.
     - Files: `crates/musiccraft-ui/src/browser.rs`, `crates/musiccraft-ui/src/mixer.rs` (no drop handling), `crates/musiccraft-ui/src/channel_rack.rs` (`drop_target`, which replaces samplers' samples only); specs `channel-rack.md`, `mixer.md`.
-7. **Only WAV files are listed.** Project files and presets on disk are never shown, and there are no "other file types" or "file extensions" options. `crates/musiccraft-ui/src/browser.rs` (`BrowserState::listing`).
-8. **Keyboard navigation is partial.** Up/Down/Left/Right/Enter, Ctrl+Up, Ctrl+F and Esc work (`keymap.md`, "Over the browser"); Enter adds the row rather than sending a sound to the selected channel. Still missing: Shift+Up/Down send, Backspace back, Shift+F, Alt+F, F2/F3, Shift+wheel zoom and F8. Refresh gets no key because Ctrl+R is export.
-9. **Long names.** The simplified bar now sits on the column's outer (left) edge (`scrollbars::plain_area_left`); it moves to the right edge once docking right exists. Long names are cut with an ellipsis and pop out in full on hover. `crates/musiccraft-ui/src/browser.rs`.
-10. **Resize, dock and hide options are missing.** The panel resizes and collapses to its header, but there is no second remembered width, no dock-right, no floating mode and no auto-hide. `docs/spec/window-layout.md` first; then `crates/musiccraft-ui/src/browser.rs` (`egui::Panel::left`), `crates/musiccraft-ui/src/lib.rs` (`WindowState`).
-11. **No plugin chooser overlay** (F8). A new spec and a new module in `crates/musiccraft-ui/src/`.
+6. **Only WAV files are listed.** Project files and presets on disk are never shown, and there are no "other file types" or "file extensions" options. `crates/musiccraft-ui/src/browser.rs` (`BrowserState::listing`).
+7. **Keyboard navigation is partial.** Up/Down/Left/Right/Enter, Ctrl+Up, Ctrl+F and Esc work (`keymap.md`, "Over the browser"); Enter adds the row rather than sending a sound to the selected channel. Still missing: Shift+Up/Down send, Backspace back, Shift+F, Alt+F, F2/F3, Shift+wheel zoom and F8. Refresh gets no key because Ctrl+R is export.
+8. **Long names.** The simplified bar now sits on the column's outer (left) edge (`scrollbars::plain_area_left`); it moves to the right edge once docking right exists. Long names are cut with an ellipsis and pop out in full on hover. `crates/musiccraft-ui/src/browser.rs`.
+9. **Resize, dock and hide options are missing.** The panel resizes and collapses to its header, but there is no second remembered width, no dock-right, no floating mode and no auto-hide. `docs/spec/window-layout.md` first; then `crates/musiccraft-ui/src/browser.rs` (`egui::Panel::left`), `crates/musiccraft-ui/src/lib.rs` (`WindowState`).
+10. **No plugin chooser overlay** (F8). A new spec and a new module in `crates/musiccraft-ui/src/`.
 
 ## Sources
 

@@ -70,7 +70,12 @@ impl Harness {
             ..Default::default()
         };
         self.time += 1.0 / 60.0;
-        let history = History::default();
+        let (undo, redo) = self.session.history();
+        let history = History {
+            steps: undo.iter().take(15).map(ToString::to_string).collect(),
+            redo_steps: redo.iter().take(15).map(ToString::to_string).collect(),
+            ..History::default()
+        };
         let mut actions = Vec::new();
         {
             let Self {
@@ -2939,6 +2944,63 @@ fn the_browser_walks_its_tree_with_the_arrow_keys_and_enter_adds_an_effect() {
         h.key(egui::Key::ArrowUp, Modifiers::NONE);
     }
     assert_eq!(selected(&h), Some(first));
+}
+
+#[test]
+fn this_projects_history_rows_undo_and_redo_to_a_step() {
+    let mut h = Harness::new(&[]);
+    for line in [
+        "project.set_tempo 100",
+        "project.set_tempo 110",
+        "project.set_tempo 120",
+    ] {
+        h.session.run_line(line).unwrap();
+    }
+    h.state.windows.browser = true;
+    h.state.browser.tab = crate::browser::Tab::Project;
+    h.state
+        .browser
+        .open
+        .insert("project/history".to_owned(), true);
+    h.settle();
+    let row_with = |h: &mut Harness, hint: &str| {
+        (0..250)
+            .map(|j| pos2(80.0, 40.0 + 3.0 * j as f32))
+            .find(|p| {
+                h.frame(vec![Event::PointerMoved(*p)]);
+                h.frame(vec![]);
+                h.state.hint.as_deref().is_some_and(|t| t.starts_with(hint))
+            })
+    };
+    // The undo rows run newest first; the third is the first tempo change.
+    let first = row_with(&mut h, "Click to undo").expect("an undo row");
+    let rows: Vec<Pos2> = (0..60)
+        .map(|j| first + vec2(0.0, 3.0 * j as f32))
+        .filter(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Click to undo"))
+        })
+        .collect();
+    let last = *rows.last().unwrap();
+    let out = h.click(last, PointerButton::Primary);
+    assert_eq!(
+        out,
+        ["edit.undo", "edit.undo"],
+        "back to just after the first"
+    );
+    assert!((h.session.project().tempo_bpm() - 100.0).abs() < 0.01);
+    h.settle();
+    let redo = row_with(&mut h, "Click to redo").expect("a redo row");
+    let out = h.click(redo, PointerButton::Primary);
+    assert!(
+        !out.is_empty() && out.iter().all(|c| c == "edit.redo"),
+        "{out:?}"
+    );
+    assert!(h.session.project().tempo_bpm() > 100.0);
 }
 
 #[test]

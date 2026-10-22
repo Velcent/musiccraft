@@ -28,13 +28,16 @@ The All tab shows these categories in this order; the other tabs show only
 their category.
 
 1. **This project**: Patterns (n), Channels (n), Effects (n), Controllers
-   (n), Automation (n), Samples (n).
+   (n), Automation (n), Samples (n), History (n).
    - A pattern: click selects it (`pattern.select`).
    - A channel: click selects it and opens its settings window.
    - An effect ("track · effect"): click opens or closes its effect window.
    - Controllers: the controller list (`controllers.md`).
    - An automation clip: click opens it in the automation editor.
    - A sample: as a sound row (below).
+   - History: the same steps as Edit › History (`commands.md`), the redo
+     steps dim above the undo steps, newest first; n counts the undo steps.
+     A click undoes or redoes to just after that step.
 2. **Instruments & effects**: Effects (the built-in effects), Generators (the
    built-in instruments), Installed (Effects and Generators found by the
    plugin host). An installed row ends in a dim format tag, CLAP or VST3, so
