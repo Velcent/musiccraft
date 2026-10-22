@@ -426,7 +426,6 @@ fn plain<R>(
     ui.data_mut(|d| {
         d.insert_temp(key, state);
         d.insert_temp(id.with("offset"), offset);
-        d.insert_temp(id.with("rect"), inner);
     });
     output.inner
 }
@@ -444,11 +443,6 @@ pub fn wheel_notches(ui: &Ui) -> f32 {
             })
             .sum::<f32>()
     })
-}
-
-/// Where the `plain_area` with bars `id` showed its contents last frame.
-pub fn plain_rect(ctx: &egui::Context, id: Id) -> Option<Rect> {
-    ctx.data(|d| d.get_temp(id.with("rect")))
 }
 
 /// Scrolls the `plain_area` with bars `id` by `delta` points next frame.
