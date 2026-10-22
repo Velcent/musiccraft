@@ -435,9 +435,7 @@ Ordered by visual impact.
 5. **The envelope graph is display-only and squeezed.** `instrument.rs` (`envelope_graph`) is a short hover-only strip beside the four knobs. The guide puts a taller graph with draggable handles above the knobs (C5).
 6. **There is no keyboard strip** (root key, preview, key range) at the bottom of the Envelope and Functions pages (C7). The root key is only reachable on some instruments' own pages.
 7. **Only one channel window can exist.** `crates/musiccraft-ui/src/lib.rs` holds a single `windows.channel_settings` flag plus `selected_channel`. There is no Alt+click to open more, and no "Keep instrument windows open" setting.
-8. **The window width jumps between channels.** `channel_settings.rs` sets a default width, while Antiserum's page sets its own larger maximum (`antiserum.rs`, `MAX_WIDTH`). The window grows when an Antiserum channel is shown and does not follow the width rule in "Placement and proportions".
-9. **The MIDI output and channel stack windows have no strip.** `channel_settings.rs` (`contents`) returns early for MIDI output and shows only the MIDI page, with its own Mute checkbox.
-10. **There is no detaching** to a desktop window (future item, main-window section).
+8. **There is no detaching** to a desktop window (future item, main-window section).
 
 ## Sources
 

@@ -189,8 +189,13 @@ pub fn show(
     );
     let default =
         egui::Rect::from_min_size(area.right_top() + vec2(-470.0, 30.0), vec2(440.0, 0.0));
+    // Never narrower than the strip; wide pages (Antiserum) widen it to at
+    // most half the workspace.
+    let min_width = 3.0 * 40.0 + STRIP_CONTROLS;
     let mut window = crate::chrome::window(ctx, id, "Channel settings", area, default, false)
-        .max_height((area.height() - 40.0).max(300.0));
+        .max_height((area.height() - 40.0).max(300.0))
+        .min_width(min_width)
+        .max_width((area.width() * 0.5).max(min_width));
     if !crate::chrome::collapsed(ctx, id) {
         window = window.min_height((area.height() - 60.0).clamp(300.0, 760.0));
     }
@@ -231,17 +236,23 @@ fn contents(
     actions: &mut Vec<Action>,
 ) {
     let number = index + 1;
-    if let Instrument::MidiOut { midi_channel } = &channel.instrument {
-        // Sound settings do not apply to external gear.
+    if matches!(channel.instrument, Instrument::MidiOut { .. }) {
+        // Sound settings do not apply to external gear: the strip and the
+        // MIDI page only.
+        state.channel_tab = ChannelTab::Sound;
+        strip(ui, state, frame, number, channel, false, actions);
+        ui.add_space(4.0);
         egui::ScrollArea::vertical()
             .id_salt("channel-settings-scroll")
             .show(ui, |ui| {
-                midi_out(ui, state, frame, number, channel, *midi_channel, actions);
+                midi_out(ui, state, frame, number, channel, actions);
             });
         return;
     }
     let has_envelope = instrument::has_envelope(kind_of(&channel.instrument));
-    if state.channel_tab == ChannelTab::Envelope && !has_envelope {
+    if state.channel_tab == ChannelTab::Envelope && !has_envelope
+        || state.channel_tab != ChannelTab::Sound && is_stack(channel)
+    {
         state.channel_tab = ChannelTab::Sound;
     }
     strip(ui, state, frame, number, channel, has_envelope, actions);
@@ -299,16 +310,32 @@ fn strip(
                         true,
                     ),
                 ];
+                // MIDI output and channel stacks only have the Sound page.
+                let sound_only =
+                    is_stack(channel) || matches!(channel.instrument, Instrument::MidiOut { .. });
                 for (tab, icon, hint, shown) in tabs {
+                    let shown = shown && (tab == ChannelTab::Sound || !sound_only);
                     if shown && tab_cell(ui, icon, state.channel_tab == tab, &hint).clicked() {
                         state.channel_tab = tab;
                     }
                 }
                 // The mixing controls sit flush right; the gap in the middle
                 // takes what is left.
-                ui.add_space((ui.available_width() - STRIP_CONTROLS).max(8.0));
+                let right = match &channel.instrument {
+                    Instrument::MidiOut { .. } => STRIP_MIDI,
+                    _ if is_stack(channel) => STRIP_ON,
+                    _ => STRIP_CONTROLS,
+                };
+                ui.add_space((ui.available_width() - right).max(8.0));
                 ui.spacing_mut().item_spacing.x = 4.0;
                 on_light(ui, number, channel, actions);
+                if let Instrument::MidiOut { midi_channel } = &channel.instrument {
+                    midi_channel_box(ui, number, *midi_channel, actions);
+                    return;
+                }
+                if is_stack(channel) {
+                    return;
+                }
                 pan_knob(ui, state, number, channel, actions);
                 volume_knob(ui, state, number, channel, actions);
                 ui.add_enabled_ui(channel.instrument.plugin().is_none(), |ui| {
@@ -323,6 +350,37 @@ fn strip(
 /// Width of the strip's right group: On, three knobs, the gap and the track
 /// box, with their spacing and the right margin.
 const STRIP_CONTROLS: f32 = 28.0 + 3.0 * 52.0 + 24.0 + 40.0 + 6.0 * 4.0 + 8.0;
+/// The right group of a channel stack: the On light only.
+const STRIP_ON: f32 = 28.0 + 12.0;
+/// The right group of a MIDI output channel: On and the MIDI channel box.
+const STRIP_MIDI: f32 = 28.0 + 4.0 + 52.0 + 12.0;
+
+/// Whether the channel is a channel stack (it makes no sound of its own).
+fn is_stack(channel: &Channel) -> bool {
+    matches!(channel.instrument, Instrument::Layer { .. })
+}
+
+/// The MIDI output strip's channel box: 1–16 over a "MIDI ch" caption.
+fn midi_channel_box(ui: &mut egui::Ui, number: usize, midi_channel: u8, actions: &mut Vec<Action>) {
+    ui.vertical(|ui| {
+        ui.set_width(52.0);
+        ui.add_space(16.0);
+        ui.vertical_centered(|ui| {
+            let mut value = midi_channel;
+            let response = ui
+                .add(egui::DragValue::new(&mut value).range(1..=16))
+                .hint("The MIDI channel (1–16) this channel's notes are sent on");
+            if response.changed() && value != midi_channel {
+                actions.push(Action::Run(Invocation::new(
+                    "channel.set_midi_channel",
+                    [number.to_string(), value.to_string()],
+                )));
+            }
+            ui.add_space(6.0);
+            ui.label(RichText::new("MIDI ch").small().color(theme::TEXT_DIM));
+        });
+    });
+}
 
 /// One square tab cell: the active one takes the page's tone.
 fn tab_cell(ui: &mut egui::Ui, icon: Icon, active: bool, hint: &str) -> egui::Response {
@@ -731,38 +789,9 @@ fn midi_out(
     frame: &Frame<'_>,
     number: usize,
     channel: &Channel,
-    midi_channel: u8,
     actions: &mut Vec<Action>,
 ) {
-    section(ui, "MIDI OUT", |ui| {
-        ui.horizontal(|ui| {
-            ui.label("MIDI channel");
-            egui::ComboBox::from_id_salt(("midi-out-channel", number))
-                .selected_text(midi_channel.to_string())
-                .show_ui(ui, |ui| {
-                    for n in 1..=16_u8 {
-                        if ui
-                            .selectable_label(n == midi_channel, n.to_string())
-                            .clicked()
-                            && n != midi_channel
-                        {
-                            actions.push(Action::Run(Invocation::new(
-                                "channel.set_midi_channel",
-                                [number.to_string(), n.to_string()],
-                            )));
-                        }
-                    }
-                })
-                .response
-                .hint("The MIDI channel (1–16) this channel's notes are sent on");
-            let mut mute = channel.mute;
-            if crate::widgets::led_switch(ui, &mut mute, "Mute").changed() {
-                actions.push(Action::Run(Invocation::new(
-                    "channel.toggle_mute",
-                    [number.to_string()],
-                )));
-            }
-        });
+    section(ui, "MIDI OUTPUT", |ui| {
         let port = frame
             .settings
             .midi_output

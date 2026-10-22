@@ -368,8 +368,12 @@ square partials), normalized to a 0.9 peak and faded out at the end.
   tiles its boxes two to a row (VOICES | TIMING with swing, ARPEGGIATOR full
   width, CHOKE | ECHO). Only the page scrolls. The last tab used stays
   selected while the window is open.
-- MIDI Out channels have no sound settings: the window shows their MIDI page
-  only.
+- MIDI output channels have no sound settings: their strip shows the Sound
+  tab only, the On light and a "MIDI ch" box (1–16,
+  `channel.set_midi_channel`), and the page is the MIDI page. A channel
+  stack's strip shows the Sound tab and the On light only.
+- The window is never narrower than its strip. Wide pages (Antiserum) widen
+  it to at most half the workspace.
 
 ## Sources
 

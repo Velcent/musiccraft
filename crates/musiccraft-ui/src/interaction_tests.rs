@@ -2254,3 +2254,42 @@ fn instrument_presets_step_from_the_channel_window_header() {
     h.session.run_line("edit.undo").unwrap();
     assert_eq!(h.session.project().channels[0].params, before);
 }
+
+#[test]
+fn midi_output_and_stack_windows_show_a_short_strip() {
+    let mut h = Harness::new(&["channel.add_midi_out", "channel.add_layer"]);
+    h.state.windows.channel_settings = true;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Functions;
+    h.settle();
+    // MIDI output: only the Sound page, and the strip carries the MIDI channel.
+    assert_eq!(
+        h.state.channel_tab,
+        crate::channel_settings::ChannelTab::Sound
+    );
+    let window = window_rect(&h, "channel-settings");
+    let hints: Vec<String> = (0..12)
+        .flat_map(|j| (0..80).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(4.0 + 6.0 * i as f32, 24.0 + 5.0 * j as f32))
+        .filter_map(|p| {
+            h.frame(vec![Event::PointerMoved(p)]);
+            h.frame(vec![]);
+            h.state.hint.clone()
+        })
+        .collect();
+    assert!(
+        hints
+            .iter()
+            .any(|t| t.starts_with("The MIDI channel (1–16)"))
+    );
+    assert!(hints.iter().any(|t| t.starts_with("On:")));
+    assert!(!hints.iter().any(|t| t.starts_with("Functions —")));
+    assert!(!hints.iter().any(|t| t.starts_with("Mixer track:")));
+    // A channel stack keeps the Sound page too.
+    h.state.selected_channel = 1;
+    h.state.channel_tab = crate::channel_settings::ChannelTab::Functions;
+    h.settle();
+    assert_eq!(
+        h.state.channel_tab,
+        crate::channel_settings::ChannelTab::Sound
+    );
+}
