@@ -83,6 +83,7 @@ field has focus; they take precedence over the global keys.
 | Chord | Action |
 | --- | --- |
 | Up / Down | Move the selected row |
+| Shift+Up / Shift+Down | Move to the previous / next row in the same folder; on a sound, load it into the selected channel when that channel plays a sample (a run of these within two seconds is one undo step) and preview it |
 | Right / Left | Open a folder or step into it / close it or step out |
 | Enter | Open or close a folder; on other rows, as a double-click (add it) |
 | Ctrl+Up | Fold all |

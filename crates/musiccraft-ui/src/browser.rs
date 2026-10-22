@@ -308,10 +308,11 @@ fn activated(ui: &egui::Ui, key: &str) -> bool {
 }
 
 /// The browser's keys, while the pointer is over it: Up and Down move the
-/// selected row, Right opens a folder or steps into it, Left closes it or
-/// steps out, Enter toggles a folder or acts as a double-click, Ctrl+Up
-/// folds all, Ctrl+F goes to the search and Esc clears it.
-fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) {
+/// selected row, Shift+Up and Shift+Down move within the folder and return a
+/// sound moved onto (to send), Right opens a folder or steps into it, Left
+/// closes it or steps out, Enter toggles a folder or acts as a double-click,
+/// Ctrl+Up folds all, Ctrl+F goes to the search and Esc clears it.
+fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) -> Option<String> {
     use egui::{Key, Modifiers};
     let pressed = |modifiers: Modifiers, key: Key| ctx.input_mut(|i| i.consume_key(modifiers, key));
     if pressed(Modifiers::COMMAND, Key::F) {
@@ -335,15 +336,23 @@ fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) {
             });
         }
     };
+    // Before the plain arrows, which would also take these.
+    for (key, down) in [(Key::ArrowDown, true), (Key::ArrowUp, false)] {
+        if let Some(i) = at
+            && pressed(Modifiers::SHIFT, key)
+            && let Some(next) = sibling(rows, i, down)
+        {
+            select(next);
+            return rows[next].key.strip_prefix("sound:").map(str::to_owned);
+        }
+    }
     if pressed(Modifiers::NONE, Key::ArrowDown) {
         select(at.map_or(0, |i| (i + 1).min(rows.len().saturating_sub(1))));
     }
     if pressed(Modifiers::NONE, Key::ArrowUp) {
         select(at.map_or(0, |i| i.saturating_sub(1)));
     }
-    let Some((i, row)) = at.and_then(|i| rows.get(i).map(|r| (i, r))) else {
-        return;
-    };
+    let (i, row) = at.and_then(|i| rows.get(i).map(|r| (i, r)))?;
     if pressed(Modifiers::NONE, Key::ArrowRight) {
         match row.open {
             Some(false) => {
@@ -370,6 +379,61 @@ fn keys(ctx: &egui::Context, state: &mut UiState, rows: &[Drawn]) {
             }),
         }
     }
+    None
+}
+
+/// The next (or previous) row in the same folder as row `i`.
+fn sibling(rows: &[Drawn], i: usize, down: bool) -> Option<usize> {
+    let depth = rows.get(i)?.depth;
+    if down {
+        let after = rows.get(i + 1..)?;
+        let j = after
+            .iter()
+            .take_while(|r| r.depth >= depth)
+            .position(|r| r.depth == depth)?;
+        Some(i + 1 + j)
+    } else {
+        let j = rows[..i]
+            .iter()
+            .rev()
+            .take_while(|r| r.depth >= depth)
+            .position(|r| r.depth == depth)?;
+        Some(i - 1 - j)
+    }
+}
+
+/// Sends `sample` to the selected channel when it plays a sample, and
+/// previews it. Sends to the same channel within two seconds of each other
+/// are one undo step, so auditioning a folder undoes in one go.
+fn send(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    project: &musiccraft_project::Project,
+    sample: String,
+    actions: &mut Vec<Action>,
+) {
+    let index = state.selected_channel;
+    let plays_sample = project.channels.get(index).is_some_and(|c| {
+        matches!(
+            c.instrument,
+            Instrument::Sampler { .. } | Instrument::Granular { .. } | Instrument::Resynth { .. }
+        )
+    });
+    if plays_sample {
+        let id = egui::Id::new("browser-last-send");
+        let now = ctx.input(|i| i.time);
+        let last = ctx.data(|d| d.get_temp::<(f64, usize)>(id));
+        if last.is_none_or(|(t, was)| now - t > 2.0 || was != index) {
+            state.begin_gesture();
+        }
+        ctx.data_mut(|d| d.insert_temp(id, (now, index)));
+        let invocation = Invocation::new(
+            "channel.set_sample",
+            [(index + 1).to_string(), sample.clone()],
+        );
+        actions.push(Action::Coalesced(invocation, state.gesture()));
+    }
+    actions.push(Action::PreviewSample(sample));
 }
 
 /// The search field's id.
@@ -1585,8 +1649,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: 
                 .data_mut(|d| d.remove_temp::<Vec<Drawn>>(drawn_id()))
                 .unwrap_or_default();
             let over = ui.rect_contains_pointer(ui.max_rect());
-            if over && !ui.ctx().egui_wants_keyboard_input() {
-                keys(ui.ctx(), state, &rows);
+            if over
+                && !ui.ctx().egui_wants_keyboard_input()
+                && let Some(sample) = keys(ui.ctx(), state, &rows)
+            {
+                send(ui.ctx(), state, frame.project, sample, actions);
             }
             tabs(ui, state);
             let footer = 24.0;

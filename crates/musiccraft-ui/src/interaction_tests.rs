@@ -2909,6 +2909,54 @@ fn rack_keys_copy_steps_toggle_the_graph_and_step_groups() {
 }
 
 #[test]
+fn shift_down_in_the_browser_sends_the_next_sound_to_the_selected_sampler() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.selected_channel = h.session.project().channels.len() - 1;
+    let channel = h.state.selected_channel + 1;
+    h.state.windows.browser = true;
+    h.settle();
+    h.frame(vec![Event::PointerMoved(pos2(60.0, 300.0))]);
+    let selected = |h: &Harness| {
+        h.ctx
+            .data(|d| d.get_temp::<String>(egui::Id::new("browser-selected-row")))
+            .unwrap_or_default()
+    };
+    h.key(egui::Key::ArrowDown, Modifiers::NONE);
+    for _ in 0..1500 {
+        let key = selected(&h);
+        if key.starts_with("sound:") {
+            break;
+        }
+        h.key(egui::Key::ArrowRight, Modifiers::NONE);
+        if selected(&h) == key {
+            h.key(egui::Key::ArrowDown, Modifiers::NONE);
+        }
+    }
+    let first = selected(&h);
+    assert!(first.starts_with("sound:"), "{first}");
+    h.other.clear();
+    let out = h.key(egui::Key::ArrowDown, Modifiers::SHIFT);
+    let next = selected(&h);
+    let sample = next.strip_prefix("sound:").expect("the next sound");
+    assert_ne!(next, first);
+    assert_eq!(out, [format!("channel.set_sample {channel} {sample}")]);
+    assert!(
+        h.other
+            .iter()
+            .any(|a| matches!(a, Action::PreviewSample(s) if s == sample))
+    );
+    // Back up again: the two sends are one undo step.
+    h.key(egui::Key::ArrowUp, Modifiers::SHIFT);
+    assert_eq!(selected(&h), first);
+    h.session.run_line("edit.undo").unwrap();
+    let plays = |h: &Harness| match &h.session.project().channels[channel - 1].instrument {
+        musiccraft_project::Instrument::Sampler { sample } => sample.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(plays(&h), "builtin:kick");
+}
+
+#[test]
 fn the_browser_walks_its_tree_with_the_arrow_keys_and_enter_adds_an_effect() {
     let mut h = Harness::new(&[]);
     h.state.windows.browser = true;
