@@ -232,15 +232,20 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - Vertical keyboard on the left (drawn as piano keys), time grid snapped to
   steps by default. Notes of other channels in the pattern show faintly in
   one neutral tone (ghost notes, `theme::GHOST_NOTE`).
+- **Pattern play button** (header, after the pickers): a click plays the
+  pattern from the playhead, switching to pattern mode first if the song was
+  selected, or pauses while playing; a right-click stops and returns to the
+  start while playing, or moves the playhead to the start while stopped. It
+  shows a pause glyph and is lit while playing.
 - **Tools** (header, in this order: Draw, Paint, Delete, Mute, Slice, Select,
-  Zoom, Play): Draw (the default behavior below), Paint (drag to
+  Zoom, Audition): Draw (the default behavior below), Paint (drag to
   lay notes end to end at the last length; one undo step), Delete (click or
   drag over notes; one undo step) and Select (drag a box without Ctrl; click
   empty space to clear). Starting a Paint drag on a note moves it as Draw would.
   Mute (click or drag toggles muting), Slice (click a note to cut it in two at
   the snapped click: `note.slice <channel> <start> <key> <at> [@pattern]`,
-  undoable, both parts keep the note's properties), Play (click hears the note
-  or key under the pointer) and Zoom (click zooms in, Shift+click out). Keys:
+  undoable, both parts keep the note's properties), Audition (click hears the
+  note or key under the pointer) and Zoom (click zooms in, Shift+click out). Keys:
   P, B, D, E, T, C, Y, Z pick the tools (the same choice applies to the
   playlist); S and O toggle Slide and Porta for new notes.
 - Left-click on empty grid adds a note with the last used length; dragging a note

@@ -2116,3 +2116,24 @@ fn mixer_strip_lights_solo_on_ctrl_click() {
     h.modifiers = Modifiers::NONE;
     assert_eq!(out, ["mixer.toggle_solo 1"]);
 }
+
+#[test]
+fn the_piano_roll_play_button_plays_the_pattern() {
+    let mut h = Harness::new(&["channel.add_synth", "transport.set_mode song"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let roll = window_rect(&h, "piano-roll");
+    let button = (0..120)
+        .map(|i| roll.left_top() + vec2(4.0 + 4.0 * i as f32, 11.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Play the pattern"))
+        })
+        .expect("a play button in the piano roll header");
+    let out = h.click(button, PointerButton::Primary);
+    assert_eq!(out, ["transport.set_mode pattern", "transport.play"]);
+}

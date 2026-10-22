@@ -410,6 +410,7 @@ pub fn show(
                         |ui, (state, actions)| {
                             if !empty {
                                 pickers(ui, state, project, &number, actions);
+                                play_button(ui, project, actions);
                                 ui.add_space(6.0);
                                 tools(ui, state);
                             }
@@ -482,9 +483,46 @@ const TOOLS: [(Tool, Icon, &str); 8] = [
     (
         Tool::Play,
         Icon::PlayNote,
-        "Play (Y): click to hear a note or key",
+        "Audition (Y): click to hear a note or key",
     ),
 ];
+
+/// The pattern play button: a click plays the pattern (switching to pattern
+/// mode) or pauses; a right-click stops and returns to the start.
+fn play_button(ui: &mut egui::Ui, project: &Project, actions: &mut Vec<Action>) {
+    let playing = project.transport().is_playing();
+    let (icon, hint) = if playing {
+        (Icon::Pause, "Pause the pattern · right-click to stop")
+    } else {
+        (
+            Icon::Play,
+            "Play the pattern · right-click to go back to its start",
+        )
+    };
+    let response = icons::button(ui, icon, playing, theme::ACCENT, hint);
+    let mut run = |line: &str| {
+        if let Ok(invocation) = Invocation::parse(line) {
+            actions.push(Action::Run(invocation));
+        }
+    };
+    if response.clicked() {
+        if playing {
+            run("transport.pause");
+        } else {
+            if project.play_mode != musiccraft_project::PlayMode::Pattern {
+                run("transport.set_mode pattern");
+            }
+            run("transport.play");
+        }
+    }
+    if response.secondary_clicked() {
+        run(if playing {
+            "transport.stop"
+        } else {
+            "transport.jump_to_start"
+        });
+    }
+}
 
 /// The header's tool group.
 fn tools(ui: &mut egui::Ui, state: &mut UiState) {

@@ -430,7 +430,7 @@ All glyphs are simple vector drawings in the style of `crates/musiccraft-ui/src/
 
 Ordered by visual impact. References are to the current code and to `docs/screenshots/piano-roll.png`.
 
-1. **Header pickers lack value text and a play button.** Snap, scale and chord are square icon buttons with their value in the hint and ticked in their list, the note-tools button opens the tools list, colour/porta/slide sit on the corner block, velocity is in the window menu and the title has its channel chevron (A2–A5, A8). Still missing: the small value text after each picker when the window is wide, wheel and right-click on the pickers and the title, and the fit-to-scale item. `crates/musiccraft-ui/src/piano_roll.rs` (`pickers`, `channel_picker`).
+1. **Header pickers lack value text.** The pattern play button (A7) is in, after the pickers. Snap, scale and chord are square icon buttons with their value in the hint and ticked in their list, the note-tools button opens the tools list, colour/porta/slide sit on the corner block, velocity is in the window menu and the title has its channel chevron (A2–A5, A8). Still missing: the small value text after each picker when the window is wide, wheel and right-click on the pickers and the title, and the fit-to-scale item. `crates/musiccraft-ui/src/piano_roll.rs` (`pickers`, `channel_picker`).
 2. **Scroll/zoom row details.** The row, corner block, vertical bar and zoom box are in (`crates/musiccraft-ui/src/scrollbars.rs`). Missing: the bar-range readout in the hint while dragging a grip, right-drag on the thumb for two-way scrolling, incremental rail paging, the thin-bars setting, the lane zoom box (K6), and right-click on the corner block ("Apply this colour to the selected notes").
 3. **Vertical zoom only from the zoom box.** The zoom box sets the key-row height (6 to 30 points) and double-click resets it, but there are no zoom keys (Page Up/Down, Shift+1–5) in `docs/spec/keymap.md` or `default.keymap`, and no middle-drag panning.
 4. **Ruler has no markers.** A click seeks, a drag makes a time selection (band, grid wash, notes selected), beat ticks rise from the bottom and numbers thin out when bars are narrow. Still missing: markers, time-signature and key tabs, the pattern's signature at the start, and the right-click menu. `crates/musiccraft-ui/src/piano_roll.rs` (`ruler`, `draw_ruler`).
@@ -438,15 +438,14 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 6. **Ghost notes have no panel.** Other channels' notes are drawn in one neutral tone (`theme::GHOST_NOTE`), but there are no ghosts from overlapping clips, no ghost-channel panel or header button, and no double-right-click to switch channel.
 7. **Keyboard labels and menu.** Keys shade on hover with their name in the hint, and Ctrl+click selects a key's notes. Still missing: the key menu and custom key names, the labels choice (only C keys are labelled), Ctrl+drag across keys and middle-drag zoom. `keyboard()`.
 8. **Scale highlighting is an accent tint over the key rows**, not lighter in-scale and darker out-of-scale rows replacing the key shading. The tint is `ACCENT` at low strength. There is no fit-to-scale option.
-9. **No tool switching from the wheel.** The tools follow the target order and Play has its own glyph, but there is no right-hold + wheel tool switching, and the optional Paint steps and Ramp tools are not there.
-10. **No play/pause button in the header** (A7).
-11. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
-12. **No tall-row property view.** Note labels are cut with an ellipsis, but the label size is fixed. `draw_note()`.
-13. **Window menu is flat**: new-note velocity, Quantize, Tools, transpose an octave, clear. It has no File / Edit / Select / View / Snap / Zoom / Markers submenus. `options_menu()` lines 558–622.
-14. **Snap has no right-click.** Pressing a note with Draw or Paint now makes its length and velocity the new-note defaults; the snap picker still has no right-click menu.
-15. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
-16. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
-17. **Keymap**: Page Up/Down, Shift+1–5, Alt+V, Alt+C, Shift+F, Shift+Enter, N and I over the piano roll are new window-local bindings for `docs/spec/keymap.md` (a new "Over the piano roll" section) and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today.
+9. **No tool switching from the wheel.** The tools follow the target order and Audition (renamed from Play) has its own glyph, but there is no right-hold + wheel tool switching, and the optional Paint steps and Ramp tools are not there.
+10. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
+11. **No tall-row property view.** Note labels are cut with an ellipsis, but the label size is fixed. `draw_note()`.
+12. **Window menu is flat**: new-note velocity, Quantize, Tools, transpose an octave, clear. It has no File / Edit / Select / View / Snap / Zoom / Markers submenus. `options_menu()` lines 558–622.
+13. **Snap has no right-click.** Pressing a note with Draw or Paint now makes its length and velocity the new-note defaults; the snap picker still has no right-click menu.
+14. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
+15. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
+16. **Keymap**: Page Up/Down, Shift+1–5, Alt+V, Alt+C, Shift+F, Shift+Enter, N and I over the piano roll are new window-local bindings for `docs/spec/keymap.md` (a new "Over the piano roll" section) and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today.
 
 ## Sources
 
