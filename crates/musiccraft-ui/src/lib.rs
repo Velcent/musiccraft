@@ -173,6 +173,85 @@ pub struct Windows {
     pub spectrum: bool,
 }
 
+/// The windows a saved layout covers: name, flag, and floating window id
+/// (`None`: the browser side panel).
+type LayoutWindow = (
+    &'static str,
+    fn(&mut Windows) -> &mut bool,
+    Option<&'static str>,
+);
+
+const LAYOUT_WINDOWS: [LayoutWindow; 8] = [
+    (
+        "channel_rack",
+        |w| &mut w.channel_rack,
+        Some("channel-rack"),
+    ),
+    ("piano_roll", |w| &mut w.piano_roll, Some("piano-roll")),
+    ("playlist", |w| &mut w.playlist, Some("playlist-window")),
+    ("mixer", |w| &mut w.mixer, Some("mixer-window")),
+    ("browser", |w| &mut w.browser, None),
+    (
+        "shortcuts",
+        |w| &mut w.shortcuts,
+        Some("keyboard-shortcuts"),
+    ),
+    (
+        "channel_settings",
+        |w| &mut w.channel_settings,
+        Some("channel-settings"),
+    ),
+    ("spectrum", |w| &mut w.spectrum, Some("spectrum-analyzer")),
+];
+
+/// The window arrangement now, to save when the app closes.
+#[must_use]
+pub fn window_layout(ctx: &egui::Context, state: &UiState) -> settings::WindowLayout {
+    let mut windows = state.windows.clone();
+    let mut layout = settings::WindowLayout::default();
+    for (name, flag, id) in LAYOUT_WINDOWS {
+        if *flag(&mut windows) {
+            layout.open.push(name.to_owned());
+        }
+        let Some(id) = id.map(egui::Id::new) else {
+            continue;
+        };
+        if let Some(r) = chrome::last_rect(ctx, id) {
+            layout
+                .rects
+                .push((name.to_owned(), [r.left(), r.top(), r.width(), r.height()]));
+        }
+        if chrome::collapsed(ctx, id) {
+            layout.folded.push(name.to_owned());
+        }
+    }
+    layout
+}
+
+/// Opens the windows `layout` lists, closes the others, and puts each
+/// window back where it was (kept inside the workspace as usual).
+pub fn restore_window_layout(
+    ctx: &egui::Context,
+    state: &mut UiState,
+    layout: &settings::WindowLayout,
+) {
+    for (name, flag, id) in LAYOUT_WINDOWS {
+        *flag(&mut state.windows) = layout.open.iter().any(|n| n == name);
+        let Some(id) = id.map(egui::Id::new) else {
+            continue;
+        };
+        let place = layout.rects.iter().find(|(n, _)| n == name);
+        if let Some((_, [left, top, width, height])) = place {
+            let rect =
+                egui::Rect::from_min_size(egui::pos2(*left, *top), egui::vec2(*width, *height));
+            if rect.is_finite() && rect.width() > 0.0 && rect.height() > 0.0 {
+                let folded = layout.folded.iter().any(|n| n == name);
+                chrome::place(ctx, id, rect, folded);
+            }
+        }
+    }
+}
+
 impl Default for Windows {
     fn default() -> Self {
         Self {

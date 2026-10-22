@@ -278,6 +278,11 @@ impl App {
         // An autosave left behind means the last session did not close
         // properly; keep it safe from this session's autosaves.
         ui.autosave_path = autosave::take_crash_backup().map(|p| p.display().to_string());
+        if options.open.is_none()
+            && let Some(layout) = &settings.window_layout
+        {
+            musiccraft_ui::restore_window_layout(ctx, &mut ui, layout);
+        }
         if let Some(windows) = &options.open {
             let w = &mut ui.windows;
             w.channel_rack = windows.iter().any(|n| n == "channel_rack");
@@ -1147,6 +1152,7 @@ impl App {
             return;
         }
         if self.closing || !self.has_unsaved_changes() {
+            self.save_window_layout(ctx);
             self.closing = true;
             autosave::discard();
             return;
@@ -1212,10 +1218,23 @@ impl App {
         }
     }
 
+    /// Keeps the window arrangement in the settings, for the next start.
+    fn save_window_layout(&mut self, ctx: &egui::Context) {
+        let layout = musiccraft_ui::window_layout(ctx, &self.ui);
+        if self.settings.window_layout.as_ref() == Some(&layout) {
+            return;
+        }
+        self.settings.window_layout = Some(layout);
+        if let Err(err) = settings::save(&self.settings) {
+            eprintln!("cannot save the window layout: {err}");
+        }
+    }
+
     /// Carries out an action once unsaved changes are saved or discarded.
     fn proceed(&mut self, ctx: &egui::Context, pending: Pending) {
         match pending {
             Pending::Close => {
+                self.save_window_layout(ctx);
                 self.closing = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }

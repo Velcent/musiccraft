@@ -60,6 +60,20 @@ pub struct Settings {
     /// Windows path prefixes (`C:`, `D:/Samples`) and the folders they stand
     /// for here.
     pub drive_map: Vec<(String, PathBuf)>,
+    /// The window arrangement when the app last closed, restored on start.
+    pub window_layout: Option<WindowLayout>,
+}
+
+/// Which windows were open, where, and which were folded to their header.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WindowLayout {
+    /// Open windows, by name (`channel_rack`, `mixer`, `browser`, …).
+    pub open: Vec<String>,
+    /// Each window's last place: name, then left, top, width, height.
+    pub rects: Vec<(String, [f32; 4])>,
+    /// Windows folded to their header, by name.
+    pub folded: Vec<String>,
 }
 
 impl Default for Settings {
@@ -81,6 +95,7 @@ impl Default for Settings {
             fl_factory: None,
             fl_user: None,
             drive_map: Vec::new(),
+            window_layout: None,
         }
     }
 }

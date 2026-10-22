@@ -140,6 +140,26 @@ fn pin(window: egui::Window<'_>, rect: Rect) -> egui::Window<'_> {
         .max_size(rect.size())
 }
 
+/// Where window `id` was last drawn (unmaximized), if it has been.
+pub(crate) fn last_rect(ctx: &egui::Context, id: egui::Id) -> Option<Rect> {
+    ctx.data(|d| d.get_temp::<Rect>(key(id, "rect")))
+}
+
+/// Puts window `id` at `rect` the next time it is shown (a restored
+/// layout), and folds or unfolds it.
+pub(crate) fn place(ctx: &egui::Context, id: egui::Id, rect: Rect, folded: bool) {
+    ctx.data_mut(|d| {
+        d.insert_temp(key(id, "rect"), rect);
+        d.insert_temp(key(id, "restore-now"), (rect, 3_u8));
+        d.insert_persisted(id.with("collapsed"), folded);
+    });
+}
+
+/// Whether window `id` is being put back where a layout had it.
+pub(crate) fn placing(ctx: &egui::Context, id: egui::Id) -> bool {
+    ctx.data(|d| d.get_temp::<(Rect, u8)>(key(id, "restore-now")).is_some())
+}
+
 /// Remembers where window `id` is drawn, so maximize can restore it.
 /// Call it with the window's response after showing it.
 pub fn remember(ctx: &egui::Context, id: egui::Id, response: Option<&egui::Response>) {

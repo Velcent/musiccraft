@@ -23,6 +23,8 @@
   as well as on the toolbar.
 - **General**: interface scale (75–200 %), hint bar on/off, autosave on/off,
   start with an empty project instead of the starter kit.
+- The settings file also keeps the window arrangement at the last close
+  (`window_layout`; no tab shows it, see `window-layout.md`).
 - **Folders**: browser folders (add, remove) and extra plugin folders (add,
   remove), searched in addition to the standard CLAP locations; a rescan
   button, the number of plugins found and any files that failed to load.

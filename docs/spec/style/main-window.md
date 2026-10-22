@@ -392,10 +392,7 @@ Ordered by visual impact. Each needs `docs/spec/window-layout.md` (or the spec n
    - The piano roll and playlist have the shared bars (`crates/musiccraft-ui/src/scrollbars.rs`): the top row with chevrons, a thumb with zoom grips and the vertical zoom box, and the vertical bar. The channel rack, mixer and browser have the simplified bars (`plain_area`).
    - Nowhere is there right-drag two-way scrolling or a thin scroll bar setting.
 2. **No window snapping.** Windows neither snap to each other nor to the workspace edges, and there is no Alt override (all `egui::Window` uses).
-3. **Window state is forgotten on restart.**
-    - eframe's `persistence` feature is off (workspace `Cargo.toml`), so positions, sizes and collapsed flags live only in egui memory for the session (`chrome.rs` stores collapse there).
-    - The open-window set is reset by `Windows::default()` in `lib.rs`.
-    - There is no `Windows layout ▸` submenu and no saved custom layout.
+3. **Saved layouts.** The arrangement at close (open windows, places, sizes, folded state) comes back on the next start (`window-layout.md`, "Remembered layout"; `musiccraft_ui::window_layout`). Still missing: the `Windows layout ▸` submenu, a second layout and a saved custom layout.
 4. **Missing window shortcuts**: Tab (cycle focus) and Ctrl+F11 (hide toolbar). Enter, Ctrl+Shift+H, Esc, F12, Alt+F12 and Ctrl+F12 are bound. Tab needs care: egui uses it to move keyboard focus between widgets, and a widget holding focus blocks every shortcut, so it has to be taken from the raw input before egui sees it (`crates/musiccraft-app/src/main.rs`). F10 is already bound to `ui.settings`, so no window or project-info shortcut may take F10. `keymap.md` changes first.
 5. **Browser chrome and placement** (`crates/musiccraft-ui/src/browser.rs`, `show`):
     - It cannot dock right, float or auto-hide.

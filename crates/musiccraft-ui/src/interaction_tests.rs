@@ -2878,3 +2878,38 @@ fn a_track_pinned_right_sits_after_the_scrolling_strips() {
         "track 3 is pinned right: {strips:?}"
     );
 }
+
+#[test]
+fn a_saved_window_layout_comes_back_on_the_next_start() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let mut layout = crate::window_layout(&h.ctx, &h.state);
+    assert!(layout.open.contains(&"mixer".to_owned()), "{layout:?}");
+    // Next start: the mixer was moved and folded, the piano roll closed.
+    layout.open.retain(|n| n != "piano_roll");
+    for (name, rect) in &mut layout.rects {
+        if name == "mixer" {
+            *rect = [300.0, 160.0, 500.0, 320.0];
+        }
+    }
+    layout.folded.push("mixer".to_owned());
+    let mut next = Harness::new(&[]);
+    crate::restore_window_layout(&next.ctx, &mut next.state, &layout);
+    next.settle();
+    assert!(!next.state.windows.piano_roll);
+    assert!(next.state.windows.mixer);
+    let mixer = window_rect(&next, "mixer-window");
+    assert!(
+        (mixer.left() - 300.0).abs() < 1.0 && (mixer.top() - 160.0).abs() < 1.0,
+        "{mixer:?}"
+    );
+    assert!(crate::chrome::collapsed(
+        &next.ctx,
+        egui::Id::new("mixer-window")
+    ));
+    let again = crate::window_layout(&next.ctx, &next.state);
+    assert!(again.folded.contains(&"mixer".to_owned()));
+    assert!(!again.open.contains(&"piano_roll".to_owned()));
+}

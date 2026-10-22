@@ -47,6 +47,10 @@ pub fn show(
     // The rack takes a few frames to reach its width, so the mixer follows
     // its default slot for its first frames.
     let settle = egui::Id::new("mixer-settle");
+    // A window put back from a saved layout skips this.
+    if crate::chrome::placing(ctx, id) {
+        ctx.data_mut(|d| d.insert_temp(settle, 4_u8));
+    }
     let frames = ctx.data(|d| d.get_temp::<u8>(settle)).unwrap_or(0);
     let mut window = crate::chrome::window(ctx, id, "Mixer", area, default, true);
     if frames < 4 {

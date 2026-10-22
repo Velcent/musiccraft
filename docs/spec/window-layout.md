@@ -13,7 +13,15 @@ stay our own. The full target look, window by window, is the style guide in
 - All four editors (channel rack, mixer, playlist, piano roll) and the browser
   are open when the app starts: the rack top-left, the mixer to its right, the
   playlist across the lower part and the piano roll floating over the right
-  half (each section below).
+  half (each section below). That is the first start; afterwards the app
+  starts with the arrangement it had when it last closed.
+- **Remembered layout.** On closing, the app keeps in the user settings
+  (`window_layout`) which windows are open (the editors, the browser, the
+  channel window, the spectrum analyser and the shortcut list), where each
+  floating window was and its size, and which were folded to their header.
+  The next start opens the same windows in the same places, kept inside the
+  workspace like any window. `--open` on the command line overrides it, and
+  Ctrl+Shift+H still returns to the default layout.
 - Ctrl+Shift+H (`view.default_layout`) puts them back: the four editors and
   the browser open, each window unfolded, not maximized and moved to its slot.
 - Enter (`view.maximize playlist`) maximizes the playlist over the workspace
