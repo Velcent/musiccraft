@@ -205,7 +205,7 @@ The row is the shared scroll and zoom bar (main-window section, "Scroll and zoom
 - **Vertical scroll bar** (shared bar, main-window section): an up chevron at the top, a rail with a thumb whose length is the visible share of the 128 keys, and a down chevron at the bottom. Drag the thumb to scroll, click the rail to page, click the chevrons to step one key (hold to repeat).
 - When the view first opens for a channel it is centred on that channel's notes, or on C5 when the channel has none (existing).
 
-### J. Splitter (**Proposed (needs `piano-roll.md` and `window-layout.md` updated first)**)
+### J. Splitter
 
 - A thin strip across the full width between the grid and the property lane, with a small grip in its centre.
 - Drag it to move the boundary. Right-click restores the default lane height. Double-click hides or shows the lane (own design). Shift+Enter, window-local, also does this (needs `keymap.md`).
@@ -436,16 +436,16 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 2. **Scroll/zoom row details.** The row, corner block, vertical bar and zoom box are in (`crates/musiccraft-ui/src/scrollbars.rs`). Missing: the bar-range readout in the hint while dragging a grip, right-drag on the thumb for two-way scrolling, incremental rail paging, the thin-bars setting, and the lane zoom box (K6).
 3. **Zoom details.** The zoom box sets the key-row height (6 to 30 points) and double-click resets it, and the horizontal zoom keys are bound. Page Up and Page Down keep the view's left edge instead of zooming around the pointer. Middle-drag pans the view.
 4. **Ruler has no markers.** A click seeks, a drag makes a time selection (band, grid wash, notes selected), beat ticks rise from the bottom and numbers thin out when bars are narrow. Still missing: markers, time-signature and key tabs, the pattern's signature at the start, and the right-click menu. `crates/musiccraft-ui/src/piano_roll.rs` (`ruler`, `draw_ruler`).
-5. **Property lane details.** Stems have heads and length tails, take the selection tone when selected, show ghost stems behind, and the lane has quieter grid lines and a faint name watermark. Still missing: the splitter (fixed `LANE_HEIGHT`, matching the fixed height in `window-layout.md`), the lane zoom box, Shift+drag line drawing, Alt+click reset and the drag readout. `velocity_lane()`.
+5. **Property lane details.** Stems have heads and length tails, take the selection tone when selected, show ghost stems behind, and the lane has quieter grid lines and a faint name watermark. The splitter resizes, hides (double-click, Shift+Enter) and resets the lane. Still missing: the lane zoom box, Shift+drag line drawing, Alt+click reset and the drag readout. `velocity_lane()`.
 6. **Ghost notes have no panel.** Other channels' notes are drawn in one neutral tone (`theme::GHOST_NOTE`), but there are no ghosts from overlapping clips, no ghost-channel panel or header button, and no double-right-click to switch channel.
 7. **Keyboard labels and menu.** Keys shade on hover with their name in the hint, and Ctrl+click selects a key's notes. Ctrl+drag selects a range of keys, middle-drag zooms, and the labels choice is in View and on a right-click key menu. Still missing: custom key names and the drawing-style choice in the key menu. `keyboard()`.
 8. **No tool switching from the wheel.** The tools follow the target order and Audition (renamed from Play) has its own glyph, but there is no right-hold + wheel tool switching, and the optional Paint steps and Ramp tools are not there.
 9. **No stretch handle** for multi-note selections (H2), and no Shift+drag "draw by length".
 10. **No tall-row property view.** Note labels are cut with an ellipsis, but the label size is fixed. `draw_note()`.
-11. **Window menu is incomplete.** It now has File, Edit, Tools, Chord, Snap, Select and Zoom submenus and the velocity field (`options_menu()`). Edit has Mute, Unmute and Apply the current colour, Select has muted notes and notes of the current colour, and Zoom has Zoom to selection. View has ghost notes, keyboard labels and note labels. Still missing: MIDI import, View's other items (ghosts from overlapping clips, scale highlighting, bar-group shading, follow playhead, property lane), the Markers submenu, and the Channel and Lane submenus.
+11. **Window menu is incomplete.** It now has File, Edit, Tools, Chord, Snap, Select and Zoom submenus and the velocity field (`options_menu()`). Edit has Mute, Unmute and Apply the current colour, Select has muted notes and notes of the current colour, and Zoom has Zoom to selection. View has ghost notes, keyboard labels, note labels and the property lane. Still missing: MIDI import, View's other items (ghosts from overlapping clips, scale highlighting, bar-group shading, follow playhead), the Markers submenu, and the Channel and Lane submenus.
 12. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
 13. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
-14. **Keymap**: Page Up/Down and Shift+1–5 are bound (`keymap.md`, "Over the piano roll"). Alt+C applies the current colour. Still unbound: Alt+V, Shift+F, Shift+Enter, N and I, which wait for the features they drive (ghost panel, lane targets, lane hiding, Paint steps, Ramp).
+14. **Keymap**: Page Up/Down and Shift+1–5 are bound (`keymap.md`, "Over the piano roll"). Alt+C applies the current colour and Shift+Enter hides the lane. Still unbound: Alt+V, Shift+F, N and I, which wait for the features they drive (ghost panel, lane targets, Paint steps, Ramp).
 
 ## Sources
 

@@ -3229,3 +3229,47 @@ fn ctrl_dragging_keys_selects_a_range_and_middle_dragging_them_zooms() {
     let held = grid.row_at(at.y).map(crate::piano_roll::key_of_row);
     assert_eq!(held, Some(62));
 }
+
+#[test]
+fn the_piano_roll_splitter_resizes_hides_and_restores_the_property_lane() {
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 1 60"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let (_, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let x = clip.center().x;
+    let split = |h: &Harness| clip.bottom() - h.state.roll.lane_height - 2.0;
+    h.state.hint = None;
+    h.frame(vec![Event::PointerMoved(pos2(x, split(&h)))]);
+    h.frame(vec![]);
+    assert!(
+        h.state
+            .hint
+            .clone()
+            .unwrap_or_default()
+            .starts_with("Drag to resize the property lane"),
+        "{:?}",
+        h.state.hint
+    );
+    let from = pos2(x, split(&h));
+    let ran = h.drag(from, from - vec2(0.0, 60.0));
+    assert!(ran.is_empty(), "{ran:?}");
+    assert!(
+        (h.state.roll.lane_height - 156.0).abs() < 4.0,
+        "{}",
+        h.state.roll.lane_height
+    );
+
+    let at = pos2(x, split(&h));
+    h.click(at, PointerButton::Primary);
+    h.click(at, PointerButton::Primary);
+    assert!(!h.state.roll.lane_shown, "double-click hides the lane");
+    h.click(h.roll_point(96, 60), PointerButton::Primary);
+    h.key(egui::Key::Enter, Modifiers::SHIFT);
+    assert!(h.state.roll.lane_shown, "Shift+Enter shows it again");
+    h.settle();
+    h.click(pos2(x, split(&h)), PointerButton::Secondary);
+    assert_eq!(
+        h.state.roll.lane_height, 96.0,
+        "right-click restores the default"
+    );
+}

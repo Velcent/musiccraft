@@ -17,8 +17,12 @@ use crate::{Action, Frame, UiState, theme};
 
 pub(crate) const KEYS_WIDTH: f32 = 52.0;
 const RULER_HEIGHT: f32 = 18.0;
-/// Height of the velocity lane pinned to the bottom of the view.
+/// Default height of the property lane pinned to the bottom of the view.
 const LANE_HEIGHT: f32 = 96.0;
+/// The lane's height range when the splitter is dragged.
+const LANE_HEIGHT_RANGE: (f32, f32) = (40.0, 320.0);
+/// Thickness of the splitter between the grid and the lane.
+const SPLITTER: f32 = 5.0;
 /// Key-row height: the default and the vertical zoom range, in points.
 const KEY_HEIGHT: f32 = 14.0;
 const KEY_HEIGHT_RANGE: (f32, f32) = (6.0, 30.0);
@@ -142,6 +146,21 @@ pub struct RollState {
     pub(crate) ghosts: bool,
     /// Notes carry their key name.
     pub(crate) note_labels: bool,
+    /// Height of the property lane while shown.
+    pub(crate) lane_height: f32,
+    /// The property lane is shown.
+    pub(crate) lane_shown: bool,
+}
+
+impl RollState {
+    /// The property lane's height on screen: nothing while hidden.
+    fn lane(&self) -> f32 {
+        if self.lane_shown {
+            self.lane_height
+        } else {
+            0.0
+        }
+    }
 }
 
 /// Which keys of the piano roll's keyboard are labelled.
@@ -231,6 +250,8 @@ impl Default for RollState {
             key_labels: KeyLabels::C,
             ghosts: true,
             note_labels: true,
+            lane_height: LANE_HEIGHT,
+            lane_shown: true,
         }
     }
 }
@@ -1027,6 +1048,11 @@ fn options_menu(
         ui.checkbox(&mut state.roll.ghosts, "Ghost notes");
         ui.menu_button("Keyboard labels", |ui| key_labels_list(ui, state));
         ui.checkbox(&mut state.roll.note_labels, "Note labels");
+        ui.add(egui::Checkbox::new(
+            &mut state.roll.lane_shown,
+            "Property lane",
+        ))
+        .hint("Shift+Enter shows or hides the property lane");
     });
     ui.menu_button("Zoom", |ui| {
         let items = [
@@ -1146,7 +1172,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
     let key_h = state.roll.key_height;
     let size = vec2(
         KEYS_WIDTH + visible_ticks as f32 * px_per_tick,
-        RULER_HEIGHT + KEYS as f32 * key_h + LANE_HEIGHT,
+        RULER_HEIGHT + KEYS as f32 * key_h + state.roll.lane(),
     );
 
     // The scroll/zoom row runs along the top and the vertical bar down the
@@ -1197,7 +1223,8 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             (&state.roll.meter, state.roll.scale),
         );
         if let Some(range) = state.roll.time_selection {
-            draw_time_wash(&painter, &grid, clip, range);
+            let lanes = Rect::from_min_max(clip.min, clip.max - vec2(0.0, state.roll.lane()));
+            draw_time_wash(&painter, &grid, lanes, range);
         }
 
         // Ghost notes: other channels' notes, in one neutral tone.
@@ -1490,7 +1517,7 @@ fn scroll_row(
         offset: roll.offset,
         lead: KEYS_WIDTH,
         top: RULER_HEIGHT,
-        tail: LANE_HEIGHT,
+        tail: roll.lane(),
         x: (
             roll.px_per_step / tps,
             total as f32,
@@ -1874,11 +1901,50 @@ fn draw_ruler(painter: &egui::Painter, grid: &Grid, clip: Rect, length: u32, met
     }
 }
 
+/// The splitter between the grid and the property lane: drag it to resize
+/// the lane, double-click to hide or show the lane, right-click to restore
+/// its default height.
+fn splitter(ui: &egui::Ui, state: &mut UiState, clip: Rect) {
+    let y = clip.bottom() - state.roll.lane();
+    let rect = Rect::from_min_max(pos2(clip.left(), y - SPLITTER), pos2(clip.right(), y));
+    let response = ui
+        .interact(rect, ui.id().with("roll-splitter"), Sense::click_and_drag())
+        .on_hover_cursor(egui::CursorIcon::ResizeVertical)
+        .hint(
+            "Drag to resize the property lane · double-click to hide or show it (Shift+Enter) · right-click for the default height",
+        );
+    let painter = ui.painter_at(clip);
+    painter.rect_filled(rect, 0.0, theme::PANEL_DARK);
+    let grip = if response.hovered() || response.dragged() {
+        theme::TEXT
+    } else {
+        theme::TEXT_FAINT
+    };
+    for dx in [-4.0, 0.0, 4.0] {
+        painter.circle_filled(rect.center() + vec2(dx, 0.0), 1.0, grip);
+    }
+    let roll = &mut state.roll;
+    if response.double_clicked() {
+        roll.lane_shown = !roll.lane_shown;
+    } else if response.secondary_clicked() {
+        roll.lane_height = LANE_HEIGHT;
+        roll.lane_shown = true;
+    } else if response.dragged()
+        && let Some(p) = response.interact_pointer_pos()
+    {
+        roll.lane_shown = true;
+        let most = LANE_HEIGHT_RANGE.1.min(clip.height() * 0.7);
+        roll.lane_height =
+            (clip.bottom() - p.y).clamp(LANE_HEIGHT_RANGE.0, most.max(LANE_HEIGHT_RANGE.0));
+    }
+}
+
 /// The time selection's faint wash over the grid, with its two edges.
+/// `clip` is the visible view above the property lane.
 fn draw_time_wash(painter: &egui::Painter, grid: &Grid, clip: Rect, (a, b): (u32, u32)) {
     let (x0, x1) = (grid.x(a as f32), grid.x(b as f32));
     let top = clip.top() + RULER_HEIGHT;
-    let bottom = clip.bottom() - LANE_HEIGHT;
+    let bottom = clip.bottom();
     painter.rect_filled(
         Rect::from_x_y_ranges(x0..=x1, top..=bottom),
         0.0,
@@ -2480,10 +2546,11 @@ fn edit(
     channel: usize,
     actions: &mut Vec<Action>,
 ) {
+    let lane = state.roll.lane();
     let editable = |p: Pos2| {
         p.x > clip.left() + KEYS_WIDTH
             && p.y > clip.top() + RULER_HEIGHT
-            && p.y < clip.bottom() - LANE_HEIGHT
+            && p.y < clip.bottom() - lane
     };
     let snap = state.roll.snap;
     let meter = state.roll.meter.clone();
@@ -2822,6 +2889,9 @@ fn keys(ctx: &egui::Context, state: &mut UiState, project: &Project, actions: &m
     if pressed(Modifiers::ALT, Key::C) {
         ops.push(EditOp::ApplyColour);
     }
+    if pressed(Modifiers::SHIFT, Key::Enter) {
+        state.roll.lane_shown = !state.roll.lane_shown;
+    }
     if ops.contains(&EditOp::Copy) || ops.contains(&EditOp::Cut) {
         crate::copied(ctx, "notes");
     }
@@ -3077,9 +3147,13 @@ fn velocity_lane(
     (channel, color): (usize, Color32),
     actions: &mut Vec<Action>,
 ) {
+    splitter(ui, state, clip);
+    if !state.roll.lane_shown {
+        return;
+    }
     let mode = state.roll.lane_mode;
     let lane = Rect::from_min_max(
-        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - LANE_HEIGHT),
+        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - state.roll.lane()),
         clip.right_bottom(),
     );
     let response = ui.interact(lane, ui.id().with("velocity-lane"), Sense::click_and_drag());
@@ -3229,7 +3303,7 @@ fn keyboard(
 ) {
     let keys_rect = Rect::from_min_max(
         pos2(clip.left(), clip.top() + RULER_HEIGHT),
-        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - LANE_HEIGHT),
+        pos2(clip.left() + KEYS_WIDTH, clip.bottom() - state.roll.lane()),
     );
     let response = ui
         .interact(

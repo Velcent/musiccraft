@@ -329,6 +329,10 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
 - A velocity lane is pinned to the bottom of the view: one stem per note of the
   selected channel. Dragging vertically sets the velocity of the note under the
   pointer (the latest-starting one when notes overlap); one drag is one undo step.
+- A thin splitter with a grip sits between the grid and the lane. Dragging it
+  resizes the lane; double-clicking it, Shift+Enter or View › Property lane
+  hides or shows the lane (hidden, the grid runs to the bottom); right-click
+  restores the default height. Not saved with the project.
 - Clicking a key on the keyboard previews the note on the selected channel.
   The hovered key is shaded (white keys darker, black keys lighter) and its
   name shows in the hint. Ctrl+click on a key selects every note of that key,
