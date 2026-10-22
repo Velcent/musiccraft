@@ -29,6 +29,13 @@
   plate is one step lighter and the narrow selector strip between the plate
   and the lane is lit in the accent. Clicking or right-clicking a header
   selects its track; Ctrl+Up and Ctrl+Down move the selection.
+- **Track menu** (right-click a header): Rename…, Colour ▸, Height ▸, then
+  "Name after first clip" (the first pattern clip's name and colour), "Reset
+  name, colour and height", "Mute all clips" / "Unmute all clips" (clip
+  mutes, separate from the track light), "Select all clips", "Join pattern
+  clips into one" (the Clip menu's Merge for the whole track) and "Render to
+  audio" (Consolidate for the track's pattern and audio clips). Each is one
+  undo step; items with nothing to do are greyed out.
 - **Track heights.** Each row can have its own height, a percentage of the
   global track height (25–400%, default 100%; saved, undoable):
   `playlist.set_track_height <track> <percent|reset>` and

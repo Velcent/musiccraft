@@ -175,14 +175,14 @@ Each header is a plate the full width of the column and the height of its track,
 
 - Rename… ✓, then the colour swatches (16) ✓ and No colour ✓.
 - Icon… (later): pick a glyph for D5, or none.
-- Name after first clip (own wording): names and colours the track after its first pattern clip.
+- Name after first clip (own wording): names and colours the track after its first pattern clip. ✓
 - Colour clips to match: recolours every clip on the track. For pattern clips this sets the pattern colour, so it asks first (own).
-- Reset name, colour and icon.
+- Reset name, colour and icon. ✓ (name, colour and height; no icon yet)
 - Height ▸ (50%, 75%, 100%, 150%, 200%, 300%) ✓, then Lock height (tick).
-- Mute all clips, Unmute all clips (clip mutes, separate from the track light).
-- Select all clips on this track.
-- Join this track's pattern clips into one (the existing merge, applied to all of the track's pattern clips).
-- Render this track to audio (the existing consolidate, applied to all of the track's pattern and audio clips).
+- Mute all clips, Unmute all clips (clip mutes, separate from the track light). ✓
+- Select all clips on this track. ✓
+- Join this track's pattern clips into one (the existing merge, applied to all of the track's pattern clips). ✓
+- Render this track to audio (the existing consolidate, applied to all of the track's pattern and audio clips). ✓
 - Arm for recording ✓ (mirrors D6).
 - Later, with a variable track count: Insert track above, Delete track, Clone track, Move up, Move down.
 
@@ -519,7 +519,7 @@ Ordered by visual impact. The spec changes (`docs/spec/playlist.md`, `docs/spec/
 
 1. **Header row.** The playlist is a window with the shared header, the snap button, the tools and a window menu (Edit, Clip, Select, Snap, Zoom, Tracks, View, Markers). Still missing: the window play button, the placing selector, the time signature item in the Markers submenu, the Tracks submenu's height items, the rest of the View submenu (clip list options, song overview, clip shadows), and Detach. File: `crates/musiccraft-ui/src/playlist.rs` (`window_menu`, `tools`).
 2. **Clip details.** Clips have the strong title strip with the kind glyph, a dark tinted body, a light waveform and a filled automation curve, and the glyph and name stay in view while scrolling. Pattern repeats get a tick and automation points show as dots. Still missing: the glyph does not open the clip's menu. File: `crates/musiccraft-ui/src/playlist.rs` (`draw_clip`).
-3. **Track headers.** Headers are tinted plates with a hairline gap, the name on the top line and the grip, arm dot (shown when armed or hovered), "S" button and mute light on the bottom line, with a one-line variant for short tracks; the light rings when soloed and dims when silenced by solo. The default track height is about three tool buttons, and each track has its own height (`playlist.set_track_height`, drag the plate's bottom edge or Height ▸). A track is selected by clicking its header or with Ctrl+Up/Down, which lights its selector strip. Still missing: Lock height, the selection as a target for insert, delete and move, the track icon, and the track menu's other items (name after first clip, colour clips to match, reset, clip mute all, select, join, render). Files: `crates/musiccraft-ui/src/playlist.rs` (`headers`, `track_switches`).
+3. **Track headers.** Headers are tinted plates with a hairline gap, the name on the top line and the grip, arm dot (shown when armed or hovered), "S" button and mute light on the bottom line, with a one-line variant for short tracks; the light rings when soloed and dims when silenced by solo. The default track height is about three tool buttons, and each track has its own height (`playlist.set_track_height`, drag the plate's bottom edge or Height ▸). A track is selected by clicking its header or with Ctrl+Up/Down, which lights its selector strip. Still missing: Lock height, the selection as a target for insert, delete and move, the track icon, and the track menu's "Colour clips to match". Files: `crates/musiccraft-ui/src/playlist.rs` (`headers`, `track_switches`).
 4. **Scroll and zoom.** The shared scroll/zoom row (chevrons, song overview, zoom grips), the vertical bar and the track-height zoom box are in (`crates/musiccraft-ui/src/scrollbars.rs`). Still missing: the bar-range readout while dragging a grip, right-drag two-way scrolling and the thin-bars setting. The ruler and track headers are painted inside the scrolled area at the clip rect's edges, so they are not real fixed panes. File: `crates/musiccraft-ui/src/playlist.rs` (`canvas`, `bars_around`).
 5. **Clip list.** The kind switches are glyphs and the headings are gone. Audio and automation items are text rows ("♪ name", "~ name"), not miniatures. The pattern list has a fixed maximum height (`max_height` in `pattern_list`), so the rest of the column stays empty. "+ New pattern" is a text button under the patterns. Items cannot be dragged onto the lanes or reordered. There is no list zoom, and the column cannot be resized, hidden or moved to the right. Files: `crates/musiccraft-ui/src/playlist.rs` (`pattern_list`, `pattern_section`, `audio_section`, `automation_section`, `LIST_WIDTH`), `docs/spec/playlist.md` ("Picker (UI)").
 6. **Ruler.** It is one band, with beat and bar ticks along its bottom edge and, in song mode, a playhead triangle and line shown stopped or playing. Marker glyphs and names sit on top of the bar numbers in the same band, and all numbers are the same size. Markers cannot be dragged, and double-clicking a marker does nothing. The loop is set with Shift+drag only. Files: `crates/musiccraft-ui/src/playlist.rs` (`draw_ruler`, `ruler`).

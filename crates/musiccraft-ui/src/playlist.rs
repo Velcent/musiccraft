@@ -2302,6 +2302,8 @@ fn headers(
                 }
             });
             height_menu(ui, playlist, row, actions);
+            ui.separator();
+            track_items(ui, state, project, row, actions);
         });
         track_divider(
             ui,
@@ -2470,6 +2472,127 @@ fn track_switches(
             [number],
         )));
     }
+}
+
+/// The track menu's naming and whole-track clip edits.
+fn track_items(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    row: u32,
+    actions: &mut Vec<Action>,
+) {
+    let on_track: Vec<Clip> = project
+        .playlist
+        .clips
+        .iter()
+        .filter(|c| c.track == row)
+        .copied()
+        .collect();
+    menu_item(
+        ui,
+        actions,
+        "Name after first clip",
+        "Name and colour this track after its first pattern clip",
+        name_after_first_clip(project, row, &on_track),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Reset name, colour and height",
+        "Back to the default name, no colour and the global height",
+        reset_track(&project.playlist, row),
+    );
+    ui.separator();
+    let muted =
+        |m: bool| -> Vec<Clip> { on_track.iter().filter(|c| c.muted == m).copied().collect() };
+    menu_item(
+        ui,
+        actions,
+        "Mute all clips",
+        "Mute every clip on this track (the track light stays as it is)",
+        per_clip(&muted(false), "playlist.toggle_clip_mute", &[]),
+    );
+    menu_item(
+        ui,
+        actions,
+        "Unmute all clips",
+        "Unmute every clip on this track",
+        per_clip(&muted(true), "playlist.toggle_clip_mute", &[]),
+    );
+    if crate::widgets::add_enabled(
+        ui,
+        !on_track.is_empty(),
+        egui::Button::new("Select all clips"),
+    )
+    .on_hover_text("Select every clip on this track")
+    .clicked()
+    {
+        state.playlist.selection = on_track.iter().map(|c| (c.track, c.start)).collect();
+        ui.close();
+    }
+    menu_item(
+        ui,
+        actions,
+        "Join pattern clips into one",
+        "Merge this track's pattern clips into one new pattern",
+        merge(&on_track),
+    );
+    let renderable: Vec<Clip> = on_track
+        .iter()
+        .filter(|c| !matches!(c.source, ClipSource::Automation(_)))
+        .copied()
+        .collect();
+    menu_item(
+        ui,
+        actions,
+        "Render to audio",
+        "Render this track's pattern and audio clips to WAV files and replace them with audio clips",
+        per_clip(&renderable, "playlist.consolidate", &[]),
+    );
+}
+
+/// Names and colours `row` after its first pattern clip's pattern.
+fn name_after_first_clip(project: &Project, row: u32, on_track: &[Clip]) -> Option<Invocation> {
+    let pattern = on_track.iter().find_map(|c| match c.source {
+        ClipSource::Pattern(id) => project
+            .pattern_position(id)
+            .and_then(|i| project.patterns.get(i)),
+        _ => None,
+    })?;
+    let number = (row + 1).to_string();
+    let color = pattern
+        .color
+        .map_or_else(|| "none".to_owned(), |c| (c + 1).to_string());
+    batch(vec![
+        Invocation::new(
+            "playlist.rename_track",
+            [number.clone(), pattern.name.clone()],
+        ),
+        Invocation::new("playlist.set_track_color", [number, color]),
+    ])
+}
+
+/// Returns `row` to its default name, no colour and the global height.
+fn reset_track(playlist: &musiccraft_project::Playlist, row: u32) -> Option<Invocation> {
+    let number = (row + 1).to_string();
+    let mut steps = Vec::new();
+    if playlist.track_names.contains_key(&row) {
+        steps.push(Invocation::new("playlist.rename_track", [number.clone()]));
+    }
+    if playlist.track_colors.contains_key(&row) {
+        steps.push(Invocation::new(
+            "playlist.set_track_color",
+            [number.clone(), "none".to_owned()],
+        ));
+    }
+    if playlist.track_heights.contains_key(&row) {
+        steps.push(Invocation::new(
+            "playlist.set_track_height",
+            [number, "reset".to_owned()],
+        ));
+    }
+    batch(steps)
 }
 
 /// Heights a track's menu offers, in percent of the global track height.
@@ -3617,6 +3740,36 @@ mod tests {
         assert!(s.project().playlist.muted_tracks.is_empty());
         assert!(s.project().playlist.soloed_tracks.is_empty());
         assert!(per_track(&BTreeSet::new(), "playlist.toggle_track_mute").is_none());
+    }
+
+    #[test]
+    fn track_items_name_a_track_after_its_first_clip_and_reset_it() {
+        let mut s = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        for line in [
+            "pattern.add",
+            "pattern.rename 2 Hook",
+            "pattern.set_color 2 5",
+            "playlist.add_clip 2 3 4",
+            "playlist.add_clip 1 3 6",
+            "playlist.set_track_height 3 200",
+        ] {
+            s.run_line(line).unwrap();
+        }
+        let on_track: Vec<Clip> = s.project().playlist.clips.clone();
+        let name = name_after_first_clip(s.project(), 2, &on_track).unwrap();
+        s.run(&name).unwrap();
+        let list = &s.project().playlist;
+        assert_eq!(list.track_name(2), "Hook");
+        assert_eq!(list.track_colors.get(&2), Some(&4));
+        let reset = reset_track(list, 2).unwrap();
+        s.run(&reset).unwrap();
+        let list = &s.project().playlist;
+        assert_eq!(list.track_name(2), "Track 3");
+        assert!(list.track_colors.is_empty() && list.track_heights.is_empty());
+        assert!(reset_track(list, 2).is_none(), "nothing left to reset");
     }
 
     #[test]
