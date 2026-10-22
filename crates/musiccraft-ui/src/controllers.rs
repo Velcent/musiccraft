@@ -6,7 +6,6 @@ use egui::RichText;
 use musiccraft_commands::Invocation;
 use musiccraft_project::{Controller, ControllerKind, Project};
 
-use crate::hint::Hint;
 use crate::{Action, UiState, theme};
 
 /// Names of the LFO controller's shapes, by `shape`.
@@ -227,10 +226,14 @@ pub(crate) fn list(
                 actions.push(Action::Run(set(n, "enabled", flag.to_owned())));
             }
             ui.label(RichText::new(&controller.name).color(theme::AUTOMATION));
-            if ui
-                .small_button("×")
-                .hint("Delete this controller")
-                .clicked()
+            if crate::icons::header_button(
+                ui,
+                crate::icons::Icon::Close,
+                false,
+                true,
+                "Delete this controller",
+            )
+            .clicked()
             {
                 actions.push(Action::Run(Invocation::new(
                     "controller.remove",

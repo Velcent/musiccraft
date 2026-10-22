@@ -471,10 +471,8 @@ fn audio_section(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
             continue;
         };
         let selected = state.playlist.paint_audio == Some(id);
-        let text = RichText::new(format!("♪ {}", project.channels[index].name))
-            .color(theme::palette(index));
-        let response = ui
-            .selectable_label(selected, text)
+        let name = &project.channels[index].name;
+        let response = glyph_row(ui, Icon::Wave, name, theme::palette(index), selected)
             .hint("Click to paint this audio clip on the playlist");
         if response.clicked() {
             state.playlist.paint_audio = Some(id);
@@ -658,6 +656,42 @@ fn miniature(
     response
 }
 
+/// A clip-list row: the kind glyph and the name in the item's colour, with
+/// a raised fill while selected or hovered.
+fn glyph_row(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    name: &str,
+    color: Color32,
+    selected: bool,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 18.0), Sense::click());
+    let painter = ui.painter_at(rect);
+    if selected || response.hovered() {
+        let fill = if selected {
+            theme::RAISED
+        } else {
+            theme::RAISED_HOVER
+        };
+        painter.rect_filled(rect, 2.0, fill);
+    }
+    let glyph = Rect::from_min_size(rect.left_top() + vec2(2.0, 2.0), vec2(14.0, 14.0));
+    icons::paint(&painter, glyph, icon, color);
+    let mut job = egui::text::LayoutJob::simple_singleline(
+        name.to_owned(),
+        FontId::proportional(theme::FONT_LABEL),
+        color,
+    );
+    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 22.0);
+    let galley = painter.layout_job(job);
+    painter.galley(
+        pos2(rect.left() + 20.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        color,
+    );
+    response
+}
+
 fn automation_section(
     ui: &mut egui::Ui,
     state: &mut UiState,
@@ -669,10 +703,14 @@ fn automation_section(
             ui.add_space(6.0);
             for (i, automation) in project.automations.iter().enumerate() {
                 let selected = state.playlist.paint_automation == Some(automation.id);
-                let text = RichText::new(format!("~ {}", automation.name)).color(theme::AUTOMATION);
-                let response = ui
-                    .selectable_label(selected, text)
-                    .hint("Click to paint it on the playlist · double-click to edit");
+                let response = glyph_row(
+                    ui,
+                    Icon::Automation,
+                    &automation.name,
+                    theme::AUTOMATION,
+                    selected,
+                )
+                .hint("Click to paint it on the playlist · double-click to edit");
                 if response.clicked() {
                     state.playlist.paint_automation = Some(automation.id);
                     state.playlist.paint_audio = None;

@@ -1115,7 +1115,7 @@ fn routing(
                     state.gesture(),
                 ));
             }
-            if ui.small_button("×").hint("Remove send").clicked() {
+            if icons::header_button(ui, Icon::Close, false, true, "Remove send").clicked() {
                 run(
                     actions,
                     "mixer.set_send",

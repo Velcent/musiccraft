@@ -686,12 +686,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
                 egui::Id::new("drag-ghost"),
             ));
             let galley = painter.layout_no_wrap(
-                format!("♪ {}", dragged.label()),
+                dragged.label(),
                 egui::FontId::proportional(13.0),
                 theme::TEXT,
             );
-            let rect =
-                egui::Rect::from_min_size(pos + egui::vec2(12.0, 8.0), galley.size()).expand(5.0);
+            // Room for the kind glyph before the name.
+            let size = galley.size() + egui::vec2(18.0, 0.0);
+            let rect = egui::Rect::from_min_size(pos + egui::vec2(12.0, 8.0), size).expand(5.0);
+            let icon = if dragged.sample().is_some() {
+                icons::Icon::Wave
+            } else {
+                icons::Icon::ChannelRack
+            };
             painter.rect(
                 rect,
                 3.0,
@@ -699,7 +705,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
                 egui::Stroke::new(1.0, theme::ACCENT),
                 egui::StrokeKind::Inside,
             );
-            painter.galley(rect.min + egui::vec2(5.0, 5.0), galley, theme::TEXT);
+            let glyph =
+                egui::Rect::from_min_size(rect.min + egui::vec2(4.0, 4.0), egui::vec2(14.0, 14.0));
+            icons::paint(&painter, glyph, icon, theme::ACCENT);
+            painter.galley(rect.min + egui::vec2(23.0, 5.0), galley, theme::TEXT);
         }
     }
     if escape_taken {
