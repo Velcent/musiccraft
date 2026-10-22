@@ -1498,7 +1498,7 @@ fn draw_note(
     if room > 8.0 && rect.height() >= 8.0 {
         let mut job = egui::text::LayoutJob::simple_singleline(
             key_name(key),
-            FontId::proportional(9.5),
+            FontId::proportional(theme::FONT_CAPTION),
             theme::BACKGROUND,
         );
         job.wrap = egui::text::TextWrapping {
@@ -3078,7 +3078,7 @@ fn keyboard(
                 r.right_center() - vec2(3.0, 0.0),
                 Align2::RIGHT_CENTER,
                 key_name(key),
-                FontId::proportional(9.0),
+                FontId::proportional(theme::FONT_CAPTION),
                 theme::BACKGROUND,
             );
         }

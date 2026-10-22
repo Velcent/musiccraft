@@ -209,11 +209,7 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                 );
         }
         let pattern = project.current_pattern();
-        ui.label(
-            RichText::new(&pattern.name)
-                .strong()
-                .color(theme::HIGHLIGHT),
-        );
+        ui.label(RichText::new(&pattern.name).color(theme::HIGHLIGHT));
         ui.label(RichText::new("swing").color(theme::TEXT_DIM))
             .on_hover_text("Project swing; each channel's swing mix scales it");
         let mut swing = (project.swing * 100.0).round();
@@ -906,7 +902,7 @@ fn join_shown_group(state: &UiState, project: &Project, added: &mut [Action]) {
 
 fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Action>) {
     ui.vertical_centered(|ui| {
-        ui.menu_button(RichText::new("+").size(16.0), |ui| {
+        ui.menu_button(RichText::new("+").size(theme::FONT_DISPLAY), |ui| {
             for name in BUILTIN_SAMPLES {
                 if ui.button(name.replace('_', " ")).clicked() {
                     run(
@@ -1143,7 +1139,7 @@ fn graph_editor(
     let steps = (pattern.length_ticks() / TICKS_PER_STEP).max(1);
     let beat_steps = (pattern.time_signature.beat_ticks() / TICKS_PER_STEP).max(1);
     ui.horizontal(|ui| {
-        ui.label(RichText::new(&project.channels[channel].name).strong());
+        ui.label(&project.channels[channel].name);
         for m in LaneMode::ALL {
             if ui.selectable_label(mode == m, m.label()).clicked() {
                 state.graph = Some(m);

@@ -293,7 +293,7 @@ pub fn labeled_knob(
         pos2(rect.center().x, rect.bottom() - 9.0),
         egui::Align2::CENTER_CENTER,
         if active { value } else { label },
-        egui::FontId::proportional(10.5),
+        egui::FontId::proportional(theme::FONT_LABEL),
         if active {
             theme::LCD_TEXT
         } else {

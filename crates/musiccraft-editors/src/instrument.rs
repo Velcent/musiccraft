@@ -963,7 +963,7 @@ pub fn waveform(ui: &mut Ui, overview: Option<&[(f32, f32)]>, color: Color32, sl
             rect.center(),
             egui::Align2::CENTER_CENTER,
             "no audio",
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(theme::FONT_LABEL),
             theme::TEXT_DIM,
         );
         return;
@@ -998,7 +998,7 @@ pub fn waveform(ui: &mut Ui, overview: Option<&[(f32, f32)]>, color: Color32, sl
                     pos2(x + 3.0, rect.top() + 2.0),
                     egui::Align2::LEFT_TOP,
                     (i + 1).to_string(),
-                    egui::FontId::proportional(9.0),
+                    egui::FontId::proportional(theme::FONT_CAPTION),
                     theme::HIGHLIGHT,
                 );
             }

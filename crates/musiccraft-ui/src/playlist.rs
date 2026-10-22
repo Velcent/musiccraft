@@ -953,7 +953,7 @@ fn miniature(
         pos2(title.left() + 4.0, title.center().y),
         Align2::LEFT_CENTER,
         &pattern.name,
-        FontId::proportional(10.0),
+        FontId::proportional(theme::FONT_VALUE),
         theme::TEXT,
     );
     let body = Rect::from_min_max(
@@ -965,7 +965,7 @@ fn miniature(
             body.center(),
             Align2::CENTER_CENTER,
             "empty",
-            FontId::proportional(9.0),
+            FontId::proportional(theme::FONT_CAPTION),
             theme::TEXT_DIM,
         );
     } else {
@@ -1919,7 +1919,7 @@ fn draw_ruler(
             pos2(x + 3.0, ruler.center().y),
             Align2::LEFT_CENTER,
             (bar + 1).to_string(),
-            FontId::monospace(11.0),
+            FontId::monospace(theme::FONT_LABEL),
             theme::TEXT,
         );
     }
@@ -1991,7 +1991,7 @@ fn draw_ruler(
             pos2(x + 10.0, top + 1.0),
             Align2::LEFT_TOP,
             &marker.name,
-            FontId::proportional(10.5),
+            FontId::proportional(theme::FONT_LABEL),
             color,
         );
     }
@@ -2207,7 +2207,7 @@ fn headers(
             name_area.left_center(),
             Align2::LEFT_CENTER,
             playlist.track_name(row),
-            FontId::proportional(11.0),
+            FontId::proportional(theme::FONT_LABEL),
             text,
         );
         let number = (row + 1).to_string();

@@ -95,7 +95,7 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 ### 5. Typography
 
 - **Faces.** Only egui's bundled faces are used (no font files of our own and none from any other product). The proportional face is used for all ordinary text, the monospace face for changing numbers. `theme::fonts()` appends the monospace face as the last fallback for proportional text, so arrows and small triangles in labels draw. A test (`crates/musiccraft-ui/src/glyph_tests.rs`) checks that every non-ASCII character in a UI string exists in the bundled faces. Rule for new text: if a symbol is needed as an icon, draw it in `icons.rs` rather than relying on a font glyph.
-- **Size classes.** Our own sizes, in egui points. Today they are literals in code; they become named constants in `theme` (see Gaps):
+- **Size classes.** Our own sizes, in egui points, as named constants in `theme`; no UI code uses a size literal:
 
 | Class | Proposed name | Used for |
 |---|---|---|
@@ -106,7 +106,8 @@ The palette's teal and amber are a step lighter than `ACCENT` and `HIGHLIGHT`, s
 | Small | egui `.small()` | Main menu titles, the hint bar, group-box titles, menu headings |
 | Caption | `theme::FONT_CAPTION` (the smallest) | LCD captions (BAR.BEAT.STEP, BPM, CPU), "empty" in mixer slots, unit marks |
 | Mono small | `theme::FONT_VALUE` (mono) | The CPU percentage, the tempo's decimals, step and tick numbers, the time signature button, mixer level readouts |
-| Watermark | (large, near-transparent) | `theme::watermark` only |
+| Readout | `theme::FONT_READOUT` | The tuner's note name only |
+| Watermark | `theme::FONT_WATERMARK` (large, near-transparent) | `theme::watermark` only |
 
 - **When to use mono:** any number that changes while you watch or drag it (positions, tempo, levels, percentages, the time signature, counts in number boxes), so the digits do not jitter. Names, words and static numbers (track numbers, ruler bar numbers) use the proportional face.
 - **Weight.** Strong (bold) text is used only where weight is the cue:
@@ -457,10 +458,9 @@ Ordered by visual impact. Where a gap changes layout or behaviour fixed in a spe
 
 1. **Many icon slots do not exist.** `Icon` now has the header glyphs (menu, fold, unfold, maximize, restore, close, more) and refresh. Chevrons, zoom box, pause, snap, loop, gear, star, lock, warning, plus and the rest listed above are still missing.
 2. **Toolbar band tone.** The one-band toolbar fills its band with `PANEL_DARK`, darker than window headers, and the two-band fallback uses two tones. Target: one `PANEL` band in both layouts, with only the menu/hint field and the display wells recessed (toolbar section).
-3. **Font sizes and weight are scattered.** About ten distinct sizes are used across `crates/musiccraft-ui/src/*.rs` and `icons.rs` (`FontId::proportional(…)`, `.size(…)`). The named classes (`FONT_DISPLAY`, `FONT_TITLE`, `FONT_LABEL`, `FONT_CAPTION`, `FONT_VALUE`) now exist in `theme` and the window headers and LCDs use them; the other literals still need moving onto them. Bold is also used beyond the weight rule, for example the playlist and mixer titles (`playlist.rs` around line 129, `mixer.rs` around line 597).
-4. **Disabled controls fade the egui way.** `TEXT_FAINT` exists in `theme` but disabled widgets still rely on egui's default fading; draw their text and glyphs in `TEXT_FAINT` and keep fills unchanged.
-5. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
-6. **No theme adjustment.** The theme is fixed in `theme.rs`. A future Settings → Theme page (own design) would shift token groups as a whole.
+3. **Disabled controls fade the egui way.** `TEXT_FAINT` exists in `theme` but disabled widgets still rely on egui's default fading; draw their text and glyphs in `TEXT_FAINT` and keep fills unchanged.
+4. **Other sections to align with this one.** The dialogs section's heading tabs on section boxes should become the title-inside-the-box group style; its magnet snap glyph and double-arrow zoom-box glyph should become `Icon::Snap` and `Icon::ZoomBox`.
+5. **No theme adjustment.** The theme is fixed in `theme.rs`. A future Settings → Theme page (own design) would shift token groups as a whole.
 
 ## Sources
 

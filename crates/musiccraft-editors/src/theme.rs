@@ -213,8 +213,12 @@ pub const FONT_TITLE: f32 = 13.0;
 pub const FONT_LABEL: f32 = 11.0;
 /// LCD captions, unit marks, empty-slot text.
 pub const FONT_CAPTION: f32 = 8.5;
-/// Small changing numbers (mono).
+/// Small changing numbers (mono), and small marks drawn on content.
 pub const FONT_VALUE: f32 = 10.0;
+/// The tuner's note name, a readout meant to be read from a distance.
+pub const FONT_READOUT: f32 = 28.0;
+/// The near-transparent watermark (`watermark`).
+pub const FONT_WATERMARK: f32 = 28.0;
 
 /// Installs the MusicCraft fonts and visuals on a context.
 pub fn apply(ctx: &egui::Context) {
@@ -281,7 +285,7 @@ pub fn watermark(ui: &egui::Ui) {
         rect.right_bottom() - egui::vec2(16.0, 12.0),
         egui::Align2::RIGHT_BOTTOM,
         "MusicCraft",
-        egui::FontId::proportional(28.0),
+        egui::FontId::proportional(FONT_WATERMARK),
         WATERMARK,
     );
 }

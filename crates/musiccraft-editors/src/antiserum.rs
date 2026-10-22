@@ -702,7 +702,7 @@ impl AntiserumEditor {
                 rect.right_top() + vec2(-4.0, 4.0),
                 egui::Align2::RIGHT_TOP,
                 format!("{beats} beats"),
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(theme::FONT_VALUE),
                 theme::TEXT_DIM,
             );
         }

@@ -330,7 +330,7 @@ fn canvas(
                 pos2(x + 3.0, rect.top() + 2.0),
                 Align2::LEFT_TOP,
                 (beat.bar + 1).to_string(),
-                FontId::monospace(10.0),
+                FontId::monospace(theme::FONT_VALUE),
                 theme::TEXT_DIM,
             );
         }
@@ -534,7 +534,7 @@ fn canvas(
                 pos + vec2(10.0, -14.0),
                 Align2::LEFT_BOTTOM,
                 format!("{:.0}%", point.value * 100.0),
-                FontId::monospace(11.0),
+                FontId::monospace(theme::FONT_LABEL),
                 theme::TEXT,
             );
         }

@@ -115,7 +115,7 @@ fn db_y(rect: Rect, db: f32) -> f32 {
 }
 
 fn grid(painter: &egui::Painter, rect: Rect) {
-    let font = egui::FontId::proportional(10.0);
+    let font = egui::FontId::proportional(theme::FONT_VALUE);
     for (f, label) in [
         (50.0, "50"),
         (100.0, "100"),

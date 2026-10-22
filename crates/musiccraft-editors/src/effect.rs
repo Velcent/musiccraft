@@ -276,7 +276,7 @@ fn stereo_shaper_graph(painter: &egui::Painter, rect: Rect, color: Color32, effe
     }
     let delay = value(effect, "delay");
     for (i, label) in ["L", "R"].into_iter().enumerate() {
-        let font = egui::FontId::proportional(11.0);
+        let font = egui::FontId::proportional(theme::FONT_LABEL);
         painter.text(
             inputs[i],
             egui::Align2::CENTER_BOTTOM,
@@ -331,7 +331,7 @@ fn chain_diagram(painter: &egui::Painter, rect: Rect, color: Color32, stages: &[
             block.center(),
             egui::Align2::CENTER_CENTER,
             *name,
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(theme::FONT_LABEL),
             if *on {
                 theme::BACKGROUND
             } else {
@@ -512,7 +512,7 @@ fn frequency_grid(painter: &egui::Painter, rect: Rect) {
             pos2(x + 2.0, rect.bottom() - 2.0),
             egui::Align2::LEFT_BOTTOM,
             label,
-            egui::FontId::proportional(9.0),
+            egui::FontId::proportional(theme::FONT_CAPTION),
             theme::TEXT_DIM,
         );
     }
@@ -838,14 +838,14 @@ pub fn graph(
                 pos2(rect.left() + 4.0, rect.top() + 4.0),
                 egui::Align2::LEFT_TOP,
                 "R",
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(theme::FONT_VALUE),
                 theme::TEXT_DIM,
             );
             painter.text(
                 pos2(rect.left() + 4.0, rect.bottom() - 4.0),
                 egui::Align2::LEFT_BOTTOM,
                 "L",
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(theme::FONT_VALUE),
                 theme::TEXT_DIM,
             );
             let points: Vec<Pos2> = (0..=width)
@@ -910,7 +910,7 @@ pub fn graph(
                     end,
                     egui::Align2::CENTER_BOTTOM,
                     if side < 0.0 { "L" } else { "R" },
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::proportional(theme::FONT_LABEL),
                     theme::TEXT,
                 );
             }
@@ -1106,7 +1106,7 @@ pub fn graph(
                     pos2(x + 4.0, y),
                     egui::Align2::LEFT_TOP,
                     crate::format::pan(value(effect, &format!("tap{tap}_pan"))),
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT_DIM,
                 );
                 let names = effect.kind.params();
@@ -1192,7 +1192,7 @@ pub fn graph(
                     pos2((a + b) * 0.5, rect.top() + 4.0),
                     egui::Align2::CENTER_TOP,
                     format!("{name} {threshold:.0} dB {ratio:.1}:1"),
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT,
                 );
             }
@@ -1223,7 +1223,7 @@ pub fn graph(
                     pos2((a + b) * 0.5, rect.top() + 4.0),
                     egui::Align2::CENTER_TOP,
                     text,
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT,
                 );
             }
@@ -1256,7 +1256,7 @@ pub fn graph(
                     pos2((a + b) * 0.5, rect.top() + 4.0),
                     egui::Align2::CENTER_TOP,
                     format!("{name} +{drive:.0} dB"),
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT,
                 );
             }
@@ -1296,7 +1296,7 @@ pub fn graph(
                 } else {
                     format!("Modulator: insert {source:.0}")
                 },
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(theme::FONT_LABEL),
                 theme::TEXT,
             );
             hint = "16 bands: the modulator's levels (grey, from the sidechain) shape the carrier on this insert (colour)";
@@ -1409,7 +1409,7 @@ pub fn graph(
                     pos2(rect.right() - 4.0, rect.top() + 2.0),
                     egui::Align2::RIGHT_TOP,
                     "from file",
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT_DIM,
                 );
             }
@@ -1469,7 +1469,7 @@ pub fn graph(
                     pos2(strip.right() - 4.0, strip.bottom() - 2.0),
                     egui::Align2::RIGHT_BOTTOM,
                     label,
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(theme::FONT_VALUE),
                     theme::TEXT_DIM,
                 );
             }
@@ -1497,7 +1497,7 @@ pub fn graph(
                 } else {
                     "recording (turn hold on to freeze)"
                 },
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(theme::FONT_VALUE),
                 theme::TEXT,
             );
             // One cycle of the play point's movement, time down the graph.
@@ -1542,7 +1542,7 @@ pub fn graph(
                     Stroke::new(1.0, theme::GRID_LINE),
                 );
             }
-            let font = egui::FontId::proportional(10.0);
+            let font = egui::FontId::proportional(theme::FONT_VALUE);
             painter.text(
                 pos2(rect.right() - 4.0, rect.bottom() - 4.0),
                 egui::Align2::RIGHT_BOTTOM,
@@ -1561,7 +1561,7 @@ pub fn graph(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 BLOCK_NAMES.get(block).copied().unwrap_or("?"),
-                egui::FontId::proportional(16.0),
+                egui::FontId::proportional(theme::FONT_DISPLAY),
                 color.gamma_multiply(0.5),
             );
             let at = pos2(

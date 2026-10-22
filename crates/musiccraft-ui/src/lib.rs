@@ -724,7 +724,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
             ));
             let galley = painter.layout_no_wrap(
                 dragged.label(),
-                egui::FontId::proportional(13.0),
+                egui::FontId::proportional(theme::FONT_TITLE),
                 theme::TEXT,
             );
             // Room for the kind glyph before the name.

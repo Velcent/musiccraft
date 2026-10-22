@@ -460,7 +460,7 @@ fn row(ui: &mut egui::Ui, row: &Row<'_>, sense: Sense) -> egui::Response {
         right = tag.left() - 4.0;
     }
     let left = glyph.right() + 5.0;
-    let font = FontId::proportional(13.0);
+    let font = FontId::proportional(theme::FONT_TITLE);
     let mut job = egui::text::LayoutJob::simple_singleline(row.label.to_owned(), font, row.color);
     job.wrap = egui::text::TextWrapping::truncate_at_width((right - left).max(8.0));
     let galley = painter.layout_job(job);
@@ -483,8 +483,11 @@ fn pop_out(ui: &egui::Ui, pos: egui::Pos2, row: &Row<'_>) {
         egui::Order::Tooltip,
         egui::Id::new("browser-name-pop-out"),
     ));
-    let galley =
-        painter.layout_no_wrap(row.label.to_owned(), FontId::proportional(13.0), row.color);
+    let galley = painter.layout_no_wrap(
+        row.label.to_owned(),
+        FontId::proportional(theme::FONT_TITLE),
+        row.color,
+    );
     let rect = Rect::from_min_size(pos, galley.size()).expand2(vec2(4.0, 2.0));
     painter.rect(
         rect,

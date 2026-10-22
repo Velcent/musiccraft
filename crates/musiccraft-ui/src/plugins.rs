@@ -171,7 +171,7 @@ pub(crate) fn panel(
     actions: &mut Vec<Action>,
 ) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(&plugin.name).strong().color(theme::ACCENT));
+        ui.label(RichText::new(&plugin.name).color(theme::ACCENT));
         ui.label(RichText::new(&plugin.id).small().color(theme::TEXT_DIM));
     });
     state.plugin_layout = (None, Vec::new());
