@@ -854,7 +854,7 @@ fn chords_lay_down_a_progression() {
 }
 
 #[test]
-fn articulate_and_claw() {
+fn articulate_and_keep_every() {
     let mut s = synth_with(&[
         "note.add 1 0 1 C5 90",
         "note.add 1 2 1 D5 90",
@@ -869,10 +869,10 @@ fn articulate_and_claw() {
         "half the gap; accented on the beat"
     );
     assert_eq!(rows[1], (48, 12, 62, 90));
-    run(&mut s, "note.claw 1 2");
+    run(&mut s, "note.keep_every 1 2");
     let keys: Vec<u8> = note_rows(&s).iter().map(|n| n.2).collect();
     assert_eq!(keys, [60, 64]);
-    fails(&mut s, "note.claw 1 0");
+    fails(&mut s, "note.keep_every 1 0");
 }
 
 #[test]

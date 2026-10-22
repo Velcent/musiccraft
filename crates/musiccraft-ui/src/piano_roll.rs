@@ -1609,28 +1609,28 @@ fn tools_menu(
         );
         item(
             ui,
-            "Chop to grid",
+            "Split at grid lines",
             "Split notes into grid-length pieces",
             "note.chop",
             vec![grid.clone()],
         );
         item(
             ui,
-            "Glue",
+            "Join touching notes",
             "Join touching notes of the same key",
             "note.glue",
             vec![],
         );
         item(
             ui,
-            "Flip horizontally",
+            "Mirror in time",
             "Reverse the notes in time",
             "note.flip",
             vec!["time".into()],
         );
         item(
             ui,
-            "Flip vertically",
+            "Mirror in pitch",
             "Turn the melody upside down",
             "note.flip",
             vec!["pitch".into()],
@@ -1754,9 +1754,9 @@ fn tools_menu(
             );
             item(
                 ui,
-                "Claw every 2nd",
+                "Keep every 2nd",
                 "Keep every second note or chord",
-                "note.claw",
+                "note.keep_every",
                 vec!["2".into()],
             );
         });

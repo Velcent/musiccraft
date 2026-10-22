@@ -131,7 +131,7 @@ Shape / Generate in the piano roll use the defaults in brackets).
 - `note.articulate <channel> <length percent> [accent]`: sets each note to a
   share of the gap to the next note start and adds `accent` to the velocity
   of notes on a beat [staccato 50% +10, tenuto 100%].
-- `note.claw <channel> <every> [offset]`: keeps every Nth start time (a chord
+- `note.keep_every <channel> <every> [offset]`: keeps every Nth start time (a chord
   counts once) from `offset` and drops the rest [every 2nd].
 
 ## Arpeggiator

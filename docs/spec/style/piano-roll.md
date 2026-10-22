@@ -395,7 +395,7 @@ All glyphs are simple vector drawings in the style of `crates/musiccraft-ui/src/
   - Optional: "Paint steps (N): drag to lay one-step hits; click a note to mute it", "Ramp (I): drag across the lane to smooth steps into a ramp".
 - **Corner block**: "Colour group N". Slide and Porta keep their existing hints: "(S) New notes are slide notes: they bend the notes they overlap (in their colour group) to their key" and "(O) New notes are portamento notes: they glide from the previous note and retrigger". Proposed: reorder them to the house style, "Slide (S): …", "Porta (O): …".
 - **Lane targets**: Velocity, Pan, Release, Fine pitch (existing), and the two free modulation values. Their current labels "Mod X" and "Mod Y" are a proposed rename to **"Mod A"** and **"Mod B"** (our own names; same rename in the channel-rack section). The lane-name watermark uses the same words.
-- **Proposed renames of existing Tools items** (plain actions in our own words; commands unchanged): "Chop to grid" → "Split at grid lines", "Glue" → "Join touching notes", "Flip horizontally" → "Mirror in time", "Flip vertically" → "Mirror in pitch". The Shape item "Claw every 2nd" → "Keep every 2nd" (its hint, "Keep every second note or chord", already says this).
+- **Renamed Tools items** (plain actions in our own words; done 2026-10-22, commands unchanged except `note.claw`, now `note.keep_every`): "Chop to grid" → "Split at grid lines", "Glue" → "Join touching notes", "Flip horizontally" → "Mirror in time", "Flip vertically" → "Mirror in pitch". The Shape item "Claw every 2nd" → "Keep every 2nd" (its hint, "Keep every second note or chord", already says this).
 - **Other hints**: ruler "Click to seek · drag to select time · right-click for markers"; keyboard "‹key name› · click to hear · right-click to name this key"; splitter "Drag to resize the lane · right-click to reset"; stretch handle "Drag to stretch the selection in time · Alt ignores snap"; ghost button "Ghost notes: click for channels, right-click for options".
 - **Hint style**: sentence case, no final full stop. The tool or element name comes first with its key in parentheses, then a colon, then what a click or drag does. Several gestures are separated by " · ". Hints go to the hint bar, or appear as tooltips when the hint bar is hidden (`crates/musiccraft-editors/src/hint.rs`).
 - **Number formats**:
@@ -445,11 +445,8 @@ Ordered by visual impact. References are to the current code and to `docs/screen
 13. **Window menu is flat**: new-note velocity, Quantize, Tools, transpose an octave, clear. It has no File / Edit / Select / View / Snap / Zoom / Markers submenus. `options_menu()` lines 558–622.
 14. **Snap has no right-click.** Pressing a note with Draw or Paint now makes its length and velocity the new-note defaults; the snap picker still has no right-click menu.
 15. **No note-properties window on double-click** (L5), and no Alt+wheel property edit on notes.
-16. **Wording**:
-    - The Shape item "Claw every 2nd" (line 1243) and its command `note.claw` (`crates/musiccraft-commands/src/cmds/note_gen.rs`, the `articulate_and_claw` test in `crates/musiccraft-commands/src/cmds/tests.rs`, and `docs/spec/piano-roll.md`) borrow a word from a coined tool name. Rename the label to "Keep every 2nd" and the command to, for example, `note.keep_every`, with its spec and test; the spec changes first.
-    - "Chop to grid", "Glue", "Flip horizontally" and "Flip vertically" in `tools_menu()` (from line 1103) follow the manual's tool list too closely; proposed renames are in Labels.
-17. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
-18. **Keymap**: Page Up/Down, Shift+1–5, Alt+V, Alt+C, Shift+F, Shift+Enter, N and I over the piano roll are new window-local bindings for `docs/spec/keymap.md` (a new "Over the piano roll" section) and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today.
+16. **Cursors**: the shapes follow the tool and the table in N, but there is no resize cursor between touching notes (the earlier note's right end wins).
+17. **Keymap**: Page Up/Down, Shift+1–5, Alt+V, Alt+C, Shift+F, Shift+Enter, N and I over the piano roll are new window-local bindings for `docs/spec/keymap.md` (a new "Over the piano roll" section) and `crates/musiccraft-ui/keymap/default.keymap`. None is bound globally today.
 
 ## Sources
 
