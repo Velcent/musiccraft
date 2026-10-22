@@ -960,6 +960,11 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                     type_in::open(state, frame.project, target, egui::pos2(x, y));
                 }
             }
+            "ui.open_effects" => {
+                if let Some(track) = invocation.args.first().and_then(|n| n.parse().ok()) {
+                    effect_window::open_all(state, frame.project, track);
+                }
+            }
             "ui.open_automation" => {
                 let automation = invocation
                     .args
@@ -1161,5 +1166,38 @@ mod tests {
         assert!((state.copied_control.unwrap() - 0.75).abs() < 1e-6);
         assert_eq!(state.automation_editor, Some(project.automations[0].id));
         assert_eq!(state.arrange, Some(Arrange::Raise("automation-editor")));
+    }
+
+    #[test]
+    fn open_effects_opens_every_effect_window_of_a_track() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        session.run_line("mixer.add_effect 2 delay").unwrap();
+        session.run_line("mixer.add_effect 2 reverb").unwrap();
+        let project = session.project().clone();
+        let (engine, history) = frame_for(&project);
+        let frame = Frame {
+            project: &project,
+            engine: &engine,
+            history: &history,
+            waveform: None,
+            waveform_seconds: None,
+            clip_waveforms: &[],
+            clip_durations: &[],
+            plugins: &Plugins::default(),
+            settings: &Settings::default(),
+            settings_info: &SettingsInfo::default(),
+        };
+        let mut state = UiState::default();
+        state.effect_windows.push((2, 1));
+        let out = resolve_ui_actions(
+            &mut state,
+            &frame,
+            vec![Action::Run(Invocation::parse("ui.open_effects 2").unwrap())],
+        );
+        assert!(out.is_empty());
+        assert_eq!(state.effect_windows, vec![(2, 1), (2, 0)]);
     }
 }

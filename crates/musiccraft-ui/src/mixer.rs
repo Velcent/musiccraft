@@ -593,13 +593,23 @@ fn effects_switch(ui: &mut egui::Ui, track: &MixerTrack, number: &str, actions: 
         .hint(if names.is_empty() {
             "No effects".to_owned()
         } else if running > 0 {
-            format!("Effects: {} · click to bypass them all", names.join(", "))
+            format!(
+                "Effects: {} · click to bypass them all · right-click to open their windows",
+                names.join(", ")
+            )
         } else {
             format!(
-                "Effects (all bypassed): {} · click to enable them",
+                "Effects (all bypassed): {} · click to enable them · right-click to open their windows",
                 names.join(", ")
             )
         });
+    if count > 0 {
+        response.context_menu(|ui| {
+            if ui.button("Open all effect windows").clicked() {
+                run(actions, "ui.open_effects", [number.to_owned()]);
+            }
+        });
+    }
     if count > 0 && response.clicked() {
         let on = if running > 0 { "off" } else { "on" };
         run(
@@ -699,7 +709,8 @@ fn route_arrow(
     }
 }
 
-/// Where an insert's output goes: `→ M`, `→ 3`, `→ M, 3, 5` or `→ none`.
+/// Where an insert's output goes: `M`, `3`, `M, 3, 5` or `none` (drawn
+/// after an [`Icon::Out`] glyph).
 fn route_summary(track: &MixerTrack) -> String {
     let mut to: Vec<String> = Vec::new();
     if track.to_master {
@@ -707,9 +718,9 @@ fn route_summary(track: &MixerTrack) -> String {
     }
     to.extend(track.sends.iter().map(|s| s.target.to_string()));
     if to.is_empty() {
-        "→ none".to_owned()
+        "none".to_owned()
     } else {
-        format!("→ {}", to.join(", "))
+        to.join(", ")
     }
 }
 
@@ -771,6 +782,7 @@ fn output_row(
     ui.horizontal(|ui| {
         ui.label(RichText::new("Out").small().color(theme::TEXT_DIM));
         if index > 0 {
+            icons::glyph(ui, Icon::Out, 12.0, theme::TEXT_DIM);
             ui.label(RichText::new(route_summary(track)).monospace())
                 .hint("Set with the arrows under the strips, or To master / Send below");
             return;
@@ -1151,10 +1163,11 @@ fn routing(
                 .mixer
                 .get(send.target)
                 .map_or("?", |t| t.name.as_str());
+            icons::glyph(ui, Icon::Out, 12.0, theme::TEXT_DIM);
             ui.add_sized(
-                vec2(72.0, 16.0),
+                vec2(58.0, 16.0),
                 egui::Label::new(
-                    RichText::new(format!("→ {} {name}", send.target))
+                    RichText::new(format!("{} {name}", send.target))
                         .monospace()
                         .small(),
                 ),
@@ -1203,14 +1216,14 @@ mod tests {
     #[test]
     fn route_summaries_name_every_destination() {
         let mut track = MixerTrack::new("A");
-        assert_eq!(route_summary(&track), "→ M");
+        assert_eq!(route_summary(&track), "M");
         track.sends.push(musiccraft_project::MixerSend {
             target: 5,
             level: 1.0,
         });
-        assert_eq!(route_summary(&track), "→ M, 5");
+        assert_eq!(route_summary(&track), "M, 5");
         track.to_master = false;
         track.sends.clear();
-        assert_eq!(route_summary(&track), "→ none");
+        assert_eq!(route_summary(&track), "none");
     }
 }

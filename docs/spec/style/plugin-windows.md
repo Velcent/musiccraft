@@ -444,8 +444,7 @@ Ordered by visual impact.
 11. **Only one channel window can exist.** `crates/musiccraft-ui/src/lib.rs` holds a single `windows.channel_settings` flag plus `selected_channel`. There is no Alt+click to open more, and no "Keep instrument windows open" setting.
 12. **The window width jumps between channels.** `channel_settings.rs` sets a default width, while Antiserum's page sets its own larger maximum (`antiserum.rs`, `MAX_WIDTH`). The window grows when an Antiserum channel is shown and does not follow the width rule in "Placement and proportions".
 13. **The MIDI output and channel stack windows have no strip.** `channel_settings.rs` (`contents`) returns early for MIDI output and shows only the MIDI page, with its own Mute checkbox.
-14. **The mixer cannot open all of a track's effect windows at once.** Neither the effect count nor any other strip control in `mixer.rs` does this.
-15. **There is no detaching** to a desktop window (future item, main-window section).
+14. **There is no detaching** to a desktop window (future item, main-window section).
 
 ## Sources
 

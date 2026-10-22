@@ -157,7 +157,9 @@ Ranges and defaults are defined in `musiccraft-params`.
   switches: invert phase, swap left and right, the stereo separation knob and
   the effect count, lit while any effect runs; clicking it bypasses all the
   track's effects, or enables them all again
-  (`mixer.set_effects_enabled <track> <on|off>`, one undo step). A click
+  (`mixer.set_effects_enabled <track> <on|off>`, one undo step). Its
+  right-click menu offers "Open all effect windows", which opens the window
+  of every effect on the track (windows already open stay open). A click
   anywhere on a strip selects it, without taking the click from the light or
   switch under the pointer. The wheel over the number cell or the name steps
   the strips sideways by whole strips. The strip-details switch hides the track switches. The
@@ -166,8 +168,10 @@ Ranges and defaults are defined in `musiccraft-params`.
   whether it does (filled in the highlight tone) or not (an outline) and
   toggles it. Strips it may not feed show a faint, inert outline. The
   selected strip itself shows an upward source arrow whose hint says where
-  it goes (`→ M`, `→ 3`, or `→ M, 3, 5`). With the master selected no
-  arrows apply, as the master feeds nothing.
+  it goes ("This insert goes to M", "… to 3" or "… to M, 3, 5"). With the
+  master selected no arrows apply, as the master feeds nothing. The slot
+  panel's Out row and each send row draw the output glyph (a small circle
+  with an arrow leaving it) before the destination, never a text arrow.
 - The slot panel beside the strips shows, for the selected track (it has no
   heading; the title names the track): its **input** (the audio input device,
   as in Settings → Audio, for recording), the ten effect slots, the track EQ

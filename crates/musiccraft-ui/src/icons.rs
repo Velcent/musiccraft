@@ -116,6 +116,8 @@ pub enum Icon {
     SlideRamp,
     /// Confirm (a tick).
     Check,
+    /// Output (a small circle with a short arrow leaving to the right).
+    Out,
 }
 
 fn p(rect: Rect, x: f32, y: f32) -> Pos2 {
@@ -729,6 +731,15 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 Stroke::new(1.6, color),
             ));
         }
+        Icon::Out => {
+            let stroke = Stroke::new(1.3, color);
+            painter.circle_stroke(p(r, 0.22, 0.5), r.width() * 0.2, stroke);
+            painter.line_segment([p(r, 0.42, 0.5), p(r, 0.95, 0.5)], stroke);
+            painter.add(Shape::line(
+                vec![p(r, 0.72, 0.28), p(r, 0.95, 0.5), p(r, 0.72, 0.72)],
+                stroke,
+            ));
+        }
         Icon::SlideRamp => {
             painter.add(Shape::convex_polygon(
                 vec![p(r, 0.0, 0.95), p(r, 0.95, 0.05), p(r, 0.95, 0.95)],
@@ -768,6 +779,14 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
 /// A square button that opens a list: `open` draws it pressed, `unset`
 /// dims its glyph (nothing chosen) and `lit` draws the glyph in the
 /// highlight tone (a choice that changes what clicks do).
+/// An inert glyph of `size` points, in line with text (for example the
+/// output mark before a routing summary).
+pub fn glyph(ui: &mut Ui, icon: Icon, size: f32, color: Color32) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
+    paint(ui.painter(), rect, icon, color);
+    response
+}
+
 pub fn picker(
     ui: &mut Ui,
     icon: Icon,

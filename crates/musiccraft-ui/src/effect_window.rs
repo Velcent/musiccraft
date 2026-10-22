@@ -25,6 +25,16 @@ pub(crate) fn toggle(state: &mut UiState, track: usize, slot: usize) {
     }
 }
 
+/// Opens the window of every effect on `track` (those already open stay).
+pub(crate) fn open_all(state: &mut UiState, project: &musiccraft_project::Project, track: usize) {
+    let count = project.mixer.get(track).map_or(0, |t| t.effects.len());
+    for slot in 0..count {
+        if !state.effect_windows.contains(&(track, slot)) {
+            state.effect_windows.push((track, slot));
+        }
+    }
+}
+
 fn set_param(track: usize, slot: usize, name: &str, value: f32) -> Invocation {
     Invocation::new(
         "mixer.set_effect_param",
