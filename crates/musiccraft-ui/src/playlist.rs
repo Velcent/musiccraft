@@ -1243,6 +1243,17 @@ fn clip_content(
                 points,
                 Stroke::new(1.5, faded(theme::AUTOMATION)),
             ));
+            // The points themselves, where the body is tall enough.
+            if body.height() >= 12.0 {
+                for point in automation.points.iter().filter(|p| p.tick < length) {
+                    let at = pos2(
+                        grid.x((start + point.tick) as f32),
+                        body.bottom() - point.value * body.height(),
+                    );
+                    painter.circle_filled(at, 2.0, faded(theme::AUTOMATION));
+                    painter.circle_stroke(at, 2.0, Stroke::new(1.0, faded(theme::BACKGROUND)));
+                }
+            }
         }
         ClipSource::Audio(id) => {
             let Some((_, peaks)) = frame.clip_waveforms.iter().find(|(c, _)| *c == id) else {
@@ -1377,6 +1388,16 @@ fn pattern_preview(
 ) {
     let period = pattern.length_ticks().max(1);
     let rows = NoteRows::of(project, pattern);
+    // A short tick at the top and bottom of the body where each repeat of
+    // the pattern starts, when repeats are wide enough to tell apart.
+    if grid.x(period as f32) - grid.x(0.0) >= 8.0 {
+        let tick = Stroke::new(1.0, theme::at_strength(theme::TEXT_DIM, 150));
+        for repeat in (period..length).step_by(period as usize) {
+            let x = grid.x((start + repeat) as f32);
+            painter.line_segment([pos2(x, body.top()), pos2(x, body.top() + 4.0)], tick);
+            painter.line_segment([pos2(x, body.bottom() - 4.0), pos2(x, body.bottom())], tick);
+        }
+    }
     let mut offset = 0;
     while offset < length {
         for note in &pattern.notes {
