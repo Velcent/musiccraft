@@ -35,7 +35,9 @@
   saved as `"group"`; no name removes it) puts a channel in a named group. The
   rack's group menu (always at the top left of the rack) shows All, one
   group, or No group (channels without one). Right-click a channel → Group…
-  sets it. Filtering only hides rows; numbering and keys stay the same.
+  sets it. Filtering only hides rows; numbering and keys stay the same. While
+  one named group is shown, a channel added from the rack's plus joins it (the
+  add and the `channel.set_group` are one undo step).
 - `channel.solo <n>` mutes every other channel; running it again on an already
   soloed channel unmutes all channels.
 - **Steps** are sixteenth notes. `step.toggle <channel> <step>` (0-based step)
@@ -61,7 +63,8 @@
   pattern (`pattern.next`, `pattern.prev`).
 - The mute light: a click mutes or unmutes, Ctrl+click solos the channel
   (`channel.solo`), and right-click offers Mute or Unmute and Solo.
-  The pattern length box takes 1 to 1024 steps.
+  The pattern length box takes 1 to 1024 steps; right-click it for 1, 2, 4, 8
+  or 16 whole bars in the pattern's time signature.
 - **Row layout** (UI), left to right: mute dot, pan knob, volume knob, the
   mixer track box, the name button, the steps (or a miniature roll), and a
   **selection switch** that selects the channel without opening its
@@ -69,6 +72,8 @@
 - **Mixer track box** (UI): each row shows the mixer track the channel plays
   to as a small number box: "M" for the master track, "3" for insert 3. Drag
   it up or down (or type) to change the track; the tooltip names the track.
+  Channel stacks and MIDI outputs make no sound of their own, so their box
+  is a dim dash.
 - **Browser** (UI): in the plugin database, a single click only selects an
   entry (it is highlighted). Double-clicking a generator adds it as a new
   channel; dragging it onto the channel rack does the same. Double-clicking

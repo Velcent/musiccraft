@@ -428,14 +428,12 @@ Ordered by visual impact. Where a gap changes layout that an existing spec descr
 11. **Mute light.** Ctrl+click solos and right-click offers Mute and Solo, but there is no Shift+click lock.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
 12. **Mixer-track box.**
-    - Layer and MIDI-out channels still show an editable number although they make no sound of their own.
-    - There is no option to hide the column.
+    - There is no option to hide the column. (Channel stacks and MIDI outputs now show a dim dash.)
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`row`).
 13. **Group filter.**
     - No right-click new, rename or delete; no Page Up/Down cycling.
-    - New channels do not join the shown group.
     - File: `crates/musiccraft-ui/src/channel_rack.rs` (`header`, `add_menu`).
-14. **Pattern length.** The length box takes 1–1024 steps, but there is no "auto" length and no right-click bar presets.
+14. **Pattern length.** The length box takes 1–1024 steps and offers whole-bar lengths on right-click, but there is no "auto" length.
     - Files: `crates/musiccraft-ui/src/channel_rack.rs` (`header`).
 15. **No window menu items for selected channels:** no folding of rows, ordering, recolouring, transposing, swing mix or one-track-each for a multi-channel selection.
     - File: `crates/musiccraft-ui/src/channel_rack.rs`.

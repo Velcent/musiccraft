@@ -80,7 +80,9 @@ pub fn show(
                     graph_editor(ui, state, project, actions);
                 }
                 ui.separator();
+                let first_new = actions.len();
                 add_menu(ui, frame.plugins, actions);
+                join_shown_group(state, project, &mut actions[first_new..]);
             })
         })
         .flatten();
@@ -226,13 +228,40 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                 .range(1..=musiccraft_project::MAX_PATTERN_STEPS)
                 .speed(0.2),
         );
+        let pattern_number = (project.current_pattern + 1).to_string();
         if response.changed() && steps != pattern.length_steps {
             run(
                 actions,
                 "pattern.set_length",
-                [(project.current_pattern + 1).to_string(), steps.to_string()],
+                [pattern_number.clone(), steps.to_string()],
             );
         }
+        // Right-click: whole-bar lengths in the pattern's own metre.
+        let bar = pattern.time_signature.bar_steps();
+        response
+            .hint("Pattern length in steps · drag, or right-click for whole bars")
+            .context_menu(|ui| {
+                for bars in [1, 2, 4, 8, 16] {
+                    let length = bar * bars;
+                    if length > musiccraft_project::MAX_PATTERN_STEPS {
+                        break;
+                    }
+                    let label = if bars == 1 {
+                        "1 bar".to_owned()
+                    } else {
+                        format!("{bars} bars")
+                    };
+                    let current = length == pattern.length_steps;
+                    if ui.selectable_label(current, label).clicked() {
+                        run(
+                            actions,
+                            "pattern.set_length",
+                            [pattern_number.clone(), length.to_string()],
+                        );
+                        ui.close();
+                    }
+                }
+            });
         let mut open = state.graph.is_some();
         if ui
             .toggle_value(&mut open, "Graph")
@@ -335,39 +364,51 @@ fn row(
             .response
             .hint(format!("Volume {}", format::level(channel.volume)));
 
+        let silent = matches!(
+            channel.instrument,
+            Instrument::Layer { .. } | Instrument::MidiOut { .. }
+        );
         let mut track = channel.mixer_track;
-        let route = ui
-            .add_sized(
+        if silent {
+            ui.add_sized(
                 vec2(28.0, 18.0),
-                egui::DragValue::new(&mut track)
-                    .range(0..=project.mixer.len().saturating_sub(1))
-                    .speed(0.1)
-                    .custom_formatter(|v, _| {
-                        if v < 0.5 {
-                            "M".to_owned()
-                        } else {
-                            format!("{v:.0}")
-                        }
-                    })
-                    .custom_parser(|text| {
-                        let text = text.trim().trim_start_matches('→').trim();
-                        if text.eq_ignore_ascii_case("mst") || text.eq_ignore_ascii_case("m") {
-                            Some(0.0)
-                        } else {
-                            text.parse().ok()
-                        }
-                    }),
+                egui::Label::new(RichText::new("–").color(theme::TEXT_FAINT)),
             )
-            .hint(format!(
-                "Plays through mixer track: {}. Drag up or down to change",
-                route_name(project, channel.mixer_track)
-            ));
-        if route.changed() && track != channel.mixer_track {
-            run(
-                actions,
-                "channel.route",
-                [number.clone(), track.to_string()],
-            );
+            .hint("Makes no sound of its own, so it plays through no mixer track");
+        } else {
+            let route = ui
+                .add_sized(
+                    vec2(28.0, 18.0),
+                    egui::DragValue::new(&mut track)
+                        .range(0..=project.mixer.len().saturating_sub(1))
+                        .speed(0.1)
+                        .custom_formatter(|v, _| {
+                            if v < 0.5 {
+                                "M".to_owned()
+                            } else {
+                                format!("{v:.0}")
+                            }
+                        })
+                        .custom_parser(|text| {
+                            let text = text.trim().trim_start_matches('→').trim();
+                            if text.eq_ignore_ascii_case("mst") || text.eq_ignore_ascii_case("m") {
+                                Some(0.0)
+                            } else {
+                                text.parse().ok()
+                            }
+                        }),
+                )
+                .hint(format!(
+                    "Plays through mixer track: {}. Drag up or down to change",
+                    route_name(project, channel.mixer_track)
+                ));
+            if route.changed() && track != channel.mixer_track {
+                run(
+                    actions,
+                    "channel.route",
+                    [number.clone(), track.to_string()],
+                );
+            }
         }
 
         let selected = state.selected_channel == index;
@@ -785,6 +826,26 @@ fn mini_roll(
     }
 }
 
+/// While the rack shows one group, a channel added from the plus joins it: the
+/// add becomes one undo step with `channel.set_group`.
+fn join_shown_group(state: &UiState, project: &Project, added: &mut [Action]) {
+    let Some(group) = state.rack_group.as_ref().filter(|g| !g.is_empty()) else {
+        return;
+    };
+    let number = (project.channels.len() + 1).to_string();
+    for action in added {
+        if let Action::Run(add) = action
+            && add.name.starts_with("channel.add_")
+        {
+            let join = Invocation::new("channel.set_group", [number.clone(), group.clone()]);
+            *add = Invocation::new(
+                musiccraft_commands::BATCH,
+                [add.to_string(), join.to_string()],
+            );
+        }
+    }
+}
+
 fn add_menu(ui: &mut egui::Ui, plugins: &crate::Plugins, actions: &mut Vec<Action>) {
     ui.vertical_centered(|ui| {
         ui.menu_button(RichText::new("+").size(16.0), |ui| {
@@ -1014,5 +1075,36 @@ fn route_name(project: &Project, track: usize) -> String {
         Some(_) if track == 0 => "Master".to_owned(),
         Some(t) => format!("{track} ({})", t.name),
         None => track.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channels_added_while_a_group_is_shown_join_it() {
+        let mut session = musiccraft_commands::Session::new(
+            Project::default(),
+            musiccraft_commands::Registry::with_builtin(),
+        );
+        session.run_line("channel.add_synth").unwrap();
+        let mut state = UiState {
+            rack_group: Some("Drums".to_owned()),
+            ..UiState::default()
+        };
+        let mut added = vec![Action::Run(Invocation::bare("channel.add_synth"))];
+        join_shown_group(&state, session.project(), &mut added);
+        let Action::Run(batch) = &added[0] else {
+            panic!("{added:?}");
+        };
+        session.run(batch).unwrap();
+        assert_eq!(session.project().channels[1].group, "Drums");
+        assert_eq!(session.project().channels[0].group, "");
+        // With every channel shown, nothing changes.
+        state.rack_group = None;
+        let mut added = vec![Action::Run(Invocation::bare("channel.add_synth"))];
+        join_shown_group(&state, session.project(), &mut added);
+        assert_eq!(added, [Action::Run(Invocation::bare("channel.add_synth"))]);
     }
 }
