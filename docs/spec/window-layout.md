@@ -134,7 +134,8 @@ stay our own. The full target look, window by window, is the style guide in
 
 - Tool and transport buttons are 24 × 22 points.
 - The browser opens 170 points wide (it can be dragged wider).
-- Playlist tracks are 36 points tall by default; a track's own height is a
+- Playlist tracks are 60 points tall by default (about three tool buttons, so
+  the header has room for two lines); the vertical zoom ranges 18–160 points; a track's own height is a
   percentage of that (`playlist.md`, "Track heights").
 - The piano roll's event lane is 96 points tall.
 

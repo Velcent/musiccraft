@@ -13,12 +13,18 @@
   <track> <on|off>` and `playlist.toggle_track_solo <track>`. While any row is
   soloed, only soloed rows play; a muted row stays silent even when soloed.
   Silenced rows skip pattern, audio and automation clips alike. The row header
-  shows the colour stripe and name on the left, and the arm dot, S (solo)
-  button and mute dot on the right; right-click it to
-  rename it or pick a colour, or double-click it to rename it in place. Track
-  and pattern menus share one Colour submenu: two rows of eight swatches with
-  the current one outlined, then "No colour". A coloured row shows a stripe of its colour at the
-  left of its header; silenced rows show their name dimmed.
+  is a raised plate, tinted well down by the row's colour and one step
+  lighter under the pointer, with a hairline gap under it. A plate at least
+  two text lines tall has the name on its top line and, on its bottom line, a
+  two-line resize grip at the left and the arm dot, S (solo) button and mute
+  light at the right; a shorter plate puts the name and switches on one line
+  and draws no grip. The arm dot shows only while the row is armed or the
+  pointer is over the plate. The mute light gains a ring in the highlight tone
+  while the row is soloed, and is lit at reduced strength while another row's
+  solo silences it. Right-click the plate to rename it or pick a colour, or
+  double-click it to rename it in place. Track and pattern menus share one
+  Colour submenu: two rows of eight swatches with the current one outlined,
+  then "No colour". Silenced rows show their name dimmed.
 - **Track heights.** Each row can have its own height, a percentage of the
   global track height (25–400%, default 100%; saved, undoable):
   `playlist.set_track_height <track> <percent|reset>` and

@@ -46,8 +46,8 @@ const ZOOM_TICKS: u32 = 4 * PPQ;
 /// Horizontal zoom range, in points per 4/4 bar.
 const BAR_WIDTH_RANGE: (f32, f32) = (16.0, 400.0);
 /// Track height: the default and the vertical zoom range, in points.
-const TRACK_HEIGHT: f32 = 36.0;
-const TRACK_HEIGHT_RANGE: (f32, f32) = (18.0, 96.0);
+const TRACK_HEIGHT: f32 = 60.0;
+const TRACK_HEIGHT_RANGE: (f32, f32) = (18.0, 160.0);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaylistState {
@@ -2222,44 +2222,43 @@ fn headers(
         pos2(clip.left() + HEADER_WIDTH, clip.bottom()),
     );
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0.0, theme::PANEL);
+    // The column is the well tone; each plate stops a hairline short of the
+    // next, so the gap reads as a divider.
+    painter.rect_filled(area, 0.0, theme::PANEL_DARK);
     let first = grid.row_at(area.top()).unwrap_or(0);
     let last = grid
         .row_at(area.bottom() - 1.0)
         .unwrap_or(PLAYLIST_TRACKS - 1);
     for row in first..=last {
-        let y = grid.y(row);
-        let r = Rect::from_min_max(pos2(area.left(), y), pos2(area.right(), grid.y(row + 1)));
+        let r = Rect::from_min_max(
+            pos2(area.left(), grid.y(row)),
+            pos2(area.right(), grid.y(row + 1)),
+        );
         let playlist = &project.playlist;
-        if let Some(&color) = playlist.track_colors.get(&row) {
-            painter.rect_filled(
-                Rect::from_min_size(r.left_top(), vec2(4.0, r.height())),
-                0.0,
-                theme::track_color(color),
-            );
-        }
-        painter.line_segment(
-            [r.left_bottom(), r.right_bottom()],
-            Stroke::new(1.0, theme::GRID_LINE),
+        let hovered = ui.rect_contains_pointer(r);
+        let plate = Rect::from_min_max(r.min, r.max - vec2(1.0, 1.0));
+        painter.rect_filled(
+            plate,
+            2.0,
+            plate_fill(playlist.track_colors.get(&row), hovered),
         );
         let text = if playlist.track_audible(row) {
             theme::TEXT
         } else {
             theme::TEXT_DIM
         };
-        // The name stops short of the arm, solo and mute buttons at the
-        // right.
-        let name_area = Rect::from_min_max(
-            pos2(r.left() + 8.0, r.top()),
-            pos2(r.right() - 56.0, r.bottom()),
-        );
-        painter.with_clip_rect(name_area).text(
-            name_area.left_center(),
+        let layout = HeaderLayout::of(plate);
+        painter.with_clip_rect(layout.name).text(
+            layout.name.left_center(),
             Align2::LEFT_CENTER,
             playlist.track_name(row),
             FontId::proportional(theme::FONT_LABEL),
             text,
         );
+        if let Some(grip) = layout.grip {
+            draw_grip(&painter, grip, hovered);
+        }
+        let name_area = layout.name;
         let number = (row + 1).to_string();
         // Right-click the header: rename or colour the row.
         let header = ui.interact(r, ui.id().with(("track-header", row)), Sense::click());
@@ -2297,24 +2296,136 @@ fn headers(
             row,
             actions,
         );
-        let dot = Rect::from_center_size(r.right_center() - vec2(12.0, 0.0), vec2(14.0, 14.0));
-        if !area.contains_rect(dot) {
+        if !area.contains_rect(layout.light) {
             continue;
         }
-        let muted = playlist.muted_tracks.contains(&row);
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(dot));
-        if widgets::dot(&mut child, !muted, theme::ACCENT)
-            .hint("Mute track")
-            .clicked()
-        {
-            actions.push(Action::Run(Invocation::new(
-                "playlist.toggle_track_mute",
-                [number.clone()],
-            )));
+        track_switches(ui, playlist, row, (&layout, hovered), actions);
+    }
+}
+
+/// A track header plate's fill: raised, tinted well down by the track's
+/// colour, one step lighter under the pointer.
+fn plate_fill(color: Option<&u8>, hovered: bool) -> egui::Color32 {
+    let base = if hovered {
+        theme::RAISED_HOVER
+    } else {
+        theme::RAISED
+    };
+    color.map_or(base, |&c| theme::mix(base, theme::track_color(c), 0.3))
+}
+
+/// Where things sit on a track header plate. A plate at least two lines
+/// tall has the name on the top line and the grip and switches on the
+/// bottom line; a shorter one puts everything on one line.
+struct HeaderLayout {
+    name: Rect,
+    grip: Option<Rect>,
+    arm: Rect,
+    solo: Rect,
+    light: Rect,
+}
+
+/// The shortest plate that gets two lines.
+const TWO_LINE_HEADER: f32 = 34.0;
+
+impl HeaderLayout {
+    fn of(plate: Rect) -> Self {
+        let two_lines = plate.height() >= TWO_LINE_HEADER;
+        let controls_y = if two_lines {
+            plate.bottom() - 10.0
+        } else {
+            plate.center().y
+        };
+        let at = |from_right: f32, width: f32| {
+            Rect::from_center_size(
+                pos2(plate.right() - from_right, controls_y),
+                vec2(width, 14.0),
+            )
+        };
+        let name = if two_lines {
+            Rect::from_min_max(
+                pos2(plate.left() + 8.0, plate.top() + 2.0),
+                pos2(plate.right() - 8.0, plate.top() + 18.0),
+            )
+        } else {
+            // The name stops short of the switches at the right.
+            Rect::from_min_max(
+                pos2(plate.left() + 8.0, plate.top()),
+                pos2(plate.right() - 56.0, plate.bottom()),
+            )
+        };
+        Self {
+            name,
+            grip: two_lines.then(|| {
+                Rect::from_center_size(pos2(plate.left() + 12.0, controls_y), vec2(10.0, 6.0))
+            }),
+            arm: at(46.0, 14.0),
+            solo: at(29.0, 16.0),
+            light: at(12.0, 14.0),
         }
-        let arm = Rect::from_center_size(r.right_center() - vec2(46.0, 0.0), vec2(14.0, 14.0));
-        let armed = playlist.armed_tracks.contains(&row);
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(arm));
+    }
+}
+
+/// Two short lines: the resize grip at a plate's bottom left.
+fn draw_grip(painter: &egui::Painter, grip: Rect, hovered: bool) {
+    let color = if hovered {
+        theme::TEXT
+    } else {
+        theme::TEXT_DIM
+    };
+    for y in [grip.top() + 1.0, grip.bottom() - 1.0] {
+        painter.line_segment(
+            [pos2(grip.left(), y), pos2(grip.right(), y)],
+            Stroke::new(1.0, color),
+        );
+    }
+}
+
+/// The arm dot, the solo button and the mute light of one track header.
+fn track_switches(
+    ui: &mut egui::Ui,
+    playlist: &musiccraft_project::Playlist,
+    row: u32,
+    (layout, hovered): (&HeaderLayout, bool),
+    actions: &mut Vec<Action>,
+) {
+    let number = (row + 1).to_string();
+    let muted = playlist.muted_tracks.contains(&row);
+    let soloed = playlist.soloed_tracks.contains(&row);
+    let silenced = !muted && !playlist.track_audible(row);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(layout.light));
+    let color = if silenced {
+        theme::ACCENT_DIM
+    } else {
+        theme::ACCENT
+    };
+    let light = widgets::dot(&mut child, !muted, color);
+    if soloed {
+        ui.painter()
+            .circle_stroke(light.rect.center(), 6.5, Stroke::new(1.0, theme::HIGHLIGHT));
+    }
+    let state = if muted {
+        "muted"
+    } else if soloed {
+        "soloed"
+    } else if silenced {
+        "silenced by solo"
+    } else {
+        "on"
+    };
+    if light
+        .hint(format!("Track {state} · click to mute or unmute"))
+        .clicked()
+    {
+        actions.push(Action::Run(Invocation::new(
+            "playlist.toggle_track_mute",
+            [number.clone()],
+        )));
+    }
+    // The arm dot shows while the track is armed or the pointer is over it.
+    let armed = playlist.armed_tracks.contains(&row);
+    if armed || hovered {
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(layout.arm));
         if widgets::dot(&mut child, armed, theme::DANGER)
             .hint("Arm for audio recording: takes go to the first armed track with room")
             .clicked()
@@ -2324,24 +2435,22 @@ fn headers(
                 [number.clone()],
             )));
         }
-        let solo = Rect::from_center_size(r.right_center() - vec2(29.0, 0.0), vec2(16.0, 14.0));
-        let soloed = playlist.soloed_tracks.contains(&row);
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(solo));
-        let label = RichText::new("S").small().color(if soloed {
-            theme::HIGHLIGHT
-        } else {
-            theme::TEXT_DIM
-        });
-        if child
-            .add(egui::Button::new(label).frame(false))
-            .on_hover_text("Solo track")
-            .clicked()
-        {
-            actions.push(Action::Run(Invocation::new(
-                "playlist.toggle_track_solo",
-                [number],
-            )));
-        }
+    }
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(layout.solo));
+    let label = RichText::new("S").small().color(if soloed {
+        theme::HIGHLIGHT
+    } else {
+        theme::TEXT_DIM
+    });
+    if child
+        .add(egui::Button::new(label).frame(false))
+        .hint("Solo track")
+        .clicked()
+    {
+        actions.push(Action::Run(Invocation::new(
+            "playlist.toggle_track_solo",
+            [number],
+        )));
     }
 }
 
@@ -3354,6 +3463,25 @@ mod tests {
             offset: 0,
             muted: false,
         }
+    }
+
+    #[test]
+    fn tall_headers_get_two_lines_and_short_ones_one() {
+        let tall = HeaderLayout::of(Rect::from_min_size(pos2(0.0, 0.0), vec2(120.0, 59.0)));
+        assert!(tall.grip.is_some());
+        assert!(
+            tall.name.bottom() < tall.light.top(),
+            "name above the switches"
+        );
+        let short = HeaderLayout::of(Rect::from_min_size(pos2(0.0, 0.0), vec2(120.0, 20.0)));
+        assert!(short.grip.is_none());
+        assert!((short.name.center().y - short.light.center().y).abs() < 0.5);
+        assert!(
+            short.name.right() < short.arm.left(),
+            "name stops short of the switches"
+        );
+        // The default track is tall enough for two lines.
+        const { assert!(TRACK_HEIGHT - 1.0 >= TWO_LINE_HEADER) };
     }
 
     #[test]
