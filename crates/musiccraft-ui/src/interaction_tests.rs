@@ -3817,6 +3817,40 @@ fn dragging_a_clips_left_edge_trims_its_start() {
 }
 
 #[test]
+fn the_wheel_over_the_snap_button_steps_it_and_right_click_resets_it() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let window = window_rect(&h, "playlist-window");
+    let button = (0..200)
+        .map(|i| window.left_top() + vec2(4.0 + 3.0 * i as f32, 11.0))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state
+                .hint
+                .as_deref()
+                .is_some_and(|t| t.starts_with("Snap: "))
+        })
+        .expect("the snap button");
+    let snap = |h: &mut Harness| {
+        h.frame(vec![]);
+        h.frame(vec![]);
+        h.state.hint.clone().unwrap_or_default()
+    };
+    assert!(snap(&mut h).starts_with("Snap: Bar "));
+    h.frame(vec![Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Line,
+        delta: vec2(0.0, -1.0),
+        modifiers: Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+    }]);
+    assert!(snap(&mut h).starts_with("Snap: Beat "), "down is finer");
+    h.click(button, PointerButton::Secondary);
+    assert!(snap(&mut h).starts_with("Snap: Bar "));
+}
+
+#[test]
 fn the_clip_lists_plus_button_adds_a_pattern() {
     let mut h = Harness::new(&[]);
     h.state.windows.playlist = true;

@@ -322,7 +322,10 @@ fn tools(ui: &mut egui::Ui, state: &mut UiState) {
 fn snap_button(ui: &mut egui::Ui, state: &mut UiState) {
     let popup = egui::Id::new("playlist-snap");
     let open = egui::Popup::is_id_open(ui.ctx(), popup);
-    let hint = format!("Snap: {} · click to choose", state.playlist.snap.label());
+    let hint = format!(
+        "Snap: {} · click to choose, wheel to step, right-click for Bar",
+        state.playlist.snap.label()
+    );
     let response = ui
         .horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 1.0;
@@ -338,11 +341,33 @@ fn snap_button(ui: &mut egui::Ui, state: &mut UiState) {
             glyph.union(value)
         })
         .inner;
+    if response.secondary_clicked() {
+        state.playlist.snap = Snap::Bar;
+    }
+    let notches = if response.hovered() {
+        crate::scrollbars::wheel_notches(ui)
+    } else {
+        0.0
+    };
+    if notches != 0.0 {
+        state.playlist.snap = step_snap(state.playlist.snap, notches > 0.0);
+    }
     let toggle = response.clicked().then_some(egui::SetOpenCommand::Toggle);
     egui::Popup::menu(&response)
         .id(popup)
         .open_memory(toggle)
         .show(|ui| snap_list(ui, state));
+}
+
+/// The next coarser (or finer) snap value, stopping at the ends.
+fn step_snap(snap: Snap, coarser: bool) -> Snap {
+    let at = Snap::ALL.iter().position(|s| *s == snap).unwrap_or(0);
+    let next = if coarser {
+        (at + 1).min(Snap::ALL.len() - 1)
+    } else {
+        at.saturating_sub(1)
+    };
+    Snap::ALL[next]
 }
 
 /// The snap values, the current one ticked.
@@ -3874,6 +3899,15 @@ fn nudge_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_wheel_steps_the_snap_and_stops_at_the_ends() {
+        assert_eq!(step_snap(Snap::Bar, false), Snap::ALL[Snap::ALL.len() - 2]);
+        assert_eq!(step_snap(Snap::Bar, true), Snap::ALL[Snap::ALL.len() - 1]);
+        assert_eq!(step_snap(Snap::Off, false), Snap::Off);
+        let last = Snap::ALL[Snap::ALL.len() - 1];
+        assert_eq!(step_snap(last, true), last);
+    }
     use musiccraft_project::PatternId;
 
     fn pattern_clip(track: u32, start: u32, length: u32) -> Clip {

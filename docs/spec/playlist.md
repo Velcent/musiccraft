@@ -258,6 +258,9 @@
   play), Slice (click a clip to cut it at the snapped click), Play (click
   moves the playhead there and plays) and Zoom (click zooms in, Shift+click
   out). Keys P, B, D, E, T, C, Y, Z pick them.
+- The **snap button** (before the tools) shows the snap glyph and value; a
+  click lists the values, the wheel over it steps to the next coarser value
+  (up) or finer one (down), and right-click returns it to Bar.
 
 - Left-click on an empty cell places the selected pattern at the snapped bar;
   dragging a clip moves it; dragging its right edge resizes it and dragging
