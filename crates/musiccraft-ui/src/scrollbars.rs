@@ -92,6 +92,19 @@ fn thumb_range(view: Span, start: f32, length: f32) -> (f32, f32) {
     (at, at + size)
 }
 
+/// Where the view starts after the thumb of a rail `length` long is dragged
+/// by `delta` points, so the thumb stays under the pointer even when it is
+/// held at `MIN_THUMB`.
+fn dragged(view: Span, length: f32, delta: f32) -> f32 {
+    let (at, end) = thumb_range(view, 0.0, length);
+    let free = length - (end - at);
+    let hidden = view.total - view.span;
+    if free <= 0.0 || hidden <= 0.0 {
+        return view.first;
+    }
+    view.first + delta / free * hidden
+}
+
 /// Content position under a point along the rail.
 fn at_rail(view: Span, start: f32, length: f32, x: f32) -> f32 {
     (x - start) / length.max(1.0) * view.total
@@ -174,9 +187,7 @@ fn horizontal_bar(
     }
     if body.dragged() {
         let dx = body.drag_delta().x;
-        request = Some(Request::To(
-            view.first + dx / rail.width().max(1.0) * view.total,
-        ));
+        request = Some(Request::To(dragged(view, rail.width(), dx)));
     }
     request
 }
@@ -275,7 +286,7 @@ pub fn vertical(ui: &Ui, rect: Rect, id: Id, (view, step): (Span, f32)) -> Optio
     }
     if body.dragged() {
         let dy = body.drag_delta().y;
-        request = Some(view.first + dy / rail.height().max(1.0) * view.total);
+        request = Some(dragged(view, rail.height(), dy));
     }
     request
 }
@@ -643,5 +654,28 @@ mod tests {
         };
         let (a, b) = thumb_range(tiny, 0.0, 200.0);
         assert!(b - a >= MIN_THUMB);
+    }
+
+    #[test]
+    fn a_dragged_thumb_stays_under_the_pointer() {
+        // A long view: the thumb is held at its shortest length.
+        let view = Span {
+            first: 0.0,
+            span: 10.0,
+            total: 10_000.0,
+        };
+        let first = dragged(view, 200.0, 50.0);
+        let (at, _) = thumb_range(Span { first, ..view }, 0.0, 200.0);
+        assert!((at - 50.0).abs() < 0.01, "{at}");
+        // Dragged to the rail's end, the view reaches the content's end.
+        let last = dragged(view, 200.0, 200.0 - MIN_THUMB);
+        assert!((last - (view.total - view.span)).abs() < 0.1, "{last}");
+        // Nothing hidden: nothing to scroll.
+        let all = Span {
+            first: 0.0,
+            span: 100.0,
+            total: 100.0,
+        };
+        assert_eq!(dragged(all, 200.0, 30.0), 0.0);
     }
 }
