@@ -34,6 +34,9 @@ modules:
     buildsystem: simple
     build-commands:
       - install -Dm755 musiccraft /app/bin/musiccraft
+      # ONNX Runtime for stem splitting (packaging/onnxruntime/fetch.sh).
+      - install -Dm755 libonnxruntime.so /app/lib/libonnxruntime.so
+      - install -Dm644 ONNXRUNTIME-LICENSE.txt /app/share/licenses/io.github.bhimio1.MusicCraft/ONNXRUNTIME-LICENSE.txt
       - install -Dm644 io.github.bhimio1.MusicCraft.desktop /app/share/applications/io.github.bhimio1.MusicCraft.desktop
       - install -Dm644 io.github.bhimio1.MusicCraft.metainfo.xml /app/share/metainfo/io.github.bhimio1.MusicCraft.metainfo.xml
       - install -Dm644 musiccraft-512.png /app/share/icons/hicolor/512x512/apps/io.github.bhimio1.MusicCraft.png
@@ -46,3 +49,7 @@ modules:
         path: io.github.bhimio1.MusicCraft.metainfo.xml
       - type: file
         path: musiccraft-512.png
+      - type: file
+        path: libonnxruntime.so
+      - type: file
+        path: ONNXRUNTIME-LICENSE.txt

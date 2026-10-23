@@ -785,6 +785,16 @@ fn channel_items(
             state.open_dialog(Dialog::set_sample(index, sample.clone()));
             ui.close();
         }
+        if ui
+            .button("Split into stems")
+            .on_hover_text(
+                "Split this sound into vocals, drums, bass and other, each a new channel",
+            )
+            .clicked()
+        {
+            run(actions, "sample.split_stems", [number.clone()]);
+            ui.close();
+        }
     }
     ui.menu_button("Colour", |ui| {
         if let Some(choice) = crate::swatches::grid(ui, channel.color) {

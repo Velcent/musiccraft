@@ -1,0 +1,73 @@
+name: Stem model
+
+# Makes the Demucs model MusicCraft downloads the first time it splits stems
+# (docs/spec/stems.md): converts Demucs's released htdemucs weights (Alexandre
+# Défossez and Meta, MIT licence) to ONNX with tools/stem-model/export.py, checks
+# that MusicCraft's splitter gives what Demucs itself gives, and publishes the file
+# as the pre-release `stem-model-v1` (not a MusicCraft release, never marked latest).
+#
+# Run by hand: Actions > Stem model > Run workflow. Untick "publish" to only build
+# and check (the model is kept as a workflow artifact either way).
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the model as release stem-model-v1"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: stem-model-v1
+  MODEL: htdemucs-v1.onnx
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Demucs and the exporter's tools
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install demucs==4.1.0 onnx onnxruntime==1.22.0 einops
+      - name: Export
+        run: python tools/stem-model/export.py "$MODEL" --reference reference
+      - uses: Swatinem/rust-cache@v2
+      # MusicCraft's own segmenting, transforms and cross-fades against Demucs's.
+      - name: Check against Demucs
+        run: |
+          lib=$(python -c "import onnxruntime, pathlib; print(next(pathlib.Path(onnxruntime.__file__).parent.glob('capi/libonnxruntime.so*')))")
+          MUSICCRAFT_STEM_MODEL="$PWD/$MODEL" MUSICCRAFT_STEM_REFERENCE="$PWD/reference" \
+          MUSICCRAFT_ONNXRUNTIME="$lib" \
+            cargo test --release --locked -p musiccraft-demucs -- --ignored --nocapture
+      - name: Checksum and licence
+        run: |
+          sha256sum "$MODEL" | tee "$MODEL.sha256"
+          licence=$(python -c "import demucs, pathlib; p = pathlib.Path(demucs.__file__).parent.parent; print(next(p.glob('demucs-*.dist-info/**/LICENSE*')))")
+          cp "$licence" DEMUCS-LICENSE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stem-model
+          path: |
+            ${{ env.MODEL }}
+            ${{ env.MODEL }}.sha256
+            DEMUCS-LICENSE.txt
+          if-no-files-found: error
+      - name: Publish
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="The Demucs model (htdemucs, by Alexandre Défossez and Meta, MIT licence) that MusicCraft downloads the first time it splits stems. Made by .github/workflows/stem-model.yml from commit $GITHUB_SHA. Not a MusicCraft release."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$MODEL" "$MODEL.sha256" DEMUCS-LICENSE.txt --clobber
+          else
+            gh release create "$TAG" "$MODEL" "$MODEL.sha256" DEMUCS-LICENSE.txt \
+              --title "Stem model v1" --notes "$notes" --prerelease --latest=false
+          fi

@@ -111,6 +111,11 @@ struct App {
     steps: recorder::StepEntry,
     /// The live control channel an assistant drives the window through.
     control: Option<musiccraft_mcp::control::ControlServer>,
+    /// A stem split running in the background (`docs/spec/stems.md`).
+    stems: Option<musiccraft_render::StemJob>,
+    /// Channels waiting to be split after it, first first.
+    stem_queue:
+        std::collections::VecDeque<(musiccraft_project::ChannelId, musiccraft_render::StemEngine)>,
 }
 
 /// What happens after the user deals with unsaved changes.
@@ -400,6 +405,8 @@ impl App {
             sweep: recorder::Sweep::default(),
             steps: recorder::StepEntry::default(),
             control: None,
+            stems: None,
+            stem_queue: std::collections::VecDeque::new(),
         };
         app.start_control(options, ctx);
         app.refresh_devices();
@@ -621,6 +628,10 @@ impl App {
 
     fn apply(&mut self, ctx: &egui::Context, action: Action) {
         let result = match action {
+            Action::Run(invocation) if invocation.name == "sample.split_stems" => {
+                self.start_stems(&invocation);
+                return;
+            }
             Action::Run(invocation) => {
                 if replaces_project(&invocation.name) && self.has_unsaved_changes() {
                     self.pending = Some(Pending::Run(invocation));
@@ -795,6 +806,92 @@ impl App {
         match result {
             Ok(outcome) => self.ui.set_status(outcome.message, false),
             Err(err) => self.ui.set_status(err.to_string(), true),
+        }
+    }
+
+    /// Starts splitting a channel into stems in the background, or queues it
+    /// behind the split that runs; the stems are added when
+    /// [`App::poll_stems`] sees the split finish.
+    fn start_stems(&mut self, invocation: &Invocation) {
+        let project = self.session.project();
+        let number: Option<usize> = invocation.args.first().and_then(|n| n.parse().ok());
+        let engine = match invocation.args.get(1) {
+            Some(raw) => musiccraft_render::StemEngine::parse(raw),
+            None => Some(musiccraft_render::StemEngine::Auto),
+        };
+        if let Some(job) = &self.stems {
+            let queued = number
+                .and_then(|n| project.channels.get(n.wrapping_sub(1)))
+                .map(|c| c.id)
+                .zip(engine);
+            if let Some(entry) = queued.filter(|(id, _)| self.stem_queue.iter().all(|q| q.0 != *id))
+            {
+                self.stem_queue.push_back(entry);
+            }
+            let text = format!(
+                "Splitting {} into stems; {} more waiting",
+                job.name(),
+                self.stem_queue.len()
+            );
+            self.ui.set_status(text, false);
+            return;
+        }
+        let started = number
+            .zip(engine)
+            .ok_or_else(|| "usage: sample.split_stems <channel> [auto|demucs|builtin]".to_owned())
+            .and_then(|(n, engine)| {
+                musiccraft_render::StemJob::start(project, n, engine).map_err(|e| e.to_string())
+            });
+        match started {
+            Ok(job) => {
+                self.ui
+                    .set_status(format!("Splitting {} into stems: 0%", job.name()), false);
+                self.stems = Some(job);
+            }
+            Err(err) => self.ui.set_status(err, true),
+        }
+    }
+
+    /// Shows a running split's progress, and adds the stems once it is done.
+    fn poll_stems(&mut self) {
+        let Some(job) = &self.stems else {
+            return;
+        };
+        let Some(result) = job.poll(self.session.project()) else {
+            let percent = job.progress() * 100.0;
+            let text = if job.downloading() {
+                format!("Downloading the stem model (first use only): {percent:.0}%")
+            } else {
+                format!("Splitting {} into stems: {percent:.0}%", job.name())
+            };
+            self.ui.set_status(text, false);
+            return;
+        };
+        self.stems = None;
+        match result {
+            Ok(Some((invocation, how))) => match self.run_invocation(&invocation) {
+                Ok(outcome) => self
+                    .ui
+                    .set_status(format!("{} with {how}", outcome.message), false),
+                Err(err) => self.ui.set_status(err.to_string(), true),
+            },
+            Ok(None) => self.ui.set_status("stem split cancelled", false),
+            Err(err) => self
+                .ui
+                .set_status(format!("stem split failed: {err}"), true),
+        }
+        let next = std::iter::from_fn(|| self.stem_queue.pop_front()).find_map(|(id, engine)| {
+            let index = self.session.project().channel_position(id)?;
+            Some((index, engine))
+        });
+        if let Some((index, engine)) = next {
+            let engine = match engine {
+                musiccraft_render::StemEngine::Auto => "auto",
+                musiccraft_render::StemEngine::Demucs => "demucs",
+                musiccraft_render::StemEngine::Builtin => "builtin",
+            };
+            let args = [(index + 1).to_string(), engine.to_owned()];
+            self.start_stems(&Invocation::new("sample.split_stems", args));
         }
     }
 
@@ -1462,6 +1559,7 @@ impl eframe::App for App {
             self.plugins.poll(bridge, &mut self.session)
         };
         self.serve_control();
+        self.poll_stems();
         self.drain_midi();
         self.record_audio();
         self.selected_channel
@@ -1492,6 +1590,7 @@ impl eframe::App for App {
             || !self.pending_offs.is_empty()
             || engine.voices > 0
             || self.take.is_some()
+            || self.stems.is_some()
             || editor_open
             || self
                 .audio

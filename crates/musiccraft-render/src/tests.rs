@@ -956,6 +956,143 @@ fn sample_edits_write_new_files_and_undo() {
 }
 
 #[test]
+fn stems_split_into_channels_and_clips_and_undo() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-split-stems-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_sampler builtin:kick
+         playlist.add_audio_clip 1 1 0 1
+         playlist.add_audio_clip 1 3 0 1",
+    );
+    assert!(
+        s.run_line("sample.split_stems 1 builtin").is_err(),
+        "an unsaved project has nowhere to put files"
+    );
+    s.run_line(&format!(
+        "project.save \"{}\"",
+        dir.join("p.mcproj").display()
+    ))
+    .unwrap();
+    run(&mut s, "sample.split_stems 1 builtin");
+    let project = s.project();
+    assert_eq!(project.channels.len(), 5);
+    let name = &project.channels[0].name;
+    let source = musiccraft_samples::builtin("kick", 48_000).unwrap();
+    let mut sum = vec![0.0; source.len()];
+    for (channel, stem) in project.channels[1..]
+        .iter()
+        .zip(["vocals", "drums", "bass", "other"])
+    {
+        assert_eq!(channel.name, format!("{name} ({stem})"));
+        assert_eq!(channel.params, project.channels[0].params);
+        let musiccraft_project::Instrument::Sampler { sample } = &channel.instrument else {
+            panic!("not a sampler");
+        };
+        assert_eq!(sample, &format!("stems/kick-1/{stem}.wav"));
+        let audio = musiccraft_samples::load_wav(&dir.join(sample)).unwrap();
+        assert_eq!(audio.len(), source.len());
+        for (total, x) in sum.iter_mut().zip(audio.left()) {
+            *total += x;
+        }
+    }
+    assert!(
+        sum.iter()
+            .zip(source.left())
+            .all(|(a, b)| (a - b).abs() < 1e-4),
+        "the stems add up to the sound"
+    );
+    // Each clip is muted and gets its stems on the first four free tracks
+    // below it: track 3 is busy, so the first clip's go on 4 to 7 and the
+    // second's on 8 to 11.
+    let clips = &project.playlist.clips;
+    assert_eq!(clips.len(), 10);
+    let tracks = |id| -> Vec<u32> {
+        clips
+            .iter()
+            .filter(|c| c.audio() == Some(id))
+            .map(|c| c.track)
+            .collect()
+    };
+    assert_eq!(tracks(project.channels[0].id), [0, 2]);
+    assert!(clips.iter().filter(|c| c.muted).count() == 2);
+    assert_eq!(tracks(project.channels[1].id), [3, 7]);
+    assert_eq!(tracks(project.channels[4].id), [6, 10]);
+    s.run_line("edit.undo").unwrap();
+    assert_eq!(s.project().channels.len(), 1);
+    assert_eq!(s.project().playlist.clips.len(), 2);
+    assert!(s.project().playlist.clips.iter().all(|c| !c.muted));
+    s.run_line("edit.redo").unwrap();
+    assert_eq!(s.project().channels.len(), 5);
+    s.run_line("edit.undo").unwrap();
+
+    run(
+        &mut s,
+        "sample.add_stems 1 stems/kick-1/vocals.wav stems/kick-1/drums.wav stems/kick-1/bass.wav stems/kick-1/other.wav",
+    );
+    assert_eq!(s.project().channels.len(), 5);
+    assert!(
+        s.run_line("sample.add_stems 1 a.wav b.wav c.wav d.wav")
+            .is_err(),
+        "the files must exist"
+    );
+    run(&mut s, "channel.add_synth");
+    assert!(
+        s.run_line("sample.split_stems 6 builtin").is_err(),
+        "only sampler channels split"
+    );
+    assert!(
+        s.run_line("sample.split_stems 1 magic").is_err(),
+        "unknown engines are refused"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn stem_jobs_split_in_the_background() {
+    let dir = std::env::temp_dir().join(format!("musiccraft-stem-job-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut s = session();
+    run(&mut s, "channel.add_sampler builtin:snare");
+    s.run_line(&format!(
+        "project.save \"{}\"",
+        dir.join("p.mcproj").display()
+    ))
+    .unwrap();
+    let job = crate::StemJob::start(s.project(), 1, crate::StemEngine::Builtin).unwrap();
+    assert_eq!(job.name(), s.project().channels[0].name);
+    let invocation = loop {
+        if let Some(result) = job.poll(s.project()) {
+            break result.unwrap().unwrap().0;
+        }
+        std::thread::yield_now();
+    };
+    assert!((job.progress() - 1.0).abs() < f32::EPSILON);
+    assert_eq!(invocation.name, "sample.add_stems");
+    s.run(&invocation).unwrap();
+    assert_eq!(s.project().channels.len(), 5);
+
+    let job = crate::StemJob::start(s.project(), 1, crate::StemEngine::Builtin).unwrap();
+    job.cancel();
+    let result = loop {
+        if let Some(result) = job.poll(s.project()) {
+            break result;
+        }
+        std::thread::yield_now();
+    };
+    // A short sound may finish before it hears the cancel.
+    if result.unwrap().is_none() {
+        assert!(
+            !dir.join("stems/snare-2").exists(),
+            "a cancelled split leaves no folder"
+        );
+    }
+    assert!(crate::StemJob::start(s.project(), 9, crate::StemEngine::Builtin).is_err());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn zone_commands_check_and_undo() {
     let mut s = session();
     run(&mut s, "channel.add_zones\nchannel.add_zone 1 builtin:hat");
