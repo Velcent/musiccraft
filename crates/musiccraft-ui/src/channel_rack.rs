@@ -36,9 +36,10 @@ pub fn show(
             ((tick / TICKS_PER_STEP) as usize, into)
         });
     let id = egui::Id::new("channel-rack");
+    let slots = state.floating_area();
     let default = egui::Rect::from_min_size(
-        area.left_top() + egui::vec2(4.0, 4.0),
-        egui::vec2((area.width() - 200.0).clamp(420.0, 560.0), 0.0),
+        slots.left_top() + egui::vec2(4.0, 4.0),
+        egui::vec2((slots.width() - 200.0).clamp(420.0, 560.0), 0.0),
     );
     let window = open
         .then(|| {

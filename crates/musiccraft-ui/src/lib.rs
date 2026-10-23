@@ -233,17 +233,31 @@ pub fn window_layout(ctx: &egui::Context, state: &UiState) -> settings::WindowLa
         if chrome::collapsed(ctx, id) {
             layout.folded.push(name.to_owned());
         }
+        if chrome::maximized(ctx, id) {
+            layout
+                .maximized
+                .get_or_insert_default()
+                .push(name.to_owned());
+        }
     }
+    layout.maximized.get_or_insert_default();
     layout
 }
 
 /// Opens the windows `layout` lists, closes the others, and puts each
-/// window back where it was (kept inside the workspace as usual).
+/// window back where it was (kept inside the workspace as usual). The
+/// playlist goes back to being the backdrop if it was maximized, or if the
+/// layout was saved before maximized windows were remembered.
 pub fn restore_window_layout(
     ctx: &egui::Context,
     state: &mut UiState,
     layout: &settings::WindowLayout,
 ) {
+    let backdrop = layout
+        .maximized
+        .as_ref()
+        .is_none_or(|names| names.iter().any(|n| n == "playlist"));
+    state.arrange = backdrop.then_some(Arrange::Backdrop);
     for (name, flag, id) in LAYOUT_WINDOWS {
         *flag(&mut state.windows) = layout.open.iter().any(|n| n == name);
         let Some(id) = id.map(egui::Id::new) else {
@@ -281,8 +295,12 @@ impl Default for Windows {
 /// `view.maximize`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arrange {
-    /// Every editor back in its default slot.
+    /// Every editor back in its default slot, the playlist maximized
+    /// behind them.
     DefaultLayout,
+    /// Maximize the playlist as the backdrop behind the other windows,
+    /// once it has been drawn.
+    Backdrop,
     /// Maximize or restore the playlist.
     MaximizePlaylist,
     /// Maximize the window with this id (left maximized if it already is).
@@ -457,15 +475,27 @@ fn hide_windows(state: &mut UiState, which: &str) {
 fn arrange(ctx: &egui::Context, state: &mut UiState) {
     match state.arrange.take() {
         Some(Arrange::DefaultLayout) => {
-            for id in EDITOR_WINDOWS {
-                chrome::reset(ctx, egui::Id::new(id));
+            let playlist = egui::Id::new("playlist-window");
+            for id in EDITOR_WINDOWS.map(egui::Id::new) {
+                if id == playlist && chrome::maximized(ctx, id) {
+                    // Already the backdrop: keep the rectangle it restores to.
+                    chrome::expand(ctx, id);
+                } else {
+                    chrome::reset(ctx, id);
+                }
             }
             // The mixer follows the rack's width again for a few frames.
             ctx.data_mut(|d| d.remove::<u8>(egui::Id::new("mixer-settle")));
+            // Maximized once it has been drawn in its default slot, so
+            // Restore puts it there.
+            state.arrange = Some(Arrange::Backdrop);
         }
-        Some(Arrange::Raise(id)) => {
-            ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
+        Some(Arrange::Backdrop) => {
+            if state.windows.playlist && !chrome::maximize(ctx, egui::Id::new("playlist-window")) {
+                state.arrange = Some(Arrange::Backdrop);
+            }
         }
+        Some(Arrange::Raise(id)) => chrome::raise(ctx, egui::Id::new(id)),
         Some(Arrange::MaximizePlaylist) => {
             // A playlist that was closed is drawn once before it maximizes.
             let done = chrome::toggle_maximized(ctx, egui::Id::new("playlist-window"));
@@ -473,7 +503,7 @@ fn arrange(ctx: &egui::Context, state: &mut UiState) {
         }
         Some(Arrange::Maximize(id)) => {
             if chrome::maximize(ctx, egui::Id::new(id)) {
-                ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, egui::Id::new(id)));
+                chrome::raise(ctx, egui::Id::new(id));
             } else {
                 state.arrange = Some(Arrange::Maximize(id));
             }
@@ -630,6 +660,14 @@ impl Default for UiState {
 }
 
 impl UiState {
+    /// Where the floating editors first open: the workspace less the strips
+    /// of the backdrop playlist that stay in view (its header, scroll row
+    /// and ruler along the top, its clip list down the left).
+    pub(crate) fn floating_area(&self) -> egui::Rect {
+        let area = self.workspace;
+        egui::Rect::from_min_max(area.min + egui::vec2(136.0, 64.0), area.max)
+    }
+
     /// How far step edit moves per note from `tick` of `meter`: the piano
     /// roll's snap, or one step when snap is off.
     #[must_use]
@@ -678,7 +716,7 @@ impl UiState {
             type_in: None,
             rack_rows: Vec::new(),
             renaming: None,
-            arrange: None,
+            arrange: Some(Arrange::Backdrop),
             focused_window: None,
             taps: Vec::new(),
             sig_draft: (4, 4),
@@ -812,6 +850,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
         || state.renaming.is_some()
         || egui::Popup::is_any_open(&ctx)
         || ctx.dragged_id().is_some();
+    chrome::track_focus(&ctx);
     arrange(&ctx, state);
     playlist::show(&ctx, state, frame, &mut actions);
     channel_rack::show(&ctx, state, frame, &mut actions);
@@ -848,10 +887,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
             // Room for the kind glyph before the name.
             let size = galley.size() + egui::vec2(18.0, 0.0);
             let rect = egui::Rect::from_min_size(pos + egui::vec2(12.0, 8.0), size).expand(5.0);
-            let icon = if dragged.sample().is_some() {
-                icons::Icon::Wave
-            } else {
-                icons::Icon::ChannelRack
+            let icon = match &*dragged {
+                browser::Dragged::Sample(_) => icons::Icon::Wave,
+                browser::Dragged::Pattern { .. } => icons::Icon::Pattern,
+                _ => icons::Icon::ChannelRack,
             };
             painter.rect(
                 rect,
@@ -869,9 +908,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     if escape_taken {
         ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     }
-    state.focused_window = ctx
-        .memory(|m| m.areas().top_layer_id(egui::Order::Middle))
-        .map(|layer| layer.id);
+    state.focused_window = chrome::focused_window(&ctx);
     handle_keys(&ctx, state, frame, &mut actions);
     resolve_ui_actions(state, frame, actions)
 }

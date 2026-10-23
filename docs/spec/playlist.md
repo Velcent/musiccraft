@@ -255,7 +255,9 @@
 ## Editor (UI)
 
 - **Tools** as in the piano roll: Draw, Paint (drag to lay the selected
-  pattern end to end, skipping places taken by other clips; one undo step),
+  pattern end to end, skipping places taken by other clips; the stroke stays
+  on the track it started on however far the pointer drifts up or down; one
+  undo step),
   Delete (click or drag over clips; one undo step) and Select (box select),
   plus Mute (click a clip to mute or unmute it: `playlist.toggle_clip_mute
   <track> <at>`, undoable; a muted clip stays, drawn faint, and does not
@@ -284,11 +286,17 @@
   pattern's notes laid out as in a clip preview (above), on the pattern's
   colour or the neutral fill. Automation recorded into the pattern shows as
   faint curves under the notes. A pattern with neither notes nor automation
-  says "empty". The pattern being painted is outlined in the accent colour. Click selects it for painting; right-click opens the pattern menu
-  (rename, show in playlist, clone, colour, time signature, clear
-  automation, delete). Show in playlist scrolls to the pattern's first clip.
+  says "empty". The pattern being painted is outlined in the accent colour. Click selects it for painting; double-click selects it and brings
+  the piano roll to the front with it (opening it if it was closed); drag
+  it onto a lane to place a clip of it at the snapped drop point (a ghost
+  clip of the pattern's length shows where; one undo step); right-click
+  opens the pattern menu (rename, show in playlist, clone, colour, time
+  signature, clear automation, delete). Rename in place is F2, the menu or
+  the toolbar's pattern field. Show in playlist scrolls to the pattern's
+  first clip.
 - The playlist is an editor window like the channel rack, piano roll and
-  mixer (`window-layout.md`, "Playlist"), not the workspace background. Click
+  mixer. By default it is maximized as the backdrop behind them
+  (`window-layout.md`, "Playlist"). Click
   or drag on the ruler to move the playhead; during song playback the view
   follows the playhead.
 - Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
@@ -330,12 +338,17 @@
   following the playhead (the list on the left at Normal width, and the
   rest on, by default; not saved with the project). With the clip list
   hidden the lanes take its width.
-- Double-clicking a pattern clip opens it in the piano roll; an automation
+- Double-clicking a pattern clip opens it in the piano roll (brought to the
+  front); an automation
   clip opens the automation editor; an audio clip opens its channel's
   settings.
 
 ## Sources
 
+- Double-clicking a clip-list pattern to open the piano roll, dragging
+  patterns from the clip list onto the lanes, and paint strokes that keep
+  to one track: the owner's requests (2026-10-23). Gestures and feedback are
+  our own design.
 - The scroll/zoom row, song overview and track-height zoom box: the
   interface style guide (`docs/spec/style/main-window.md`, "Scroll and zoom
   bars"). Drawing and sizes are our own.
