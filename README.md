@@ -143,6 +143,11 @@ Hover any control and the hint bar at the top says what it does.
   channels, patterns and notes, the playlist and the mixer. FL's own plugins
   become synths and VST3 plugins carry over without their settings; the
   message lists what was left out (see `docs/spec/flp-import.md`).
+- **Serum and Serum 2 presets**: Antiserum's **Open…** takes `.fxp` and
+  `.SerumPreset` files, and `antiserum.import_serum_presets <folder>` turns a
+  whole preset pack into user presets. Wavetables come from your own Serum
+  folders (or a `Tables` folder in the pack); what Antiserum cannot play
+  exactly is listed (see `docs/spec/serum-import.md`).
 - **MIDI Out channels** (rack → More instruments) send their notes to
   external gear on a MIDI channel; pick the output port in Settings → MIDI.
 - **Plugins (CLAP and VST3)**: instruments and effects from `~/.clap`,
@@ -208,4 +213,8 @@ MusicCraft is an independent project and is not affiliated with any other DAW.
 MusicCraft is free software, licensed under the GNU General Public License,
 version 3 or (at your option) any later version. See `LICENSE`. The `.flp`
 importer is a Rust port of [PyFLP](https://github.com/demberto/PyFLP),
-© 2022 demberto, also GPL-3.0-or-later.
+© 2022 demberto, also GPL-3.0-or-later. The Serum preset importer is a Rust
+port of [serum2vital](https://github.com/btesser/serum2vital), © 2026 Ben
+Tesser, also GPL-3.0-or-later. Serum is a trademark of Xfer Records;
+MusicCraft is not affiliated with Xfer Records and ships none of Serum's
+wavetables or presets.

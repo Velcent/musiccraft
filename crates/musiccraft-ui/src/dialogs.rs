@@ -98,6 +98,16 @@ pub struct FilePick {
 const PROJECT_FILES: (&str, &[&str]) = ("MusicCraft project", &[FILE_EXTENSION]);
 const SOUND_FILES: (&str, &[&str]) = ("WAV audio", &musiccraft_editors::sounds::EXTENSIONS);
 const PATCH_FILES: (&str, &[&str]) = ("Antiserum patch", &["json"]);
+/// What Open patch reads: Antiserum's own patches and Serum presets
+/// (`docs/spec/serum-import.md`).
+const OPEN_PATCH_FILES: [(&str, &[&str]); 3] = [
+    (
+        "Antiserum patch or Serum preset",
+        &["json", "fxp", "SerumPreset"],
+    ),
+    PATCH_FILES,
+    ("Serum preset", &["fxp", "SerumPreset"]),
+];
 const MIDI_FILES: (&str, &[&str]) = ("MIDI file", &["mid", "midi"]);
 /// Export formats, the first the default.
 const EXPORT_FILES: [(&str, &[&str]); 4] = [
@@ -138,7 +148,8 @@ impl FilePick {
             Pick::Open | Pick::SaveAs => vec![PROJECT_FILES],
             Pick::Export => EXPORT_FILES.to_vec(),
             Pick::ExportMidi => vec![MIDI_FILES],
-            Pick::SavePatch(_) | Pick::OpenPatch(_) => vec![PATCH_FILES],
+            Pick::SavePatch(_) => vec![PATCH_FILES],
+            Pick::OpenPatch(_) => OPEN_PATCH_FILES.to_vec(),
             Pick::AddSample
             | Pick::SetSample(_)
             | Pick::SetPad(_, _)
@@ -799,6 +810,11 @@ mod tests {
         assert_eq!(sample.filters, [("WAV audio", &["wav"][..])]);
         let patch = FilePick::save_patch(1, "Big/Lead", &project);
         assert_eq!(patch.file_name.as_deref(), Some("Big-Lead.json"));
+        let open = FilePick::open_patch(1, &project);
+        assert!(
+            open.filters[0].1.contains(&"SerumPreset"),
+            "Serum presets open too"
+        );
     }
 
     #[test]

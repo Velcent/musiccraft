@@ -1496,6 +1496,9 @@ impl App {
             }
         }
         if let Some((pick, paths)) = self.files.poll() {
+            // Draw again once the dialog has gone: without a compositor the
+            // window under it is only uncovered after the answer arrives.
+            ctx.request_repaint_after(Duration::from_millis(250));
             for action in self.ui.picked(&pick, &paths) {
                 self.apply(ctx, action);
             }
