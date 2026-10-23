@@ -1,8 +1,10 @@
 //! An instrument plugin's editor: the shared instrument editor (the app's
 //! channel settings pages), the plugin's own swing and bend-range knobs, and
-//! the samples, pads or zones as path fields. Edits become host parameter
-//! gestures; sample changes load off the audio thread.
+//! the samples, pads or zones as sample slots (built-in sounds, the user's
+//! music and sample folders, or the system's file dialog). Edits become host
+//! parameter gestures; sample changes load off the audio thread.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use egui::{RichText, Ui, vec2};
@@ -10,16 +12,18 @@ use musiccraft_editors::hint::Hint;
 use musiccraft_editors::instrument::{
     self, InstrumentEdit, InstrumentEditor, Page, key_name, section,
 };
+use musiccraft_editors::sounds::{self, Listings, SampleChoice, Sounds};
 use musiccraft_editors::{theme, widgets};
+use musiccraft_file_dialog::Picker;
 use musiccraft_instruments::Kind;
-use musiccraft_params::{BUILTIN_PREFIX, BUILTIN_SAMPLES};
+use musiccraft_params::BUILTIN_PREFIX;
 use musiccraft_patch::ZoneRef;
 use musiccraft_plugin_editor::EguiEditor;
 use nih_plug::prelude::{GuiContext, ParamSetter};
 
 use super::data::{PADS, SampleData};
 use super::params::InstrumentParams;
-use crate::editor::{begin, end, set, set_once};
+use crate::editor::{begin, browse_sound, end, set, set_once, sound_folders};
 use crate::params::Slot;
 
 /// The editor's logical size.
@@ -31,17 +35,30 @@ struct View {
     page: Page,
     /// Slots in a host gesture, by name.
     active: Vec<&'static str>,
-    /// The sample path being typed.
-    path: Option<String>,
     /// The kit pad being edited.
     pad: usize,
-    /// The new zone's sample path.
-    zone: String,
+    /// The open file dialog, and the slot it fills.
+    files: Picker<Target>,
+    /// The folders the sample slots' menus offer, and their listings.
+    folders: Vec<PathBuf>,
+    listings: Listings,
+}
+
+/// The slot a chosen sound goes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target {
+    Sample,
+    Pad(usize),
+    /// A new zone.
+    Zone,
 }
 
 /// What the plugin draws when the host opens its GUI.
 pub fn editor(params: Arc<InstrumentParams>) -> EguiEditor {
-    let view = Mutex::new(View::default());
+    let view = Mutex::new(View {
+        folders: sound_folders(),
+        ..View::default()
+    });
     EguiEditor::new(SIZE, move |ui, gui| {
         if let Ok(mut view) = view.lock() {
             draw(ui, gui, &params, &mut view);
@@ -205,14 +222,29 @@ fn samples(ui: &mut Ui, params: &InstrumentParams, view: &mut View) {
     }
     let mut data = shared.data();
     let mut changed = false;
+    if let Some((target, paths)) = view.files.poll()
+        && let Some(path) = paths.first()
+    {
+        changed |= fill(&mut data, target, path.display().to_string());
+    }
     section(ui, "SAMPLES", |ui| {
         match kind {
             Kind::Kit => changed |= pads(ui, &mut data, view),
             Kind::Zones => changed |= zones(ui, &mut data, view),
             _ => {
-                if let Some(path) = path_row(ui, &data.sample, &mut view.path, "sample") {
-                    data.sample = path;
-                    changed = true;
+                let sample = ui
+                    .horizontal(|ui| {
+                        ui.add_sized(
+                            vec2(300.0, 18.0),
+                            egui::Label::new(RichText::new(sound_name(&data.sample)).small())
+                                .truncate(),
+                        )
+                        .hint(data.sample.clone());
+                        slot(ui, view, "Sample…", false, Target::Sample)
+                    })
+                    .inner;
+                if let Some(sample) = sample {
+                    changed |= fill(&mut data, Target::Sample, sample);
                 }
                 let loaded = shared.loaded();
                 let slices = if kind == Kind::Sampler {
@@ -234,35 +266,69 @@ fn samples(ui: &mut Ui, params: &InstrumentParams, view: &mut View) {
     }
 }
 
-/// A path field with the built-in sounds; the new path when one is chosen.
-fn path_row(ui: &mut Ui, current: &str, typing: &mut Option<String>, salt: &str) -> Option<String> {
-    let mut chosen = None;
-    ui.horizontal(|ui| {
-        let text = typing.get_or_insert_with(|| current.to_owned());
-        let field = ui.add(
-            egui::TextEdit::singleline(text)
-                .desired_width(260.0)
-                .hint_text("/path/to/sample.wav"),
-        );
-        let entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        if (entered || ui.small_button("Load").clicked()) && text.trim() != current {
-            chosen = Some(text.trim().to_owned());
-        }
-        egui::ComboBox::from_id_salt(("builtin", salt))
-            .width(80.0)
-            .selected_text("Built-in")
-            .show_ui(ui, |ui| {
-                for name in BUILTIN_SAMPLES {
-                    if ui.selectable_label(false, name).clicked() {
-                        chosen = Some(format!("{BUILTIN_PREFIX}{name}"));
-                    }
-                }
-            });
-    });
-    if chosen.is_some() {
-        *typing = None;
+/// A sound's short name: a built-in sound's, or a file's.
+fn sound_name(sample: &str) -> String {
+    if sample.is_empty() {
+        return "—".to_owned();
     }
-    chosen
+    sample.strip_prefix(BUILTIN_PREFIX).map_or_else(
+        || {
+            std::path::Path::new(sample)
+                .file_name()
+                .map_or_else(|| sample.to_owned(), |n| n.to_string_lossy().into_owned())
+        },
+        str::to_owned,
+    )
+}
+
+/// Puts `sample` in `target` (an empty sample clears a pad); whether the
+/// data changed.
+fn fill(data: &mut SampleData, target: Target, sample: String) -> bool {
+    match target {
+        Target::Sample if !sample.is_empty() && sample != data.sample => {
+            data.sample = sample;
+            true
+        }
+        Target::Pad(pad) => {
+            data.pads.resize(PADS, String::new());
+            match data.pads.get_mut(pad) {
+                Some(slot) if *slot != sample => {
+                    *slot = sample;
+                    true
+                }
+                _ => false,
+            }
+        }
+        Target::Zone if !sample.is_empty() => {
+            data.zones.push(ZoneRef::new(sample, 0, 127, 60));
+            true
+        }
+        _ => false,
+    }
+}
+
+/// A sample slot's menu button; the sound chosen in it (empty: cleared).
+/// "Browse files…" opens the system's file dialog, whose answer arrives
+/// later through `View::files`.
+fn slot(ui: &mut Ui, view: &mut View, text: &str, clear: bool, target: Target) -> Option<String> {
+    let mut sounds = Sounds {
+        folders: &view.folders,
+        listings: &mut view.listings,
+    };
+    let hint = "Choose a built-in sound, one from your music folders, or a file";
+    match sounds::button(ui, text, hint, &mut sounds, clear)? {
+        SampleChoice::Browse => {
+            let title = match target {
+                Target::Sample => "Sample",
+                Target::Pad(_) => "Pad sample",
+                Target::Zone => "Zone sample",
+            };
+            browse_sound(&mut view.files, title, target, ui.ctx());
+            None
+        }
+        SampleChoice::Use(sound) => Some(sound),
+        SampleChoice::Clear => Some(String::new()),
+    }
 }
 
 /// Sixteen pads; the chosen one's sample can be changed.
@@ -291,35 +357,32 @@ fn pads(ui: &mut Ui, data: &mut SampleData, view: &mut View) -> bool {
                     egui::Button::new(RichText::new(format!("{}\n{name}", pad + 1)).small())
                         .min_size(vec2(96.0, 36.0))
                         .selected(view.pad == pad);
-                if ui.add(button).clicked() && view.pad != pad {
+                if ui.add(button).clicked() {
                     view.pad = pad;
-                    view.path = None;
                 }
             }
             ui.end_row();
         }
     });
     let pad = view.pad.min(PADS - 1);
-    ui.label(
-        RichText::new(format!("Pad {}", pad + 1))
-            .small()
-            .color(theme::TEXT_DIM),
-    );
     let current = data.pads.get(pad).cloned().unwrap_or_default();
-    let mut changed = false;
-    if let Some(path) = path_row(ui, &current, &mut view.path, "pad") {
-        if let Some(slot) = data.pads.get_mut(pad) {
-            *slot = path;
-            changed = true;
-        }
-    }
-    if ui.small_button("Clear pad").clicked() {
-        if let Some(slot) = data.pads.get_mut(pad) {
-            slot.clear();
-            changed = true;
-        }
-    }
-    changed
+    let chosen = ui
+        .horizontal(|ui| {
+            ui.label(
+                RichText::new(format!("Pad {}", pad + 1))
+                    .small()
+                    .color(theme::TEXT_DIM),
+            );
+            slot(
+                ui,
+                view,
+                "Pad sound…",
+                !current.is_empty(),
+                Target::Pad(pad),
+            )
+        })
+        .inner;
+    chosen.is_some_and(|sample| fill(data, Target::Pad(pad), sample))
 }
 
 /// The zone list with key ranges, and a row to add a zone.
@@ -372,19 +435,9 @@ fn zones(ui: &mut Ui, data: &mut SampleData, view: &mut View) -> bool {
         data.zones.remove(i);
         changed = true;
     }
-    ui.horizontal(|ui| {
-        ui.add(
-            egui::TextEdit::singleline(&mut view.zone)
-                .desired_width(260.0)
-                .hint_text("sample for a new zone"),
-        );
-        if ui.small_button("Add zone").clicked() && !view.zone.trim().is_empty() {
-            data.zones
-                .push(ZoneRef::new(view.zone.trim().to_owned(), 0, 127, 60));
-            view.zone.clear();
-            changed = true;
-        }
-    });
+    if let Some(sample) = slot(ui, view, "Add zone…", false, Target::Zone) {
+        changed |= fill(data, Target::Zone, sample);
+    }
     changed
 }
 

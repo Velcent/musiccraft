@@ -4656,3 +4656,113 @@ fn the_saved_layout_keeps_the_playlist_maximized() {
     crate::restore_window_layout(&h.ctx, &mut h.state, &floating);
     assert_eq!(h.state.arrange, None);
 }
+
+/// The first point of `points` whose hint starts with `hint`.
+fn point_with_hint(
+    h: &mut Harness,
+    points: impl IntoIterator<Item = Pos2>,
+    hint: &str,
+) -> Option<Pos2> {
+    points.into_iter().find(|p| {
+        h.frame(vec![Event::PointerMoved(*p)]);
+        h.frame(vec![]);
+        h.state.hint.as_deref().is_some_and(|t| t.starts_with(hint))
+    })
+}
+
+/// The sampler's Change… button in the channel window.
+fn change_sample_button(h: &mut Harness) -> Pos2 {
+    let window = window_rect(h, "channel-settings");
+    let points: Vec<Pos2> = (0..40)
+        .flat_map(|j| (0..80).map(move |i| (i, j)))
+        .map(|(i, j)| window.left_top() + vec2(6.0 * i as f32, 60.0 + 4.0 * j as f32))
+        .filter(|p| window.contains(*p))
+        .collect();
+    point_with_hint(h, points, "Load another sample").expect("the Change… button")
+}
+
+#[test]
+fn a_sample_slot_menu_opens_the_system_file_dialog() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    let change = change_sample_button(&mut h);
+    h.click(change, PointerButton::Primary);
+    h.settle();
+    assert!(egui::Popup::is_any_open(&h.ctx), "the sample menu opened");
+    let below: Vec<Pos2> = (0..20)
+        .flat_map(|j| (-15..15).map(move |i| (i, j)))
+        .map(|(i, j)| change + vec2(10.0 * i as f32, 4.0 * j as f32))
+        .collect();
+    let browse = point_with_hint(&mut h, below, "Choose a sound file").expect("Browse files…");
+    assert!(h.click(browse, PointerButton::Primary).is_empty());
+    let pick = h
+        .state
+        .take_file_pick()
+        .expect("a file dialog is asked for");
+    assert_eq!(pick.pick, crate::Pick::SetSample(0));
+    assert_eq!(pick.mode(), crate::PickMode::File);
+    // The dialog's answer becomes the command.
+    let actions = h.state.picked(&pick, &["/s/snare.wav".into()]);
+    assert!(
+        matches!(&actions[..], [Action::Run(i)] if i.to_string() == "channel.set_sample 1 /s/snare.wav")
+    );
+}
+
+#[test]
+fn a_sound_dropped_on_a_sample_slot_fills_it() {
+    let mut h = Harness::new(&["channel.add_sampler builtin:kick"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    // Over the row, a little below where the button's hint starts.
+    let row = change_sample_button(&mut h) + vec2(0.0, 8.0);
+    egui::DragAndDrop::set_payload(
+        &h.ctx,
+        crate::browser::Dragged::Sample("builtin:clap".to_owned()),
+    );
+    h.frame(vec![Event::PointerMoved(row)]);
+    let out = h.frame(vec![Event::PointerButton {
+        pos: row,
+        button: PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(out, ["channel.set_sample 1 builtin:clap"]);
+}
+
+#[test]
+fn file_menu_items_ask_for_the_system_file_dialog() {
+    let mut h = Harness::new(&[]);
+    h.settle();
+    for (name, pick) in [
+        ("ui.open", crate::Pick::Open),
+        ("ui.save_as", crate::Pick::SaveAs),
+        ("ui.export", crate::Pick::Export),
+        ("ui.export_midi", crate::Pick::ExportMidi),
+        ("ui.export_stems", crate::Pick::ExportStems),
+    ] {
+        let frame_actions = vec![Action::Run(musiccraft_commands::Invocation::bare(name))];
+        let project = h.session.project().clone();
+        let (engine, history) = (EngineStatus::default(), History::default());
+        let plugins = Plugins::default();
+        let frame = Frame {
+            project: &project,
+            engine: &engine,
+            history: &history,
+            waveform: None,
+            waveform_seconds: None,
+            clip_waveforms: &[],
+            clip_durations: &[],
+            plugins: &plugins,
+            settings: &Settings::default(),
+            settings_info: &SettingsInfo::default(),
+        };
+        assert!(crate::resolve_ui_actions(&mut h.state, &frame, frame_actions).is_empty());
+        assert_eq!(
+            h.state.take_file_pick().map(|p| p.pick),
+            Some(pick),
+            "{name}"
+        );
+        assert!(h.state.dialog.is_none(), "no text prompt for {name}");
+    }
+}

@@ -56,7 +56,7 @@ needs an account; Windows and macOS hosts need those systems):
    and the host's automation moves the knob.
 3. The pitch corrector follows a MIDI track when `follow` is on (hosts that
    route MIDI to effects).
-4. The convolution reverb loads a WAV impulse typed into its editor, and the
+4. The convolution reverb loads a WAV impulse chosen with its editor's Load file…, and the
    file comes back when the project is reopened.
 5. Open and close each editor several times, resize the host window, and
    close the project with editors open: no crash, no frozen window.

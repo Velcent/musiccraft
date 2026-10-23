@@ -8,7 +8,7 @@ use musiccraft_editors::antiserum::{AntiserumEdit, AntiserumEditor};
 use musiccraft_patch::Patch;
 use musiccraft_project::ChannelId;
 
-use crate::dialogs::Dialog;
+use crate::dialogs::{FilePick, Pick};
 use crate::{Action, Frame, UiState};
 
 /// The editor's view state and the channel it shows.
@@ -93,6 +93,18 @@ fn invocations(number: usize, edit: &AntiserumEdit) -> Option<Invocation> {
             "antiserum.remove_zone",
             [n, (osc + 1).to_string(), (zone + 1).to_string()],
         ),
+        AntiserumEdit::Sample(osc, sample) => {
+            // An empty sample clears the oscillator's.
+            let sample = if sample.is_empty() { "-" } else { sample };
+            Invocation::new(
+                "antiserum.set_sample",
+                [n, (osc + 1).to_string(), sample.to_owned()],
+            )
+        }
+        AntiserumEdit::Zone(osc, sample) => Invocation::new(
+            "antiserum.add_zone",
+            [n, (osc + 1).to_string(), sample.clone()],
+        ),
         AntiserumEdit::Begin
         | AntiserumEdit::Save
         | AntiserumEdit::Open
@@ -128,6 +140,13 @@ pub(crate) fn show(
         .antiserum
         .editor
         .set_folder(frame.project.path().and_then(std::path::Path::parent));
+    // The sample slots offer the browser's folders and take sounds dragged
+    // from it.
+    let dragged = crate::sample_slot::dragged(ui.ctx());
+    state
+        .antiserum
+        .editor
+        .set_sounds(&state.browser.folders, dragged);
     let values = musiccraft_antiserum_presets::values(patch);
     let mut edits = Vec::new();
     let mut menu_actions = Vec::new();
@@ -149,15 +168,24 @@ pub(crate) fn show(
                 state.begin_gesture();
             }
             AntiserumEdit::Save => {
-                state.open_dialog(Dialog::save_patch(index, &patch.name, frame.project));
+                state.pick_file(FilePick::save_patch(index, &patch.name, frame.project));
             }
-            AntiserumEdit::Open => state.open_dialog(Dialog::open_patch(index, frame.project)),
+            AntiserumEdit::Open => state.pick_file(FilePick::open_patch(index, frame.project)),
             AntiserumEdit::ChooseSample(osc) => {
                 let current = patch.source(*osc).sample;
-                state.open_dialog(Dialog::antiserum_sample(index, *osc, &current));
+                let pick = Pick::AntiserumSample(index, *osc);
+                state.pick_file(FilePick::sample(pick, &current, frame.project));
             }
             AntiserumEdit::AddZone(osc) => {
-                state.open_dialog(Dialog::antiserum_zone(index, *osc, frame.project));
+                let pick = Pick::AntiserumZone(index, *osc);
+                state.pick_file(FilePick::sample(pick, "", frame.project));
+            }
+            AntiserumEdit::Sample(_, _) | AntiserumEdit::Zone(_, _) => {
+                // A drop from the browser: the drag is over.
+                egui::DragAndDrop::clear_payload(ui.ctx());
+                if let Some(invocation) = invocations(number, edit) {
+                    actions.push(Action::Run(invocation));
+                }
             }
             AntiserumEdit::Preset(_) | AntiserumEdit::RemoveZone(_, _) => {
                 if let Some(invocation) = invocations(number, edit) {

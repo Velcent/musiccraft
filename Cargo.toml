@@ -42,6 +42,7 @@ musiccraft-flp = { path = "crates/musiccraft-flp" }
 musiccraft-serum = { path = "crates/musiccraft-serum" }
 musiccraft-plugin-window = { path = "crates/musiccraft-plugin-window" }
 musiccraft-vst3 = { path = "crates/musiccraft-vst3" }
+musiccraft-file-dialog = { path = "crates/musiccraft-file-dialog" }
 cpal = "0.18"
 rtrb = "0.4"
 serde = { version = "1", features = ["derive"] }
@@ -55,6 +56,10 @@ vorbis_rs = "0.5.6"
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "ogg", "vorbis"] }
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 midir = "0.11"
+# Native file dialogs: the desktop portal on Linux (works inside the Flatpak),
+# the system panels on macOS and Windows. Wayland parenting is a feature of
+# musiccraft-file-dialog, so the plugins do not link libwayland.
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 # ONNX Runtime, loaded at run time (no build-time download); the GPU
 # execution providers are tried in turn (docs/spec/stems.md). No `api-22`:
 # with it ort turns on automatic device selection, which aborts on ONNX

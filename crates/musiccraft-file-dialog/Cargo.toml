@@ -1,0 +1,19 @@
+[package]
+name = "musiccraft-file-dialog"
+description = "MusicCraft's native file dialogs, run without blocking the window"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[features]
+# Attach dialogs to Wayland windows (needs libwayland-client, which the app
+# opens at run time through winit's `dlopen`).
+wayland = ["rfd/wayland"]
+
+[dependencies]
+rfd.workspace = true
+
+[lints]
+workspace = true

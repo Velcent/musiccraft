@@ -13,6 +13,15 @@ The secondary windows are where a user fixes one detail and goes back to the mus
   - **Editor windows**: the event editor, the automation clip editor and the sample editor. They use the shared one-row window **header** defined in the main-window section ("The header row, left to right": window menu button at the far left, the window's tool groups, an optional play button, the title, the drag area, optional right-hand items, then collapse, maximize/restore and close at the far right). This section lists only each window's own tools, title and right-hand items. They are freely resizable and can be moved anywhere. Several can be open at once, and they stack with the other editor windows.
   - **Dialogs**: settings, export, project info, message and confirmation boxes. They have a plain title row (title text at the left, close cross at the right, no tools). They open centred on the workspace and are not resizable, except that settings may grow taller. Settings and export are not modal: the rest of the app keeps working behind them. Message and confirmation boxes are modal: they dim nothing, but the app ignores clicks outside them until they are answered.
 - **File dialogs are the operating system's own.** Open, Save as, Export (picking the destination), Add folder and similar choices use the native file chooser (the desktop portal on Linux, the standard panels on macOS and Windows). MusicCraft draws no file browser of its own for these. Our in-app browser stays the way to find samples and presets. Because the chooser is native, the reference's own favourite-folder shortcuts in its file dialogs have no counterpart here; the operating system's bookmarks and recent places fill that role. This is deliberate, not an omission. The native dialog opens on the project's folder (or the user's home folder for an unsaved project), with a file-type filter that matches the action. The suggested file name comes from the project name.
+  - The dialog is attached to the main window and does not freeze it: audio keeps playing and the window keeps drawing while it is open (on macOS the system panel is modal, as usual there). Only one file dialog is open at a time; asking for a second one while the first is open puts "a file dialog is already open" in the hint bar.
+  - Which actions use it, and how: Open (one project file), Save as and Save new version of an unsaved project (a project file, named after the project), Export audio (a WAV, FLAC, MP3 or Ogg file; the format prompt follows, see the export dialog), Export MIDI (a .mid file), Export stems (a folder; the stems are written into it), Add channels from files (one or more WAV files, one sampler channel each), Add folder to the browser and Add a plugin folder (a folder), Save and Open Antiserum patch (a .json file in the user presets folder; Open also takes Serum presets, .fxp and .SerumPreset), the convolution reverb's Load file… (a WAV file), and in Settings → Folders the FL Studio data folders and a drive mapping's local folder (folders; the Windows side of a drive mapping is still typed, since it names a path on another system).
+  - Text prompts remain only for names and short values: rename, marker name, channel group, time signature.
+- **Sample slots take a sound from the browser or from the file dialog.** A sample slot is anything that holds one sound: the sampler's (and granular and resynthesis) sample, a drum kit's pads, a zone sampler's Add zone, and Antiserum's sample, granular and spectral oscillators and its multisample zones. Each slot's button (Change…, Sample…, Add zone…; right-click on a drum pad) opens a menu:
+  1. **Browse files…**: the system's file dialog, opening on the folder of the slot's current file (or the project's folder), filtered to the sound files the app can play (WAV).
+  2. A separator, then **Sound packs** ▸ the built-in sounds, and one submenu per browser folder (Settings → Folders), nested like the browser's tree: subfolders first, then sounds. The folders are read from disk again each time the menu opens.
+  3. **Clear**, after a separator, for slots that may be empty (drum pads, Antiserum's oscillator sample).
+
+  A sound dragged from the browser onto a slot fills it: onto the sample row, a pad, the zone list (adds a zone) or an Antiserum oscillator's sample row or zones. The slot is outlined in the accent tone while the sound is over it, as other browser drop targets are. The channel rack's own drops (onto a sampler row, or the rack to add a channel) are unchanged. The exported instrument plugins use the same menu, with the user's music and sample folders in place of the browser's, and no drag (there is no browser in a plugin host).
 
 **Event editor**
 
@@ -368,7 +377,7 @@ Top to bottom, in one column with a right-hand extra in places:
 - Left: a round toggle "Show the file when done".
 - Right: two wide buttons, **Export in background** and **Export**. While rendering, **Export** reads **Stop**: clicking it stops and deletes the partial file.
 - Enter = Export, Esc = Close (or Stop while rendering).
-- The output path is chosen with the native save dialog. It opens **before** the export dialog when the project has not been exported before, and from a small **Change…** link after the file name in the title row.
+- The output path is chosen with the native save dialog. It opens **before** the export dialog when the project has not been exported before, and from a small **Change…** link after the file name in the title row. The format the save dialog's file ends in picks the export format; changing the format afterwards changes the extension, and a file name without one gets the format's.
 
 ### Sample editor frame
 
@@ -579,8 +588,7 @@ Colours are only tokens from `crates/musiccraft-editors/src/theme.rs`, with rela
 
 Ordered by visual impact.
 
-1. **No native file dialogs**. Open, Save as, Export, Add folder, sample and patch paths are typed into a small text prompt with OK/Cancel (`crates/musiccraft-ui/src/dialogs.rs`, `Dialog` and `show`). Replace path prompts with the operating system's chooser (a new dependency such as `rfd` needs its line in `ARCHITECTURE.md`). Keep the text prompt only for names (rename, marker name, group).
-2. **The export "dialog" is the path prompt with a row of format chips** (`crates/musiccraft-ui/src/dialogs.rs`, `Purpose::Export`). It needs the following, plus a spec in `docs/spec/` before the code:
+1. **The export "dialog" is a small prompt with the chosen file and a row of format chips**, shown after the native save dialog (`crates/musiccraft-ui/src/dialogs.rs`, `Purpose::Export`). It needs the following, plus a spec in `docs/spec/` before the code:
    - the tall sectioned layout (Length, Format, Quality, Options);
    - several formats at once;
    - the mode and tail choices;
@@ -588,7 +596,7 @@ Ordered by visual impact.
    - a progress bar, Stop, and export in the background.
 
    Stems and MIDI are separate menu items today and would become toggles here. MP3 and OGG exist only as single fixed choices ("MP3 320k", "Ogg q8" chips): the guide's bit-rate and quality sliders, and the FLAC depth and compression settings, have no setting in the model or the export commands behind them yet.
-3. **The settings window is a plain tab row over loose widgets** (`crates/musiccraft-ui/src/settings.rs`, `show`, `row`, `note`). It has:
+2. **The settings window is a plain tab row over loose widgets** (`crates/musiccraft-ui/src/settings.rs`, `show`, `row`, `note`). It has:
    - `selectable_value` tabs, not joined tabs in groups;
    - no section boxes with headings;
    - labels **before** controls (a fixed-width dim label column), not control-then-label;
@@ -598,25 +606,25 @@ Ordered by visual impact.
    - only five tabs (Audio, MIDI, General, Folders, Project): there is no Info tab and no About tab. "About MusicCraft" in the help menu only writes a status message (`crates/musiccraft-ui/src/toolbar.rs`, `help_menu`).
 
    The tab order is also Audio first, where the guide puts MIDI first. That order is a small preference and can stay if the owner prefers. `docs/spec/settings.md` lists the tabs and must be updated first for the new tabs, the grouping and the control-then-label layout.
-4. **No event editor** for pattern lanes. Lanes can be recorded and cleared (`crates/musiccraft-ui/src/playlist.rs`, "Clear automation (n lanes)"), but there is no window to see or draw them, and no convert-to-clip command. A spec section and commands come first (`docs/spec/recording.md`).
-5. **Automation clip editor: what is still missing** (`crates/musiccraft-ui/src/automation.rs`, `curve.rs`). The header menu, clip switcher, settings band (On, Low, High), ruler, curve fill, points, tension handles, selection, point menu with Type value, step drawing, slide, snap toggle, zoom, horizontal scroll bar and playhead are in, with the gestures `docs/spec/playlist.md` now specifies. Still missing:
+3. **No event editor** for pattern lanes. Lanes can be recorded and cleared (`crates/musiccraft-ui/src/playlist.rs`, "Clear automation (n lanes)"), but there is no window to see or draw them, and no convert-to-clip command. A spec section and commands come first (`docs/spec/recording.md`).
+4. **Automation clip editor: what is still missing** (`crates/musiccraft-ui/src/automation.rs`, `curve.rs`). The header menu, clip switcher, settings band (On, Low, High), ruler, curve fill, points, tension handles, selection, point menu with Type value, step drawing, slide, snap toggle, zoom, horizontal scroll bar and playhead are in, with the gestures `docs/spec/playlist.md` now specifies. Still missing:
    - the switcher is a chevron button in the header's tool group, not a chevron at the end of the title;
    - no vertical scroll bar or value zoom (the value axis always shows 0–100 %);
    - the window menu has no curve files, Scale values, Thin out, Smooth, Curve from audio file or the View options;
    - Middle-click to remove a point from the selection is not bound (Shift+click toggles instead).
-6. **Automation clips in the playlist**: done. The body is darker than a pattern clip's, the curve has a fill, points and handles show while the pointer is over the body, and the point gestures work in place (`crates/musiccraft-ui/src/playlist.rs`, `clip_curve`). There is no separate "automation focus" switch: points show on hover only.
-7. **No Speed, LFO mode or multiple targets on automation clips**. `Automation` now has On, Low and High (`crates/musiccraft-project/src/model.rs`, `automation.set_enabled`, `automation.set_range`). Speed, LFO and targets need spec and model work first. The separate controllers in the browser (`crates/musiccraft-ui/src/controllers.rs`, `docs/spec/controllers.md`) already cover LFOs and could share widgets with the LFO footer.
-8. **No project info page**. The Project tab shows name, tempo, master pitch, pan law, path and counts (`crates/musiccraft-ui/src/settings.rs`, `project`). Author, genre, comments, link, start date and working time do not exist in the project model.
-9. **Sample editor frame is a waveform plus wrapping text buttons** (`crates/musiccraft-ui/src/sample_editor.rs`, `strip` and `show`). It has:
+5. **Automation clips in the playlist**: done. The body is darker than a pattern clip's, the curve has a fill, points and handles show while the pointer is over the body, and the point gestures work in place (`crates/musiccraft-ui/src/playlist.rs`, `clip_curve`). There is no separate "automation focus" switch: points show on hover only.
+6. **No Speed, LFO mode or multiple targets on automation clips**. `Automation` now has On, Low and High (`crates/musiccraft-project/src/model.rs`, `automation.set_enabled`, `automation.set_range`). Speed, LFO and targets need spec and model work first. The separate controllers in the browser (`crates/musiccraft-ui/src/controllers.rs`, `docs/spec/controllers.md`) already cover LFOs and could share widgets with the LFO footer.
+7. **No project info page**. The Project tab shows name, tempo, master pitch, pan law, path and counts (`crates/musiccraft-ui/src/settings.rs`, `project`). Author, genre, comments, link, start date and working time do not exist in the project model.
+8. **Sample editor frame is a waveform plus wrapping text buttons** (`crates/musiccraft-ui/src/sample_editor.rs`, `strip` and `show`). It has:
    - no tool row with grouped icons;
    - no info row in a display well;
    - no zoom or overview strip (the waveform always shows the whole sample in a short fixed-height strip);
    - no play, playhead or clipboard;
    - no right-click menu.
-10. **Confirmation boxes**: only "Unsaved changes" exists (`crates/musiccraft-app/src/main.rs`, the unsaved-changes window). Its buttons are already named by action ("Save", "Don't save", "Cancel"), which matches. Save has the default-button edge, Enter saves and Esc cancels; it still lacks the glyph (there is no warning icon yet). Destructive actions elsewhere (remove track, delete pattern) run at once and rely on undo, which is acceptable. Only add boxes where undo cannot help.
-11. **No progress display anywhere**. Exports and rescans block silently. The hint bar has no progress line (`crates/musiccraft-editors/src/hint.rs`; the hint bar itself is drawn in `crates/musiccraft-ui/src/toolbar.rs`).
-12. **Prompts and canvases carry hard-coded sizes** (`set_min_width` in `dialogs.rs`, `default_size` in `settings.rs`, the `GRAPH_HEIGHT` constant in `automation.rs`). New sizes should come from `docs/spec/window-layout.md` once its secondary-window entries are written.
-13. **No shared section-box rule yet.** This section, the controls section and the plugin-windows section must draw section and group boxes the same way (darker box, small heading inside its top-left corner). The design-language section settles the one rule; until then nothing in code changes for it.
+9. **Confirmation boxes**: only "Unsaved changes" exists (`crates/musiccraft-app/src/main.rs`, the unsaved-changes window). Its buttons are already named by action ("Save", "Don't save", "Cancel"), which matches. Save has the default-button edge, Enter saves and Esc cancels; it still lacks the glyph (there is no warning icon yet). Destructive actions elsewhere (remove track, delete pattern) run at once and rely on undo, which is acceptable. Only add boxes where undo cannot help.
+10. **No progress display anywhere**. Exports and rescans block silently. The hint bar has no progress line (`crates/musiccraft-editors/src/hint.rs`; the hint bar itself is drawn in `crates/musiccraft-ui/src/toolbar.rs`).
+11. **Prompts and canvases carry hard-coded sizes** (`set_min_width` in `dialogs.rs`, `default_size` in `settings.rs`, the `GRAPH_HEIGHT` constant in `automation.rs`). New sizes should come from `docs/spec/window-layout.md` once its secondary-window entries are written.
+12. **No shared section-box rule yet.** This section, the controls section and the plugin-windows section must draw section and group boxes the same way (darker box, small heading inside its top-left corner). The design-language section settles the one rule; until then nothing in code changes for it.
 
 ## Sources
 
@@ -636,7 +644,7 @@ Ordered by visual impact.
   - (`eventeditor.htm` returns "not found"; the event editor page is `automation_eventeditor.htm`.)
 - **Screenshots viewed**: `automation_eventeditor.png` (header order with snap as an icon button before the tools, overview strip with chevrons and a vertical zoom box at its right end, thin ruler with a playhead marker, values as a filled area, vertical scroll bar), `eventeditor_convert.png`, `chansettings_autoclip.png`, `playlist_automation_edit.png`, `settings_system_audio_asio.png` (title with page caption, grouped tab row with tabs sized to their labels, section boxes with top-left headings, control-then-label rows, status lines, the lighter buffer band), `settings_system_midi.png`, `settings_system_general.png`, `settings_system_files.png`, `settings_song_project.png`, `settings_song_projectinfo.png`, `fformats_wavmidimp3.png` (export dialog section order, format toggles row, two-column options, progress bar and button row placement), `edison2.png` (sample editor frame: tool rows, info row, waveform, overview strip, footer). We used them only for placement, order, grouping, proportions and density; nothing was measured, traced or colour-sampled, and no drawing (tab ends, progress-bar ends, icons) is reproduced.
 - **Repository**:
-  - `crates/musiccraft-ui/src/settings.rs` (`Tab`, `show`, `row`, `note`, `project`), `dialogs.rs` (`Dialog`, `Purpose::Export`, format chips), `automation.rs` (`show`, `canvas`, `HEIGHT`, shape menu), `controllers.rs`, `sample_editor.rs` (`strip`, `show`), `playlist.rs`, `icons.rs`, `chrome.rs` (window header), `toolbar.rs` (`help_menu`, hint bar);
+  - `crates/musiccraft-ui/src/settings.rs` (`Tab`, `show`, `row`, `note`, `project`), `dialogs.rs` (`Dialog`, `Purpose::Export`, format chips, `FilePick`), `sample_slot.rs`; `crates/musiccraft-editors/src/sounds.rs` (the sample slot menu); `crates/musiccraft-file-dialog`; `automation.rs` (`show`, `canvas`, `HEIGHT`, shape menu), `controllers.rs`, `sample_editor.rs` (`strip`, `show`), `playlist.rs`, `icons.rs`, `chrome.rs` (window header), `toolbar.rs` (`help_menu`, hint bar);
   - `crates/musiccraft-ui/keymap/default.keymap` and `docs/spec/keymap.md` (clash check: Ctrl+M and Ctrl+I are global, so the event editor's keys are window-local);
   - `crates/musiccraft-app/src/main.rs` (unsaved-changes box);
   - `crates/musiccraft-project/src/model.rs` (`Automation`, `Curve`);
@@ -651,6 +659,7 @@ Ordered by visual impact.
   - the single "Also export the master" choice under stems;
   - window-local keys for the event editor;
   - the native file dialogs;
+  - the sample slot menu (Browse files…, the built-in sounds and browser folders as submenus, Clear) and dropping browser sounds on slots;
   - the hint-bar progress line;
   - the rule that message boxes are only for decisions;
   - action-named buttons;

@@ -8,6 +8,7 @@ pub mod effect;
 pub mod format;
 pub mod hint;
 pub mod instrument;
+pub mod sounds;
 pub mod theme;
 mod tuner;
 pub mod wavetable;

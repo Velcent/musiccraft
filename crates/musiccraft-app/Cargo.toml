@@ -24,6 +24,7 @@ musiccraft-render.workspace = true
 musiccraft-samples.workspace = true
 musiccraft-ui.workspace = true
 eframe.workspace = true
+musiccraft-file-dialog = { workspace = true, features = ["wayland"] }
 midir.workspace = true
 serde_json.workspace = true
 

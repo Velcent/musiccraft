@@ -7,6 +7,7 @@ use egui::RichText;
 use musiccraft_commands::Invocation;
 use serde::{Deserialize, Serialize};
 
+use crate::dialogs::{FilePick, Pick};
 use crate::{Action, Frame, UiState, theme};
 
 /// Which MIDI input to use.
@@ -606,7 +607,7 @@ fn folders(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
         changed(actions, next);
     }
     if ui.small_button("+ Add folder…").clicked() {
-        state.open_dialog(crate::dialogs::Dialog::add_folder());
+        state.pick_file(FilePick::add_folder());
     }
     ui.add_space(10.0);
     ui.label(RichText::new("Extra plugin folders").strong());
@@ -621,7 +622,7 @@ fn folders(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &
     }
     ui.horizontal(|ui| {
         if ui.small_button("+ Add plugin folder…").clicked() {
-            state.open_dialog(crate::dialogs::Dialog::add_plugin_folder());
+            state.pick_file(FilePick::add_plugin_folder());
         }
         if ui.small_button("Rescan plugins").clicked() {
             actions.push(Action::RescanPlugins);
@@ -657,39 +658,44 @@ fn foreign_paths(
         "Paths like C:\\… or %FLStudioFactoryData%\\… are looked up here (Wine prefixes, \
          /mnt drives and your home folder are tried too). Leave empty to detect.",
     );
-    let [factory, user, from, to] = &mut state.path_drafts;
-    for (label, current, draft, set) in [
+    for (label, current, pick, clear) in [
         (
             "FL Studio factory data",
             &settings.fl_factory,
-            factory,
-            (|s: &mut Settings, p| s.fl_factory = p) as fn(&mut Settings, Option<PathBuf>),
+            Pick::FlFactory,
+            (|s: &mut Settings| s.fl_factory = None) as fn(&mut Settings),
         ),
         (
             "FL Studio user data",
             &settings.fl_user,
-            user,
-            |s: &mut Settings, p| s.fl_user = p,
+            Pick::FlUser,
+            |s: &mut Settings| s.fl_user = None,
         ),
     ] {
         row(ui, label, |ui| {
-            if draft.is_empty() {
-                if let Some(path) = current {
-                    *draft = path.display().to_string();
+            match current {
+                Some(path) => {
+                    ui.label(
+                        RichText::new(path.display().to_string())
+                            .monospace()
+                            .small(),
+                    );
+                }
+                None => {
+                    ui.label(RichText::new("detected").color(theme::TEXT_DIM));
                 }
             }
-            let edit = ui.add(
-                egui::TextEdit::singleline(draft)
-                    .hint_text("detected")
-                    .desired_width(260.0),
-            );
-            if edit.lost_focus() {
-                let value = (!draft.trim().is_empty()).then(|| PathBuf::from(draft.trim()));
-                if value != *current {
-                    let mut next = settings.clone();
-                    set(&mut next, value);
-                    changed(actions, next);
-                }
+            if ui
+                .small_button("Choose…")
+                .hint("Choose the folder with the system's file dialog")
+                .clicked()
+            {
+                state.pick_file(FilePick::folder(pick));
+            }
+            if current.is_some() && ui.small_button("×").hint("Detect it again").clicked() {
+                let mut next = settings.clone();
+                clear(&mut next);
+                changed(actions, next);
             }
         });
     }
@@ -705,25 +711,31 @@ fn foreign_paths(
         });
     }
     ui.horizontal(|ui| {
+        let (from, to) = &mut state.drive_draft;
         ui.add(
             egui::TextEdit::singleline(from)
                 .hint_text("C:\\Users\\Ana\\Music")
                 .desired_width(170.0),
         );
         ui.label("→");
-        ui.add(
-            egui::TextEdit::singleline(to)
-                .hint_text("/home/ana/Music")
-                .desired_width(170.0),
-        );
-        let ready = !from.trim().is_empty() && !to.trim().is_empty();
-        if crate::widgets::add_enabled(ui, ready, egui::Button::new("Add")).clicked() {
+        let folder = to
+            .as_ref()
+            .map_or_else(|| "Choose folder…".to_owned(), |p| p.display().to_string());
+        let choose = ui
+            .button(folder)
+            .hint("The local folder those paths point to (the system's file dialog)")
+            .clicked();
+        let ready = !from.trim().is_empty() && to.is_some();
+        if crate::widgets::add_enabled(ui, ready, egui::Button::new("Add")).clicked()
+            && let Some(folder) = to.take()
+        {
             let mut next = settings.clone();
-            next.drive_map
-                .push((from.trim().to_owned(), PathBuf::from(to.trim())));
+            next.drive_map.push((from.trim().to_owned(), folder));
             from.clear();
-            to.clear();
             changed(actions, next);
+        }
+        if choose {
+            state.pick_file(FilePick::folder(Pick::DriveFolder));
         }
     });
 }

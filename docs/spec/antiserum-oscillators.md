@@ -160,7 +160,10 @@ its picture follow the type:
 
 - *wavetable:* as before;
 - *sample* and *granular:* the sample's waveform with the start and loop
-  points, a *Sample…* button (a path prompt) and the type's knobs;
+  points, a *Sample…* button (the sample slot menu of
+  `docs/spec/style/dialogs.md`: browse files, built-in sounds, browser
+  folders, clear; a sound dragged from the browser onto the row also sets
+  it) and the type's knobs;
 - *multisample:* the zones, each with its sample and its low, high and root
   keys, plus *Add zone…* and remove buttons;
 - *spectral:* the partial levels at the start position, *Sample…* and the

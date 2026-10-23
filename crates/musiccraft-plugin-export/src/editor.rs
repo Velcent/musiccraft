@@ -2,10 +2,13 @@
 //! plugin's own controls (the convolution room, the sidechain and follow
 //! switches). Edits become host parameter gestures.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use musiccraft_editors::effect::{self, Edit, EffectView, GRAPH, has_knob, is_routing};
 use musiccraft_editors::hint::Hint;
+use musiccraft_editors::sounds;
+use musiccraft_file_dialog::{FileDialog, Mode, Picker};
 use musiccraft_params::{EffectKind, IMPULSE_RESPONSES};
 use musiccraft_plugin_editor::EguiEditor;
 use nih_plug::prelude::{GuiContext, ParamSetter};
@@ -19,12 +22,61 @@ const KNOB_ROW: u32 = 63;
 /// Height of a row of ordinary controls.
 const LINE: u32 = 26;
 
+/// What the editor remembers between frames (GUI thread only).
+#[derive(Default)]
+struct State {
+    /// Parameters inside a host gesture.
+    active: Vec<&'static str>,
+    /// The open file dialog (the convolution's impulse file).
+    files: Picker<()>,
+}
+
 /// What the plugin draws when the host opens its GUI.
 pub fn editor(params: Arc<EffectParams>) -> EguiEditor {
     let size = size(&params);
-    // Parameters inside a host gesture; only the GUI thread touches it.
-    let active: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
-    EguiEditor::new(size, move |ui, gui| draw(ui, gui, &params, &active))
+    let state = Mutex::new(State::default());
+    EguiEditor::new(size, move |ui, gui| draw(ui, gui, &params, &state))
+}
+
+/// The user's home folder.
+pub(crate) fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+/// The user's music and sample folders, when they exist (the app's default
+/// browser folders), for the sample slots' menus.
+pub(crate) fn sound_folders() -> Vec<PathBuf> {
+    home()
+        .map(|h| {
+            ["Music", "Samples", "Music/Samples"]
+                .iter()
+                .map(|d| h.join(d))
+                .filter(|p| p.is_dir())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The system's file dialog for one sound file, opening on the first sound
+/// folder.
+pub(crate) fn sound_dialog(title: &str) -> FileDialog {
+    let mut dialog = FileDialog::new()
+        .set_title(title)
+        .add_filter("WAV audio", &sounds::EXTENSIONS);
+    if let Some(folder) = sound_folders().into_iter().next().or_else(home) {
+        dialog = dialog.set_directory(folder);
+    }
+    dialog
+}
+
+/// Shows a file dialog for one sound file, unless one is open already.
+pub(crate) fn browse_sound<T>(files: &mut Picker<T>, title: &str, tag: T, ctx: &egui::Context) {
+    let repaint = ctx.clone();
+    files.show(sound_dialog(title), Mode::File, tag, move || {
+        repaint.request_repaint();
+    });
 }
 
 /// The editor's logical size for an effect.
@@ -36,8 +88,8 @@ pub fn size(params: &EffectParams) -> (u32, u32) {
     let rows = knobs.div_ceil(KNOBS_PER_ROW) as u32;
     let mut extra = 0;
     if kind == EffectKind::Convolution {
-        // The room, the file path and a line for a load error.
-        extra += 3 * LINE;
+        // The room (with "Load file…") and a line for a load error.
+        extra += 2 * LINE;
     }
     if params.slots.iter().any(|s| is_routing(kind, s.index)) {
         extra += LINE;
@@ -58,19 +110,15 @@ fn view(params: &EffectParams) -> EffectView {
     }
 }
 
-fn draw(
-    ui: &mut egui::Ui,
-    gui: &dyn GuiContext,
-    params: &EffectParams,
-    active: &Mutex<Vec<&'static str>>,
-) {
+fn draw(ui: &mut egui::Ui, gui: &dyn GuiContext, params: &EffectParams, state: &Mutex<State>) {
     let setter = ParamSetter::new(gui);
-    let Ok(mut active) = active.lock() else {
+    let Ok(mut state) = state.lock() else {
         return;
     };
+    let State { active, files } = &mut *state;
     ui.label(egui::RichText::new(params.kind.title()).strong().size(15.0));
     if params.kind == EffectKind::Convolution {
-        room_picker(ui, params);
+        room_picker(ui, params, files);
     }
     let view = view(params);
     let mut edits = Vec::new();
@@ -85,7 +133,7 @@ fn draw(
     );
     switches(ui, &setter, params);
     for edit in edits {
-        apply(&setter, params, &mut active, edit);
+        apply(&setter, params, active, edit);
     }
     // A gesture ends when the mouse lets go.
     if !ui.input(|i| i.pointer.any_down()) {
@@ -108,9 +156,14 @@ fn impulse_label(impulse: &str) -> String {
     }
 }
 
-/// The convolution reverb's impulse: a generated room, or a WAV file typed
-/// or pasted as a path.
-fn room_picker(ui: &mut egui::Ui, params: &EffectParams) {
+/// The convolution reverb's impulse: a generated room, or a WAV file chosen
+/// with the system's file dialog.
+fn room_picker(ui: &mut egui::Ui, params: &EffectParams, files: &mut Picker<()>) {
+    if let Some(((), paths)) = files.poll()
+        && let Some(path) = paths.first()
+    {
+        params.shared.set_impulse(&path.display().to_string());
+    }
     let current = params.shared.impulse_name();
     ui.horizontal(|ui| {
         ui.label("Impulse");
@@ -128,29 +181,13 @@ fn room_picker(ui: &mut egui::Ui, params: &EffectParams) {
             })
             .response
             .hint("Generated rooms, from small to huge");
-    });
-    ui.horizontal(|ui| {
-        let id = egui::Id::new("impulse-path");
-        let mut path = ui.data_mut(|d| {
-            d.get_temp_mut_or_insert_with(id, || {
-                if IMPULSE_RESPONSES.contains(&current.as_str()) {
-                    String::new()
-                } else {
-                    current.clone()
-                }
-            })
-            .clone()
-        });
-        let field = ui.add(
-            egui::TextEdit::singleline(&mut path)
-                .hint_text("WAV file path")
-                .desired_width(220.0),
-        );
-        let entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        if (ui.button("Load").clicked() || entered) && !path.trim().is_empty() {
-            params.shared.set_impulse(path.trim());
+        if ui
+            .button("Load file…")
+            .hint("Use an audio file (a recorded impulse response) as the room")
+            .clicked()
+        {
+            browse_sound(files, "Impulse response", (), ui.ctx());
         }
-        ui.data_mut(|d| d.insert_temp(id, path));
     });
     if let Some(error) = params.shared.impulse_error() {
         ui.colored_label(ui.visuals().error_fg_color, error);

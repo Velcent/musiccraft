@@ -14,8 +14,9 @@ use musiccraft_instruments::Kind;
 use musiccraft_project::params::{INSTRUMENT_PARAMS, MIDI_CCS, ParamSpec, inst};
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME};
 
-use crate::dialogs::Dialog;
+use crate::dialogs::{FilePick, Pick};
 use crate::icons::{self, Icon};
+use crate::sample_slot;
 use crate::{Action, Frame, UiState, theme, widgets};
 
 /// Pages of the channel settings window.
@@ -797,7 +798,7 @@ fn sound(
             granular(ui, state, frame, index, channel, sample, actions);
         }
         Instrument::Kit { pads } => {
-            kit(ui, state, index, channel, pads, actions);
+            kit(ui, state, frame, index, channel, pads, actions);
             ui.add_space(6.0);
             with_editor(ui, state, index, channel, actions, |ui, e| e.kit(ui));
         }
@@ -825,16 +826,31 @@ fn sound(
     }
 }
 
-/// The sample's name and a button to change it.
-fn sample_row(ui: &mut egui::Ui, state: &mut UiState, index: usize, sample: &str, hint: &str) {
-    ui.horizontal(|ui| {
+/// The sample's name and a menu to change it (`sample_slot`); a sound
+/// dragged from the browser onto the row replaces it too.
+fn sample_row(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    index: usize,
+    sample: &str,
+    hint: &str,
+    actions: &mut Vec<Action>,
+) {
+    let set =
+        |sound: String| Invocation::new("channel.set_sample", [(index + 1).to_string(), sound]);
+    let row = ui.horizontal(|ui| {
         ui.add(egui::Label::new(RichText::new(sample).monospace().small()).truncate());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("Change…").hint(hint).clicked() {
-                state.open_dialog(Dialog::set_sample(index, sample.to_owned()));
-            }
+            let hint = format!("{hint} (or drag one here from the browser)");
+            let choice = sample_slot::button(ui, state, "Change…", &hint, false);
+            let pick = || FilePick::sample(Pick::SetSample(index), sample, frame.project);
+            sample_slot::apply(state, choice, pick, set, actions);
         });
     });
+    if let Some(sound) = sample_slot::dropped(ui, row.response.rect) {
+        actions.push(Action::Run(set(sound)));
+    }
 }
 
 fn sampler(
@@ -848,7 +864,15 @@ fn sampler(
 ) {
     let number = index + 1;
     section(ui, "SAMPLE", |ui| {
-        sample_row(ui, state, index, sample, "Load another sample");
+        sample_row(
+            ui,
+            state,
+            frame,
+            index,
+            sample,
+            "Load another sample",
+            actions,
+        );
         let slices = channel.params.get(inst::SLICES).round().max(1.0) as u32;
         instrument::waveform(
             ui,
@@ -887,7 +911,15 @@ fn granular(
     actions: &mut Vec<Action>,
 ) {
     section(ui, "GRAINS", |ui| {
-        sample_row(ui, state, index, sample, "Load another sample");
+        sample_row(
+            ui,
+            state,
+            frame,
+            index,
+            sample,
+            "Load another sample",
+            actions,
+        );
         instrument::waveform(
             ui,
             frame.waveform,
@@ -912,9 +944,11 @@ fn resynth(
         sample_row(
             ui,
             state,
+            frame,
             index,
             sample,
             "Measure another sample's harmonics",
+            actions,
         );
         crate::sample_editor::show(ui, state, frame, index, actions);
         with_editor(ui, state, index, channel, actions, |ui, e| e.resynth(ui));
@@ -924,6 +958,7 @@ fn resynth(
 fn kit(
     ui: &mut egui::Ui,
     state: &mut UiState,
+    frame: &Frame<'_>,
     index: usize,
     channel: &Channel,
     pads: &[String],
@@ -969,7 +1004,7 @@ fn kit(
                             theme::RAISED
                         });
                         let response = ui.add(button).hint(format!(
-                            "Pad {} — key {}",
+                            "Pad {} — key {} · right-click to choose its sound, or drag one here",
                             pad + 1,
                             key_name(root.saturating_add(pad as u8))
                         ));
@@ -979,12 +1014,22 @@ fn kit(
                                 key: root.saturating_add(pad as u8),
                             });
                         }
-                        if response.secondary_clicked() {
-                            state.open_dialog(Dialog::set_pad(
-                                index,
-                                pad,
-                                pads.get(pad).cloned().unwrap_or_default(),
-                            ));
+                        let set = |sound: String| {
+                            Invocation::new(
+                                "channel.set_pad",
+                                [(index + 1).to_string(), (pad + 1).to_string(), sound],
+                            )
+                        };
+                        let current = pads.get(pad).cloned().unwrap_or_default();
+                        response.context_menu(|ui| {
+                            let choice = sample_slot::menu_items(ui, state, !current.is_empty());
+                            let pick = || {
+                                FilePick::sample(Pick::SetPad(index, pad), &current, frame.project)
+                            };
+                            sample_slot::apply(state, choice, pick, set, actions);
+                        });
+                        if let Some(sound) = sample_slot::dropped(ui, response.rect) {
+                            actions.push(Action::Run(set(sound)));
                         }
                     }
                     ui.end_row();
