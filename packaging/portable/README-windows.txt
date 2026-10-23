@@ -8,5 +8,8 @@ No installation needed: run musiccraft.exe from any folder (or a USB stick).
   choose "More info" > "Run anyway".
 - Autosave and recovery files are written to %APPDATA%\MusicCraft, not next to the
   program. Delete that folder to remove all traces.
+- musiccraft-mcp.exe is MusicCraft's MCP server: point an AI assistant at it (or let
+  CreativeCraft do it) to build and edit songs. `musiccraft-mcp.exe --help` shows how to
+  work on the project open in the app instead.
 
 Project home: https://github.com/bhimio1/musiccraft

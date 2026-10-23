@@ -1796,6 +1796,7 @@ dependencies = [
  "musiccraft-commands",
  "musiccraft-dsp",
  "musiccraft-engine",
+ "musiccraft-mcp",
  "musiccraft-paths",
  "musiccraft-project",
  "musiccraft-render",

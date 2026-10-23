@@ -91,7 +91,7 @@ jobs:
         shell: bash
         run: bash packaging/set-version.sh "$VERSION"
       - name: Build
-        run: cargo build --release --locked -p musiccraft-app
+        run: cargo build --release --locked -p musiccraft-app -p musiccraft-mcp
       - name: Install WiX
         run: dotnet tool install --global wix --version 4.0.5
       - name: Build MSI
@@ -139,6 +139,10 @@ jobs:
           $dir = "MusicCraft-$env:VERSION-windows-x64-portable"
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item target\release\musiccraft.exe $dir\
+          # The MCP server, so an assistant (for example in CreativeCraft) can drive MusicCraft.
+          Copy-Item target\release\musiccraft-mcp.exe $dir\
+          $v = & "$dir\musiccraft-mcp.exe" --version
+          if ($LASTEXITCODE -ne 0 -or $v -ne "musiccraft-mcp $env:VERSION") { Write-Output "::error title=Portable zip::musiccraft-mcp --version printed '$v'"; exit 1 }
           Copy-Item packaging\portable\README-windows.txt "$dir\README.txt"
           Compress-Archive -Path $dir -DestinationPath "dist\$dir.zip"
       - uses: actions/upload-artifact@v4
@@ -162,19 +166,34 @@ jobs:
         run: bash packaging/set-version.sh "$VERSION"
       - name: Build both architectures
         run: |
-          cargo build --release --locked -p musiccraft-app --target aarch64-apple-darwin
-          cargo build --release --locked -p musiccraft-app --target x86_64-apple-darwin
+          cargo build --release --locked -p musiccraft-app -p musiccraft-mcp --target aarch64-apple-darwin
+          cargo build --release --locked -p musiccraft-app -p musiccraft-mcp --target x86_64-apple-darwin
           mkdir -p build
-          lipo -create -output build/musiccraft \
-            target/aarch64-apple-darwin/release/musiccraft \
-            target/x86_64-apple-darwin/release/musiccraft
-          lipo -info build/musiccraft
+          for bin in musiccraft musiccraft-mcp; do
+            lipo -create -output "build/$bin" \
+              "target/aarch64-apple-darwin/release/$bin" \
+              "target/x86_64-apple-darwin/release/$bin"
+            lipo -info "build/$bin"
+          done
       - name: Build app bundle and DMG
         run: |
           mkdir -p dist
           bash packaging/macos/build-dmg.sh "$VERSION" build/musiccraft \
             packaging/icons/musiccraft-1024.png \
             "dist/MusicCraft-$VERSION-macos-universal.dmg"
+      # The MCP server ships beside the disk image, the way the Craft apps ship their CLI, so
+      # CreativeCraft installs it next to the app.
+      - name: CLI zip
+        run: |
+          set -euo pipefail
+          dir="MusicCraft-cli-$VERSION-macos-universal"
+          mkdir -p "$dir"
+          cp build/musiccraft-mcp "$dir/"
+          codesign --force --sign - "$dir/musiccraft-mcp"
+          v=$("$dir/musiccraft-mcp" --version)
+          [ "$v" = "musiccraft-mcp $VERSION" ] || { echo "::error title=CLI zip::musiccraft-mcp --version printed '$v'"; exit 1; }
+          cp packaging/portable/README-cli-macos.txt "$dir/README.txt"
+          zip -qry "dist/$dir.zip" "$dir"
       # Mount it, check the app, the icon, the Applications shortcut, the signature and both
       # architectures, install by copying, detach.
       - name: Test the DMG
@@ -221,7 +240,7 @@ jobs:
       - name: Apply version
         run: bash packaging/set-version.sh "$VERSION"
       - name: Build
-        run: cargo build --release --locked -p musiccraft-app
+        run: cargo build --release --locked -p musiccraft-app -p musiccraft-mcp
       - name: Portable tarball
         run: |
           mkdir -p dist binary
@@ -229,6 +248,11 @@ jobs:
           mkdir -p "$dir"
           install -m755 target/release/musiccraft "$dir/musiccraft"
           strip "$dir/musiccraft"
+          # The MCP server, so an assistant (for example in CreativeCraft) can drive MusicCraft.
+          install -m755 target/release/musiccraft-mcp "$dir/musiccraft-mcp"
+          strip "$dir/musiccraft-mcp"
+          v=$("$dir/musiccraft-mcp" --version)
+          [ "$v" = "musiccraft-mcp $VERSION" ] || { echo "::error title=Portable tarball::musiccraft-mcp --version printed '$v'"; exit 1; }
           cp packaging/portable/README-linux.txt "$dir/README.txt"
           cp packaging/icons/musiccraft-512.png "$dir/musiccraft.png"
           tar -czf "dist/$dir.tar.gz" "$dir"

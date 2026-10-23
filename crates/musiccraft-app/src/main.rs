@@ -38,12 +38,17 @@ const SHORT_PREVIEW: Duration = Duration::from_millis(220);
 
 const USAGE: &str = "\
 usage: musiccraft [project.mcproj] [--keymap <file>] [--empty] [--open <windows>]
+                  [--control <port> [--control-token-file <file>]]
   --keymap <file>    use a keymap file instead of the default shortcuts
   --empty            start with an empty project instead of the drum starter kit
   --open <windows>   comma-separated windows to show at start:
                      channel_rack, piano_roll, playlist, mixer, browser,
                      channel_settings, automation, settings[:<tab>],
-                     effect:<track>:<slot>, channel:<n> (selects channel n)";
+                     effect:<track>:<slot>, channel:<n> (selects channel n)
+  --control <port>   let an assistant work in this window: `musiccraft-mcp
+                     --connect 127.0.0.1:<port>` drives the open project
+  --control-token-file <file>
+                     write a private token there that connections must send";
 
 /// A sample's key, min/max overview and length in seconds.
 type Overview = (String, Vec<(f32, f32)>, f64);
@@ -104,6 +109,8 @@ struct App {
     sweep: recorder::Sweep,
     /// Step edit: the chord being entered.
     steps: recorder::StepEntry,
+    /// The live control channel an assistant drives the window through.
+    control: Option<musiccraft_mcp::control::ControlServer>,
 }
 
 /// What happens after the user deals with unsaved changes.
@@ -221,6 +228,8 @@ struct Options {
     keymap: Option<PathBuf>,
     empty: bool,
     open: Option<Vec<String>>,
+    control: Option<u16>,
+    control_token_file: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Options, String> {
@@ -229,12 +238,24 @@ fn parse_args() -> Result<Options, String> {
         keymap: None,
         empty: false,
         open: None,
+        control: None,
+        control_token_file: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--keymap" => options.keymap = Some(args.next().ok_or(USAGE)?.into()),
             "--empty" => options.empty = true,
+            "--control" => {
+                let port = args.next().ok_or(USAGE)?;
+                options.control = Some(
+                    port.parse()
+                        .map_err(|_| format!("bad port {port}\n{USAGE}"))?,
+                );
+            }
+            "--control-token-file" => {
+                options.control_token_file = Some(args.next().ok_or(USAGE)?.into());
+            }
             "--open" => {
                 let list = args.next().ok_or(USAGE)?;
                 options.open = Some(list.split(',').map(|w| w.trim().to_owned()).collect());
@@ -378,7 +399,9 @@ impl App {
             end_stops: 0,
             sweep: recorder::Sweep::default(),
             steps: recorder::StepEntry::default(),
+            control: None,
         };
+        app.start_control(options, ctx);
         app.refresh_devices();
         app.start_audio(ctx);
         app
@@ -1098,6 +1121,46 @@ impl App {
         }
     }
 
+    /// Opens the live control channel when `--control` asked for one
+    /// (`docs/spec/live-control.md`). Failing to open it never stops the app.
+    fn start_control(&mut self, options: &Options, ctx: &egui::Context) {
+        let Some(port) = options.control else {
+            return;
+        };
+        let token = options.control_token_file.as_ref().map(|path| {
+            let token = musiccraft_mcp::control::new_token();
+            musiccraft_mcp::control::write_token(path, &token).map(|()| token)
+        });
+        let token = match token.transpose() {
+            Ok(token) => token,
+            Err(err) => {
+                self.ui.set_status(
+                    format!("assistant control channel: can't write the token file: {err}"),
+                    true,
+                );
+                return;
+            }
+        };
+        let wake = ctx.clone();
+        match musiccraft_mcp::control::ControlServer::start(port, token, move || {
+            wake.request_repaint()
+        }) {
+            Ok(server) => self.control = Some(server),
+            Err(err) => self.ui.set_status(
+                format!("assistant control channel: can't listen on port {port}: {err}"),
+                true,
+            ),
+        }
+    }
+
+    /// Answers the assistant's waiting requests against the open project.
+    fn serve_control(&mut self) {
+        if let Some(control) = self.control.take() {
+            control.serve(self);
+            self.control = Some(control);
+        }
+    }
+
     fn drain_midi(&mut self) {
         let notes: Vec<midi::Played> = self
             .midi_notes
@@ -1368,6 +1431,7 @@ impl eframe::App for App {
             let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
             self.plugins.poll(bridge, &mut self.session)
         };
+        self.serve_control();
         self.drain_midi();
         self.record_audio();
         self.selected_channel
@@ -1408,6 +1472,37 @@ impl eframe::App for App {
         if let Some(request) = &mut self.screenshot {
             request.tick(&ctx);
         }
+    }
+}
+
+/// The assistant's commands run like menu items: plugin state is stored before a
+/// save, the unsaved marker follows, and the window shows each one.
+impl musiccraft_mcp::Host for App {
+    fn session(&self) -> &Session {
+        &self.session
+    }
+
+    fn run(
+        &mut self,
+        invocation: &Invocation,
+    ) -> Result<musiccraft_commands::Outcome, musiccraft_commands::CommandError> {
+        if replaces_project(&invocation.name) && self.has_unsaved_changes() {
+            return Err(musiccraft_commands::CommandError::InvalidArgument {
+                command: invocation.name.clone(),
+                reason: "the open project has unsaved changes: save it first (project_save), or ask the user"
+                    .to_owned(),
+            });
+        }
+        let result = self.run_invocation(invocation);
+        match &result {
+            Ok(_) => self
+                .ui
+                .set_status(format!("Assistant: {invocation}"), false),
+            Err(err) => self
+                .ui
+                .set_status(format!("Assistant: {invocation}: {err}"), true),
+        }
+        result
     }
 }
 

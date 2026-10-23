@@ -30,6 +30,7 @@ musiccraft-samples = { path = "crates/musiccraft-samples" }
 musiccraft-render = { path = "crates/musiccraft-render" }
 musiccraft-audio = { path = "crates/musiccraft-audio" }
 musiccraft-cli = { path = "crates/musiccraft-cli" }
+musiccraft-mcp = { path = "crates/musiccraft-mcp" }
 musiccraft-clap = { path = "crates/musiccraft-clap" }
 musiccraft-formula = { path = "crates/musiccraft-formula" }
 musiccraft-wavetables = { path = "crates/musiccraft-wavetables" }

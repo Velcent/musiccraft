@@ -19,6 +19,10 @@
   parameters are JSON-RPC errors (-32602); unknown methods -32601; malformed JSON
   -32700. Notifications get no reply.
 
+- `musiccraft-mcp --connect <host:port>` works on the project open in the desktop
+  app instead of its own (live mode, `docs/spec/live-control.md`).
+  `--version` and `--help` print and exit.
+
 ## Client configuration
 
 ```json

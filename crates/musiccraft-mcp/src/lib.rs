@@ -7,8 +7,10 @@
 //! and render the project to report levels, so an agent can drive and verify
 //! MusicCraft without a GUI.
 
+pub mod control;
+
 use musiccraft_cli::{full_registry, plugin_host};
-use musiccraft_commands::{Invocation, SESSION_COMMANDS, Session};
+use musiccraft_commands::{CommandError, Invocation, Outcome, SESSION_COMMANDS, Session};
 use musiccraft_project::Project;
 use musiccraft_render::{RenderOptions, render_with};
 use serde_json::{Value, json};
@@ -104,6 +106,52 @@ impl Server {
     /// Handles one JSON-RPC message. Returns the response, or `None` for
     /// notifications.
     pub fn handle(&mut self, message: &Value) -> Option<Value> {
+        handle(&mut self.session, message)
+    }
+
+    /// A readable overview of the project.
+    #[must_use]
+    pub fn state_summary(&self) -> String {
+        state_summary(&self.session)
+    }
+}
+
+/// Where tool calls run: the server's own session, or the project open in the
+/// desktop app (live mode, `docs/spec/live-control.md`).
+pub trait Host {
+    /// The session whose project the tools read.
+    fn session(&self) -> &Session;
+
+    /// Runs one command.
+    ///
+    /// # Errors
+    ///
+    /// When the command fails.
+    fn run(&mut self, invocation: &Invocation) -> Result<Outcome, CommandError>;
+}
+
+impl Host for Session {
+    fn session(&self) -> &Session {
+        self
+    }
+
+    fn run(&mut self, invocation: &Invocation) -> Result<Outcome, CommandError> {
+        Session::run(self, invocation)
+    }
+}
+
+/// Handles one JSON-RPC message against `host`. Returns the response, or `None`
+/// for notifications.
+pub fn handle<H: Host + ?Sized>(host: &mut H, message: &Value) -> Option<Value> {
+    Handler { host }.handle(message)
+}
+
+struct Handler<'a, H: ?Sized> {
+    host: &'a mut H,
+}
+
+impl<H: Host + ?Sized> Handler<'_, H> {
+    fn handle(&mut self, message: &Value) -> Option<Value> {
         let id = message.get("id").cloned();
         let method = message.get("method").and_then(Value::as_str).unwrap_or("");
         let params = message.get("params").cloned().unwrap_or(Value::Null);
@@ -146,7 +194,8 @@ impl Server {
 
     fn list_tools(&self) -> Value {
         let mut tools: Vec<Value> = self
-            .session
+            .host
+            .session()
             .registry()
             .iter()
             .map(|c| {
@@ -218,8 +267,8 @@ impl Server {
         Ok(match name {
             "run" => self.run_line(&string_arg("line")?),
             "run_script" => self.run_script(&string_arg("script")?),
-            "get_state" => text_result(self.state_summary(), false),
-            "get_project" => match self.session.project().to_json() {
+            "get_state" => text_result(state_summary(self.host.session()), false),
+            "get_project" => match self.host.session().project().to_json() {
                 Ok(json) => text_result(json, false),
                 Err(err) => text_result(err.to_string(), true),
             },
@@ -233,7 +282,8 @@ impl Server {
             }
             tool => {
                 let command = self
-                    .session
+                    .host
+                    .session()
                     .registry()
                     .iter()
                     .map(|c| c.name())
@@ -252,7 +302,7 @@ impl Server {
                     Some(_) => return Err((-32602, "`args` must be an array".to_owned())),
                 };
                 let invocation = Invocation::new(command, args);
-                match self.session.run(&invocation) {
+                match self.host.run(&invocation) {
                     Ok(outcome) => text_result(outcome.message, false),
                     Err(err) => text_result(err.to_string(), true),
                 }
@@ -261,7 +311,7 @@ impl Server {
     }
 
     fn run_line(&mut self, line: &str) -> Value {
-        match self.session.run_line(line) {
+        match Invocation::parse(line).and_then(|invocation| self.host.run(&invocation)) {
             Ok(outcome) => text_result(outcome.message, false),
             Err(err) => text_result(err.to_string(), true),
         }
@@ -278,7 +328,7 @@ impl Server {
                     return text_result(log.join("\n"), true);
                 }
             };
-            match self.session.run(&invocation) {
+            match self.host.run(&invocation) {
                 Ok(outcome) => log.push(format!("> {invocation}\nok: {}", outcome.message)),
                 Err(err) => {
                     log.push(format!("> {invocation}\nerror: {err}"));
@@ -291,7 +341,8 @@ impl Server {
 
     fn command_list(&self) -> String {
         let mut lines: Vec<String> = self
-            .session
+            .host
+            .session()
             .registry()
             .iter()
             .map(|c| format!("{} — {}", c.usage(), c.summary()))
@@ -304,165 +355,8 @@ impl Server {
         lines.join("\n")
     }
 
-    /// A readable overview of the project.
-    #[must_use]
-    pub fn state_summary(&self) -> String {
-        use musiccraft_project::music::key_name;
-        let p = self.session.project();
-        let mut out = vec![format!(
-            "{} — {} BPM in {}, {} mode, transport {}, pattern {}/{} selected",
-            p.name(),
-            p.tempo_bpm(),
-            p.time_signature,
-            p.play_mode.label(),
-            p.transport(),
-            p.current_pattern + 1,
-            p.patterns.len()
-        )];
-        out.push("Channels:".to_owned());
-        for (i, c) in p.channels.iter().enumerate() {
-            let source = match &c.instrument {
-                musiccraft_project::Instrument::Sampler { sample } => format!("sampler {sample}"),
-                musiccraft_project::Instrument::Synth => "synth".to_owned(),
-                musiccraft_project::Instrument::Antiserum { patch } => {
-                    format!("antiserum ({})", patch.name)
-                }
-                musiccraft_project::Instrument::DrumSynth => "drum synth".to_owned(),
-                musiccraft_project::Instrument::Pluck => "pluck".to_owned(),
-                musiccraft_project::Instrument::Fm => "fm synth".to_owned(),
-                musiccraft_project::Instrument::Keys => "keys".to_owned(),
-                musiccraft_project::Instrument::Additive => "additive".to_owned(),
-                musiccraft_project::Instrument::Granular { sample } => format!("granular {sample}"),
-                musiccraft_project::Instrument::Resynth { sample } => format!("resynth {sample}"),
-                musiccraft_project::Instrument::Kit { pads } => {
-                    format!(
-                        "kit ({} pads)",
-                        pads.iter().filter(|p| !p.is_empty()).count()
-                    )
-                }
-                musiccraft_project::Instrument::Zones { zones } => {
-                    format!("zone sampler ({} zones)", zones.len())
-                }
-                musiccraft_project::Instrument::Layer { channels } => {
-                    format!("layer of {} channels", channels.len())
-                }
-                musiccraft_project::Instrument::Plugin { plugin } => {
-                    format!("plugin {} [{}]", plugin.name, plugin.id)
-                }
-                musiccraft_project::Instrument::MidiOut { midi_channel } => {
-                    format!("MIDI out on channel {midi_channel}")
-                }
-            };
-            out.push(format!(
-                "  {} {} ({source}) vol {:.2} pan {:+.2}{}{} → mixer {}",
-                i + 1,
-                c.name,
-                c.volume,
-                c.pan,
-                if c.mute { " MUTED" } else { "" },
-                if c.solo { " SOLO" } else { "" },
-                c.mixer_track
-            ));
-        }
-        out.push("Patterns:".to_owned());
-        for (i, pattern) in p.patterns.iter().enumerate() {
-            out.push(format!(
-                "  {} {} ({} steps, {} ticks, {})",
-                i + 1,
-                pattern.name,
-                pattern.length_steps,
-                pattern.length_ticks(),
-                pattern.time_signature
-            ));
-            for (ci, c) in p.channels.iter().enumerate() {
-                let notes: Vec<String> = pattern
-                    .notes_of(c.id)
-                    .map(|n| format!("{}t:{}x{}t", n.start, key_name(n.key), n.length))
-                    .collect();
-                if !notes.is_empty() {
-                    out.push(format!("    ch{} {}: {}", ci + 1, c.name, notes.join(" ")));
-                }
-            }
-        }
-        out.push("Mixer:".to_owned());
-        for (i, t) in p.mixer.iter().enumerate() {
-            let used =
-                i == 0 || !t.effects.is_empty() || p.channels.iter().any(|c| c.mixer_track == i);
-            if !used {
-                continue;
-            }
-            let fx: Vec<&str> = t.effects.iter().map(|e| e.kind.name()).collect();
-            out.push(format!(
-                "  {i} {} vol {:.2} pan {:+.2}{}{} fx [{}]",
-                t.name,
-                t.volume,
-                t.pan,
-                if t.mute { " MUTED" } else { "" },
-                if t.solo { " SOLO" } else { "" },
-                fx.join(", ")
-            ));
-        }
-        if !p.automations.is_empty() {
-            out.push("Automations:".to_owned());
-            for (i, a) in p.automations.iter().enumerate() {
-                let points: Vec<String> = a
-                    .points
-                    .iter()
-                    .map(|pt| format!("{}t={:.2}", pt.tick, pt.value))
-                    .collect();
-                out.push(format!(
-                    "  {} {} [{:?}]: {}",
-                    i + 1,
-                    a.name,
-                    a.target,
-                    points.join(" ")
-                ));
-            }
-        }
-        out.push(format!("Playlist ({} clips):", p.playlist.clips.len()));
-        let meter = p.song_meter();
-        for clip in &p.playlist.clips {
-            let name = match clip.source {
-                musiccraft_project::ClipSource::Pattern(id) => {
-                    p.pattern_position(id).map_or("?".to_owned(), |i| {
-                        format!("pattern {}", p.patterns[i].name)
-                    })
-                }
-                musiccraft_project::ClipSource::Automation(id) => {
-                    p.automation_position(id).map_or("?".to_owned(), |i| {
-                        format!("automation {} ({})", i + 1, p.automations[i].name)
-                    })
-                }
-                musiccraft_project::ClipSource::Audio(id) => {
-                    p.channel_position(id).map_or("?".to_owned(), |i| {
-                        format!("audio of channel {} ({})", i + 1, p.channels[i].name)
-                    })
-                }
-            };
-            let start = meter.ticks_to_bars(f64::from(clip.start));
-            let end = meter.ticks_to_bars(f64::from(clip.end()));
-            out.push(format!(
-                "  track {} bar {start:.2} len {:.2} bars: {name}",
-                clip.track + 1,
-                end - start
-            ));
-        }
-        let changes: Vec<String> = meter
-            .changes()
-            // Bars from 0, as clip positions and command arguments use them.
-            .map(|(tick, sig)| {
-                let bar = meter.ticks_to_bars(f64::from(tick));
-                format!("{sig} at bar {bar:.2} ({tick}t)")
-            })
-            .collect();
-        if !changes.is_empty() {
-            out.push(format!("Time signature changes: {}", changes.join(", ")));
-        }
-        out.join("\n")
-    }
-
     fn analyze(&self, loops: u32) -> String {
-        let project = self.session.project();
+        let project = self.host.session().project();
         let options = RenderOptions {
             loops,
             ..RenderOptions::default()
@@ -501,6 +395,162 @@ impl Server {
         out.extend(warnings.into_iter().map(|w| format!("warning: {w}")));
         out.join("\n")
     }
+}
+
+/// A readable overview of the project.
+#[must_use]
+pub fn state_summary(session: &Session) -> String {
+    use musiccraft_project::music::key_name;
+    let p = session.project();
+    let mut out = vec![format!(
+        "{} — {} BPM in {}, {} mode, transport {}, pattern {}/{} selected",
+        p.name(),
+        p.tempo_bpm(),
+        p.time_signature,
+        p.play_mode.label(),
+        p.transport(),
+        p.current_pattern + 1,
+        p.patterns.len()
+    )];
+    out.push("Channels:".to_owned());
+    for (i, c) in p.channels.iter().enumerate() {
+        let source = match &c.instrument {
+            musiccraft_project::Instrument::Sampler { sample } => format!("sampler {sample}"),
+            musiccraft_project::Instrument::Synth => "synth".to_owned(),
+            musiccraft_project::Instrument::Antiserum { patch } => {
+                format!("antiserum ({})", patch.name)
+            }
+            musiccraft_project::Instrument::DrumSynth => "drum synth".to_owned(),
+            musiccraft_project::Instrument::Pluck => "pluck".to_owned(),
+            musiccraft_project::Instrument::Fm => "fm synth".to_owned(),
+            musiccraft_project::Instrument::Keys => "keys".to_owned(),
+            musiccraft_project::Instrument::Additive => "additive".to_owned(),
+            musiccraft_project::Instrument::Granular { sample } => format!("granular {sample}"),
+            musiccraft_project::Instrument::Resynth { sample } => format!("resynth {sample}"),
+            musiccraft_project::Instrument::Kit { pads } => {
+                format!(
+                    "kit ({} pads)",
+                    pads.iter().filter(|p| !p.is_empty()).count()
+                )
+            }
+            musiccraft_project::Instrument::Zones { zones } => {
+                format!("zone sampler ({} zones)", zones.len())
+            }
+            musiccraft_project::Instrument::Layer { channels } => {
+                format!("layer of {} channels", channels.len())
+            }
+            musiccraft_project::Instrument::Plugin { plugin } => {
+                format!("plugin {} [{}]", plugin.name, plugin.id)
+            }
+            musiccraft_project::Instrument::MidiOut { midi_channel } => {
+                format!("MIDI out on channel {midi_channel}")
+            }
+        };
+        out.push(format!(
+            "  {} {} ({source}) vol {:.2} pan {:+.2}{}{} → mixer {}",
+            i + 1,
+            c.name,
+            c.volume,
+            c.pan,
+            if c.mute { " MUTED" } else { "" },
+            if c.solo { " SOLO" } else { "" },
+            c.mixer_track
+        ));
+    }
+    out.push("Patterns:".to_owned());
+    for (i, pattern) in p.patterns.iter().enumerate() {
+        out.push(format!(
+            "  {} {} ({} steps, {} ticks, {})",
+            i + 1,
+            pattern.name,
+            pattern.length_steps,
+            pattern.length_ticks(),
+            pattern.time_signature
+        ));
+        for (ci, c) in p.channels.iter().enumerate() {
+            let notes: Vec<String> = pattern
+                .notes_of(c.id)
+                .map(|n| format!("{}t:{}x{}t", n.start, key_name(n.key), n.length))
+                .collect();
+            if !notes.is_empty() {
+                out.push(format!("    ch{} {}: {}", ci + 1, c.name, notes.join(" ")));
+            }
+        }
+    }
+    out.push("Mixer:".to_owned());
+    for (i, t) in p.mixer.iter().enumerate() {
+        let used = i == 0 || !t.effects.is_empty() || p.channels.iter().any(|c| c.mixer_track == i);
+        if !used {
+            continue;
+        }
+        let fx: Vec<&str> = t.effects.iter().map(|e| e.kind.name()).collect();
+        out.push(format!(
+            "  {i} {} vol {:.2} pan {:+.2}{}{} fx [{}]",
+            t.name,
+            t.volume,
+            t.pan,
+            if t.mute { " MUTED" } else { "" },
+            if t.solo { " SOLO" } else { "" },
+            fx.join(", ")
+        ));
+    }
+    if !p.automations.is_empty() {
+        out.push("Automations:".to_owned());
+        for (i, a) in p.automations.iter().enumerate() {
+            let points: Vec<String> = a
+                .points
+                .iter()
+                .map(|pt| format!("{}t={:.2}", pt.tick, pt.value))
+                .collect();
+            out.push(format!(
+                "  {} {} [{:?}]: {}",
+                i + 1,
+                a.name,
+                a.target,
+                points.join(" ")
+            ));
+        }
+    }
+    out.push(format!("Playlist ({} clips):", p.playlist.clips.len()));
+    let meter = p.song_meter();
+    for clip in &p.playlist.clips {
+        let name = match clip.source {
+            musiccraft_project::ClipSource::Pattern(id) => {
+                p.pattern_position(id).map_or("?".to_owned(), |i| {
+                    format!("pattern {}", p.patterns[i].name)
+                })
+            }
+            musiccraft_project::ClipSource::Automation(id) => {
+                p.automation_position(id).map_or("?".to_owned(), |i| {
+                    format!("automation {} ({})", i + 1, p.automations[i].name)
+                })
+            }
+            musiccraft_project::ClipSource::Audio(id) => {
+                p.channel_position(id).map_or("?".to_owned(), |i| {
+                    format!("audio of channel {} ({})", i + 1, p.channels[i].name)
+                })
+            }
+        };
+        let start = meter.ticks_to_bars(f64::from(clip.start));
+        let end = meter.ticks_to_bars(f64::from(clip.end()));
+        out.push(format!(
+            "  track {} bar {start:.2} len {:.2} bars: {name}",
+            clip.track + 1,
+            end - start
+        ));
+    }
+    let changes: Vec<String> = meter
+        .changes()
+        // Bars from 0, as clip positions and command arguments use them.
+        .map(|(tick, sig)| {
+            let bar = meter.ticks_to_bars(f64::from(tick));
+            format!("{sig} at bar {bar:.2} ({tick}t)")
+        })
+        .collect();
+    if !changes.is_empty() {
+        out.push(format!("Time signature changes: {}", changes.join(", ")));
+    }
+    out.join("\n")
 }
 
 #[cfg(test)]

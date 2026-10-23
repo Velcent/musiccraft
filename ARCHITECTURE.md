@@ -20,6 +20,7 @@ musiccraft-app ──► musiccraft-ui ──► musiccraft-commands ──► m
       │                                                                                │
 musiccraft-cli ──► commands, render, audio                                             │
 musiccraft-mcp ──► commands, render                                                    │
+musiccraft-app ──► musiccraft-mcp (live control)                                       │
 xtask ──► commands, render, ui (keymap) ───────────────────────────────────────────────┘
 musiccraft-project, musiccraft-engine ──► musiccraft-meter ──► musiccraft-params
 musiccraft-engine ──► musiccraft-instruments ──► musiccraft-dsp
@@ -61,7 +62,7 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`; the safe plugin boundary (`PluginFactory`, `PluginInstance`) and plugin instance management. Antiserum channels run as external processors in the same engine slots as plugins; wavetables, oscillator sources, LFO shapes and sequences reach them as data swapped on the audio thread (`EngineMessage::ExternalData`) and handed back as garbage. |
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
-| `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. |
+| `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. `control`: the app's localhost live-control channel and the `--connect` relay to it (`docs/spec/live-control.md`); the tools run against any `Host` (its own `Session`, or the open app). |
 | `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response`, `fft` and `pitch` modules only to draw effect curves, the spectrum analyzer and the tuner display. |
 | `musiccraft-editors` | The egui pieces the app and the plugins share: theme, knobs and widgets, hints, the effect editor (preset bar, draggable graph, knobs, tuner), the built-in instruments' editor (the channel settings' Sound, Envelope and Functions pages), Antiserum's editor and the wavetable editor (3D frame stack, drawing, harmonics, formulas). Knows nothing of projects or commands: editors report `Edit`s (begin, drag, set, bypass) that the app turns into commands and a plugin into host gestures. |
 | `musiccraft-plugin-editor` | Opens those egui editors in a plugin host's window: a nih-plug `Editor` on a baseview child window with OpenGL, egui 0.36 and `egui_glow`. **Allowed to use `unsafe`** (OpenGL calls). |
@@ -99,6 +100,10 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
   engine with the note messages of MIDI Out channels (fixed-size `Copy`
   events; a full queue drops them), and sends them to the chosen port. It
   polls every millisecond, so timing is accurate to about one audio buffer.
+- **Control threads** (optional, `--control`): accept localhost connections and
+  read JSON-RPC lines, but only hand them to the main thread over a channel and
+  wait; the main thread answers them between frames against its `Session`, so
+  the project is never touched off the main thread.
 - The engine never reads `Project`. Data the engine needs (sample buffers, note
   sequences, effect state) is prepared on the main thread.
 
