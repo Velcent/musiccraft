@@ -867,7 +867,7 @@ fn pattern_list(
             pattern_section(ui, state, project, actions);
         }
         if matches!(picker, Picker::All | Picker::Audio) {
-            audio_section(ui, state, project);
+            audio_section(ui, state, project, actions);
         }
         if matches!(picker, Picker::All | Picker::Automation) {
             automation_section(ui, state, project, actions);
@@ -885,7 +885,12 @@ pub(crate) enum Picker {
 }
 
 /// Channels that have audio clips; clicking one paints its clips.
-fn audio_section(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
+fn audio_section(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    project: &Project,
+    actions: &mut Vec<Action>,
+) {
     let mut sources: Vec<musiccraft_project::ChannelId> = Vec::new();
     for clip in &project.playlist.clips {
         if let ClipSource::Audio(id) = clip.source {
@@ -915,11 +920,31 @@ fn audio_section(ui: &mut egui::Ui, state: &mut UiState, project: &Project) {
             crate::channel_color(project, index),
             selected,
         )
-        .hint("Click to paint this audio clip on the playlist");
+        .hint("Click to paint this audio clip on the playlist · right-click for options");
         if response.clicked() {
             state.playlist.paint_audio = Some(id);
             state.playlist.paint_automation = None;
         }
+        response.context_menu(|ui| {
+            if ui.button("Channel settings…").clicked() {
+                state.selected_channel = index;
+                state.windows.channel_settings = true;
+                ui.close();
+            }
+            if ui
+                .button("Split into stems")
+                .on_hover_text(
+                    "Split this sound into vocals, drums, bass and other, each a new channel with clips under the originals",
+                )
+                .clicked()
+            {
+                actions.push(Action::Run(Invocation::new(
+                    "sample.split_stems",
+                    [(index + 1).to_string()],
+                )));
+                ui.close();
+            }
+        });
     }
 }
 
@@ -2762,6 +2787,27 @@ fn track_items(
     );
 }
 
+/// One `sample.split_stems` per sampler channel that `clips` play, in order.
+fn split_stems(project: &Project, clips: &[Clip]) -> Vec<Invocation> {
+    let mut channels: Vec<usize> = Vec::new();
+    for clip in clips {
+        let index = clip.audio().and_then(|id| project.channel_position(id));
+        let sampler = index.filter(|i| {
+            matches!(
+                project.channels[*i].instrument,
+                musiccraft_project::Instrument::Sampler { .. }
+            )
+        });
+        if let Some(i) = sampler.filter(|i| !channels.contains(i)) {
+            channels.push(i);
+        }
+    }
+    channels
+        .into_iter()
+        .map(|i| Invocation::new("sample.split_stems", [(i + 1).to_string()]))
+        .collect()
+}
+
 /// Names and colours `row` after its first pattern clip's pattern.
 fn name_after_first_clip(project: &Project, row: u32, on_track: &[Clip]) -> Option<Invocation> {
     let pattern = on_track.iter().find_map(|c| match c.source {
@@ -3081,6 +3127,17 @@ fn clip_menu(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions:
             &[],
         ),
     );
+    let splits = split_stems(project, &audio);
+    if crate::widgets::add_enabled(ui, !splits.is_empty(), egui::Button::new("Split into stems"))
+        .on_hover_text(
+            "Split the selected audio clips' sounds into vocals, drums, bass and other, each a new channel with clips under the originals",
+        )
+        .clicked()
+    {
+        // One split per sound; the app runs them one after another.
+        actions.extend(splits.into_iter().map(Action::Run));
+        ui.close();
+    }
     menu_item(
         ui,
         actions,
@@ -3916,6 +3973,37 @@ fn nudge_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_into_stems_runs_once_per_sampler_sound() {
+        let mut project = Project::default();
+        for sample in ["builtin:kick", "builtin:snare"] {
+            let id = musiccraft_project::ChannelId(project.alloc_id());
+            project.channels.push(musiccraft_project::Channel::new(
+                id,
+                sample,
+                musiccraft_project::Instrument::Sampler {
+                    sample: sample.to_owned(),
+                },
+            ));
+        }
+        let (kick, snare) = (project.channels[0].id, project.channels[1].id);
+        let clip = |id, start| Clip {
+            source: ClipSource::Audio(id),
+            track: 0,
+            start,
+            length: 96,
+            offset: 0,
+            muted: false,
+        };
+        let clips = [clip(snare, 0), clip(kick, 96), clip(snare, 192)];
+        let runs: Vec<String> = split_stems(&project, &clips)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(runs, ["sample.split_stems 2", "sample.split_stems 1"]);
+        assert!(split_stems(&project, &[]).is_empty());
+    }
 
     #[test]
     fn the_wheel_steps_the_snap_and_stops_at_the_ends() {

@@ -1,0 +1,14 @@
+[package]
+name = "musiccraft-stems"
+description = "Splits a sound into vocals, drums, bass and other stems"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+musiccraft-dsp.workspace = true
+
+[lints]
+workspace = true

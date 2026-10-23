@@ -27,6 +27,7 @@ musiccraft-instruments = { path = "crates/musiccraft-instruments" }
 musiccraft-antiserum = { path = "crates/musiccraft-antiserum" }
 musiccraft-paths = { path = "crates/musiccraft-paths" }
 musiccraft-samples = { path = "crates/musiccraft-samples" }
+musiccraft-stems = { path = "crates/musiccraft-stems" }
 musiccraft-render = { path = "crates/musiccraft-render" }
 musiccraft-audio = { path = "crates/musiccraft-audio" }
 musiccraft-cli = { path = "crates/musiccraft-cli" }

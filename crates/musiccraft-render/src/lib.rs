@@ -17,6 +17,7 @@ mod midi_export;
 pub mod plugins;
 mod sample_edit;
 mod sequence;
+mod stems;
 
 pub use bridge::{Bridge, SyncReport};
 pub use consolidate::ConsolidateCommand;
@@ -31,6 +32,7 @@ pub use plugins::{
 };
 pub use sample_edit::SampleEditCommand;
 pub use sequence::{build_full_sequence, build_sequence};
+pub use stems::{AddStemsCommand, SplitStemsCommand, StemJob};
 
 use musiccraft_commands::Registry;
 

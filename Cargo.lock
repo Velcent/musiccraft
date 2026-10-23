@@ -2036,6 +2036,7 @@ dependencies = [
  "musiccraft-paths",
  "musiccraft-project",
  "musiccraft-samples",
+ "musiccraft-stems",
  "serde_json",
 ]
 
@@ -2049,6 +2050,13 @@ dependencies = [
  "musiccraft-params",
  "symphonia",
  "vorbis_rs",
+]
+
+[[package]]
+name = "musiccraft-stems"
+version = "0.3.3"
+dependencies = [
+ "musiccraft-dsp",
 ]
 
 [[package]]

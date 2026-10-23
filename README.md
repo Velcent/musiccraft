@@ -132,6 +132,10 @@ Hover any control and the hint bar at the top says what it does.
   the playhead, which steps on). In song mode, moving a knob while recording
   writes automation.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
+- **Stem splitting**: right-click a sampler channel or an audio clip's sound →
+  Split into stems makes vocals, drums, bass and other channels, with clips
+  under the original (muted). A built-in splitter, no model download; see
+  `docs/spec/stems.md`.
 - **FL Studio projects**: `project.import_flp song.flp` converts tempo,
   channels, patterns and notes, the playlist and the mixer. FL's own plugins
   become synths and VST3 plugins carry over without their settings; the

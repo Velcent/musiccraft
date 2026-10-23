@@ -114,6 +114,7 @@ of contents; see `docs/clean-room.md`.
 | Effects | Spectrum analyser | `done` |
 | Effects | Pitch correction and tuner | `fx:pitch_correct` `fx:tuner` `spec:mixer.md` |
 | Generators | Sample editor: trim, cut, fades, gain, normalize, reverse, time-stretch, pitch-shift, tune | `cmd:sample.edit` `spec:sample-editor.md` |
+| Generators | Split a sound into vocals, drums, bass and other stems | `cmd:sample.split_stems` `cmd:sample.add_stems` `spec:stems.md` |
 | Generators | Resynthesis of a sample's harmonics | `cmd:channel.add_resynth` `spec:channel-rack.md` |
 | Generators | Zone sampler (samples on key and velocity zones) | `cmd:channel.add_zones` `cmd:channel.add_zone` `cmd:channel.set_zone` `spec:channel-rack.md` |
 | Generators | MIDI out to external gear | `cmd:channel.add_midi_out` `cmd:channel.set_midi_channel` `spec:channel-rack.md` |
