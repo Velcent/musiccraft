@@ -68,7 +68,11 @@ their category.
   channel rack or the playlist. Dropped on a sampler channel's row, a sound
   replaces that channel's sample (the row is outlined while it hovers);
   anywhere else in the rack it adds a sampler channel.
-- Generators, effects and presets: click selects; double-click adds a
+- Presets: click selects and previews, as a sound does: the preset plays
+  middle C for about a second and a half, then its release, on the master
+  output (the rendered preview is kept, so a second click plays at once).
+- Generators, effects and presets: click selects (generators and effects
+  do not preview); double-click adds a
   generator or preset as a new channel, or an effect to the selected mixer
   track. Generators and presets can be dragged onto the channel rack.
   Effects (built-in and installed) can be dragged onto a mixer strip, which
@@ -102,4 +106,5 @@ The list scrolls to keep the selected row in view.
   category order, full-width rows with type glyphs and tree lines, the
   installed plugins' format tag, the footer search, and search opening the
   folders that hold results.
-- Own design: the glyphs, labels, tones and the categories' contents.
+- Owner's request (2026-10-23): presets preview on click, like samples.
+- Own design: the preview note and length, the glyphs, labels, tones and the categories' contents.

@@ -176,6 +176,10 @@ of contents; see `docs/clean-room.md`.
 | Project | Sample paths from Windows projects and FL Studio found on Linux and macOS | `cmd:project.localize_samples` `spec:sample-paths.md` |
 | Mixer | Built-in three-band track EQ and per-slot mix | `cmd:mixer.set_eq` `cmd:mixer.set_effect_mix` `spec:mixer.md` |
 | Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
+| Automation | Automation clip editor: tension handles, point selection, point menu, step drawing, slide, zoom | `cmd:automation.set_points` `spec:playlist.md` `done` |
+| Automation | Edit automation points directly in playlist clips | `spec:playlist.md` `done` |
+| Automation | Automation clip on/off and output range | `cmd:automation.set_enabled` `cmd:automation.set_range` |
+| Automation | Automation clip for the last moved control | `spec:controls.md` `done` |
 | Scripting | Headless CLI and scripts | `done` |
 | Scripting | MCP server for AI agents | `spec:mcp.md` |
 | Scripting | AI agents working in the open window (live control) | `spec:live-control.md` |

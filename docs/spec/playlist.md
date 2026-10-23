@@ -237,6 +237,15 @@
 - Playback samples curved segments every 6 ticks (a quarter step) into the
   engine's straight-line lanes; `hold` segments change exactly at the next
   point.
+- **Settings.** Each automation also has an **On** switch (default on) and a
+  **range**, `low` and `high` (control positions 0..1, defaults 0 and 1). The
+  curve's bottom plays as `low` and its top as `high`, so the target gets
+  `low + (high - low) × value`; `low` above `high` inverts the curve. An
+  automation that is off plays nothing, and its clips show their curve dimmed
+  by half. `automation.set_enabled <automation> <on|off>` and
+  `automation.set_range <automation> <low 0-1> <high 0-1>` (both undoable).
+  Saved as `"enabled": false`, `"low"` and `"high"` only when not the
+  defaults; files without them load unchanged.
 - During song playback each automation clip writes its interpolated value once
   per audio block (at most 256 frames) while the playhead is inside the clip;
   afterwards the parameter keeps its last value until playback stops, when the
@@ -245,17 +254,96 @@
 - A mixer track or effect slot driven by an automation cannot be removed until
   the automation is deleted; moving or removing other effect slots keeps
   automation pointing at the right effect.
-- UI: right-click any knob or fader → "Create automation clip" places a new clip
-  on the first empty track. The playlist sidebar lists automations; clicking one
-  paints it instead of the pattern; double-clicking a clip or list entry opens
-  the automation editor (click adds a point, drag moves it, right-click
-  deletes it; right-click a segment to pick its shape; Alt+drag a segment to
-  bend it, one undo step per drag). The editor draws the shaped curve.
+
+### Creating automation (UI)
+
+- Right-click any knob or fader → "Create automation clip" places a new clip
+  on the first empty track and opens it in the automation editor.
+- The **last moved control** is the last knob or fader the user dragged,
+  typed into or reset. Add → "Automation clip for the last moved control"
+  does the same as "Create automation clip" on it, and Tools → "Last moved
+  control" offers the control's menu items (Create automation clip, Add
+  controller, Copy, Paste, Reset). Both are disabled (and name no control)
+  until a control has moved; their hint names the control.
+- The playlist sidebar lists automations; clicking one paints it instead of
+  the pattern; double-clicking a clip or list entry opens the automation
+  editor.
+
+### Automation editor (UI)
+
+One window shows one automation (`docs/spec/style/dialogs.md`, "Automation
+clip editor window").
+
+- **Header**: the window menu (Copy curve, Paste curve; Flip vertically,
+  Normalize; Select all, Delete selected points; each edit a single
+  `automation.set_points`, one undo step), a chevron button that lists every
+  automation so the window can switch (the wheel over it steps through
+  them), and the title "Automation — <name>".
+- **Settings band**: the On switch, then Low and High knobs (0–100 %),
+  committed as `automation.set_enabled` / `automation.set_range` (one undo
+  step per knob drag; double-click resets to 0 % and 100 %).
+- **Graph**: a bar ruler over the grid, the curve with a faint fill under it,
+  a filled circle at every point and a small hollow **tension handle** at the
+  middle of every segment, on the curve. A thin playhead shows while the song
+  plays inside one of the automation's clips.
+- **Gestures** (they replace the earlier click-to-add ones):
+  - Right-click empty grid: adds a point there; holding the button and
+    dragging places it before it is added. Shift+right-click adds a point on
+    the curve at that time without changing its shape.
+  - Left-click a point selects it (Shift+click adds or removes it); left-click
+    empty grid clears the selection. Ctrl+A selects every point.
+  - Left-drag a point moves it, and every selected point with it. Shift locks
+    the value, Ctrl locks the time, Alt bypasses snap. Points cannot pass
+    their unselected neighbours, and the first point stays at time 0 or
+    later. Dragging the last point to the right makes the automation longer.
+  - Left-drag empty grid (or Ctrl+drag anywhere) draws a selection box;
+    Shift adds to the selection.
+  - Left-drag a tension handle up or down bends its segment towards the
+    pointer; Ctrl gives fine steps. Right-click a handle resets its tension.
+    Alt+drag on a segment also bends it.
+  - Alt+left-click a point deletes it. Delete removes the selected points,
+    never the last one.
+  - Right-click a point opens the **point menu**: a dim "Point n of m"
+    heading; Delete; "Shape of the segment before this point" with the four
+    shapes as radio items and Reset tension (not on the first point); Copy
+    value, Paste value and Type value… (a small field over the point, 0–100,
+    Enter applies).
+  - **Step drawing** (footer toggle): left-drag on the grid draws, putting a
+    point on every snap line the pointer passes and replacing the points
+    between the drawing's ends; one undo step.
+  - **Slide** (footer toggle): dragging a point also moves every later point
+    by the same time.
+  - **Snap** (footer toggle, on by default) rounds times to steps.
+  - Wheel scrolls horizontally, Ctrl+wheel zooms around the pointer, Home or
+    the footer's magnifier zooms out to the whole curve; the horizontal bar
+    under the graph scrolls and zooms as in the other editors.
+  - Hovering a point or handle shows "Point 3 of 7 · 62 % · bar 2.3" or
+    "Tension +0.40" in the hint bar; while dragging, the value also floats
+    beside the pointer.
+- Every edit is one command and one undo step: `automation.add_point`,
+  `automation.move_point` (one point), `automation.remove_point`,
+  `automation.set_curve`, or `automation.set_points` (several points, step
+  drawing, slide, deleting a selection).
+
+### Automation clips in the playlist
+
+- The body is the clip colour darkened further than a pattern clip's, with
+  the curve as a bright line and a translucent fill under it.
+- While the pointer is over the body and the Draw or Select tool is active,
+  its points and tension handles show, and the editor's point gestures work
+  in place: left-drag a point or a
+  handle, right-click empty body to add a point, right-click a point for the
+  point menu, right-click a handle to reset it, Alt+click a point to delete
+  it. Drags that start away from a point or handle, the title strip and
+  double-click keep their clip meaning (move, trim, open the editor).
+  Right-clicking the title strip still deletes the clip.
 
 ## Editor (UI)
 
 - **Tools** as in the piano roll: Draw, Paint (drag to lay the selected
-  pattern end to end, skipping places taken by other clips; one undo step),
+  pattern end to end, skipping places taken by other clips; the stroke stays
+  on the track it started on however far the pointer drifts up or down; one
+  undo step),
   Delete (click or drag over clips; one undo step) and Select (box select),
   plus Mute (click a clip to mute or unmute it: `playlist.toggle_clip_mute
   <track> <at>`, undoable; a muted clip stays, drawn faint, and does not
@@ -284,11 +372,17 @@
   pattern's notes laid out as in a clip preview (above), on the pattern's
   colour or the neutral fill. Automation recorded into the pattern shows as
   faint curves under the notes. A pattern with neither notes nor automation
-  says "empty". The pattern being painted is outlined in the accent colour. Click selects it for painting; right-click opens the pattern menu
-  (rename, show in playlist, clone, colour, time signature, clear
-  automation, delete). Show in playlist scrolls to the pattern's first clip.
+  says "empty". The pattern being painted is outlined in the accent colour. Click selects it for painting; double-click selects it and brings
+  the piano roll to the front with it (opening it if it was closed); drag
+  it onto a lane to place a clip of it at the snapped drop point (a ghost
+  clip of the pattern's length shows where; one undo step); right-click
+  opens the pattern menu (rename, show in playlist, clone, colour, time
+  signature, clear automation, delete). Rename in place is F2, the menu or
+  the toolbar's pattern field. Show in playlist scrolls to the pattern's
+  first clip.
 - The playlist is an editor window like the channel rack, piano roll and
-  mixer (`window-layout.md`, "Playlist"), not the workspace background. Click
+  mixer. By default it is maximized as the backdrop behind them
+  (`window-layout.md`, "Playlist"). Click
   or drag on the ruler to move the playhead; during song playback the view
   follows the playhead.
 - Selection works as in the piano roll: click, Shift+click, Ctrl+drag rectangle;
@@ -330,12 +424,17 @@
   following the playhead (the list on the left at Normal width, and the
   rest on, by default; not saved with the project). With the clip list
   hidden the lanes take its width.
-- Double-clicking a pattern clip opens it in the piano roll; an automation
+- Double-clicking a pattern clip opens it in the piano roll (brought to the
+  front); an automation
   clip opens the automation editor; an audio clip opens its channel's
   settings.
 
 ## Sources
 
+- Double-clicking a clip-list pattern to open the piano roll, dragging
+  patterns from the clip list onto the lanes, and paint strokes that keep
+  to one track: the owner's requests (2026-10-23). Gestures and feedback are
+  our own design.
 - The scroll/zoom row, song overview and track-height zoom box: the
   interface style guide (`docs/spec/style/main-window.md`, "Scroll and zoom
   bars"). Drawing and sizes are our own.
@@ -351,6 +450,15 @@
   tension follow the automation clip point modes described in the FL Studio
   online manual, "Automation clips"; the formulas, ranges and step counts are
   our own.
+- The automation editor's gestures, settings band (On, Low, High), point
+  menu, step drawing, slide and in-clip editing: the interface style guide
+  (`docs/spec/style/dialogs.md`, "Automation clip editor window" and
+  "Automation clip in the playlist"), which compared the FL Studio online
+  manual's "Automation Clips" page for placement and behaviour only. The
+  menu wording, the handle-bend direction, plain-drag box selection and the
+  Draw/Select-tool rule in the playlist are our own design.
+- The last moved control in the Add and Tools menus: the interface style
+  guide (`docs/spec/style/toolbar.md`); the item wording is our own.
 
 - Patterns without a colour of their own, with notes shown in their own
   colours inside clips: the project owner's account of how the software

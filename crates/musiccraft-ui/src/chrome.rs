@@ -32,11 +32,71 @@ pub fn maximized(ctx: &egui::Context, id: egui::Id) -> bool {
         .is_some()
 }
 
-/// Whether the window `id` is the focused one: the topmost floating window.
+/// Whether the window `id` is the focused one (see [`focused_window`]).
 #[must_use]
 pub fn focused(ctx: &egui::Context, id: egui::Id) -> bool {
-    ctx.memory(|m| m.areas().top_layer_id(egui::Order::Middle))
-        .is_some_and(|layer| layer.id == id)
+    focused_window(ctx) == Some(id)
+}
+
+/// Where the backdrop that last took a click is kept.
+fn backdrop_focus() -> egui::Id {
+    egui::Id::new(("chrome", "backdrop-focus"))
+}
+
+/// The window that has the keyboard: the backdrop (a window drawn behind
+/// the floating ones, the maximized playlist) while it was the last one
+/// clicked or no floating window is open, otherwise the topmost floating
+/// window.
+#[must_use]
+pub fn focused_window(ctx: &egui::Context) -> Option<egui::Id> {
+    let clicked = ctx
+        .data(|d| d.get_temp::<Option<egui::Id>>(backdrop_focus()))
+        .flatten();
+    ctx.memory(|m| {
+        let areas = m.areas();
+        let shown =
+            |layer: &egui::LayerId| areas.is_visible(layer) && areas.parent_layer(*layer).is_none();
+        let backdrop = m
+            .layer_ids()
+            .filter(|l| {
+                l.order == egui::Order::Background && *l != egui::LayerId::background() && shown(l)
+            })
+            .last();
+        if let Some(backdrop) = backdrop.filter(|b| clicked == Some(b.id)) {
+            return Some(backdrop.id);
+        }
+        m.layer_ids()
+            .filter(|l| l.order == egui::Order::Middle && shown(l))
+            .last()
+            .or(backdrop)
+            .map(|layer| layer.id)
+    })
+}
+
+/// Call once a frame before the windows are drawn: a press on the backdrop
+/// gives it the keyboard, a press on a floating window takes it back.
+pub fn track_focus(ctx: &egui::Context) {
+    let pressed = ctx.input(|i| {
+        i.pointer
+            .any_pressed()
+            .then(|| i.pointer.interact_pos())
+            .flatten()
+    });
+    let Some(layer) = pressed.and_then(|pos| ctx.layer_id_at(pos)) else {
+        return;
+    };
+    let clicked = match layer.order {
+        egui::Order::Background if layer != egui::LayerId::background() => Some(layer.id),
+        egui::Order::Middle => None,
+        _ => return,
+    };
+    ctx.data_mut(|d| d.insert_temp(backdrop_focus(), clicked));
+}
+
+/// Brings floating window `id` to the front and gives it the keyboard.
+pub fn raise(ctx: &egui::Context, id: egui::Id) {
+    ctx.data_mut(|d| d.insert_temp(backdrop_focus(), None::<egui::Id>));
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, id));
 }
 
 fn set_maximized(ctx: &egui::Context, id: egui::Id, maximize: bool) {
@@ -53,6 +113,10 @@ fn set_maximized(ctx: &egui::Context, id: egui::Id, maximize: bool) {
             d.remove::<Rect>(key(id, "restore-to"));
         }
     });
+    if !maximize {
+        // A restored backdrop floats in front again.
+        raise(ctx, id);
+    }
 }
 
 /// Maximizes window `id`, or restores it when it is maximized. Returns
@@ -74,6 +138,11 @@ pub fn maximize(ctx: &egui::Context, id: egui::Id) -> bool {
         set_maximized(ctx, id, true);
     }
     drawn
+}
+
+/// Unfolds window `id` from its header.
+pub fn expand(ctx: &egui::Context, id: egui::Id) {
+    ctx.data_mut(|d| d.insert_persisted(id.with("collapsed"), false));
 }
 
 /// Puts window `id` back where it first opened: unfolded, not maximized.
@@ -153,6 +222,12 @@ pub(crate) fn place(ctx: &egui::Context, id: egui::Id, rect: Rect, folded: bool)
         d.insert_temp(key(id, "restore-now"), (rect, 3_u8));
         d.insert_persisted(id.with("collapsed"), folded);
     });
+}
+
+/// Whether window `id` is given its exact rectangle this frame (maximized,
+/// restored or put back where a layout had it). Ask before [`window`].
+pub fn pinned(ctx: &egui::Context, id: egui::Id) -> bool {
+    maximized(ctx, id) || placing(ctx, id)
 }
 
 /// Whether window `id` is being put back where a layout had it.

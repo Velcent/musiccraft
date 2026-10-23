@@ -23,8 +23,11 @@ const LANE_HEIGHT: f32 = 96.0;
 const LANE_HEIGHT_RANGE: (f32, f32) = (40.0, 320.0);
 /// Thickness of the splitter between the grid and the lane.
 const SPLITTER: f32 = 5.0;
+/// Bars the view runs on past the pattern's end, and the fewest it shows.
+const EXTRA_BARS: u32 = 8;
+const MIN_BARS: u32 = 16;
 /// Key-row height: the default and the vertical zoom range, in points.
-const KEY_HEIGHT: f32 = 14.0;
+const KEY_HEIGHT: f32 = 18.0;
 const KEY_HEIGHT_RANGE: (f32, f32) = (6.0, 30.0);
 /// Horizontal zoom range, in points per step.
 pub(crate) const STEP_WIDTH_RANGE: (f32, f32) = (6.0, 120.0);
@@ -106,7 +109,7 @@ pub struct RollState {
     /// Notes swept by a right-button drag, deleted when it ends.
     pub(crate) right_erase: Vec<Note>,
     pub(crate) px_per_step: f32,
-    key_height: f32,
+    pub(crate) key_height: f32,
     pub(crate) snap: Snap,
     pub(crate) last_length: u32,
     pub(crate) velocity: u8,
@@ -512,14 +515,15 @@ pub fn show(
     };
     let area = state.workspace;
     let id = egui::Id::new("piano-roll");
+    let slots = state.floating_area();
     let size = vec2(
-        (area.width() / 2.0).max(480.0),
-        (area.height() / 2.0).max(300.0),
+        (slots.width() / 2.0).max(480.0),
+        (slots.height() / 2.0).max(300.0),
     );
     let default = egui::Rect::from_min_size(
         pos2(
-            (area.right() - size.x).max(area.left()),
-            area.top() + area.height() / 4.0,
+            (slots.right() - size.x).max(slots.left()),
+            slots.top() + slots.height() / 4.0,
         ),
         size,
     );
@@ -1183,7 +1187,9 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
     }
     let length = pattern.length_ticks();
     let bar = pattern.time_signature.bar_ticks();
-    let visible_ticks = length.max(2 * bar) + bar;
+    // Room to write past the pattern's end, so the scroll bar always has
+    // somewhere to go (the playlist does the same).
+    let visible_ticks = (length.div_ceil(bar.max(1)) + EXTRA_BARS).max(MIN_BARS) * bar;
     let px_per_tick = state.roll.px_per_step / TICKS_PER_STEP as f32;
     let key_h = state.roll.key_height;
     let size = vec2(
@@ -1217,8 +1223,12 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             (Some(lo), Some(hi)) => (u32::from(*lo) + u32::from(*hi)) / 2,
             _ => 60,
         };
-        let y = RULER_HEIGHT + row_of_key(u8::try_from(target).unwrap_or(60)) as f32 * key_h;
-        scroll = scroll.vertical_scroll_offset((y - view_rect.height() / 2.0).max(0.0));
+        // The middle of the key's row goes to the middle of the grid, between
+        // the ruler and the property lane.
+        let row = row_of_key(u8::try_from(target).unwrap_or(60)) as f32;
+        let grid_h = view_rect.height() - RULER_HEIGHT - state.roll.lane();
+        let y = (row + 0.5) * key_h - grid_h / 2.0;
+        scroll = scroll.vertical_scroll_offset(y.max(0.0));
         state.roll.centred_for = Some(channel_index);
     }
     let output = scroll.show(&mut view_ui, |ui| {
@@ -1751,7 +1761,7 @@ fn draw_note(
 ) {
     let rect = grid
         .span(row_of_key(key), start, length)
-        .shrink2(vec2(0.5, 1.0));
+        .shrink2(vec2(0.5, 0.5));
     let alpha = if ghost {
         150
     } else {

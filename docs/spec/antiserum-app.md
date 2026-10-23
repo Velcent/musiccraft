@@ -117,8 +117,12 @@ later.
   for each route's amount (positive clockwise, negative counter-clockwise).
 - **Pages** (tabs):
   - *Oscillators:* the three oscillators and the sub and noise oscillators.
-    Each wavetable oscillator shows its table: the current frame at its
-    position, a factory table menu and **Edit…**. Edit… opens the wavetable
+    Each wavetable oscillator shows its table: up to twelve frames stacked
+    one behind the other (the first at the front, the last up and to the
+    right, farther ones dimmer), with the frame at the current position lit
+    where it stands; a factory table menu and **Edit…**. Every menu here
+    opens on a left click; right-click gives the control menu (automation,
+    controllers, value). Edit… opens the wavetable
     editor (Phase 3) on that table; each finished gesture there becomes one
     `antiserum.set_table`.
   - *Mixer:* levels, pans and filter sends of every oscillator, and the

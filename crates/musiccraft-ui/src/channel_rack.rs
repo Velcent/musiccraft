@@ -36,9 +36,10 @@ pub fn show(
             ((tick / TICKS_PER_STEP) as usize, into)
         });
     let id = egui::Id::new("channel-rack");
+    let slots = state.floating_area();
     let default = egui::Rect::from_min_size(
-        area.left_top() + egui::vec2(4.0, 4.0),
-        egui::vec2((area.width() - 200.0).clamp(420.0, 560.0), 0.0),
+        slots.left_top() + egui::vec2(4.0, 4.0),
+        egui::vec2((slots.width() - 200.0).clamp(420.0, 560.0), 0.0),
     );
     let window = open
         .then(|| {
@@ -196,7 +197,7 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
         // Always shown, as a fixed part of the header, even before any
         // channel has a group.
         {
-            egui::ComboBox::from_id_salt("rack-group")
+            let response = egui::ComboBox::from_id_salt("rack-group")
                 .width(90.0)
                 .selected_text(match &state.rack_group {
                     None => "All".to_owned(),
@@ -217,8 +218,9 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, project: &Project, actions: &m
                 .response
                 .on_hover_text(
                     "Group filter: show one group of channels · right-click to make, rename or remove a group",
-                )
-                .context_menu(|ui| group_menu(ui, state, project, actions));
+                );
+            crate::automation::context_menu(&response)
+                .show(|ui| group_menu(ui, state, project, actions));
         }
         let pattern = project.current_pattern();
         ui.label(RichText::new(&pattern.name).color(theme::HIGHLIGHT));
