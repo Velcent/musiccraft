@@ -319,8 +319,14 @@ fn antiserum_commands_check_their_arguments() {
     assert!(!patch.params.contains_key("filter1_cutoff"));
 }
 
+/// Held by tests that point the user presets at a folder of their own.
+static USER_PRESETS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn antiserum_user_presets_save_list_load_and_delete() {
+    let _folder = USER_PRESETS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let dir = std::env::temp_dir().join(format!("mc-cmd-presets-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     musiccraft_antiserum_presets::user::set_folder(Some(dir.clone()));
@@ -351,6 +357,128 @@ fn antiserum_user_presets_save_list_load_and_delete() {
     assert!(s.run_line("antiserum.load_preset 1 My Wide Init").is_err());
     musiccraft_antiserum_presets::user::set_folder(None);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn antiserum_opens_and_imports_serum_presets() {
+    use musiccraft_serum::fixtures::{self, map, module, n};
+    let dir = std::env::temp_dir().join(format!("mc-serum-open-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let fxp = dir.join("Zed One.fxp");
+    std::fs::write(
+        &fxp,
+        fixtures::serum1("Zed One", &[("A Vol", 0.5)], "", &[]),
+    )
+    .unwrap();
+    let state = map(vec![(
+        "Oscillator0",
+        module(vec![("kParamVolume", n(0.5))], vec![]),
+    )]);
+    let s2 = dir.join("Zed Two.SerumPreset");
+    std::fs::write(&s2, fixtures::serum2("Zed Two", &[], &state)).unwrap();
+    let other = dir.join("other.fxp");
+    let mut data = fixtures::serum1("Other", &[], "", &[]);
+    data[16..20].copy_from_slice(b"ABCD");
+    std::fs::write(&other, data).unwrap();
+
+    let mut s = session();
+    run(&mut s, "channel.add_antiserum Choir Pad");
+    // The open prompt takes Serum files: the first bytes decide.
+    let opened = s
+        .run_line(&format!("antiserum.open_patch 1 \"{}\"", fxp.display()))
+        .unwrap();
+    assert!(
+        opened.message.starts_with("channel 1 plays Zed One"),
+        "{}",
+        opened.message
+    );
+    let patch = s.project().channels[0].instrument.patch().unwrap();
+    assert_eq!(patch.name, "Zed One");
+    assert_eq!(patch.params.get("osc1_level"), Some(&0.25));
+    run(&mut s, "edit.undo");
+    let patch = s.project().channels[0].instrument.patch().unwrap();
+    assert_eq!(patch.name, "Choir Pad");
+    run(
+        &mut s,
+        &format!("antiserum.import_serum 1 \"{}\"", s2.display()),
+    );
+    let patch = s.project().channels[0].instrument.patch().unwrap();
+    assert_eq!(patch.name, "Zed Two");
+    // Not Serum: refused, the project unchanged.
+    fails(
+        &mut s,
+        &format!("antiserum.import_serum 1 {}", other.display()),
+    );
+    let json = dir.join("patch.json");
+    std::fs::write(&json, "{}").unwrap();
+    fails(
+        &mut s,
+        &format!("antiserum.import_serum 1 {}", json.display()),
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn antiserum_imports_a_folder_of_serum_presets() {
+    use musiccraft_serum::fixtures;
+    let _folder = USER_PRESETS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let base = std::env::temp_dir().join(format!("mc-serum-bulk-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let pack = base.join("pack").join("Leads");
+    std::fs::create_dir_all(&pack).unwrap();
+    std::fs::write(
+        pack.join("a.fxp"),
+        fixtures::serum1("Zed Lead", &[], "", &[]),
+    )
+    .unwrap();
+    // A factory preset's name is not taken over.
+    std::fs::write(
+        pack.join("b.fxp"),
+        fixtures::serum1("Glass Reese", &[], "", &[]),
+    )
+    .unwrap();
+    let mut other = fixtures::serum1("Other", &[], "", &[]);
+    other[16..20].copy_from_slice(b"ABCD");
+    std::fs::write(pack.join("c.fxp"), other).unwrap();
+    std::fs::write(pack.join("d.fxp"), b"CcnK broken").unwrap();
+    std::fs::write(pack.join("notes.txt"), b"not a preset").unwrap();
+    let presets = base.join("user");
+    musiccraft_antiserum_presets::user::set_folder(Some(presets.clone()));
+    let mut s = session();
+    let depth = s.undo_depth();
+    let pack_dir = base.join("pack");
+    let first = s
+        .run_line(&format!(
+            "antiserum.import_serum_presets {}",
+            pack_dir.display()
+        ))
+        .unwrap()
+        .message;
+    assert!(
+        first.starts_with("converted 2 Serum presets into user presets; skipped 2 files"),
+        "{first}"
+    );
+    assert!(presets.join("Zed Lead.json").is_file());
+    assert!(presets.join("Glass Reese (2).json").is_file());
+    // Again: nothing is replaced.
+    run(
+        &mut s,
+        &format!("antiserum.import_serum_presets {}", pack_dir.display()),
+    );
+    assert!(presets.join("Zed Lead (2).json").is_file());
+    assert_eq!(s.undo_depth(), depth, "writing files is not an undo step");
+    run(&mut s, "channel.add_antiserum Zed Lead (2)");
+    fails(
+        &mut s,
+        &format!(
+            "antiserum.import_serum_presets {}",
+            base.join("absent").display()
+        ),
+    );
+    musiccraft_antiserum_presets::user::set_folder(None);
+    let _ = std::fs::remove_dir_all(&base);
 }
 
 #[test]

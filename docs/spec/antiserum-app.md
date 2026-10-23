@@ -92,7 +92,9 @@ and copy no product's preset names.
 | `antiserum.load_preset <ch> <name>` | Loads a factory preset by name. | `antiserum.set_patch` with the old patch |
 | `antiserum.set_patch <ch> <json>` | Replaces the whole patch. | the old patch |
 | `antiserum.save_patch <ch> <path>` | Writes the patch as a `.json` file. | (not undoable: a file) |
-| `antiserum.open_patch <ch> <path>` | Loads a patch file. | the old patch |
+| `antiserum.open_patch <ch> <path>` | Loads a patch file, or converts a Serum or Serum 2 preset (`serum-import.md`). | the old patch |
+| `antiserum.import_serum <ch> <path>` | Converts a Serum or Serum 2 preset; anything else is refused. | the old patch |
+| `antiserum.import_serum_presets <folder>` | Converts every Serum preset under a folder into user presets. | (not undoable: files) |
 | `antiserum.presets [category]` | Lists factory presets (name, category, tags). | (read only) |
 
 Errors name the problem: an unknown parameter or preset, a channel that is

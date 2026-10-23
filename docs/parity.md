@@ -136,6 +136,7 @@ of contents; see `docs/clean-room.md`.
 | Instruments | Wavetable synth: effects rack, arpeggiator and step sequencer | `cmd:antiserum.set_step` `spec:antiserum-fx-arp.md` |
 | Instruments | Wavetable synth: drag modulation sources onto knobs, modulation rings, drawn LFO shapes | `cmd:antiserum.set_lfo_shape` `spec:antiserum-app.md` `done` |
 | Instruments | Wavetable synth: factory bank of about 150 presets with tags and search; patch files | `cmd:antiserum.load_preset` `cmd:antiserum.save_patch` `cmd:antiserum.open_patch` `cmd:antiserum.presets` |
+| Instruments | Wavetable synth: open Serum and Serum 2 presets and preset packs | `cmd:antiserum.import_serum` `cmd:antiserum.import_serum_presets` `spec:serum-import.md` |
 | Effects | Effect windows with response graphs and presets | `spec:mixer.md` `done` |
 | Instruments | CLAP plugins (instruments, effects, plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `cmd:plugin.list` `spec:plugins.md` |
 | Instruments | VST3 plugins (instruments, effects, Linux plugin windows) | `cmd:channel.add_plugin` `cmd:mixer.add_plugin` `spec:plugins.md` `done` |

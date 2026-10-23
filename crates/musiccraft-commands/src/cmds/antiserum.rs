@@ -60,8 +60,20 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
         cmd(
             "antiserum.open_patch",
             "antiserum.open_patch <channel> <path>",
-            "Load a patch file into an Antiserum channel.",
+            "Load a patch file, or a Serum or Serum 2 preset, into an Antiserum channel.",
             open_patch,
+        ),
+        cmd(
+            "antiserum.import_serum",
+            "antiserum.import_serum <channel> <path>",
+            "Convert a Serum (.fxp) or Serum 2 (.SerumPreset) preset into an Antiserum channel's patch.",
+            import_serum,
+        ),
+        cmd(
+            "antiserum.import_serum_presets",
+            "antiserum.import_serum_presets <folder>",
+            "Convert every Serum and Serum 2 preset under a folder into Antiserum user presets (not undoable).",
+            import_serum_presets,
         ),
         cmd(
             "antiserum.set_sample",
@@ -386,8 +398,13 @@ fn open_patch(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     args.expect(2, 2)?;
     let index = antiserum_arg(project, args, 0)?;
     let path = args.str(1)?;
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| args.invalid(format!("cannot read {path}: {e}")))?;
+    let data = std::fs::read(path).map_err(|e| args.invalid(format!("cannot read {path}: {e}")))?;
+    // The first bytes decide, not the file name.
+    if musiccraft_serum::looks_like(&data) {
+        return serum_into(project, args, index, Path::new(path), &data);
+    }
+    let text = String::from_utf8(data)
+        .map_err(|_| args.invalid(format!("{path} is neither a patch nor a Serum preset")))?;
     let mut patch = Patch::from_json(&text).map_err(|e| args.invalid(e))?;
     if patch.name.is_empty() {
         patch.name = Path::new(path)
@@ -396,6 +413,134 @@ fn open_patch(project: &mut Project, args: &Args<'_>) -> Result<Outcome, Command
     }
     let message = format!("channel {} plays {}", index + 1, patch.name);
     replace(project, args, index, patch, message)
+}
+
+/// A summary line followed by the conversion's notes, one per line.
+fn with_notes(summary: String, notes: &[String]) -> String {
+    std::iter::once(summary)
+        .chain(notes.iter().map(|n| format!("  {n}")))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Converts the Serum preset `data` (read from `path`) into channel `index`.
+fn serum_into(
+    project: &mut Project,
+    args: &Args<'_>,
+    index: usize,
+    path: &Path,
+    data: &[u8],
+) -> Result<Outcome, CommandError> {
+    let stem = path
+        .file_stem()
+        .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+    let preset = musiccraft_serum::read(data, &stem).map_err(|e| args.invalid(e.to_string()))?;
+    let converted = musiccraft_serum::convert(&preset, &musiccraft_serum::Assets::detect(path));
+    let summary = format!(
+        "channel {} plays {} (converted from Serum; {} notes)",
+        index + 1,
+        converted.patch.name,
+        converted.notes.len()
+    );
+    let message = with_notes(summary, &converted.notes);
+    replace(project, args, index, converted.patch, message)
+}
+
+fn import_serum(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = antiserum_arg(project, args, 0)?;
+    let path = args.str(1)?;
+    let data = std::fs::read(path).map_err(|e| args.invalid(format!("cannot read {path}: {e}")))?;
+    serum_into(project, args, index, Path::new(path), &data)
+}
+
+/// Every `.fxp` and `.SerumPreset` file under `folder`, sorted.
+fn serum_files(folder: &Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let mut pending = vec![folder.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for path in entries.flatten().map(|e| e.path()) {
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|e| {
+                e.eq_ignore_ascii_case("fxp") || e.eq_ignore_ascii_case("serumpreset")
+            }) {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// `name`, or `name (2)`, `name (3)`, … when `taken` already has it.
+fn unique_name(name: &str, taken: &[String]) -> String {
+    let is_taken = |n: &str| taken.iter().any(|t| t.eq_ignore_ascii_case(n));
+    if !is_taken(name) {
+        return name.to_owned();
+    }
+    (2..)
+        .map(|i| format!("{name} ({i})"))
+        .find(|n| !is_taken(n))
+        .unwrap_or_default()
+}
+
+fn import_serum_presets(_project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(1, usize::MAX)?;
+    let folder = args.rest(0)?;
+    let folder = Path::new(&folder);
+    if !folder.is_dir() {
+        return Err(args.invalid(format!("{} is not a folder", folder.display())));
+    }
+    let files = serum_files(folder);
+    let mut taken: Vec<String> = factory()
+        .iter()
+        .map(|p| p.name.clone())
+        .chain(user::list().into_iter().map(|p| p.name))
+        .collect();
+    // One set of folders and caches for the whole batch.
+    let mut assets = musiccraft_serum::Assets::detect(folder);
+    let mut lines = Vec::new();
+    let (mut converted, mut skipped, mut failed) = (0, 0, 0);
+    for file in &files {
+        assets.add_local(file);
+        match musiccraft_serum::import_file(file, &assets) {
+            Ok(mut c) => {
+                c.patch.name = unique_name(c.patch.name.trim(), &taken);
+                match user::save(&c.patch) {
+                    Ok(_) => {
+                        converted += 1;
+                        taken.push(c.patch.name.clone());
+                        lines.push(with_notes(
+                            format!("{} ({} notes)", c.patch.name, c.notes.len()),
+                            &c.notes,
+                        ));
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        lines.push(format!("{}: {e}", file.display()));
+                    }
+                }
+            }
+            Err(musiccraft_serum::Error::NotSerum(_)) => skipped += 1,
+            Err(e) => {
+                failed += 1;
+                lines.push(format!("{}: {e}", file.display()));
+            }
+        }
+    }
+    let summary = format!(
+        "converted {converted} Serum presets into user presets; skipped {skipped} files that are not Serum presets; {failed} failed"
+    );
+    Ok(Outcome::done(
+        std::iter::once(summary)
+            .chain(lines)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    ))
 }
 
 fn set_sample(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {

@@ -34,6 +34,7 @@ musiccraft-render ──► musiccraft-stems ──► musiccraft-dsp
 musiccraft-render ──► musiccraft-demucs ──► musiccraft-stems, ort
 musiccraft-antiserum-presets ──► musiccraft-antiserum, musiccraft-wavetables, musiccraft-patch, musiccraft-samples
 musiccraft-commands, musiccraft-render, musiccraft-editors ──► musiccraft-antiserum-presets
+musiccraft-commands ──► musiccraft-serum ──► musiccraft-antiserum, musiccraft-wavetables, musiccraft-patch
 musiccraft-editors, musiccraft-render, musiccraft-ui ──► musiccraft-instruments
 musiccraft-plugin-export ──► musiccraft-plugin-editor ──► musiccraft-editors
          └──► musiccraft-dsp, musiccraft-params, musiccraft-instruments, musiccraft-antiserum,
@@ -53,6 +54,7 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-project` | Project data model and JSON file format. No audio, no UI. |
 | `musiccraft-commands` | Command trait, ~70 built-in commands, invocation parsing, undo/redo `Session`; converts FL Studio projects for `project.import_flp`. |
 | `musiccraft-flp` | Reads FL Studio projects and presets: a Rust port of PyFLP (GPL-3.0), tested against PyFLP on PyFLP's own test files. No dependencies; safe code. |
+| `musiccraft-serum` | Reads Serum 1 (`.fxp`) and Serum 2 (`.SerumPreset`) presets and converts them into Antiserum patches with a note for each approximation (`docs/spec/serum-import.md`): a Rust port of serum2vital (GPL-3.0), checked against its Python readers on its test presets. Finds wavetables in the user's own Serum folders. Main thread; safe code. |
 | `musiccraft-dsp` | Oscillators, envelopes, filters, effects (incl. a small radix-2 FFT for convolution and the analyzer), sample buffers. Allocation-free processing. |
 | `musiccraft-instruments` | Every built-in instrument's voice DSP (synth, FM, keys, additive, drums, pluck, samplers, granular, resynth), independent of the engine so plugin wrappers can use it. Allocation-free rendering. `live` plays notes in real time for the plugins: the channel note functions (swing, arpeggiator, time shift, gate, echo) and a voice pool with the engine's mono, polyphony, cut and glide rules. `arp` is the arpeggiator's key order, shared with the app's sequence-time arpeggiator. |
 | `musiccraft-antiserum` | Antiserum, the wavetable synth's sound engine (`docs/spec/antiserum.md`): band-limited wavetables, warps, unison, sub and noise, two multimode filters, envelopes, LFOs and a 32-slot mod matrix; an effects rack of `musiccraft-dsp` effects in ten order slots, a real-time arpeggiator and a step sequencer (`docs/spec/antiserum-fx-arp.md`); sample, multisample, granular and spectral oscillators that play an immutable `Source` (sample, zones, harmonic analysis) built on the main thread (`docs/spec/antiserum-oscillators.md`). Its own parameter table (names and order frozen). Independent of the engine and plugin formats; allocation-free processing. |
@@ -216,6 +218,8 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `baseview` (git, pinned) | The plugin editor's child window in the host's window, with an OpenGL context (X11, Win32, Cocoa). |
 | `egui_glow`, `glow` | Paint egui with OpenGL inside that window (the app already uses them through eframe). |
 | `keyboard-types` | baseview's key events, translated to egui's. |
+| `miniz_oxide` | Inflates the zlib state inside Serum 1 `.fxp` presets (`musiccraft-serum`); pure Rust, already in the tree through `backtrace`. |
+| `ruzstd` | Decompresses the zstd payload of Serum 2 presets (`musiccraft-serum`); pure Rust. Held at 0.8 because 0.9 needs Rust 1.87. |
 | `ort` (load-dynamic) | Runs the Demucs stem model in ONNX Runtime (the owner's choice, 2026-10-23: Demucs via ONNX Runtime, GPU first). The runtime library is loaded at run time, not linked: the release packages ship Microsoft's official build (MIT), and a system install with CUDA or ROCm is preferred. MIT or Apache-2.0. Needs Rust 1.92, so `musiccraft-demucs` sets its own `rust-version`. |
 
 ## Deferred decisions
