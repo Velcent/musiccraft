@@ -177,6 +177,7 @@ of contents; see `docs/clean-room.md`.
 | Automation | Automate any knob or fader from its context menu | `cmd:automation.create` `done` |
 | Scripting | Headless CLI and scripts | `done` |
 | Scripting | MCP server for AI agents | `spec:mcp.md` |
+| Scripting | AI agents working in the open window (live control) | `spec:live-control.md` |
 | Input | Single-key tools (P B D E C T Y Z) | `key:P=ui.tool draw` `key:C=ui.tool slice` `key:Z=ui.tool zoom` |
 | Input | Slide / porta toggles for new notes | `key:S=ui.toggle_slide` `key:O=ui.toggle_porta` |
 | Input | Pattern select with 1–9 | `key:1=pattern.select 1` `key:9=pattern.select 9` |
