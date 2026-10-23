@@ -89,6 +89,8 @@ pub struct PlaylistState {
     pub(crate) tool: Tool,
     /// Clips painted in the stroke in progress: (track, start, length).
     painted: Vec<(u32, u32, u32)>,
+    /// The track the paint stroke in progress started on; it stays there.
+    paint_row: Option<u32>,
     /// Clips touched by the delete stroke in progress.
     erased: Vec<Clip>,
     /// The song's bars and beats, refreshed every frame.
@@ -162,6 +164,7 @@ impl Default for PlaylistState {
             loop_drag: None,
             tool: Tool::Draw,
             painted: Vec::new(),
+            paint_row: None,
             erased: Vec::new(),
             meter: Meter::default(),
             playhead: 0.0,
@@ -263,50 +266,59 @@ pub fn show(
         pos2(area.left() + 4.0, top),
         pos2(area.right() - 4.0, area.bottom() - 4.0),
     );
-    let window = crate::chrome::window(ctx, id, "Playlist", area, default, true)
-        .default_height(default.height())
-        .min_width(360.0)
-        .min_height(140.0)
-        .show(ctx, |ui| {
-            let mut data = (&mut *state, &mut *actions);
-            let folded = crate::chrome::Header::new(id, "Playlist — Arrangement").show(
-                ui,
-                &mut open,
-                &mut data,
-                |ui, (state, actions)| window_menu(ui, state, frame, actions),
-                |ui, (state, actions)| {
-                    tools(ui, state);
-                    ui.add_space(6.0);
-                    crate::piano_roll::play_button(ui, frame.project, PlayMode::Song, actions);
-                },
-            );
-            if folded {
-                return;
-            }
-            ui.horizontal_top(|ui| {
-                let view = state.playlist.view;
-                if !view.clip_list {
+    // A pinned window takes its exact size from the frame; a minimum size
+    // set after it would let it keep its old one.
+    let pinned = crate::chrome::pinned(ctx, id);
+    let maximized = crate::chrome::maximized(ctx, id);
+    let mut window = crate::chrome::window(ctx, id, "Playlist", area, default, true)
+        .default_height(default.height());
+    if maximized {
+        // Maximized, the playlist is the backdrop behind the other windows.
+        window = window.order(egui::Order::Background);
+    }
+    if !pinned {
+        window = window.min_width(360.0).min_height(140.0);
+    }
+    let window = window.show(ctx, |ui| {
+        let mut data = (&mut *state, &mut *actions);
+        let folded = crate::chrome::Header::new(id, "Playlist — Arrangement").show(
+            ui,
+            &mut open,
+            &mut data,
+            |ui, (state, actions)| window_menu(ui, state, frame, actions),
+            |ui, (state, actions)| {
+                tools(ui, state);
+                ui.add_space(6.0);
+                crate::piano_roll::play_button(ui, frame.project, PlayMode::Song, actions);
+            },
+        );
+        if folded {
+            return;
+        }
+        ui.horizontal_top(|ui| {
+            let view = state.playlist.view;
+            if !view.clip_list {
+                canvas(ui, state, frame, actions);
+            } else if view.list_right {
+                // The list takes its column at the right edge and the
+                // lanes fill what is left of the row.
+                let row = ui.available_rect_before_wrap();
+                let gap = ui.spacing().item_spacing.x;
+                let split = row.right() - view.list_width() - gap;
+                let lanes = egui::Rect::from_min_max(row.min, pos2(split, row.bottom()));
+                let list = egui::Rect::from_min_max(pos2(split + gap, row.top()), row.max);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(lanes), |ui| {
                     canvas(ui, state, frame, actions);
-                } else if view.list_right {
-                    // The list takes its column at the right edge and the
-                    // lanes fill what is left of the row.
-                    let row = ui.available_rect_before_wrap();
-                    let gap = ui.spacing().item_spacing.x;
-                    let split = row.right() - view.list_width() - gap;
-                    let lanes = egui::Rect::from_min_max(row.min, pos2(split, row.bottom()));
-                    let list = egui::Rect::from_min_max(pos2(split + gap, row.top()), row.max);
-                    ui.scope_builder(egui::UiBuilder::new().max_rect(lanes), |ui| {
-                        canvas(ui, state, frame, actions);
-                    });
-                    ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
-                        pattern_list(ui, state, frame.project, actions);
-                    });
-                } else {
+                });
+                ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
                     pattern_list(ui, state, frame.project, actions);
-                    canvas(ui, state, frame, actions);
-                }
-            });
+                });
+            } else {
+                pattern_list(ui, state, frame.project, actions);
+                canvas(ui, state, frame, actions);
+            }
         });
+    });
     crate::chrome::remember(ctx, id, window.as_ref().map(|w| &w.response));
     state.windows.playlist = open;
 }
@@ -944,7 +956,19 @@ fn pattern_section(
                         let painting = state.playlist.paint_automation.is_none()
                             && state.playlist.paint_audio.is_none();
                         let response = miniature(ui, project, pattern, selected && painting)
-                            .hint("Click to paint this pattern; right-click for options");
+                            .hint(
+                                "Click to paint this pattern · drag it onto a track · \
+                                 double-click to open it in the piano roll · right-click for options",
+                            );
+                        if response.drag_started() {
+                            egui::DragAndDrop::set_payload(
+                                ui.ctx(),
+                                crate::browser::Dragged::Pattern {
+                                    id: pattern.id,
+                                    label: pattern.name.clone(),
+                                },
+                            );
+                        }
                         state.playlist.picker_items.push(response.rect);
                         if response.clicked() {
                             state.playlist.paint_automation = None;
@@ -957,10 +981,7 @@ fn pattern_section(
                             }
                         }
                         if response.double_clicked() {
-                            state.rename_in_place(
-                                Dialog::rename_pattern(i, &pattern.name),
-                                response.rect,
-                            );
+                            open_in_piano_roll(state, i, actions);
                         }
                         response.context_menu(|ui| {
                             if ui.button("Rename…").clicked() {
@@ -1052,6 +1073,17 @@ fn pattern_section(
     }
 }
 
+/// Makes pattern `index` (0-based) current and brings the piano roll to
+/// the front with it, opening the window if it was closed.
+fn open_in_piano_roll(state: &mut UiState, index: usize, actions: &mut Vec<Action>) {
+    actions.push(Action::Run(Invocation::new(
+        "pattern.select",
+        [(index + 1).to_string()],
+    )));
+    state.windows.piano_roll = true;
+    state.arrange = Some(crate::Arrange::Raise("piano-roll"));
+}
+
 /// Height of a pattern's miniature in the picker.
 const MINIATURE_HEIGHT: f32 = 34.0;
 
@@ -1064,7 +1096,7 @@ fn miniature(
 ) -> egui::Response {
     let width = ui.available_width();
     let (rect, response) =
-        ui.allocate_exact_size(vec2(width, MINIATURE_HEIGHT), egui::Sense::click());
+        ui.allocate_exact_size(vec2(width, MINIATURE_HEIGHT), egui::Sense::click_and_drag());
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     let color = crate::pattern_color(pattern).unwrap_or(UNCOLOURED_CLIP);
     painter.rect_filled(rect, 4.0, color.gamma_multiply(0.8));
@@ -3248,9 +3280,11 @@ fn tool_stroke(
             if response.drag_started_by(PointerButton::Primary) {
                 state.playlist.painted.clear();
                 let origin = ui.input(|i| i.pointer.press_origin());
+                state.playlist.paint_row = None;
                 if origin.and_then(under).is_some() {
                     return false;
                 }
+                state.playlist.paint_row = origin.and_then(|p| grid.row_at(p.y));
             }
             let painting = response.dragged_by(PointerButton::Primary)
                 || response.drag_stopped_by(PointerButton::Primary);
@@ -3261,7 +3295,9 @@ fn tool_stroke(
                 .filter(|p| editable(*p));
             let length = project.current_pattern().length_ticks().max(1);
             for p in origin.into_iter().chain(pointer.filter(|_| painting)) {
-                let Some(track) = grid.row_at(p.y) else {
+                // A stroke stays on the track it started on, however the
+                // pointer wanders up or down.
+                let Some(track) = state.playlist.paint_row else {
                     continue;
                 };
                 let start = state
@@ -3370,11 +3406,13 @@ fn drop_target(
     Some((row, start, header))
 }
 
-/// While a sound from the browser hovers a lane or a track header: a ghost
-/// clip one bar long where it would land and an accent outline on that
-/// track's header.
+/// While a sound from the browser (or a pattern from the clip list) hovers
+/// a lane or a track header: a ghost clip where it would land, one bar long
+/// for a sound and the pattern's length for a pattern, and an accent
+/// outline on that track's header.
 fn drop_ghost(
     ui: &egui::Ui,
+    project: &Project,
     grid: &Grid,
     clip: Rect,
     (snap, meter): (&Snap, &Meter),
@@ -3393,11 +3431,20 @@ fn drop_ghost(
     else {
         return;
     };
-    let Some(name) = dragged.sample() else {
-        return;
+    let (name, length) = match &*dragged {
+        crate::browser::Dragged::Pattern { id, label } => {
+            let Some(pattern) = project.pattern_position(*id).map(|i| &project.patterns[i]) else {
+                return;
+            };
+            (label.as_str(), pattern.length_ticks().max(1))
+        }
+        other => {
+            let Some(name) = other.sample() else {
+                return;
+            };
+            (name, meter.bar(start).len.max(1))
+        }
     };
-    let bar = meter.bar(start);
-    let length = bar.len.max(1);
     let rect = grid.span(row, start, length).shrink2(vec2(0.0, 1.0));
     let painter = ui.painter_at(lanes);
     painter.rect(
@@ -3648,11 +3695,7 @@ fn edit(
                     Some(ClipSource::Automation(id)) => state.automation_editor = Some(id),
                     Some(ClipSource::Pattern(id)) => {
                         if let Some(index) = project.pattern_position(id) {
-                            actions.push(Action::Run(Invocation::new(
-                                "pattern.select",
-                                [(index + 1).to_string()],
-                            )));
-                            state.windows.piano_roll = true;
+                            open_in_piano_roll(state, index, actions);
                         }
                     }
                     Some(ClipSource::Audio(id)) => {
@@ -3666,20 +3709,33 @@ fn edit(
             }
         }
     }
-    drop_ghost(ui, grid, clip, (&snap, &meter), response);
-    // Sounds dropped from the browser become audio clips where they land.
+    drop_ghost(ui, project, grid, clip, (&snap, &meter), response);
+    // Sounds dropped from the browser become audio clips where they land,
+    // and patterns dragged from the clip list pattern clips.
     if response.contains_pointer() && ui.input(|i| i.pointer.any_released()) {
         let target = ui
             .ctx()
             .pointer_hover_pos()
             .and_then(|pos| drop_target(grid, clip, (&snap, &meter), pos));
-        if let (Some((track, start, header)), true) = (
-            target,
-            egui::DragAndDrop::has_payload_of_type::<crate::browser::Dragged>(ui.ctx()),
-        ) && let Some(dragged) =
-            egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ui.ctx())
-            && let Some(sample) = dragged.sample().map(str::to_owned)
+        let dragged = target
+            .and_then(|_| egui::DragAndDrop::take_payload::<crate::browser::Dragged>(ui.ctx()));
+        if let (Some((track, start, _)), Some(crate::browser::Dragged::Pattern { id, .. })) =
+            (target, dragged.as_deref())
+            && let Some(index) = project.pattern_position(*id)
         {
+            actions.push(Action::Run(Invocation::new(
+                "playlist.add_clip",
+                [
+                    (index + 1).to_string(),
+                    (track + 1).to_string(),
+                    format!("{start}t"),
+                ],
+            )));
+        }
+        if let (Some((track, start, header)), Some(sample)) = (
+            target,
+            dragged.as_ref().and_then(|d| d.sample()).map(str::to_owned),
+        ) {
             // A track dropped on by its header takes the sound's name if it
             // still has its default one.
             let named = project.playlist.track_names.contains_key(&track);

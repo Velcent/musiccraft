@@ -40,7 +40,12 @@ impl Harness {
         for line in setup {
             session.run_line(line).unwrap();
         }
-        let mut state = UiState::default();
+        // Tests open the windows they need; the playlist floats unless a
+        // test asks for the backdrop.
+        let mut state = UiState {
+            arrange: None,
+            ..UiState::default()
+        };
         state.windows.channel_rack = false;
         state.windows.playlist = false;
         state.windows.browser = false;
@@ -1338,7 +1343,9 @@ fn pattern_miniatures_in_the_picker_select_the_pattern_to_paint() {
     let commands = h.click(items[1].center(), PointerButton::Primary);
     assert_eq!(commands, ["pattern.select 2"]);
     assert_eq!(h.state.playlist.paint_audio, None);
-    // Clicking the selected one again changes nothing in the project.
+    // Clicking the selected one again (not soon enough to be a
+    // double-click) changes nothing in the project.
+    h.time += 1.0;
     let items = h.state.playlist.picker_items.clone();
     assert!(
         h.click(items[1].center(), PointerButton::Primary)
@@ -1504,13 +1511,17 @@ fn the_mixer_opens_at_the_top_beside_the_channel_rack() {
     h.settle();
     let rack = window_rect(&h, "channel-rack");
     let mixer = window_rect(&h, "mixer-window");
-    let area = h.state.workspace;
+    // Along the top, under the backdrop playlist's header and ruler.
+    let area = h.state.floating_area();
     assert!(mixer.left() >= rack.right(), "{mixer:?} beside {rack:?}");
     assert!(
         (mixer.right() - area.right()).abs() < 8.0,
         "{mixer:?} in {area:?}"
     );
-    assert!(mixer.top() - area.top() < 8.0, "{mixer:?} in {area:?}");
+    assert!(
+        (mixer.top() - rack.top()).abs() < 1.0 && mixer.top() - area.top() < 8.0,
+        "{mixer:?} in {area:?}"
+    );
     assert!(mixer.bottom() < area.center().y, "{mixer:?} in {area:?}");
 }
 
@@ -1741,6 +1752,19 @@ fn enter_maximizes_the_playlist_and_ctrl_shift_h_restores_the_default_layout() {
     h.settle();
     let w = &h.state.windows;
     assert!(w.playlist && w.channel_rack && w.mixer && w.piano_roll && w.browser);
+    // The playlist is maximized again, behind the others.
+    assert!(crate::chrome::maximized(&h.ctx, playlist));
+    // Restored, it goes back to its default slot under the rack. (Enter is
+    // still down from the first press.)
+    h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    h.key(egui::Key::Enter, Modifiers::NONE);
+    h.settle();
     assert!(!crate::chrome::maximized(&h.ctx, playlist));
     let rack = window_rect(&h, "channel-rack");
     let list = window_rect(&h, "playlist-window");
@@ -1868,7 +1892,7 @@ fn piano_roll_cursors_follow_the_tool() {
     h.settle();
     let note = *h.session.project().current_pattern().notes.first().unwrap();
     let body = h.roll_point(note.start + 10, note.key);
-    let empty = h.roll_point(note.start + 10, note.key - 5);
+    let empty = h.roll_point(note.start + 10, note.key + 2);
     h.frame(vec![Event::PointerMoved(body)]);
     assert_eq!(h.cursor, egui::CursorIcon::Move);
     h.frame(vec![Event::PointerMoved(empty)]);
@@ -4243,4 +4267,155 @@ fn the_mixer_keeps_its_height() {
             "panel {panel}, left {left}, details {details}"
         );
     }
+}
+
+/// The layer drawn topmost at `pos`, by window id.
+fn window_at(h: &Harness, pos: Pos2) -> Option<egui::Id> {
+    h.ctx.layer_id_at(pos).map(|layer| layer.id)
+}
+
+#[test]
+fn the_playlist_starts_maximized_behind_the_other_windows() {
+    let mut h = Harness::new(&[]);
+    h.state.windows = crate::Windows::default();
+    h.state.arrange = Some(crate::Arrange::Backdrop);
+    h.settle();
+    let playlist = egui::Id::new("playlist-window");
+    assert!(crate::chrome::maximized(&h.ctx, playlist));
+    let area = h.state.workspace;
+    let rect = window_rect(&h, "playlist-window");
+    assert!(
+        (rect.width() - area.width()).abs() < 1.0 && (rect.height() - area.height()).abs() < 1.0,
+        "{rect:?} fills {area:?}"
+    );
+    // The floating windows stay in front of it, even after it is clicked.
+    let rack = window_rect(&h, "channel-rack");
+    assert_eq!(
+        window_at(&h, rack.center()),
+        Some(egui::Id::new("channel-rack"))
+    );
+    let open = pos2(area.left() + 40.0, area.bottom() - 20.0);
+    assert_eq!(window_at(&h, open), Some(playlist));
+    h.click(open, PointerButton::Primary);
+    h.settle();
+    assert_eq!(
+        window_at(&h, rack.center()),
+        Some(egui::Id::new("channel-rack"))
+    );
+    // Clicking it gives it the keyboard; clicking the rack takes it back.
+    assert_eq!(h.state.focused_window, Some(playlist));
+    h.click(rack.center(), PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.focused_window, Some(egui::Id::new("channel-rack")));
+}
+
+#[test]
+fn the_maximize_button_fills_the_workspace_and_restore_puts_the_playlist_back() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let before = window_rect(&h, "playlist-window");
+    h.click(
+        header_button(&h, "playlist-window", 1.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    let area = h.state.workspace;
+    let rect = window_rect(&h, "playlist-window");
+    assert!(
+        (rect.width() - area.width()).abs() < 1.0 && (rect.height() - area.height()).abs() < 1.0,
+        "{rect:?} fills {area:?}"
+    );
+    h.click(
+        header_button(&h, "playlist-window", 1.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    let after = window_rect(&h, "playlist-window");
+    assert!(
+        (after.min - before.min).length() < 1.0 && (after.size() - before.size()).length() < 1.0,
+        "{after:?} back at {before:?}"
+    );
+}
+
+#[test]
+fn double_clicking_a_pattern_in_the_clip_list_opens_the_piano_roll() {
+    let mut h = Harness::new(&["channel.add_synth", "pattern.add", "pattern.select 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let items = h.state.playlist.picker_items.clone();
+    h.click(items[1].center(), PointerButton::Primary);
+    let commands = h.click(items[1].center(), PointerButton::Primary);
+    h.settle();
+    assert_eq!(commands, ["pattern.select 2"]);
+    assert!(h.state.windows.piano_roll);
+    assert!(h.state.renaming.is_none(), "no rename in place");
+    assert_eq!(h.state.focused_window, Some(egui::Id::new("piano-roll")));
+}
+
+#[test]
+fn double_clicking_a_pattern_clip_brings_the_piano_roll_to_the_front() {
+    let mut h = Harness::new(&["channel.add_synth", "playlist.add_clip 1 1 0"]);
+    h.state.windows.playlist = true;
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let at = h.playlist_point(musiccraft_project::params::PPQ, 0);
+    h.click(at, PointerButton::Primary);
+    h.click(at, PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.focused_window, Some(egui::Id::new("piano-roll")));
+}
+
+#[test]
+fn a_pattern_dragged_from_the_clip_list_lands_as_a_clip() {
+    let mut h = Harness::new(&["channel.add_synth", "pattern.add", "pattern.select 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let items = h.state.playlist.picker_items.clone();
+    let to = h.playlist_point(TICKS_PER_BAR * 2 + 10, 2);
+    let commands = h.drag(items[1].center(), to);
+    assert_eq!(
+        commands,
+        [format!("playlist.add_clip 2 3 {}t", TICKS_PER_BAR * 2)]
+    );
+    let clip = h.session.project().playlist.clips[0];
+    assert_eq!((clip.track, clip.start), (2, TICKS_PER_BAR * 2));
+}
+
+#[test]
+fn a_paint_stroke_stays_on_the_track_it_started_on() {
+    use crate::piano_roll::Tool;
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C4"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    h.state.playlist.tool = Tool::Paint;
+    // The pointer drifts down two tracks along the way.
+    h.drag(
+        h.playlist_point(bar / 4, 1),
+        h.playlist_point(4 * bar + bar / 4, 3),
+    );
+    let clips = &h.session.project().playlist.clips;
+    assert!(clips.len() >= 4, "painted {} clips", clips.len());
+    assert!(clips.iter().all(|c| c.track == 1), "{clips:?}");
+}
+
+#[test]
+fn the_saved_layout_keeps_the_playlist_maximized() {
+    let mut h = Harness::new(&[]);
+    h.state.windows = crate::Windows::default();
+    h.state.arrange = Some(crate::Arrange::Backdrop);
+    h.settle();
+    let layout = crate::window_layout(&h.ctx, &h.state);
+    assert_eq!(layout.maximized, Some(vec!["playlist".to_owned()]));
+    // A layout saved before maximized windows were kept starts with the
+    // playlist as the backdrop; one saved with it restored keeps it so.
+    let mut old = layout.clone();
+    old.maximized = None;
+    crate::restore_window_layout(&h.ctx, &mut h.state, &old);
+    assert_eq!(h.state.arrange, Some(crate::Arrange::Backdrop));
+    let mut floating = layout;
+    floating.maximized = Some(Vec::new());
+    crate::restore_window_layout(&h.ctx, &mut h.state, &floating);
+    assert_eq!(h.state.arrange, None);
 }
