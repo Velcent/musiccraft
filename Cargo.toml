@@ -52,8 +52,10 @@ symphonia = { version = "0.5", default-features = false, features = ["mp3", "ogg
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 midir = "0.11"
 # ONNX Runtime, loaded at run time (no build-time download); the GPU
-# execution providers are tried in turn (docs/spec/stems.md).
-ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22", "cuda", "rocm", "migraphx", "directml", "coreml", "webgpu"] }
+# execution providers are tried in turn (docs/spec/stems.md). No `api-22`:
+# with it ort turns on automatic device selection, which aborts on ONNX
+# Runtime 1.22 (the version the packages ship).
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "cuda", "rocm", "migraphx", "directml", "coreml", "webgpu"] }
 egui = "0.36"
 # nih-plug from GitHub, pinned (roadmap D2).
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", default-features = false }
