@@ -48,6 +48,7 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-patch` | Antiserum's patch format (`docs/spec/antiserum-app.md`): parameter values by name, table references, drawn LFO shapes and sequencer steps as MusicCraft's own JSON; also the base64 codec projects use. Plain data. |
 | `musiccraft-antiserum-presets` | Applies a patch to an Antiserum, formats any of its parameters for display, and holds the generated factory bank (150 presets). Loads oscillator samples (files or `builtin:` sounds, through `musiccraft-samples`) into `Source`s. Main thread only. |
 | `musiccraft-params` | Shared tables: timing (PPQ), instrument and effect parameter specs, built-in sound names. No logic. |
+| `musiccraft-file-dialog` | The system's file dialogs through `rfd`, one at a time and without blocking the window: a `Picker` runs the dialog on its own thread (in place on macOS, whose panels need the main thread) and hands the chosen paths back when polled. Used by the app and the exported plugins' editors. |
 | `musiccraft-paths` | Translates sample paths written on another system (Windows drives, FL Studio placeholders, Wine prefixes) into local files. No dependencies. |
 | `musiccraft-meter` | Time signatures and the bar and beat grid of a timeline (`TimeSig`, `Meter`). Queries are allocation-free, so the engine uses it too. |
 | `musiccraft-project` | Project data model and JSON file format. No audio, no UI. |
@@ -67,12 +68,12 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. `control`: the app's localhost live-control channel and the `--connect` relay to it (`docs/spec/live-control.md`); the tools run against any `Host` (its own `Session`, or the open app). |
-| `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only. Uses `musiccraft-dsp`'s `response`, `fft` and `pitch` modules only to draw effect curves, the spectrum analyzer and the tuner display. |
+| `musiccraft-ui` | egui views (channel rack, piano roll, playlist, mixer, effect windows, settings) and the keymap. Emits invocations only, and requests for file dialogs (`FilePick`) that the app shows and answers. Uses `musiccraft-dsp`'s `response`, `fft` and `pitch` modules only to draw effect curves, the spectrum analyzer and the tuner display. |
 | `musiccraft-editors` | The egui pieces the app and the plugins share: theme, knobs and widgets, hints, the effect editor (preset bar, draggable graph, knobs, tuner), the built-in instruments' editor (the channel settings' Sound, Envelope and Functions pages), Antiserum's editor and the wavetable editor (3D frame stack, drawing, harmonics, formulas). Knows nothing of projects or commands: editors report `Edit`s (begin, drag, set, bypass) that the app turns into commands and a plugin into host gestures. |
 | `musiccraft-plugin-editor` | Opens those egui editors in a plugin host's window: a nih-plug `Editor` on a baseview child window with OpenGL, egui 0.36 and `egui_glow`. **Allowed to use `unsafe`** (OpenGL calls). |
 | `musiccraft-plugin-export` | The built-in effects and instruments as CLAP and VST3 plugins (`docs/spec/plugin-export.md`, `docs/spec/plugin-instruments.md`). `EffectPlugin<K>` wraps `musiccraft_dsp::Effect`; `InstrumentPlugin<K>` plays the app's voices through `musiccraft_instruments::live`; `AntiserumPlugin` wraps `Antiserum` and takes its patch data as `Data` swaps. Host parameters come from their `ParamSpec` tables, and the editors are the shared ones. The `effects` and `instruments` features choose what the library exports; `cargo xtask bundle` builds one bundle per feature. Data built off the audio thread (samples, tables) is handed over through `handoff` (lock-free queues). **Allowed to use `unsafe`** (nih-plug's export macros, `Params`). |
 | `standalone/` | `musiccraft-fx-standalone <effect>`: one effect as a standalone app (nih-plug's wrapper). Its own workspace and lockfile, because that wrapper's ALSA binding clashes with the app's. |
-| `musiccraft-app` | Wires session, bridge, audio device, MIDI input and UI together. |
+| `musiccraft-app` | Wires session, bridge, audio device, MIDI input and UI together, and shows the file dialogs the UI asks for. |
 | `xtask` | `cargo xtask parity`: checks the feature checklist against the registry and keymap. `cargo xtask bundle`: builds the plugin bundles. |
 
 ## Command registry
@@ -205,6 +206,7 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `symphonia` (dev only) | Pure-Rust MP3 and Ogg Vorbis decoding, so tests check exports with a decoder independent of the encoders. |
 | `eframe` (egui) | Cross-platform immediate-mode UI; kept swappable behind commands. |
 | `midir` | MIDI keyboard input and MIDI Out channels' output port in the app. |
+| `rfd` | Native file dialogs (`docs/spec/style/dialogs.md`): the XDG desktop portal on Linux, which works inside the Flatpak and on any desktop, and the system panels on macOS and Windows; owner's go-ahead 2026-10-23. |
 | `clap-sys` | Rust declarations of the CLAP plugin ABI (types and constants only). |
 | `libloading` | Opens `.clap` and `.vst3` shared libraries and finds their entry points. |
 | `vst3` | Rust declarations of the VST3 interfaces, generated from Steinberg's (MIT-licensed) SDK headers, plus `ComPtr`/`ComWrapper` reference counting; MIT or Apache-2.0. |

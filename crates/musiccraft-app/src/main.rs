@@ -9,6 +9,7 @@
 )]
 
 mod autosave;
+mod file_dialogs;
 mod midi;
 mod midi_out;
 mod plugins;
@@ -116,6 +117,8 @@ struct App {
     /// Channels waiting to be split after it, first first.
     stem_queue:
         std::collections::VecDeque<(musiccraft_project::ChannelId, musiccraft_render::StemEngine)>,
+    /// The system file dialog the UI asked for, while it is open.
+    files: musiccraft_file_dialog::Picker<musiccraft_ui::FilePick>,
 }
 
 /// What happens after the user deals with unsaved changes.
@@ -407,6 +410,7 @@ impl App {
             control: None,
             stems: None,
             stem_queue: std::collections::VecDeque::new(),
+            files: musiccraft_file_dialog::Picker::default(),
         };
         app.start_control(options, ctx);
         app.refresh_devices();
@@ -1478,6 +1482,26 @@ impl App {
         }
     }
 
+    /// Shows the file dialog the UI asked for, and runs what its answer
+    /// leads to.
+    fn file_dialogs(&mut self, ctx: &egui::Context, window: &eframe::Frame) {
+        if let Some(pick) = self.ui.take_file_pick() {
+            let (dialog, mode) = file_dialogs::dialog(&pick, window);
+            let repaint = ctx.clone();
+            if !self
+                .files
+                .show(dialog, mode, pick, move || repaint.request_repaint())
+            {
+                self.ui.set_status("a file dialog is already open", true);
+            }
+        }
+        if let Some((pick, paths)) = self.files.poll() {
+            for action in self.ui.picked(&pick, &paths) {
+                self.apply(ctx, action);
+            }
+        }
+    }
+
     fn update_title(&mut self, ctx: &egui::Context) {
         let project = self.session.project();
         let title = format!("MusicCraft — {}", project.name());
@@ -1489,7 +1513,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, window: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.handle_close_request(&ctx);
         self.show_unsaved_dialog(&ctx);
@@ -1554,6 +1578,7 @@ impl eframe::App for App {
         for action in actions {
             self.apply(&ctx, action);
         }
+        self.file_dialogs(&ctx, window);
         let editor_open = {
             let bridge = self.audio.as_mut().map(|a| &mut a.bridge);
             self.plugins.poll(bridge, &mut self.session)

@@ -64,8 +64,9 @@ and Antiserum follow with the same wrapper and editor adapter.
   in the app.
 - **Convolution reverb.** The impulse is one of the app's generated rooms
   (`room`, `chamber`, `plate`, `hall`, `cathedral`) or a WAV file, as in the
-  app's mixer. The editor has the room list and a path field with **Load**
-  (Enter also loads); the picker then shows the file's name. The choice is
+  app's mixer. The editor has the room list and **Load file…**, which
+  opens the system's file dialog for a WAV file; the picker then shows the
+  file's name. The choice is
   stored in the state (a room name, or the file's path) and is not
   automatable. A file is read and resampled to the plugin's rate off the
   audio thread; one that cannot be read keeps the previous impulse and the

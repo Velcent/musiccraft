@@ -1,8 +1,10 @@
 //! Antiserum's plugin editor: the app's Antiserum editor, with its edits
-//! turned into host parameter gestures and patch changes. Choosing a sample,
-//! adding a zone, saving and opening a patch use a path field at the top
-//! instead of the app's dialogs.
+//! turned into host parameter gestures and patch changes. Choosing a sample
+//! file, adding a zone from a file, saving and opening a patch use the
+//! system's file dialog, as the app does; the sample slots' menus offer the
+//! user's music and sample folders in place of the app's browser.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use egui::{RichText, Ui};
@@ -10,17 +12,18 @@ use musiccraft_antiserum::Data;
 use musiccraft_antiserum_presets as presets;
 use musiccraft_editors::antiserum::{AntiserumEdit, AntiserumEditor};
 use musiccraft_editors::theme;
+use musiccraft_file_dialog::{FileDialog, Mode, Picker};
 use musiccraft_patch::{Patch, SourceRef, ZoneRef};
 use musiccraft_plugin_editor::EguiEditor;
 use nih_plug::prelude::{GuiContext, ParamSetter};
 
 use super::params::AntiserumParams;
-use crate::editor::{begin, end, set, set_once};
+use crate::editor::{begin, end, home, set, set_once, sound_dialog, sound_folders};
 
 /// The editor's logical size.
 pub const SIZE: (u32, u32) = (740, 840);
 
-/// What a path field at the top is for.
+/// What a file dialog is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Ask {
     Save,
@@ -37,14 +40,20 @@ struct View {
     editor: AntiserumEditor,
     /// Parameters inside a host gesture.
     active: Vec<usize>,
-    ask: Option<(Ask, String)>,
+    /// The open file dialog.
+    files: Picker<Ask>,
+    /// The folders the sample slots' menus offer.
+    folders: Vec<PathBuf>,
     /// The last file operation's outcome.
     status: Option<String>,
 }
 
 /// What the plugin draws when the host opens its GUI.
 pub fn editor(params: Arc<AntiserumParams>) -> EguiEditor {
-    let view = Mutex::new(View::default());
+    let view = Mutex::new(View {
+        folders: sound_folders(),
+        ..View::default()
+    });
     EguiEditor::new(SIZE, move |ui, gui| {
         if let Ok(mut view) = view.lock() {
             draw(ui, gui, &params, &mut view);
@@ -52,31 +61,49 @@ pub fn editor(params: Arc<AntiserumParams>) -> EguiEditor {
     })
 }
 
-/// Where a new patch file goes: the home folder, named after the patch.
-fn default_path(patch: &Patch) -> String {
-    // The user presets folder, shared with the app: a patch saved there is a
-    // preset in both.
-    let folder = presets::user::folder()
-        .map(|f| f.display().to_string())
-        .or_else(|| {
-            std::env::var("HOME")
-                .or_else(|_| std::env::var("USERPROFILE"))
-                .ok()
-        });
-    let name = if patch.name.is_empty() {
-        "Antiserum"
-    } else {
-        &patch.name
-    };
-    let file = format!("{}.json", name.replace(['/', '\\'], "-"));
-    folder.map_or(file.clone(), |h| {
-        std::path::Path::new(&h).join(&file).display().to_string()
-    })
+/// The file dialog for `ask`. Patches start in the user presets folder,
+/// shared with the app (a patch saved there is a preset in both), named
+/// after the patch.
+fn dialog(ask: Ask, patch: &Patch) -> (FileDialog, Mode) {
+    let dialog = FileDialog::new().set_can_create_directories(true);
+    match ask {
+        Ask::Save | Ask::Open => {
+            let dialog = dialog
+                .add_filter("Antiserum patch", &["json"])
+                .set_directory(presets::user::folder().or_else(home).unwrap_or_default());
+            if ask == Ask::Open {
+                return (dialog.set_title("Open Antiserum patch"), Mode::File);
+            }
+            let name = if patch.name.is_empty() {
+                "Antiserum"
+            } else {
+                &patch.name
+            };
+            let file = format!("{}.json", name.replace(['/', '\\'], "-"));
+            let dialog = dialog.set_title("Save Antiserum patch").set_file_name(file);
+            (dialog, Mode::Save)
+        }
+        Ask::Sample(_) => (sound_dialog("Oscillator sample"), Mode::File),
+        Ask::Zone(_) => (sound_dialog("Zone sample"), Mode::File),
+    }
+}
+
+/// Opens the file dialog for `ask`, unless one is open already.
+fn ask(view: &mut View, ask: Ask, patch: &Patch, ctx: &egui::Context) {
+    let (dialog, mode) = dialog(ask, patch);
+    let repaint = ctx.clone();
+    if !view
+        .files
+        .show(dialog, mode, ask, move || repaint.request_repaint())
+    {
+        view.status = Some("a file dialog is already open".to_owned());
+    }
 }
 
 fn draw(ui: &mut Ui, gui: &dyn GuiContext, params: &AntiserumParams, view: &mut View) {
     let setter = ParamSetter::new(gui);
-    ask_row(ui, &setter, params, view);
+    answers(ui, &setter, params, view);
+    view.editor.set_sounds(&view.folders, None);
     for warning in params.shared.warnings() {
         ui.label(RichText::new(warning).small().color(theme::HIGHLIGHT));
     }
@@ -90,7 +117,7 @@ fn draw(ui: &mut Ui, gui: &dyn GuiContext, params: &AntiserumParams, view: &mut 
                 .show(ui, &values, &patch, &mut edits, &mut |_, _| {});
         });
     for edit in edits {
-        apply(&setter, params, view, &patch, edit);
+        apply(&setter, params, view, &patch, edit, ui.ctx());
     }
     // A gesture ends when the mouse lets go.
     if !ui.input(|i| i.pointer.any_down()) {
@@ -108,6 +135,7 @@ fn apply(
     view: &mut View,
     patch: &Patch,
     edit: AntiserumEdit,
+    ctx: &egui::Context,
 ) {
     let shared = &params.shared;
     match edit {
@@ -143,12 +171,12 @@ fn apply(
                 load(setter, params, preset);
             }
         }
-        AntiserumEdit::Save => view.ask = Some((Ask::Save, default_path(patch))),
-        AntiserumEdit::Open => view.ask = Some((Ask::Open, default_path(patch))),
-        AntiserumEdit::ChooseSample(osc) => {
-            view.ask = Some((Ask::Sample(osc), patch.source(osc).sample));
-        }
-        AntiserumEdit::AddZone(osc) => view.ask = Some((Ask::Zone(osc), String::new())),
+        AntiserumEdit::Save => ask(view, Ask::Save, patch, ctx),
+        AntiserumEdit::Open => ask(view, Ask::Open, patch, ctx),
+        AntiserumEdit::ChooseSample(osc) => ask(view, Ask::Sample(osc), patch, ctx),
+        AntiserumEdit::AddZone(osc) => ask(view, Ask::Zone(osc), patch, ctx),
+        AntiserumEdit::Sample(osc, sample) => change_source(params, osc, |s| s.sample = sample),
+        AntiserumEdit::Zone(osc, sample) => add_zone(params, osc, sample),
         AntiserumEdit::SetZone(osc, zone, low, high, root) => change_source(params, osc, |s| {
             if let Some(z) = s.zones.get_mut(zone) {
                 (z.low, z.high, z.root) = (low.min(high), low.max(high), root);
@@ -191,44 +219,29 @@ fn load(setter: &ParamSetter<'_>, params: &AntiserumParams, patch: Patch) {
     params.shared.set_patch(patch);
 }
 
-/// The path field for saving, opening, a sample or a zone.
-fn ask_row(ui: &mut Ui, setter: &ParamSetter<'_>, params: &AntiserumParams, view: &mut View) {
+/// Adds a zone playing `sample` over the whole keyboard.
+fn add_zone(params: &AntiserumParams, osc: usize, sample: String) {
+    if !sample.is_empty() {
+        change_source(params, osc, |s| {
+            s.zones.push(ZoneRef::new(sample, 0, 127, 60));
+        });
+    }
+}
+
+/// The last file operation's outcome, and the answer of the open file
+/// dialog once there is one.
+fn answers(ui: &mut Ui, setter: &ParamSetter<'_>, params: &AntiserumParams, view: &mut View) {
     if let Some(status) = &view.status {
         ui.label(RichText::new(status).small().color(theme::TEXT_DIM));
     }
-    let Some((ask, text)) = view.ask.as_mut() else {
+    let Some((ask, paths)) = view.files.poll() else {
         return;
     };
-    let ask = *ask;
-    let mut done = None;
-    ui.horizontal(|ui| {
-        let label = match ask {
-            Ask::Save => "Save patch to",
-            Ask::Open => "Open patch",
-            Ask::Sample(_) => "Sample (file or builtin:<sound>; empty clears)",
-            Ask::Zone(_) => "Zone sample",
-        };
-        ui.label(RichText::new(label).small());
-        let field = ui.add(egui::TextEdit::singleline(text).desired_width(320.0));
-        let entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        if entered || ui.small_button("OK").clicked() {
-            done = Some(true);
-        }
-        if ui.small_button("Cancel").clicked() {
-            done = Some(false);
-        }
-    });
-    let Some(ok) = done else {
+    // Cancelled: nothing changes.
+    let Some(path) = paths.into_iter().next() else {
         return;
     };
-    let text = view
-        .ask
-        .take()
-        .map(|(_, t)| t.trim().to_owned())
-        .unwrap_or_default();
-    if !ok {
-        return;
-    }
+    let text = path.display().to_string();
     view.status = match ask {
         Ask::Save => Some(
             params
@@ -260,11 +273,7 @@ fn ask_row(ui: &mut Ui, setter: &ParamSetter<'_>, params: &AntiserumParams, view
             None
         }
         Ask::Zone(osc) => {
-            if !text.is_empty() {
-                change_source(params, osc, |s| {
-                    s.zones.push(ZoneRef::new(text, 0, 127, 60))
-                });
-            }
+            add_zone(params, osc, text);
             None
         }
     };

@@ -23,6 +23,7 @@ mod playlist;
 mod plugins;
 mod rack_view;
 mod sample_editor;
+mod sample_slot;
 mod scrollbars;
 pub mod settings;
 mod signature;
@@ -39,6 +40,7 @@ use musiccraft_editors::{format, theme, widgets};
 use musiccraft_commands::Invocation;
 use musiccraft_project::Project;
 
+pub use dialogs::{FilePick, Pick, PickMode};
 pub use geometry::Snap;
 pub use keymap::{Chord, DEFAULT_KEYMAP, Keymap};
 pub use plugins::{LivePluginView, PluginEntry, PluginParamView, Plugins};
@@ -598,9 +600,9 @@ pub struct UiState {
     pub sig_draft: (u32, u32),
     /// What the toolbar's position display shows.
     pub time_mode: TimeMode,
-    /// Text being typed in Settings → Folders: FL factory and user data
-    /// folders, and a drive mapping's prefix and folder.
-    pub path_drafts: [String; 4],
+    /// A drive mapping being added in Settings → Folders: the Windows
+    /// prefix (typed) and the local folder (chosen in a file dialog).
+    pub drive_draft: (String, Option<std::path::PathBuf>),
     /// The channel settings window's page.
     pub channel_tab: channel_settings::ChannelTab,
     /// Extra channel windows (Alt+click on a channel name), each on its own
@@ -651,6 +653,8 @@ pub struct UiState {
     roll: piano_roll::RollState,
     playlist: playlist::PlaylistState,
     dialog: Option<dialogs::Dialog>,
+    /// A system file dialog for the app to show.
+    file_pick: Option<dialogs::FilePick>,
     /// A name being renamed where it is drawn.
     renaming: Option<dialogs::InPlace>,
     antiserum: antiserum::AntiserumUi,
@@ -725,7 +729,7 @@ impl UiState {
             channel_tab: channel_settings::ChannelTab::default(),
             kept_channels: Vec::new(),
             time_mode: TimeMode::Bars,
-            path_drafts: Default::default(),
+            drive_draft: Default::default(),
             rack_group: None,
             graph: None,
             rack_clipboard: None,
@@ -750,6 +754,7 @@ impl UiState {
             roll: piano_roll::RollState::default(),
             playlist: playlist::PlaylistState::default(),
             dialog: None,
+            file_pick: None,
             antiserum: antiserum::AntiserumUi::default(),
         }
     }
@@ -765,9 +770,9 @@ impl UiState {
         self.gesture
     }
 
-    /// Opens the Save As dialog for `project`.
+    /// Asks for the Save As file dialog for `project`.
     pub fn open_save_as(&mut self, project: &Project) {
-        self.dialog = Some(dialogs::Dialog::save_as(project));
+        self.pick_file(dialogs::FilePick::save_as(project));
     }
 
     /// Records a command result for the status line.
@@ -818,6 +823,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>) -> Vec<Ac
     let mut actions = Vec::new();
     let dt = ui.ctx().input(|i| i.stable_dt).min(0.1);
     state.update_meters(&frame.engine.peaks, dt);
+    if state.browser.folders != frame.settings.browser_folders {
+        state
+            .browser
+            .folders
+            .clone_from(&frame.settings.browser_folders);
+    }
     let channels = frame.project.channels.len();
     if state.selected_channel >= channels {
         state.selected_channel = channels.saturating_sub(1);
@@ -1126,15 +1137,15 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             | "view.hide_effects"
             | "view.hide_others" => {}
             "ui.new" => out.push(Action::Run(Invocation::bare("project.new"))),
-            "ui.open" => state.dialog = Some(dialogs::Dialog::open(frame.project)),
+            "ui.open" => state.pick_file(dialogs::FilePick::open(frame.project)),
             "ui.save" => match frame.project.path() {
                 Some(_) => out.push(Action::Run(Invocation::bare("project.save"))),
-                None => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
+                None => state.pick_file(dialogs::FilePick::save_as(frame.project)),
             },
-            "ui.save_as" => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
+            "ui.save_as" => state.pick_file(dialogs::FilePick::save_as(frame.project)),
             "ui.save_new_version" => match frame.project.path() {
                 Some(_) => out.push(Action::Run(Invocation::bare("project.save_new_version"))),
-                None => state.dialog = Some(dialogs::Dialog::save_as(frame.project)),
+                None => state.pick_file(dialogs::FilePick::save_as(frame.project)),
             },
             "ui.add_marker" => {
                 // A marker at the playhead, on the beat.
@@ -1191,9 +1202,9 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                     &project.current_pattern().name,
                 ));
             }
-            "ui.export" => state.dialog = Some(dialogs::Dialog::export(frame.project)),
-            "ui.export_stems" => state.dialog = Some(dialogs::Dialog::export_stems(frame.project)),
-            "ui.export_midi" => state.dialog = Some(dialogs::Dialog::export_midi(frame.project)),
+            "ui.export" => state.pick_file(dialogs::FilePick::export(frame.project)),
+            "ui.export_stems" => state.pick_file(dialogs::FilePick::export_stems(frame.project)),
+            "ui.export_midi" => state.pick_file(dialogs::FilePick::export_midi(frame.project)),
             "ui.quit" => out.push(Action::Quit),
             "ui.typing_keyboard" => state.typing_keyboard = !state.typing_keyboard,
             "ui.copy_control" => {
@@ -1234,6 +1245,17 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
                         frame.project,
                         target,
                     )));
+                }
+            }
+            "ui.set_fl_folder" => {
+                if let [which, path] = invocation.args.as_slice() {
+                    let mut next = frame.settings.clone();
+                    let path = Some(std::path::PathBuf::from(path));
+                    match which.as_str() {
+                        "factory" => next.fl_factory = path,
+                        _ => next.fl_user = path,
+                    }
+                    out.push(Action::Settings(Box::new(next)));
                 }
             }
             "ui.add_folder" | "ui.add_plugin_folder" => {
@@ -1356,15 +1378,18 @@ mod tests {
         resolve_ui_actions(&mut state, &frame, toggle());
         assert!(state.windows.mixer);
         assert_eq!(state.arrange, Some(Arrange::Raise("mixer-window")));
-        assert!(state.dialog.is_some(), "unsaved project asks for a path");
-        state.dialog = None;
+        assert!(state.file_pick.is_some(), "unsaved project asks for a path");
+        state.file_pick = None;
         let out = resolve_ui_actions(
             &mut state,
             &frame,
             vec![Action::Run(Invocation::bare("ui.save_new_version"))],
         );
         assert!(out.is_empty());
-        assert!(state.dialog.is_some(), "a new version needs a first save");
+        assert!(
+            state.take_file_pick().is_some(),
+            "a new version needs a first save"
+        );
     }
 
     #[test]

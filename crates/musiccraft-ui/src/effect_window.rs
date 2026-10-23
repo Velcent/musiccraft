@@ -228,7 +228,7 @@ fn contents(
         rate => rate as f32,
     };
     if effect.kind == EffectKind::Convolution {
-        impulse_picker(ui, state, track, slot, effect, actions);
+        impulse_picker(ui, state, frame.project, (track, slot), effect, actions);
     }
     if matches!(effect.kind, EffectKind::PitchCorrect | EffectKind::Tuner) {
         let detected = frame
@@ -252,8 +252,8 @@ fn contents(
 fn impulse_picker(
     ui: &mut egui::Ui,
     state: &mut UiState,
-    track: usize,
-    slot: usize,
+    project: &musiccraft_project::Project,
+    (track, slot): (usize, usize),
     effect: &EffectSlot,
     actions: &mut Vec<Action>,
 ) {
@@ -289,10 +289,10 @@ fn impulse_picker(
             .clicked()
         {
             let start = effect.file.clone().filter(|f| !f.starts_with("ir:"));
-            state.open_dialog(crate::dialogs::Dialog::set_effect_file(
-                track,
-                slot,
-                start.unwrap_or_default(),
+            state.pick_file(crate::dialogs::FilePick::sample(
+                crate::dialogs::Pick::SetEffectFile(track, slot),
+                &start.unwrap_or_default(),
+                project,
             ));
         }
     });

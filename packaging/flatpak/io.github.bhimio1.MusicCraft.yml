@@ -25,8 +25,10 @@ finish-args:
   - --socket=pulseaudio
   # ALSA MIDI sequencer access for MIDI keyboards (midir).
   - --device=all
-  # The app has its own file dialogs and sample browser that walk the home folder,
-  # so it needs real home access rather than portal file choosers.
+  # The sample browser walks the home folder and projects refer to samples by
+  # path, so the app needs real home access. File dialogs go through the
+  # desktop portal (org.freedesktop.portal.FileChooser), which needs no
+  # permission.
   - --filesystem=home
 
 modules:

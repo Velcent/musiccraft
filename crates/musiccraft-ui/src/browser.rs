@@ -11,11 +11,12 @@ use std::path::{Path, PathBuf};
 
 use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, pos2, vec2};
 use musiccraft_commands::Invocation;
+use musiccraft_editors::sounds::{Entry, Listings, MAX_DEPTH};
 use musiccraft_project::Instrument;
 use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES, EFFECT_KINDS};
 
 use crate::icons::{self, Icon};
-use crate::{Action, Frame, UiState, dialogs::Dialog, theme};
+use crate::{Action, Frame, UiState, dialogs::FilePick, theme};
 
 /// Something being dragged out of the browser: a sample, or a generator
 /// that becomes a new channel.
@@ -152,7 +153,11 @@ pub struct BrowserState {
     back: Vec<String>,
     /// Folders Backspace closed, latest last, for Shift+Backspace.
     forward: Vec<String>,
-    listings: BTreeMap<PathBuf, Vec<(String, PathBuf, bool)>>,
+    /// The browser's folders (a setting), copied here each frame for the
+    /// sample slots' menus.
+    pub(crate) folders: Vec<PathBuf>,
+    /// Folder listings, shared with the sample slots' menus.
+    pub(crate) listings: Listings,
 }
 
 /// The user's music and sample folders, when they exist.
@@ -171,34 +176,10 @@ pub fn default_folders() -> Vec<PathBuf> {
     .unwrap_or_default()
 }
 
-/// How deep folders on disk can be opened (and searched).
-const MAX_DEPTH: usize = 8;
-
 impl BrowserState {
     /// Subfolders and WAV files of `dir`, cached until refreshed.
-    fn listing(&mut self, dir: &Path) -> &[(String, PathBuf, bool)] {
-        self.listings.entry(dir.to_path_buf()).or_insert_with(|| {
-            let mut entries: Vec<(String, PathBuf, bool)> = std::fs::read_dir(dir)
-                .map(|it| {
-                    it.filter_map(Result::ok)
-                        .filter_map(|e| {
-                            let path = e.path();
-                            let name = e.file_name().to_string_lossy().into_owned();
-                            if name.starts_with('.') {
-                                return None;
-                            }
-                            let is_dir = path.is_dir();
-                            let is_wav = path
-                                .extension()
-                                .is_some_and(|x| x.eq_ignore_ascii_case("wav"));
-                            (is_dir || is_wav).then_some((name, path, is_dir))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            entries.sort_by_key(|e| (!e.2, e.0.to_lowercase()));
-            entries
-        })
+    fn listing(&mut self, dir: &Path) -> &[Entry] {
+        self.listings.get(dir)
     }
 
     /// Whether `dir` (to `depth` levels down) holds a file matching `search`.
@@ -1590,10 +1571,10 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
                     state.browser.listings.clear();
                 }
                 if ui.button("Add folder…").clicked() {
-                    state.open_dialog(Dialog::add_folder());
+                    state.pick_file(FilePick::add_folder());
                 }
-                if ui.button("Add a channel from a file…").clicked() {
-                    state.open_dialog(Dialog::add_sample(frame.project));
+                if ui.button("Add channels from files…").clicked() {
+                    state.pick_file(FilePick::add_sample(frame.project));
                 }
                 if frame.plugins.available && ui.button("Rescan plugins").clicked() {
                     actions.push(Action::RescanPlugins);

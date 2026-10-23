@@ -42,6 +42,16 @@ impl App {
                 source.zones.push(ZoneRef::new(sample, 0, 127, 60));
                 self.patch.set_source(osc, source);
             }
+            AntiserumEdit::Sample(osc, sample) => {
+                let mut source = self.patch.source(osc);
+                source.sample = sample;
+                self.patch.set_source(osc, source);
+            }
+            AntiserumEdit::Zone(osc, sample) => {
+                let mut source = self.patch.source(osc);
+                source.zones.push(ZoneRef::new(sample, 0, 127, 60));
+                self.patch.set_source(osc, source);
+            }
             AntiserumEdit::SetZone(osc, zone, low, high, root) => {
                 let mut source = self.patch.source(osc);
                 if let Some(z) = source.zones.get_mut(zone) {

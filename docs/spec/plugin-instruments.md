@@ -158,12 +158,17 @@ come back through the parameter map; the field holds the rest.
 
   The plugin adds its own `swing` and `bend_range` knobs to the Functions
   page, and the `pitch` knob (in the app's channel header) next to its
-  title. Sample instruments show the sample's name, its waveform and a path
-  field with the built-in sounds; the kit shows its sixteen pads, and zones
-  show a zone list with key ranges.
-- **Antiserum.** The app's Antiserum editor (`musiccraft-editors::antiserum`).
-  Choosing a sample, adding a zone, saving and opening a patch use a path
-  field inside the editor instead of the app's dialogs.
+  title. Sample instruments show the sample's name, its waveform and a
+  *Sample…* button; the kit shows its sixteen pads and a *Pad sound…* button
+  for the chosen pad, and zones show a zone list with key ranges and *Add
+  zone…*. These buttons open the sample slot menu of
+  `docs/spec/style/dialogs.md` (browse files with the system's file dialog,
+  the built-in sounds, the user's Music, Samples and Music/Samples folders,
+  and Clear for a pad).
+- **Antiserum.** The app's Antiserum editor (`musiccraft-editors::antiserum`),
+  with the same sample slot menus. Browsing for a sample or zone, and saving
+  and opening a patch, use the system's file dialog (patches start in the
+  user presets folder shared with the app).
 - **Gestures and size.** Edits are host gestures, as for the effects. The
   window has a fixed size per plugin and follows the host's scale.
 

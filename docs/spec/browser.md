@@ -18,8 +18,8 @@ Top to bottom:
 3. **List**: a well one step darker than the column, scrolling vertically.
 4. **Footer**: the search field ("Search…").
 
-The window menu holds Fold all, Refresh folders, Add folder…, Add a channel
-from a file…, and Rescan plugins (when plugin hosting is available), then
+The window menu holds Fold all, Refresh folders, Add folder…, Add channels
+from files… (both open the system's file dialog), and Rescan plugins (when plugin hosting is available), then
 the common window items.
 
 ## Tree

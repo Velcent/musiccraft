@@ -30,6 +30,7 @@ use musiccraft_patch::{CATEGORIES, Patch, PointData, StepData, TableRef};
 use musiccraft_wavetables::{FRAME_LEN, Table};
 
 use crate::hint::Hint;
+use crate::sounds::{self, Listings, SampleChoice, Sounds};
 use crate::wavetable::{WavetableEdit, WavetableEditor};
 use crate::{theme, widgets};
 
@@ -52,10 +53,17 @@ pub enum AntiserumEdit {
     Save,
     /// Load a patch file.
     Open,
-    /// Choose the sample oscillator (0-based) plays.
+    /// Browse files (the system's file dialog) for the sample oscillator
+    /// (0-based) plays.
     ChooseSample(usize),
-    /// Add a multisample zone to an oscillator.
+    /// Oscillator and the sample it now plays (empty: none), chosen from the
+    /// sounds menu or dropped on it.
+    Sample(usize, String),
+    /// Browse files for a multisample zone to add to an oscillator.
     AddZone(usize),
+    /// Oscillator and the sample of a zone to add to it, chosen from the
+    /// sounds menu or dropped on its zones.
+    Zone(usize, String),
     /// Oscillator, zone (0-based), and its new low, high and root keys.
     SetZone(usize, usize, u8, u8, u8),
     /// Remove a zone: oscillator, zone.
@@ -120,6 +128,11 @@ pub struct AntiserumEditor {
     /// the translation of paths from other systems (as the engine does).
     folder: Option<PathBuf>,
     paths: Resolver,
+    /// The browser's folders, offered in the sample slots' menus.
+    sound_folders: Vec<PathBuf>,
+    listings: Listings,
+    /// A sound being dragged from the browser, which slots accept.
+    dragged: Option<String>,
 }
 
 /// What every control reads.
@@ -429,9 +442,11 @@ impl AntiserumEditor {
         let x = |field| oscx_param(o, field);
         let source = patch.source(o);
         if kind == 2 {
-            zones(ui, cx, o, &source.zones);
+            let (mut sounds, dragged) = self.sounds();
+            zones(ui, cx, o, &source.zones, &mut sounds, dragged);
         } else {
-            ui.horizontal(|ui| {
+            let (mut sounds, dragged) = self.sounds();
+            let row = ui.horizontal(|ui| {
                 let name = if source.sample.is_empty() {
                     "(no sample)"
                 } else {
@@ -442,14 +457,27 @@ impl AntiserumEditor {
                         .unwrap_or(&source.sample)
                 };
                 ui.label(name).hint(source.sample.clone());
-                if ui
-                    .small_button("Sample…")
-                    .hint("Choose the sample this oscillator plays")
-                    .clicked()
-                {
-                    cx.edits.push(AntiserumEdit::ChooseSample(o));
+                let choice = sounds::button(
+                    ui,
+                    "Sample…",
+                    "Choose the sample this oscillator plays (or drag one here from the browser)",
+                    &mut sounds,
+                    !source.sample.is_empty(),
+                );
+                match choice {
+                    Some(SampleChoice::Browse) => cx.edits.push(AntiserumEdit::ChooseSample(o)),
+                    Some(SampleChoice::Use(sample)) => {
+                        cx.edits.push(AntiserumEdit::Sample(o, sample));
+                    }
+                    Some(SampleChoice::Clear) => {
+                        cx.edits.push(AntiserumEdit::Sample(o, String::new()));
+                    }
+                    None => {}
                 }
             });
+            if let Some(sample) = sounds::drop_target(ui, row.response.rect, dragged) {
+                cx.edits.push(AntiserumEdit::Sample(o, sample));
+            }
             let sample = self.sample_preview(&source.sample);
             if kind == 4 {
                 let analysis = self.analysis_preview(&source.sample, sample.as_deref());
@@ -560,6 +588,24 @@ impl AntiserumEditor {
     /// A sample for drawing, loaded once (built-in names and paths as given).
     /// Sets the folder relative sample paths start from (the project's);
     /// previews load again when it changes.
+    /// The folders the sample slots' menus offer, and the sound being
+    /// dragged from the browser (if any). Call before each `show`.
+    pub fn set_sounds(&mut self, folders: &[PathBuf], dragged: Option<String>) {
+        if self.sound_folders != folders {
+            self.sound_folders = folders.to_vec();
+            self.listings.clear();
+        }
+        self.dragged = dragged;
+    }
+
+    fn sounds(&mut self) -> (Sounds<'_>, Option<&str>) {
+        let sounds = Sounds {
+            folders: &self.sound_folders,
+            listings: &mut self.listings,
+        };
+        (sounds, self.dragged.as_deref())
+    }
+
     pub fn set_folder(&mut self, folder: Option<&std::path::Path>) {
         if self.folder.as_deref() != folder || self.paths.refresh() {
             self.folder = folder.map(std::path::Path::to_path_buf);
@@ -1113,8 +1159,15 @@ fn partials_view(ui: &mut Ui, levels: &[f32]) {
 }
 
 /// The multisample zones: sample, low, high and root keys, and remove.
-fn zones(ui: &mut Ui, cx: &mut Cx<'_, '_>, o: usize, zones: &[musiccraft_patch::ZoneRef]) {
-    egui::Grid::new(("antiserum-zones", o)).show(ui, |ui| {
+fn zones(
+    ui: &mut Ui,
+    cx: &mut Cx<'_, '_>,
+    o: usize,
+    zones: &[musiccraft_patch::ZoneRef],
+    sounds: &mut Sounds<'_>,
+    dragged: Option<&str>,
+) {
+    let grid = egui::Grid::new(("antiserum-zones", o)).show(ui, |ui| {
         for heading in ["sample", "low", "high", "root", ""] {
             ui.label(egui::RichText::new(heading).small().color(theme::TEXT_DIM));
         }
@@ -1143,12 +1196,20 @@ fn zones(ui: &mut Ui, cx: &mut Cx<'_, '_>, o: usize, zones: &[musiccraft_patch::
             ui.end_row();
         }
     });
-    if ui
-        .small_button("Add zone…")
-        .hint("Add a sample as a zone")
-        .clicked()
-    {
-        cx.edits.push(AntiserumEdit::AddZone(o));
+    let choice = sounds::button(
+        ui,
+        "Add zone…",
+        "Add a sample as a zone (or drag one onto the zones from the browser)",
+        sounds,
+        false,
+    );
+    match choice {
+        Some(SampleChoice::Browse) => cx.edits.push(AntiserumEdit::AddZone(o)),
+        Some(SampleChoice::Use(sample)) => cx.edits.push(AntiserumEdit::Zone(o, sample)),
+        Some(SampleChoice::Clear) | None => {}
+    }
+    if let Some(sample) = sounds::drop_target(ui, grid.response.rect, dragged) {
+        cx.edits.push(AntiserumEdit::Zone(o, sample));
     }
 }
 

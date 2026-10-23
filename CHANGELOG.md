@@ -27,6 +27,20 @@ commit; this file says what they add up to.
   step-sequenced pattern (every note on one key, as drums usually are) gets
   one row per channel.
 
+### System file dialogs and sample slots
+
+- Open, Save as, Export (audio, MIDI, stems), adding browser and plugin
+  folders, adding channels from files, Antiserum patches and impulse files
+  use the system's file dialog (the desktop portal on Linux, so it works in
+  the Flatpak) instead of a typed path. The window keeps drawing and audio
+  keeps playing while it is open.
+- Sample slots (the sampler's sample, drum pads, zones, Antiserum's
+  oscillators) open a menu: Browse files…, the built-in sounds, and your
+  browser folders as submenus. A sound dragged from the browser onto a slot
+  fills it.
+- The exported plugins' editors do the same, with your Music and Samples
+  folders in place of the browser.
+
 ### Stem splitting
 
 - Right-click a sampler channel or an audio clip's sound → Split into stems

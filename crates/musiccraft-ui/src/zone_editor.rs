@@ -6,8 +6,9 @@ use musiccraft_commands::Invocation;
 use musiccraft_project::SampleZone;
 use musiccraft_project::music::key_name;
 
-use crate::dialogs::Dialog;
+use crate::dialogs::{FilePick, Pick};
 use crate::hint::Hint;
+use crate::sample_slot;
 use crate::{Action, Frame, UiState, theme};
 use musiccraft_editors::instrument::section;
 
@@ -75,7 +76,7 @@ pub(crate) fn show(
                 .small()
                 .color(theme::TEXT_DIM),
         );
-        egui::Grid::new(("zones", channel))
+        let grid = egui::Grid::new(("zones", channel))
             .spacing([6.0, 4.0])
             .show(ui, |ui| {
                 for header in ["", "sample", "keys", "root", "velocity", ""] {
@@ -164,8 +165,19 @@ pub(crate) fn show(
                     ui.end_row();
                 }
             });
-        if ui.button("Add zone…").clicked() {
-            state.open_dialog(Dialog::add_zone(channel, frame.project));
+        let add =
+            |sound: String| Invocation::new("channel.add_zone", [(channel + 1).to_string(), sound]);
+        let choice = sample_slot::button(
+            ui,
+            state,
+            "Add zone…",
+            "Add a sample as a zone (or drag one onto the zones from the browser)",
+            false,
+        );
+        let pick = || FilePick::sample(Pick::AddZone(channel), "", frame.project);
+        sample_slot::apply(state, choice, pick, add, actions);
+        if let Some(sound) = sample_slot::dropped(ui, grid.response.rect) {
+            actions.push(Action::Run(add(sound)));
         }
     });
 }

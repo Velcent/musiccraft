@@ -7,7 +7,7 @@ use musiccraft_commands::Invocation;
 use musiccraft_project::params::{BUILTIN_PREFIX, BUILTIN_SAMPLES, TICKS_PER_STEP};
 use musiccraft_project::{Channel, DEFAULT_CHANNEL_VOLUME, Instrument, MAX_VOLUME, Project};
 
-use crate::dialogs::Dialog;
+use crate::dialogs::{Dialog, FilePick, Pick};
 use crate::{Action, Frame, UiState, format, theme, widgets};
 
 const STEP_SIZE: egui::Vec2 = egui::Vec2::new(14.0, 24.0);
@@ -717,7 +717,7 @@ pub(crate) fn context_menu(
     // frame until it covered the screen (issue #20).
     ui.horizontal_top(|ui| {
         let left = Dividers::column(ui, |ui, lines| {
-            channel_items(ui, state, index, channel, lines, actions);
+            channel_items(ui, state, project, index, channel, lines, actions);
         });
         let gap = ui.spacing().item_spacing.x;
         let (line, _) = ui.allocate_exact_size(vec2(gap, 0.0), Sense::hover());
@@ -759,6 +759,7 @@ impl Dividers {
 fn channel_items(
     ui: &mut egui::Ui,
     state: &mut UiState,
+    project: &Project,
     index: usize,
     channel: &Channel,
     lines: &mut Dividers,
@@ -781,10 +782,12 @@ fn channel_items(
         ui.close();
     }
     if let Instrument::Sampler { sample } = &channel.instrument {
-        if ui.button("Change sample…").clicked() {
-            state.open_dialog(Dialog::set_sample(index, sample.clone()));
-            ui.close();
-        }
+        ui.menu_button("Change sample", |ui| {
+            let choice = crate::sample_slot::menu_items(ui, state, false);
+            let pick = || FilePick::sample(Pick::SetSample(index), sample, project);
+            let set = |sound| Invocation::new("channel.set_sample", [number.clone(), sound]);
+            crate::sample_slot::apply(state, choice, pick, set, actions);
+        });
         if ui
             .button("Split into stems")
             .on_hover_text(
