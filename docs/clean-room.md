@@ -26,25 +26,33 @@ process.
    kept, and named in the spec's Sources. In particular, the `.flp` importer
    (`musiccraft-flp`) is a Rust port of PyFLP (© 2022 demberto,
    GPL-3.0-or-later). The project owner decided this on 2026-10-16, together
-   with licensing MusicCraft under GPL-3.0-or-later.
+   with licensing MusicCraft under GPL-3.0-or-later. Likewise, the Serum preset
+   importer (`musiccraft-serum`) is a Rust port of the reading and mapping parts
+   of serum2vital (© 2026 Ben Tesser, GPL-3.0-or-later), by the owner's decision
+   of 2026-10-23 (`docs/spec/serum-import.md`).
 
 ## Forbidden
 
 - Decompiling, disassembling, debugging, or tracing the binaries of any commercial DAW.
 - Any leaked, stolen, or otherwise unauthorized source code, documentation, or assets.
 - Reverse-engineering proprietary project/preset formats ourselves (examining
-  their files byte by byte, or the program that writes them). The one exception is
-  the `.flp` import above, which reuses PyFLP's published, open-source parser
-  instead; its authors worked the format out, not us, and we say so. Changes to the
-  importer follow PyFLP (or are checked against its output), not our own probing.
-  MusicCraft's own project format stays its own.
+  their files byte by byte, or the program that writes them). The two exceptions
+  are the `.flp` import and the Serum preset import above, which reuse published,
+  open-source parsers (PyFLP, serum2vital) instead; their authors worked the
+  formats out, not us, and we say so. Changes to either importer follow its
+  upstream (or are checked against its output), not our own probing. MusicCraft's
+  own project and patch formats stay its own.
 - Copying icons, skins, bitmaps, fonts, sample packs, factory presets, logos, or names.
 - Using another product's trademarks in our name, branding, or marketing.
   The built-in wavetable synth is named **Antiserum**: the owner chose this
   dictionary word (a serum of antibodies) on 2026-10-18. Its artwork,
   wavetables and presets are our own, and it never uses another product's name,
   logo or styling. Wavetable import reads the public WAV `clm ` frame-size
-  convention, never another synth's own preset or bank formats.
+  convention. The only other synth format read is Serum's presets, through the
+  serum2vital port above; naming Serum there (the `antiserum.import_serum…`
+  commands, the import messages) only says what a file is, and the importer
+  ships none of Serum's wavetables, noises or presets: it reads the ones the
+  user has.
 
 ## Look and feel
 

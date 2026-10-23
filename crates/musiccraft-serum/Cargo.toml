@@ -1,0 +1,19 @@
+[package]
+name = "musiccraft-serum"
+description = "Imports Serum and Serum 2 presets into Antiserum: a Rust port of serum2vital"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+musiccraft-antiserum.workspace = true
+musiccraft-patch.workspace = true
+musiccraft-wavetables.workspace = true
+serde_json.workspace = true
+miniz_oxide.workspace = true
+ruzstd.workspace = true
+
+[lints]
+workspace = true

@@ -232,7 +232,9 @@ impl Dialog {
             Purpose::AddMarker(_) => "Marker name",
             Purpose::TimeSignature(_) => "Time signature from here (n/d; none removes the change)",
             Purpose::SavePatch(_) => "Save Antiserum patch (.json)",
-            Purpose::OpenPatch(_) => "Open Antiserum patch (.json)",
+            Purpose::OpenPatch(_) => {
+                "Open Antiserum patch (.json) or Serum preset (.fxp, .SerumPreset)"
+            }
             Purpose::AntiserumSample(_, _) => {
                 "Oscillator sample (file path or builtin:<sound>; - clears)"
             }
