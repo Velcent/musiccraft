@@ -6,8 +6,9 @@ or loop can be remixed, sampled or practised along with.
 
 ## Behaviour
 
-- `sample.split_stems <channel>` reads the sampler channel's sample, splits
-  it and writes four 32-bit float WAV files at the sample's own rate into
+- `sample.split_stems <channel> [auto|demucs|builtin]` reads the sampler
+  channel's sample, splits it with the chosen engine (below; `auto` when
+  left out) and writes four 32-bit float WAV files at the sample's own rate into
   `stems/<sample name>-<n>/` beside the project (the first free number):
   `vocals.wav`, `drums.wav`, `bass.wav` and `other.wav`. Then it does what
   `sample.add_stems` does with them. The project must have been saved, so
@@ -30,10 +31,63 @@ or loop can be remixed, sampled or practised along with.
   is). Built-in sounds are split as rendered at 48 kHz.
 - The four stems always add up to the original sound (to rounding), so
   nothing is lost: what the splitter cannot place goes to **other**.
+- `sample.stems_info` says which engine is ready: the ONNX Runtime found
+  (its path and version), the GPU execution providers it offers, and
+  whether the Demucs model is installed.
+
+## Engines
+
+- **`demucs`**: Demucs's hybrid transformer model (htdemucs) in ONNX
+  Runtime. Fails if the runtime or the model cannot be had.
+- **`builtin`**: the built-in splitter below. Always works; a rough split.
+- **`auto`** (the default and the menus' choice): Demucs, else the
+  built-in splitter. The message after the split says which ran and, after
+  a fallback, why Demucs did not ("… with Demucs on CUDA", "… with the
+  built-in splitter; Demucs: ONNX Runtime is not installed").
+
+### Demucs
+
+- **ONNX Runtime** is a shared library loaded when first needed. The first
+  of these that loads is used, for the rest of the session:
+  `MUSICCRAFT_ONNXRUNTIME` or `ORT_DYLIB_PATH` when set; a system-wide
+  install (`/usr/lib`, `/usr/lib64`, `/usr/local/lib`,
+  `/usr/lib/x86_64-linux-gnu`; `/opt/homebrew/lib` and `/usr/local/lib` on
+  macOS); then the copy shipped with the program (beside it, in `../lib` or
+  in the app bundle's `Frameworks`). Version 1.22 or newer.
+- **GPU first.** The model opens on the first GPU execution provider the
+  runtime offers that accepts it: CUDA, MIGraphX, ROCm, then DirectML
+  (Windows); CoreML on macOS; then WebGPU; else the CPU. Operations a
+  provider cannot run fall back to the CPU inside ONNX Runtime.
+- **What the packages ship** (`packaging/onnxruntime/fetch.sh`, Microsoft's
+  official ONNX Runtime 1.22.0, MIT licence):
+  - Windows: the DirectML build, so any DirectX 12 GPU (NVIDIA, AMD,
+    Intel) through Windows's own DirectML, else the CPU.
+  - macOS: the universal build with CoreML (GPU and Neural Engine on Apple
+    Silicon), else the CPU.
+  - Linux (tarball and Flatpak): the CPU build. A system ONNX Runtime built
+    with CUDA or ROCm takes precedence, so installing one gives GPU
+    splitting.
+- **The model** is `htdemucs-v1.onnx` in the per-user data folder's
+  `models/` (`MUSICCRAFT_STEM_MODEL` overrides the path). When it is
+  missing, the first Demucs split downloads it (with the system's `curl`)
+  from the `stem-model-v1` release of this repository, through a
+  temporary `.part` file; the hint bar shows the download's progress.
+  `.github/workflows/stem-model.yml` makes that file from Demucs's released
+  weights with `tools/stem-model/export.py` and checks it against Demucs.
+- **The split** follows Demucs's own `apply_model` without random shifts:
+  the sound is resampled to the model's 44.1 kHz (linearly) and normalised
+  by the mean and deviation of its mono mix; 7.8 s segments overlap by a
+  quarter and are cross-faded with triangle weights; each segment's
+  spectrogram (4096-point, 1024-sample hop, HTDemucs's padding) and
+  waveform go into the network, and its spectrogram and waveform outputs
+  are added. Other is the sound minus vocals, drums and bass, so the stems
+  add up.
+- On a recent many-core CPU a split takes about a third of the sound's
+  length; on a GPU it is faster (not yet measured).
 
 ## The built-in splitter
 
-The splitter needs no model or download. It works on a short-time spectrum
+The built-in splitter needs no model or download. It works on a short-time spectrum
 (Hann-root windows of about 85 ms at quarter-window hops, overlap-added
 back) and gives every frequency bin of every frame a share of each stem;
 the shares add up to one.
@@ -51,8 +105,8 @@ the shares add up to one.
 
 This is a rough split. Drums and bass come out well on most mixes; vocals
 work on stereo mixes with a centred voice, and take any centred lead
-instrument with them. A trained model can replace the splitter later
-behind the same commands.
+instrument with them. Demucs (above) does much better and is
+used whenever it can run.
 
 ## Interface
 
@@ -61,7 +115,8 @@ behind the same commands.
   for each sound the selected audio clips play) and the right-click menu of
   an audio item in the playlist's clip list (with Channel settings…).
 - The app splits in the background: the hint bar shows "Splitting ‹name›
-  into stems: 40%", and the app stays usable. When the split finishes, the
+  into stems: 40%" (before the first Demucs split, "Downloading the stem
+  model (first use only): 40%"), and the app stays usable. When the split finishes, the
   app runs `sample.add_stems` with the new files (one undo step), on the
   channel wherever it has moved meanwhile. One split runs at a time; more
   wait in turn ("Splitting ‹name› into stems; 2 more waiting"). The CLI and
@@ -69,6 +124,13 @@ behind the same commands.
 
 ## Sources
 
+- Demucs: A. Défossez, "Hybrid Spectrogram and Waveform Source
+  Separation" (2021) and S. Rouard, F. Massa, A. Défossez, "Hybrid
+  Transformers for Music Source Separation" (ICASSP 2023); the code and
+  weights (https://github.com/adefossez/demucs) are MIT licensed. The split
+  around the network follows its `apply_model`, `_spec` and `_ispec`.
+- ONNX Runtime (https://onnxruntime.ai), MIT licence; the `ort` crate's
+  execution providers.
 - Own design. Four-stem splitting (vocals, drums, bass, other) is the
   common split of open source separators; harmonic–percussive separation by
   median filtering is the published method of D. Fitzgerald, "Harmonic/

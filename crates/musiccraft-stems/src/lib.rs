@@ -72,6 +72,12 @@ impl Audio {
 pub struct Stems([Audio; 4]);
 
 impl Stems {
+    /// Stems given in [`Stem::ALL`] order.
+    #[must_use]
+    pub fn new(stems: [Audio; 4]) -> Self {
+        Self(stems)
+    }
+
     /// One stem.
     #[must_use]
     pub fn get(&self, stem: Stem) -> &Audio {

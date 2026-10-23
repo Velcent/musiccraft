@@ -28,6 +28,7 @@ musiccraft-antiserum = { path = "crates/musiccraft-antiserum" }
 musiccraft-paths = { path = "crates/musiccraft-paths" }
 musiccraft-samples = { path = "crates/musiccraft-samples" }
 musiccraft-stems = { path = "crates/musiccraft-stems" }
+musiccraft-demucs = { path = "crates/musiccraft-demucs" }
 musiccraft-render = { path = "crates/musiccraft-render" }
 musiccraft-audio = { path = "crates/musiccraft-audio" }
 musiccraft-cli = { path = "crates/musiccraft-cli" }
@@ -50,6 +51,9 @@ vorbis_rs = "0.5.6"
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "ogg", "vorbis"] }
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 midir = "0.11"
+# ONNX Runtime, loaded at run time (no build-time download); the GPU
+# execution providers are tried in turn (docs/spec/stems.md).
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22", "cuda", "rocm", "migraphx", "directml", "coreml", "webgpu"] }
 egui = "0.36"
 # nih-plug from GitHub, pinned (roadmap D2).
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", default-features = false }

@@ -17,6 +17,7 @@ mod midi_export;
 pub mod plugins;
 mod sample_edit;
 mod sequence;
+mod stem_engine;
 mod stems;
 
 pub use bridge::{Bridge, SyncReport};
@@ -32,6 +33,10 @@ pub use plugins::{
 };
 pub use sample_edit::SampleEditCommand;
 pub use sequence::{build_full_sequence, build_sequence};
+pub use stem_engine::{
+    Engine as StemEngine, MODEL_FILE as STEM_MODEL_FILE, MODEL_URL as STEM_MODEL_URL,
+    model_path as stem_model_path,
+};
 pub use stems::{AddStemsCommand, SplitStemsCommand, StemJob};
 
 use musiccraft_commands::Registry;

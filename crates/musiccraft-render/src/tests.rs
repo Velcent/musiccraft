@@ -967,7 +967,7 @@ fn stems_split_into_channels_and_clips_and_undo() {
          playlist.add_audio_clip 1 3 0 1",
     );
     assert!(
-        s.run_line("sample.split_stems 1").is_err(),
+        s.run_line("sample.split_stems 1 builtin").is_err(),
         "an unsaved project has nowhere to put files"
     );
     s.run_line(&format!(
@@ -975,7 +975,7 @@ fn stems_split_into_channels_and_clips_and_undo() {
         dir.join("p.mcproj").display()
     ))
     .unwrap();
-    run(&mut s, "sample.split_stems 1");
+    run(&mut s, "sample.split_stems 1 builtin");
     let project = s.project();
     assert_eq!(project.channels.len(), 5);
     let name = &project.channels[0].name;
@@ -1039,8 +1039,12 @@ fn stems_split_into_channels_and_clips_and_undo() {
     );
     run(&mut s, "channel.add_synth");
     assert!(
-        s.run_line("sample.split_stems 6").is_err(),
+        s.run_line("sample.split_stems 6 builtin").is_err(),
         "only sampler channels split"
+    );
+    assert!(
+        s.run_line("sample.split_stems 1 magic").is_err(),
+        "unknown engines are refused"
     );
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -1056,11 +1060,11 @@ fn stem_jobs_split_in_the_background() {
         dir.join("p.mcproj").display()
     ))
     .unwrap();
-    let job = crate::StemJob::start(s.project(), 1).unwrap();
+    let job = crate::StemJob::start(s.project(), 1, crate::StemEngine::Builtin).unwrap();
     assert_eq!(job.name(), s.project().channels[0].name);
     let invocation = loop {
         if let Some(result) = job.poll(s.project()) {
-            break result.unwrap().unwrap();
+            break result.unwrap().unwrap().0;
         }
         std::thread::yield_now();
     };
@@ -1069,7 +1073,7 @@ fn stem_jobs_split_in_the_background() {
     s.run(&invocation).unwrap();
     assert_eq!(s.project().channels.len(), 5);
 
-    let job = crate::StemJob::start(s.project(), 1).unwrap();
+    let job = crate::StemJob::start(s.project(), 1, crate::StemEngine::Builtin).unwrap();
     job.cancel();
     let result = loop {
         if let Some(result) = job.poll(s.project()) {
@@ -1084,7 +1088,7 @@ fn stem_jobs_split_in_the_background() {
             "a cancelled split leaves no folder"
         );
     }
-    assert!(crate::StemJob::start(s.project(), 9).is_err());
+    assert!(crate::StemJob::start(s.project(), 9, crate::StemEngine::Builtin).is_err());
     std::fs::remove_dir_all(&dir).ok();
 }
 

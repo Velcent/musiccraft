@@ -10,6 +10,9 @@
 # with a certificate that is already in the keychain (hardened runtime plus
 # entitlements.plist, which lets the app load third-party CLAP plugins and record
 # audio). Notarization is not done here.
+#
+# ORT_DIR, when set, is the folder packaging/onnxruntime/fetch.sh filled: ONNX
+# Runtime for stem splitting goes into Contents/Frameworks, signed with the app.
 set -euo pipefail
 
 if [ "$#" -ne 4 ]; then
@@ -30,6 +33,10 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/musiccraft"
 chmod 755 "$app/Contents/MacOS/musiccraft"
 sed "s/@VERSION@/$version/g" "$here/Info.plist.in" > "$app/Contents/Info.plist"
+if [ -n "${ORT_DIR:-}" ]; then
+  mkdir -p "$app/Contents/Frameworks"
+  cp "$ORT_DIR/libonnxruntime.dylib" "$ORT_DIR/ONNXRUNTIME-LICENSE.txt" "$app/Contents/Frameworks/"
+fi
 
 # Build the .icns from the 1024px master.
 iconset="$work/MusicCraft.iconset"

@@ -13,7 +13,9 @@ use musiccraft_project::{
     Channel, ChannelId, Clip, ClipSource, Instrument, PLAYLIST_TRACKS, Project,
 };
 use musiccraft_samples::{SampleCache, WavFormat, write_wav};
-use musiccraft_stems::{Stem, Stems, split};
+use musiccraft_stems::{Stem, Stems};
+
+use crate::stem_engine::{Engine, Phase};
 
 /// Rate built-in sounds are made at when split.
 const BUILTIN_RATE: u32 = 48_000;
@@ -96,14 +98,21 @@ impl Source {
         })
     }
 
-    /// Splits the sound and writes the stems. Returns their paths relative
-    /// to the project, in [`Stem::ALL`] order, or `None` if cancelled.
-    fn split(&self, progress: &mut dyn FnMut(f32) -> bool) -> Result<Option<[String; 4]>, String> {
-        let Ok(stems) = split(&self.left, &self.right, self.rate, progress) else {
+    /// Splits the sound with `engine` and writes the stems. Returns their
+    /// paths relative to the project, in [`Stem::ALL`] order, and how they
+    /// were made, or `None` if cancelled.
+    fn split(
+        &self,
+        engine: Engine,
+        progress: &mut dyn FnMut(Phase, f32) -> bool,
+    ) -> Result<Option<Split>, String> {
+        let result =
+            crate::stem_engine::split(engine, &self.left, &self.right, self.rate, progress);
+        let Ok(Some((stems, how))) = result else {
             let _ = std::fs::remove_dir(&self.folder);
-            return Ok(None);
+            return result.map(|_| None);
         };
-        self.write(&stems).map(Some)
+        self.write(&stems).map(|paths| Some((paths, how)))
     }
 
     fn write(&self, stems: &Stems) -> Result<[String; 4], String> {
@@ -223,27 +232,41 @@ impl Command for SplitStemsCommand {
     }
 
     fn summary(&self) -> &'static str {
-        "Split a sampler channel's sound into vocals, drums, bass and other stems, each a new channel (audio clips get stem clips)."
+        "Split a sampler channel's sound into vocals, drums, bass and other stems, each a new channel (audio clips get stem clips); Demucs when installed, else the built-in splitter."
     }
 
     fn usage(&self) -> &'static str {
-        "sample.split_stems <channel>"
+        "sample.split_stems <channel> [auto|demucs|builtin]"
     }
 
     fn execute(&self, project: &mut Project, args: &[String]) -> Result<Outcome, CommandError> {
-        let [channel] = args else {
-            return Err(CommandError::Usage {
-                command: self.name().to_owned(),
-                usage: self.usage().to_owned(),
-            });
+        let (channel, engine) = match args {
+            [channel] => (channel, Engine::Auto),
+            [channel, engine] => (
+                channel,
+                Engine::parse(engine).ok_or_else(|| {
+                    invalid(
+                        self.name(),
+                        format!("`{engine}` is not auto, demucs or builtin"),
+                    )
+                })?,
+            ),
+            _ => {
+                return Err(CommandError::Usage {
+                    command: self.name().to_owned(),
+                    usage: self.usage().to_owned(),
+                });
+            }
         };
         let source = Source::read(project, self.name(), channel)?;
-        let paths = source
-            .split(&mut |_| true)
-            .map_err(CommandError::Io)?
+        let (paths, how) = source
+            .split(engine, &mut |_, _| true)
+            .map_err(|why| invalid(self.name(), why))?
             .ok_or_else(|| invalid(self.name(), "cancelled"))?;
         let (index, _) = sampler(project, self.name(), channel)?;
-        add_stems(project, self.name(), index, &paths)
+        let mut outcome = add_stems(project, self.name(), index, &paths)?;
+        outcome.message = format!("{} with {how}", outcome.message);
+        Ok(outcome)
     }
 }
 
@@ -284,6 +307,10 @@ impl Command for AddStemsCommand {
     }
 }
 
+/// A finished split: the stems' paths in [`Stem::ALL`] order, and how they
+/// were made.
+type Split = ([String; 4], String);
+
 /// A split running on a worker thread, for the app: it reads the sound now,
 /// splits and writes the stems in the background, and then hands back the
 /// `sample.add_stems` invocation to run.
@@ -291,18 +318,19 @@ pub struct StemJob {
     channel: ChannelId,
     name: String,
     progress: Arc<AtomicU32>,
+    downloading: Arc<AtomicBool>,
     cancel: Arc<AtomicBool>,
-    done: Receiver<Result<Option<[String; 4]>, String>>,
+    done: Receiver<Result<Option<Split>, String>>,
 }
 
 impl StemJob {
-    /// Starts splitting channel `number` (1-based).
+    /// Starts splitting channel `number` (1-based) with `engine`.
     ///
     /// # Errors
     ///
     /// As `sample.split_stems`: not a sampler channel, an unsaved project or
     /// an unreadable sound.
-    pub fn start(project: &Project, number: usize) -> Result<Self, CommandError> {
+    pub fn start(project: &Project, number: usize, engine: Engine) -> Result<Self, CommandError> {
         let command = "sample.split_stems";
         let raw = number.to_string();
         let source = Source::read(project, command, &raw)?;
@@ -310,12 +338,15 @@ impl StemJob {
         let (id, name) = (chosen.id, chosen.name.clone());
         let progress = Arc::new(AtomicU32::new(0));
         let cancel = Arc::new(AtomicBool::new(false));
+        let downloading = Arc::new(AtomicBool::new(false));
         let (send, done) = channel();
         let (shared, stop) = (Arc::clone(&progress), Arc::clone(&cancel));
+        let fetching = Arc::clone(&downloading);
         std::thread::Builder::new()
             .name("stems".to_owned())
             .spawn(move || {
-                let result = source.split(&mut |done| {
+                let result = source.split(engine, &mut |phase, done| {
+                    fetching.store(phase == Phase::Download, Ordering::Relaxed);
                     shared.store(done.to_bits(), Ordering::Relaxed);
                     !stop.load(Ordering::Relaxed)
                 });
@@ -326,6 +357,7 @@ impl StemJob {
             channel: id,
             name,
             progress,
+            downloading,
             cancel,
             done,
         })
@@ -337,10 +369,17 @@ impl StemJob {
         &self.name
     }
 
-    /// How far the split is, 0 to 1.
+    /// How far the split (or the model's download) is, 0 to 1.
     #[must_use]
     pub fn progress(&self) -> f32 {
         f32::from_bits(self.progress.load(Ordering::Relaxed))
+    }
+
+    /// Whether it is fetching the Demucs model (first use) rather than
+    /// splitting.
+    #[must_use]
+    pub fn downloading(&self) -> bool {
+        self.downloading.load(Ordering::Relaxed)
     }
 
     /// Asks the split to stop; [`StemJob::poll`] then gives `Ok(None)`.
@@ -349,26 +388,27 @@ impl StemJob {
     }
 
     /// `None` while the split runs; then the invocation that adds the stems
-    /// to `project` (to the channel wherever it has moved), `Ok(None)` if the
-    /// split was cancelled, or why it failed.
+    /// to `project` (to the channel wherever it has moved) and how they were
+    /// made, `Ok(None)` if the split was cancelled, or why it failed.
     #[must_use]
-    pub fn poll(&self, project: &Project) -> Option<Result<Option<Invocation>, String>> {
+    pub fn poll(&self, project: &Project) -> Option<Result<Option<(Invocation, String)>, String>> {
         let result = match self.done.try_recv() {
             Ok(result) => result,
             Err(TryRecvError::Empty) => return None,
             Err(TryRecvError::Disconnected) => Err("the split stopped".to_owned()),
         };
-        Some(result.and_then(|paths| {
-            let Some(paths) = paths else {
+        Some(result.and_then(|done| {
+            let Some((paths, how)) = done else {
                 return Ok(None);
             };
             let number = project
                 .channel_position(self.channel)
                 .ok_or_else(|| format!("{} was removed before its stems were ready", self.name))?;
-            Ok(Some(Invocation::new(
+            let invocation = Invocation::new(
                 "sample.add_stems",
                 std::iter::once((number + 1).to_string()).chain(paths),
-            )))
+            );
+            Ok(Some((invocation, how)))
         }))
     }
 }

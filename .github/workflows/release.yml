@@ -92,6 +92,9 @@ jobs:
         run: bash packaging/set-version.sh "$VERSION"
       - name: Build
         run: cargo build --release --locked -p musiccraft-app -p musiccraft-mcp
+      - name: Fetch ONNX Runtime
+        shell: bash
+        run: bash packaging/onnxruntime/fetch.sh windows ort
       - name: Install WiX
         run: dotnet tool install --global wix --version 4.0.5
       - name: Build MSI
@@ -103,6 +106,7 @@ jobs:
           wix build -arch x64 `
             -d Version=$msiVersion `
             -d Exe=target\release\musiccraft.exe `
+            -d Ort=ort `
             -d Icon=packaging\icons\musiccraft.ico `
             -o "dist\MusicCraft-$env:VERSION-windows-x64.msi" `
             packaging\windows\musiccraft.wxs
@@ -115,7 +119,7 @@ jobs:
           $msiVersion = $env:VERSION.Split('-')[0]
           $msi = (Resolve-Path dist\*.msi).Path
           $old = "$env:RUNNER_TEMP\old.msi"
-          wix build -arch x64 -d Version=0.0.1 -d Exe=target\release\musiccraft.exe -d Icon=packaging\icons\musiccraft.ico -o $old packaging\windows\musiccraft.wxs
+          wix build -arch x64 -d Version=0.0.1 -d Exe=target\release\musiccraft.exe -d Ort=ort -d Icon=packaging\icons\musiccraft.ico -o $old packaging\windows\musiccraft.wxs
           if ($LASTEXITCODE -ne 0) { Fail "could not build the old test package" }
           $p = Start-Process msiexec -ArgumentList "/i `"$old`" /qn /norestart" -Wait -PassThru
           if ($p.ExitCode -ne 0) { Fail "installing the old version exited $($p.ExitCode)" }
@@ -126,6 +130,7 @@ jobs:
           if ($entries[0].DisplayVersion -ne $msiVersion) { Fail "installed version is $($entries[0].DisplayVersion), expected $msiVersion" }
           $dir = "$env:ProgramFiles\MusicCraft"
           if (-not (Test-Path "$dir\musiccraft.exe")) { Fail "musiccraft.exe missing from $dir" }
+          if (-not (Test-Path "$dir\onnxruntime.dll")) { Fail "onnxruntime.dll missing from $dir" }
           $lnk = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\MusicCraft.lnk"
           if (-not (Test-Path $lnk)) { Fail "Start menu shortcut missing" }
           $p = Start-Process msiexec -ArgumentList "/x `"$msi`" /qn /norestart /l*v uninstall.log" -Wait -PassThru
@@ -139,6 +144,7 @@ jobs:
           $dir = "MusicCraft-$env:VERSION-windows-x64-portable"
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item target\release\musiccraft.exe $dir\
+          Copy-Item ort\* $dir\
           # The MCP server, so an assistant (for example in CreativeCraft) can drive MusicCraft.
           Copy-Item target\release\musiccraft-mcp.exe $dir\
           $v = & "$dir\musiccraft-mcp.exe" --version
@@ -175,7 +181,11 @@ jobs:
               "target/x86_64-apple-darwin/release/$bin"
             lipo -info "build/$bin"
           done
+      - name: Fetch ONNX Runtime
+        run: bash packaging/onnxruntime/fetch.sh macos ort
       - name: Build app bundle and DMG
+        env:
+          ORT_DIR: ort
         run: |
           mkdir -p dist
           bash packaging/macos/build-dmg.sh "$VERSION" build/musiccraft \
@@ -206,6 +216,7 @@ jobs:
           app="$mnt/MusicCraft.app"
           [ -x "$app/Contents/MacOS/musiccraft" ] || fail "app executable missing"
           [ -f "$app/Contents/Resources/MusicCraft.icns" ] || fail "app icon missing"
+          [ -f "$app/Contents/Frameworks/libonnxruntime.dylib" ] || fail "ONNX Runtime missing"
           [ "$(readlink "$mnt/Applications")" = "/Applications" ] || fail "Applications shortcut missing"
           out=$(codesign --verify --deep --strict "$app" 2>&1) || fail "signature does not verify: $out"
           archs=$(lipo -archs "$app/Contents/MacOS/musiccraft")
@@ -240,7 +251,15 @@ jobs:
       - name: Apply version
         run: bash packaging/set-version.sh "$VERSION"
       - name: Build
-        run: cargo build --release --locked -p musiccraft-app -p musiccraft-mcp
+        run: cargo build --release --locked -p musiccraft-app -p musiccraft-mcp -p musiccraft-cli
+      - name: Fetch ONNX Runtime
+        run: bash packaging/onnxruntime/fetch.sh linux ort
+      # The shipped runtime loads and the stem splitter sees it.
+      - name: Check ONNX Runtime
+        run: |
+          out=$(MUSICCRAFT_ONNXRUNTIME=ort/libonnxruntime.so target/release/musiccraft-cli run sample.stems_info)
+          echo "$out"
+          echo "$out" | grep -q "^ok: ONNX Runtime[ 0-9.]* at " || { echo "::error title=ONNX Runtime::the bundled runtime did not load"; exit 1; }
       - name: Portable tarball
         run: |
           mkdir -p dist binary
@@ -254,10 +273,12 @@ jobs:
           v=$("$dir/musiccraft-mcp" --version)
           [ "$v" = "musiccraft-mcp $VERSION" ] || { echo "::error title=Portable tarball::musiccraft-mcp --version printed '$v'"; exit 1; }
           cp packaging/portable/README-linux.txt "$dir/README.txt"
+          cp ort/libonnxruntime.so ort/ONNXRUNTIME-LICENSE.txt "$dir/"
           cp packaging/icons/musiccraft-512.png "$dir/musiccraft.png"
           tar -czf "dist/$dir.tar.gz" "$dir"
-          # Stripped binary for the Flatpak job.
+          # Stripped binary and ONNX Runtime for the Flatpak job.
           cp "$dir/musiccraft" binary/musiccraft
+          cp ort/libonnxruntime.so ort/ONNXRUNTIME-LICENSE.txt binary/
       - uses: actions/upload-artifact@v4
         with:
           name: dist-linux
@@ -266,7 +287,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: linux-binary
-          path: binary/musiccraft
+          path: binary/*
           if-no-files-found: error
 
   flatpak:
@@ -290,6 +311,7 @@ jobs:
         run: |
           mkdir -p build-src dist
           cp linux-binary/musiccraft build-src/musiccraft
+          cp linux-binary/libonnxruntime.so linux-binary/ONNXRUNTIME-LICENSE.txt build-src/
           cp packaging/flatpak/$APP_ID.yml packaging/flatpak/$APP_ID.desktop build-src/
           cp packaging/icons/musiccraft-512.png build-src/
           sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%F)/" \

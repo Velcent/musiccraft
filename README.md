@@ -134,8 +134,11 @@ Hover any control and the hint bar at the top says what it does.
 - **Export**: WAV (16/24/32f), FLAC (16/24), or one stem per mixer insert.
 - **Stem splitting**: right-click a sampler channel or an audio clip's sound →
   Split into stems makes vocals, drums, bass and other channels, with clips
-  under the original (muted). A built-in splitter, no model download; see
-  `docs/spec/stems.md`.
+  under the original (muted). It uses Demucs on the GPU where it can
+  (DirectML on Windows, CoreML on macOS, CUDA or ROCm through a system ONNX
+  Runtime on Linux), else on the CPU; the model (about 170 MB) downloads the
+  first time. Without ONNX Runtime a rough built-in splitter does the job.
+  `sample.stems_info` says which is ready; see `docs/spec/stems.md`.
 - **FL Studio projects**: `project.import_flp song.flp` converts tempo,
   channels, patterns and notes, the playlist and the mixer. FL's own plugins
   become synths and VST3 plugins carry over without their settings; the

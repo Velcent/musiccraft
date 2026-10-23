@@ -1,0 +1,19 @@
+[package]
+name = "musiccraft-demucs"
+description = "Runs Demucs (HTDemucs, ONNX) with ONNX Runtime to split a sound into stems"
+version.workspace = true
+edition.workspace = true
+# ort needs a newer compiler than the rest of the workspace.
+rust-version = "1.92"
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+musiccraft-dsp.workspace = true
+musiccraft-stems.workspace = true
+ort.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

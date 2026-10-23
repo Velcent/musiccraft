@@ -114,7 +114,8 @@ struct App {
     /// A stem split running in the background (`docs/spec/stems.md`).
     stems: Option<musiccraft_render::StemJob>,
     /// Channels waiting to be split after it, first first.
-    stem_queue: std::collections::VecDeque<musiccraft_project::ChannelId>,
+    stem_queue:
+        std::collections::VecDeque<(musiccraft_project::ChannelId, musiccraft_render::StemEngine)>,
 }
 
 /// What happens after the user deals with unsaved changes.
@@ -797,12 +798,18 @@ impl App {
     fn start_stems(&mut self, invocation: &Invocation) {
         let project = self.session.project();
         let number: Option<usize> = invocation.args.first().and_then(|n| n.parse().ok());
+        let engine = match invocation.args.get(1) {
+            Some(raw) => musiccraft_render::StemEngine::parse(raw),
+            None => Some(musiccraft_render::StemEngine::Auto),
+        };
         if let Some(job) = &self.stems {
             let queued = number
                 .and_then(|n| project.channels.get(n.wrapping_sub(1)))
-                .map(|c| c.id);
-            if let Some(id) = queued.filter(|id| !self.stem_queue.contains(id)) {
-                self.stem_queue.push_back(id);
+                .map(|c| c.id)
+                .zip(engine);
+            if let Some(entry) = queued.filter(|(id, _)| self.stem_queue.iter().all(|q| q.0 != *id))
+            {
+                self.stem_queue.push_back(entry);
             }
             let text = format!(
                 "Splitting {} into stems; {} more waiting",
@@ -813,8 +820,11 @@ impl App {
             return;
         }
         let started = number
-            .ok_or_else(|| "sample.split_stems needs a channel number".to_owned())
-            .and_then(|n| musiccraft_render::StemJob::start(project, n).map_err(|e| e.to_string()));
+            .zip(engine)
+            .ok_or_else(|| "usage: sample.split_stems <channel> [auto|demucs|builtin]".to_owned())
+            .and_then(|(n, engine)| {
+                musiccraft_render::StemJob::start(project, n, engine).map_err(|e| e.to_string())
+            });
         match started {
             Ok(job) => {
                 self.ui
@@ -831,18 +841,21 @@ impl App {
             return;
         };
         let Some(result) = job.poll(self.session.project()) else {
-            let text = format!(
-                "Splitting {} into stems: {:.0}%",
-                job.name(),
-                job.progress() * 100.0
-            );
+            let percent = job.progress() * 100.0;
+            let text = if job.downloading() {
+                format!("Downloading the stem model (first use only): {percent:.0}%")
+            } else {
+                format!("Splitting {} into stems: {percent:.0}%", job.name())
+            };
             self.ui.set_status(text, false);
             return;
         };
         self.stems = None;
         match result {
-            Ok(Some(invocation)) => match self.run_invocation(&invocation) {
-                Ok(outcome) => self.ui.set_status(outcome.message, false),
+            Ok(Some((invocation, how))) => match self.run_invocation(&invocation) {
+                Ok(outcome) => self
+                    .ui
+                    .set_status(format!("{} with {how}", outcome.message), false),
                 Err(err) => self.ui.set_status(err.to_string(), true),
             },
             Ok(None) => self.ui.set_status("stem split cancelled", false),
@@ -850,11 +863,18 @@ impl App {
                 .ui
                 .set_status(format!("stem split failed: {err}"), true),
         }
-        let next = std::iter::from_fn(|| self.stem_queue.pop_front())
-            .find_map(|id| self.session.project().channel_position(id));
-        if let Some(index) = next {
-            let number = (index + 1).to_string();
-            self.start_stems(&Invocation::new("sample.split_stems", [number]));
+        let next = std::iter::from_fn(|| self.stem_queue.pop_front()).find_map(|(id, engine)| {
+            let index = self.session.project().channel_position(id)?;
+            Some((index, engine))
+        });
+        if let Some((index, engine)) = next {
+            let engine = match engine {
+                musiccraft_render::StemEngine::Auto => "auto",
+                musiccraft_render::StemEngine::Demucs => "demucs",
+                musiccraft_render::StemEngine::Builtin => "builtin",
+            };
+            let args = [(index + 1).to_string(), engine.to_owned()];
+            self.start_stems(&Invocation::new("sample.split_stems", args));
         }
     }
 

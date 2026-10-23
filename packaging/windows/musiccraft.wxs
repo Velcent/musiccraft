@@ -4,7 +4,11 @@
 
   Build (see .github/workflows/release.yml):
     wix build -arch x64 -d Version=0.1.0 -d Exe=target\release\musiccraft.exe ^
-      -d Icon=packaging\icons\musiccraft.ico -o MusicCraft.msi packaging\windows\musiccraft.wxs
+      -d Ort=ort -d Icon=packaging\icons\musiccraft.ico -o MusicCraft.msi ^
+      packaging\windows\musiccraft.wxs
+
+  Ort is the folder packaging/onnxruntime/fetch.sh filled: ONNX Runtime for
+  stem splitting, installed beside the program.
 
   Installs per machine to "C:\Program Files\MusicCraft" and adds a Start menu
   shortcut. Upgrades replace older versions in place (same UpgradeCode).
@@ -30,6 +34,10 @@
         <Component Id="MusicCraftExeComponent" Guid="*">
           <File Id="MusicCraftExe" Name="musiccraft.exe" Source="$(var.Exe)" KeyPath="yes" />
         </Component>
+        <Component Id="OnnxRuntimeComponent" Guid="*">
+          <File Id="OnnxRuntimeDll" Name="onnxruntime.dll" Source="$(var.Ort)\onnxruntime.dll" KeyPath="yes" />
+          <File Id="OnnxRuntimeLicense" Name="ONNXRUNTIME-LICENSE.txt" Source="$(var.Ort)\ONNXRUNTIME-LICENSE.txt" />
+        </Component>
       </Directory>
     </StandardDirectory>
 
@@ -48,6 +56,7 @@
 
     <Feature Id="Main" Title="MusicCraft" Level="1">
       <ComponentRef Id="MusicCraftExeComponent" />
+      <ComponentRef Id="OnnxRuntimeComponent" />
       <ComponentRef Id="StartMenuShortcutComponent" />
     </Feature>
   </Package>

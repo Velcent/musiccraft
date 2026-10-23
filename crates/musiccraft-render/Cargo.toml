@@ -18,6 +18,7 @@ musiccraft-project.workspace = true
 musiccraft-paths.workspace = true
 musiccraft-samples.workspace = true
 musiccraft-stems.workspace = true
+musiccraft-demucs.workspace = true
 musiccraft-antiserum.workspace = true
 musiccraft-antiserum-presets.workspace = true
 musiccraft-patch.workspace = true

@@ -581,5 +581,6 @@ pub fn register_with(
     registry.register(Box::new(crate::SampleEditCommand))?;
     registry.register(Box::new(crate::SplitStemsCommand))?;
     registry.register(Box::new(crate::AddStemsCommand))?;
+    registry.register(Box::new(crate::stem_engine::StemsInfoCommand))?;
     registry.register(Box::new(crate::plugins::PluginListCommand { host }))
 }

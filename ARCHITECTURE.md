@@ -31,6 +31,7 @@ musiccraft-ui ──► musiccraft-editors ──► musiccraft-dsp, musiccraft-
 musiccraft-cli ──► musiccraft-wavetables
 musiccraft-project ──► musiccraft-patch
 musiccraft-render ──► musiccraft-stems ──► musiccraft-dsp
+musiccraft-render ──► musiccraft-demucs ──► musiccraft-stems, ort
 musiccraft-antiserum-presets ──► musiccraft-antiserum, musiccraft-wavetables, musiccraft-patch, musiccraft-samples
 musiccraft-commands, musiccraft-render, musiccraft-editors ──► musiccraft-antiserum-presets
 musiccraft-editors, musiccraft-render, musiccraft-ui ──► musiccraft-instruments
@@ -57,11 +58,12 @@ standalone/ (own workspace) ──► musiccraft-plugin-export
 | `musiccraft-antiserum` | Antiserum, the wavetable synth's sound engine (`docs/spec/antiserum.md`): band-limited wavetables, warps, unison, sub and noise, two multimode filters, envelopes, LFOs and a 32-slot mod matrix; an effects rack of `musiccraft-dsp` effects in ten order slots, a real-time arpeggiator and a step sequencer (`docs/spec/antiserum-fx-arp.md`); sample, multisample, granular and spectral oscillators that play an immutable `Source` (sample, zones, harmonic analysis) built on the main thread (`docs/spec/antiserum-oscillators.md`). Its own parameter table (names and order frozen). Independent of the engine and plugin formats; allocation-free processing. |
 | `musiccraft-engine` | Real-time engine: voice allocation, sequencing, mixing, meters. Driven only by messages. |
 | `musiccraft-stems` | Splits a stereo sound into vocals, drums, bass and other stems (`docs/spec/stems.md`): harmonic–percussive median filtering, frequency bands and stereo centre weighting on a short-time spectrum, with stems that add back up to the sound. No model, no dependencies beyond `musiccraft-dsp`'s FFT. Main or worker thread. |
+| `musiccraft-demucs` | Demucs (HTDemucs, MIT) in ONNX Runtime (`ort`, loaded at run time): finds and loads the runtime, opens the model on the first GPU execution provider that takes it (CUDA, MIGraphX, ROCm, DirectML or CoreML, then WebGPU), else the CPU, and does what Demucs's `apply_model` does around the network: normalising, overlapping segments, its exact transforms and cross-fades. The model comes from `tools/stem-model/export.py`. Main or worker thread. |
 | `musiccraft-samples` | WAV decoding/encoding, FLAC encoding, MP3 and Ogg Vorbis encoding (LAME, libvorbis), sample cache, synthesized built-in sounds. Main thread only. |
 | `musiccraft-clap` | CLAP plugin host: scanning, loading, instances, the audio-thread processor, plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-clap-testplugin`). |
 | `musiccraft-vst3` | VST3 plugin host: scanning modules, component and controller setup, parameters, state, the audio-thread processor, embedded plugin windows. **Allowed to use `unsafe`** (with its test fixture `musiccraft-vst3-testplugin`). |
 | `musiccraft-plugin-window` | The plain X11 window both plugin hosts embed plugin views in. Safe code. |
-| `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`; the safe plugin boundary (`PluginFactory`, `PluginInstance`) and plugin instance management. Antiserum channels run as external processors in the same engine slots as plugins; wavetables, oscillator sources, LFO shapes and sequences reach them as data swapped on the audio thread (`EngineMessage::ExternalData`) and handed back as garbage. Stem splitting: `sample.split_stems`, `sample.add_stems` and `StemJob`, which splits on a worker thread for the app. |
+| `musiccraft-render` | Bridge: diffs a project against engine state and sends messages; offline render; `project.export_wav`; the safe plugin boundary (`PluginFactory`, `PluginInstance`) and plugin instance management. Antiserum channels run as external processors in the same engine slots as plugins; wavetables, oscillator sources, LFO shapes and sequences reach them as data swapped on the audio thread (`EngineMessage::ExternalData`) and handed back as garbage. Stem splitting: `sample.split_stems`, `sample.add_stems`, `sample.stems_info`, the engine choice (Demucs, downloading its model on first use, else the built-in splitter) and `StemJob`, which splits on a worker thread for the app. |
 | `musiccraft-audio` | Opens the output device with `cpal` and runs the engine in its callback; captures input through a lock-free ring for recording. |
 | `musiccraft-cli` | Headless front end: run commands and scripts, dump JSON, play, export. |
 | `musiccraft-mcp` | MCP server (JSON-RPC over stdio) exposing every command as a tool. `control`: the app's localhost live-control channel and the `--connect` relay to it (`docs/spec/live-control.md`); the tools run against any `Host` (its own `Session`, or the open app). |
@@ -214,6 +216,7 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 | `baseview` (git, pinned) | The plugin editor's child window in the host's window, with an OpenGL context (X11, Win32, Cocoa). |
 | `egui_glow`, `glow` | Paint egui with OpenGL inside that window (the app already uses them through eframe). |
 | `keyboard-types` | baseview's key events, translated to egui's. |
+| `ort` (load-dynamic) | Runs the Demucs stem model in ONNX Runtime (the owner's choice, 2026-10-23: Demucs via ONNX Runtime, GPU first). The runtime library is loaded at run time, not linked: the release packages ship Microsoft's official build (MIT), and a system install with CUDA or ROCm is preferred. MIT or Apache-2.0. Needs Rust 1.92, so `musiccraft-demucs` sets its own `rust-version`. |
 
 ## Deferred decisions
 

@@ -27,6 +27,16 @@ commit; this file says what they add up to.
   step-sequenced pattern (every note on one key, as drums usually are) gets
   one row per channel.
 
+### Stem splitting
+
+- Right-click a sampler channel or an audio clip's sound → Split into stems
+  makes vocals, drums, bass and other channels, with clips under the
+  original (muted), in one undo step.
+- It runs Demucs in ONNX Runtime, GPU first: DirectML on Windows, CoreML on
+  macOS, CUDA or ROCm through a system ONNX Runtime on Linux, else the CPU.
+  The model downloads the first time. Without ONNX Runtime a built-in
+  splitter does a rough split.
+
 ### Fixes
 
 - A VST3 plugin that crashes while it is scanned no longer takes MusicCraft
