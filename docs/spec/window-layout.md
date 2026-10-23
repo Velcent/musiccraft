@@ -151,7 +151,9 @@ stay our own. The full target look, window by window, is the style guide in
 ## Density
 
 - Tool and transport buttons are 24 × 22 points.
-- The browser opens 170 points wide (it can be dragged wider).
+- The browser opens 170 points wide. It can be dragged wider, or narrower
+  down to 140 points, the narrowest its header and tabs fit; a drag past that
+  holds it there.
 - Playlist tracks are 60 points tall by default (about three tool buttons, so
   the header has room for two lines); the vertical zoom ranges 18–160 points; a track's own height is a
   percentage of that (`playlist.md`, "Track heights").

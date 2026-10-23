@@ -1601,11 +1601,20 @@ fn header(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
             state.browser.listings.clear();
         }
         ui.add_space(6.0);
-        ui.label(
-            RichText::new("Browser")
-                .size(theme::FONT_TITLE)
-                .color(theme::TEXT_DIM),
+        // The title gives way to the two window buttons in a narrow column.
+        let title = RichText::new("Browser")
+            .size(theme::FONT_TITLE)
+            .color(theme::TEXT_DIM);
+        let galley = egui::WidgetText::from(title.clone()).into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Body,
         );
+        let buttons = 2.0 * 18.0 + 3.0 * ui.spacing().item_spacing.x;
+        if galley.size().x + buttons <= ui.available_width() {
+            ui.label(title);
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if icons::header_button(ui, Icon::Close, false, true, "Close (Alt+F8)").clicked() {
                 state.windows.browser = false;
@@ -1676,10 +1685,17 @@ fn tabs(ui: &mut egui::Ui, state: &mut UiState) {
     }
 }
 
+/// The narrowest the column can be dragged, in points: the header buttons, the
+/// tab glyphs and the search field still fit. The contents must fit this
+/// width, or a drag that clamps the panel here paints it narrower than its
+/// contents and leaves an unpainted strip beside it until the drag ends.
+pub const MIN_WIDTH: f32 = 140.0;
+
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &mut Vec<Action>) {
     egui::Panel::left("browser")
         .resizable(true)
         .default_size(170.0)
+        .min_size(MIN_WIDTH)
         .frame(
             egui::Frame::new()
                 .fill(theme::PANEL)

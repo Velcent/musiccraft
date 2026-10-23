@@ -4126,3 +4126,33 @@ fn double_clicking_a_note_opens_its_properties_and_reset_restores_them() {
     h.settle();
     assert_eq!(h.state.roll.props_note, None);
 }
+
+#[test]
+fn dragging_the_browser_edge_past_its_minimum_stops_at_a_width_its_contents_fit() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.browser = true;
+    h.settle();
+    let edge = h.state.workspace.min.x;
+    let y = 400.0;
+    h.press(pos2(edge, y), PointerButton::Primary);
+    for x in [120.0, 80.0, 40.0, 5.0] {
+        h.frame(vec![Event::PointerMoved(pos2(x, y))]);
+    }
+    // Held past the minimum: the workspace starts where the browser was
+    // clipped, so no unpainted strip opens between them.
+    let held = h.state.workspace.min.x;
+    assert!(
+        (held - crate::browser::MIN_WIDTH).abs() < 1.0,
+        "workspace starts at {held}, browser minimum is {}",
+        crate::browser::MIN_WIDTH
+    );
+    h.release(pos2(5.0, y), PointerButton::Primary);
+    h.settle();
+    assert!((h.state.workspace.min.x - held).abs() < 1.0);
+
+    // It still widens.
+    let edge = h.state.workspace.min.x;
+    h.drag(pos2(edge, y), pos2(300.0, y));
+    h.settle();
+    assert!((h.state.workspace.min.x - 300.0).abs() < 1.0);
+}
