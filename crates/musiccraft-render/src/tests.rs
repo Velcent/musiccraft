@@ -2182,6 +2182,27 @@ fn shaped_automation_segments_reach_the_engine_lane() {
 }
 
 #[test]
+fn automation_range_and_switch_shape_the_engine_lane() {
+    let mut s = session();
+    run(
+        &mut s,
+        "channel.add_synth
+         automation.create channel:1:pan
+         automation.set_points 1 [[0,0.0],[384,1.0]]
+         playlist.add_automation_clip 1 1 0 1
+         transport.set_mode song
+         automation.set_range 1 0.5 1",
+    );
+    // Pan plays from the centre (position 0.5) to hard right.
+    let seq = build_sequence(s.project());
+    let lane = &seq.automation()[0];
+    assert!(lane.value_at(0.0).unwrap().abs() < 1e-3);
+    assert!((lane.value_at(384.0).unwrap() - 1.0).abs() < 1e-3);
+    run(&mut s, "automation.set_enabled 1 off");
+    assert!(build_sequence(s.project()).automation().is_empty());
+}
+
+#[test]
 fn a_loop_region_does_not_change_an_export() {
     let render_song = |lines: &str| {
         let mut s = session();

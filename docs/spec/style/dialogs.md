@@ -599,15 +599,13 @@ Ordered by visual impact.
 
    The tab order is also Audio first, where the guide puts MIDI first. That order is a small preference and can stay if the owner prefers. `docs/spec/settings.md` lists the tabs and must be updated first for the new tabs, the grouping and the control-then-label layout.
 4. **No event editor** for pattern lanes. Lanes can be recorded and cleared (`crates/musiccraft-ui/src/playlist.rs`, "Clear automation (n lanes)"), but there is no window to see or draw them, and no convert-to-clip command. A spec section and commands come first (`docs/spec/recording.md`).
-5. **Automation clip editor is a bare canvas** (`crates/musiccraft-ui/src/automation.rs`, `show`, `canvas`):
-   - The window now has the shared header ("Automation — <name>") and its gestures are in the hint bar, but the header has no tools yet.
-   - The canvas is a fixed-height strip with no scroll bars, zoom, ruler playhead or footer toggles.
-   - Points are added by left-click and deleted by right-click, as `docs/spec/playlist.md` specifies. The guide proposes right-click adds, left-click deselects and right-click on a point opens the point menu; that is a behaviour change that needs `playlist.md` updated first, and today's gestures stay until then.
-   - Bending is Alt+drag on the segment (also in `playlist.md`), and there are no visible hollow tension handles.
-   - There is no point selection, no step drawing or slide mode, no "type value", and no fill under the curve.
-   - The shape menu opens from a segment, not from the point that ends it.
-6. **Automation clips in the playlist show only a thin line** (`docs/screenshots/playlist-mixer.png`, the "Master fade" clip; `crates/musiccraft-ui/src/playlist.rs`). There is no tinted body, no fill under the curve, no points or handles, and no in-clip editing.
-7. **No settings band, LFO mode or multiple targets on automation clips**. `Automation` has only a name, one target and points (`crates/musiccraft-project/src/model.rs`). Range, speed, on/off, LFO and targets need spec and model work first. The separate controllers in the browser (`crates/musiccraft-ui/src/controllers.rs`, `docs/spec/controllers.md`) already cover LFOs and could share widgets with the LFO footer.
+5. **Automation clip editor: what is still missing** (`crates/musiccraft-ui/src/automation.rs`, `curve.rs`). The header menu, clip switcher, settings band (On, Low, High), ruler, curve fill, points, tension handles, selection, point menu with Type value, step drawing, slide, snap toggle, zoom, horizontal scroll bar and playhead are in, with the gestures `docs/spec/playlist.md` now specifies. Still missing:
+   - the switcher is a chevron button in the header's tool group, not a chevron at the end of the title;
+   - no vertical scroll bar or value zoom (the value axis always shows 0–100 %);
+   - the window menu has no curve files, Scale values, Thin out, Smooth, Curve from audio file or the View options;
+   - Middle-click to remove a point from the selection is not bound (Shift+click toggles instead).
+6. **Automation clips in the playlist**: done. The body is darker than a pattern clip's, the curve has a fill, points and handles show while the pointer is over the body, and the point gestures work in place (`crates/musiccraft-ui/src/playlist.rs`, `clip_curve`). There is no separate "automation focus" switch: points show on hover only.
+7. **No Speed, LFO mode or multiple targets on automation clips**. `Automation` now has On, Low and High (`crates/musiccraft-project/src/model.rs`, `automation.set_enabled`, `automation.set_range`). Speed, LFO and targets need spec and model work first. The separate controllers in the browser (`crates/musiccraft-ui/src/controllers.rs`, `docs/spec/controllers.md`) already cover LFOs and could share widgets with the LFO footer.
 8. **No project info page**. The Project tab shows name, tempo, master pitch, pan law, path and counts (`crates/musiccraft-ui/src/settings.rs`, `project`). Author, genre, comments, link, start date and working time do not exist in the project model.
 9. **Sample editor frame is a waveform plus wrapping text buttons** (`crates/musiccraft-ui/src/sample_editor.rs`, `strip` and `show`). It has:
    - no tool row with grouped icons;
@@ -617,7 +615,7 @@ Ordered by visual impact.
    - no right-click menu.
 10. **Confirmation boxes**: only "Unsaved changes" exists (`crates/musiccraft-app/src/main.rs`, the unsaved-changes window). Its buttons are already named by action ("Save", "Don't save", "Cancel"), which matches. Save has the default-button edge, Enter saves and Esc cancels; it still lacks the glyph (there is no warning icon yet). Destructive actions elsewhere (remove track, delete pattern) run at once and rely on undo, which is acceptable. Only add boxes where undo cannot help.
 11. **No progress display anywhere**. Exports and rescans block silently. The hint bar has no progress line (`crates/musiccraft-editors/src/hint.rs`; the hint bar itself is drawn in `crates/musiccraft-ui/src/toolbar.rs`).
-12. **Prompts and canvases carry hard-coded sizes** (`set_min_width` in `dialogs.rs`, `default_size` in `settings.rs`, the `HEIGHT` constant in `automation.rs`). New sizes should come from `docs/spec/window-layout.md` once its secondary-window entries are written.
+12. **Prompts and canvases carry hard-coded sizes** (`set_min_width` in `dialogs.rs`, `default_size` in `settings.rs`, the `GRAPH_HEIGHT` constant in `automation.rs`). New sizes should come from `docs/spec/window-layout.md` once its secondary-window entries are written.
 13. **No shared section-box rule yet.** This section, the controls section and the plugin-windows section must draw section and group boxes the same way (darker box, small heading inside its top-left corner). The design-language section settles the one rule; until then nothing in code changes for it.
 
 ## Sources

@@ -11,19 +11,26 @@ stay our own. The full target look, window by window, is the style guide in
 ## Starting layout
 
 - All four editors (channel rack, mixer, playlist, piano roll) and the browser
-  are open when the app starts: the rack top-left, the mixer to its right, the
-  playlist across the lower part and the piano roll floating over the right
-  half (each section below). That is the first start; afterwards the app
-  starts with the arrangement it had when it last closed.
+  are open when the app starts: the playlist maximized behind everything as
+  the backdrop, then floating over it the rack top-left, the mixer to its
+  right and the piano roll over the right half (each section below). The
+  floating editors open clear of the playlist's header, scroll row and ruler
+  (64 points) and its clip list (136 points), so those stay in view. That is
+  the first start; afterwards the app starts with the arrangement it had when
+  it last closed.
 - **Remembered layout.** On closing, the app keeps in the user settings
   (`window_layout`) which windows are open (the editors, the browser, the
   channel window, the spectrum analyser and the shortcut list), where each
-  floating window was and its size, and which were folded to their header.
+  floating window was and its size, which were folded to their header and
+  which were maximized. A layout saved before maximized windows were kept
+  starts with the playlist as the backdrop.
   The next start opens the same windows in the same places, kept inside the
   workspace like any window. `--open` on the command line overrides it, and
   Ctrl+Shift+H still returns to the default layout.
 - Ctrl+Shift+H (`view.default_layout`) puts them back: the four editors and
-  the browser open, each window unfolded, not maximized and moved to its slot.
+  the browser open, each window unfolded and moved to its slot, and the
+  playlist maximized as the backdrop (restoring it puts it in its slot
+  across the lower part).
 - Enter (`view.maximize playlist`) maximizes the playlist over the workspace
   or restores it, opening it first if it was closed. Neither key acts while a
   dialog is open or a text field has focus.
@@ -82,9 +89,11 @@ stay our own. The full target look, window by window, is the style guide in
   empty header space to maximize or restore.
 - Collapse rolls the window up to its header row and expands it again; the
   window keeps its size for when it is expanded.
-- Maximize fills the workspace and covers the other windows; the window keeps
-  its header, cannot be moved or resized, and keeps filling the workspace if
-  the main window is resized. Restore returns it to its previous rectangle.
+- Maximize fills the workspace exactly and covers the other windows; the
+  window keeps its header, cannot be moved or resized, and keeps filling the
+  workspace if the main window is resized. Restore returns it to its
+  previous rectangle and size, in front. The playlist is the exception: it
+  maximizes behind the other windows (see "Playlist").
 - The window on top is the focused one: its header is a shade lighter, its
   title is in the normal text tone (dimmed in other windows) and its outer
   edge is drawn in the dim accent.
@@ -180,11 +189,19 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Playlist
 
-- The playlist is an editor window, not the workspace background; the
-  background (with its watermark) shows wherever no window covers it. The
-  first time it opens it spans the whole width of the workspace in the lower
-  part, a little more than half the workspace height, and the channel rack
-  sits above it at the top left. F5 shows and hides it.
+- The playlist is an editor window. Maximized, it is the **backdrop**: it
+  fills the workspace behind every floating window and stays behind them
+  when clicked. A click on it gives it the keyboard (its window-local keys
+  work and its edge takes the focus accent) without bringing it forward; a
+  click on a floating window takes the keyboard back. With no floating
+  window open it has the keyboard. It starts maximized (see "Starting
+  layout").
+- Restored (the header button, double-click on empty header space, Enter or
+  the window menu), it is an ordinary floating window that comes to the
+  front when clicked. Its slot spans the whole width of the workspace in the
+  lower part, a little more than half the workspace height, under the
+  channel rack. Maximizing it again sends it back behind the others. F5
+  shows and hides it.
 - Header, left to right: window menu, the snap button (snap glyph and the
   current value), the tools (Draw, Paint, Delete, Mute, Slice, Select, Zoom,
   Play from here), then the title "Playlist — Arrangement" and the window
@@ -231,6 +248,10 @@ stay our own. The full target look, window by window, is the style guide in
 
 ## Sources
 
+- The playlist maximized as the backdrop by default, behind the floating
+  editors: the owner's request (2026-10-23). Keeping the floating editors
+  clear of its header and clip list, and how the backdrop takes the
+  keyboard, are our own design.
 - Starting layout and drag feedback: the style guide's main-window section
   (`docs/spec/style/main-window.md`, from the public manual's
   `basics_interface.htm` overview and `toolbar_panels.htm`, which says

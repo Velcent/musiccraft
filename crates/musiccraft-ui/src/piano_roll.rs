@@ -512,14 +512,15 @@ pub fn show(
     };
     let area = state.workspace;
     let id = egui::Id::new("piano-roll");
+    let slots = state.floating_area();
     let size = vec2(
-        (area.width() / 2.0).max(480.0),
-        (area.height() / 2.0).max(300.0),
+        (slots.width() / 2.0).max(480.0),
+        (slots.height() / 2.0).max(300.0),
     );
     let default = egui::Rect::from_min_size(
         pos2(
-            (area.right() - size.x).max(area.left()),
-            area.top() + area.height() / 4.0,
+            (slots.right() - size.x).max(slots.left()),
+            slots.top() + slots.height() / 4.0,
         ),
         size,
     );

@@ -39,6 +39,14 @@ pub enum Dragged {
         /// The command's arguments after the track.
         args: Vec<String>,
     },
+    /// A pattern from the playlist's clip list, placed as a clip where it
+    /// is dropped on a lane.
+    Pattern {
+        /// The pattern.
+        id: musiccraft_project::PatternId,
+        /// Its name.
+        label: String,
+    },
 }
 
 impl Dragged {
@@ -47,7 +55,7 @@ impl Dragged {
     pub fn sample(&self) -> Option<&str> {
         match self {
             Self::Sample(sample) => Some(sample),
-            Self::Generator { .. } | Self::Effect { .. } => None,
+            Self::Generator { .. } | Self::Effect { .. } | Self::Pattern { .. } => None,
         }
     }
 
@@ -57,7 +65,7 @@ impl Dragged {
         match self {
             Self::Sample(sample) => Some(Invocation::new("channel.add_sampler", [sample.clone()])),
             Self::Generator { add, .. } => Some(add.clone()),
-            Self::Effect { .. } => None,
+            Self::Effect { .. } | Self::Pattern { .. } => None,
         }
     }
 
@@ -84,7 +92,9 @@ impl Dragged {
                         .map(|n| n.to_string_lossy().into_owned())
                 })
                 .unwrap_or_else(|| sample.clone()),
-            Self::Generator { label, .. } | Self::Effect { label, .. } => label.clone(),
+            Self::Generator { label, .. }
+            | Self::Effect { label, .. }
+            | Self::Pattern { label, .. } => label.clone(),
         }
     }
 }
