@@ -709,12 +709,48 @@ pub(crate) fn context_menu(
     actions: &mut Vec<Action>,
 ) {
     let number = (index + 1).to_string();
-    // Two columns: the channel itself, then its steps and order.
+    // Two columns: the channel itself, then its steps and order. Every line
+    // is painted once the columns are laid out, to their own size: a
+    // separator takes all the room left in the popup, so the menu grew each
+    // frame until it covered the screen (issue #20).
     ui.horizontal_top(|ui| {
-        ui.vertical(|ui| channel_items(ui, state, index, channel, actions));
-        ui.separator();
-        ui.vertical(|ui| step_items(ui, state, project, index, &number, actions));
+        let left = Dividers::column(ui, |ui, lines| {
+            channel_items(ui, state, index, channel, lines, actions);
+        });
+        let gap = ui.spacing().item_spacing.x;
+        let (line, _) = ui.allocate_exact_size(vec2(gap, 0.0), Sense::hover());
+        let right = Dividers::column(ui, |ui, lines| {
+            step_items(ui, state, project, index, &number, lines, actions);
+        });
+        let bottom = left.bottom().max(right.bottom());
+        let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+        ui.painter()
+            .vline(line.center().x, line.top()..=bottom, stroke);
     });
+}
+
+/// Where the lines between groups of a menu column go, painted across the
+/// column once its width is known.
+struct Dividers(Vec<f32>);
+
+impl Dividers {
+    /// Lays out a column with `add` and paints its lines. Returns its rect.
+    fn column(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui, &mut Self)) -> egui::Rect {
+        let mut lines = Self(Vec::new());
+        let rect = ui.vertical(|ui| add(ui, &mut lines)).response.rect;
+        let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+        for y in lines.0 {
+            ui.painter().hline(rect.x_range(), y, stroke);
+        }
+        rect
+    }
+
+    /// Leaves room for a line here.
+    fn mark(&mut self, ui: &mut egui::Ui) {
+        let spacing = ui.spacing().item_spacing.y;
+        let (rect, _) = ui.allocate_exact_size(vec2(0.0, spacing), Sense::hover());
+        self.0.push(rect.center().y);
+    }
 }
 
 /// The channel menu's first column: open, look, sound, clone and delete.
@@ -723,6 +759,7 @@ fn channel_items(
     state: &mut UiState,
     index: usize,
     channel: &Channel,
+    lines: &mut Dividers,
     actions: &mut Vec<Action>,
 ) {
     let number = (index + 1).to_string();
@@ -736,7 +773,7 @@ fn channel_items(
         state.windows.channel_settings = true;
         ui.close();
     }
-    ui.separator();
+    lines.mark(ui);
     if ui.button("Rename…").clicked() {
         state.open_dialog(Dialog::rename_channel(index, &channel.name));
         ui.close();
@@ -761,7 +798,7 @@ fn channel_items(
         state.open_dialog(crate::dialogs::Dialog::channel_group(index, &channel.group));
         ui.close();
     }
-    ui.separator();
+    lines.mark(ui);
     if ui.button("Clone").clicked() {
         run(actions, "channel.clone", [number.clone()]);
         ui.close();
@@ -782,6 +819,7 @@ fn step_items(
     project: &Project,
     index: usize,
     number: &str,
+    lines: &mut Dividers,
     actions: &mut Vec<Action>,
 ) {
     use crate::ClipboardKey;
@@ -802,14 +840,14 @@ fn step_items(
         run(actions, "note.clear", [number.clone()]);
         ui.close();
     }
-    ui.separator();
+    lines.mark(ui);
     for (every, nth) in [(2, "2nd"), (4, "4th"), (8, "8th")] {
         if ui.button(format!("Turn on every {nth} step")).clicked() {
             run(actions, "step.fill", [number.clone(), every.to_string()]);
             ui.close();
         }
     }
-    ui.separator();
+    lines.mark(ui);
     if ui.button("Shift left").clicked() {
         run(actions, "step.shift", [number.clone(), "-1".to_owned()]);
         ui.close();
@@ -818,7 +856,7 @@ fn step_items(
         run(actions, "step.shift", [number.clone(), "1".to_owned()]);
         ui.close();
     }
-    ui.separator();
+    lines.mark(ui);
     let graph = egui::Button::new("Graph editor").shortcut_text("Ctrl+K");
     if ui.add(graph).clicked() {
         state.selected_channel = index;

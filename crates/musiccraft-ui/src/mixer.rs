@@ -84,7 +84,10 @@ pub fn show(
             if folded {
                 return;
             }
-            let height = (ui.available_height() - 16.0).max(STRIP_MIN_HEIGHT);
+            // Room under the strips for their scroll bar and the gap above
+            // it; any less and the window grows a little every frame.
+            let bar = crate::scrollbars::BAR + ui.spacing().item_spacing.y;
+            let height = (ui.available_height() - bar).max(STRIP_MIN_HEIGHT);
             ui.horizontal_top(|ui| {
                 // The panel, the separator and the gaps around it, so the
                 // row never outgrows the window.
@@ -131,8 +134,8 @@ pub fn show(
                     .id_salt("mixer-strips")
                     .max_width((ui.available_width() - panel - right_width).max(120.0))
                     .auto_shrink([!state.mixer_panel, true]);
-                // The strips' bar sits under them, inside the 16 points the
-                // strip height leaves free.
+                // The strips' bar sits under them, in the room the strip height
+                // leaves free.
                 ui.vertical(|ui| {
                     let bars = (strip_bars, 42.0);
                     crate::scrollbars::plain_area(ui, area, bars, |ui| {
