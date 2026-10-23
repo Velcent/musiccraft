@@ -77,6 +77,9 @@ pub struct WindowLayout {
     pub rects: Vec<(String, [f32; 4])>,
     /// Windows folded to their header, by name.
     pub folded: Vec<String>,
+    /// Maximized windows, by name; `None` in layouts saved before this was
+    /// kept, which start with the playlist maximized.
+    pub maximized: Option<Vec<String>>,
 }
 
 impl Default for Settings {

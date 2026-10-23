@@ -162,6 +162,26 @@ fn add_menu(ui: &mut egui::Ui, frame: &Frame<'_>, actions: &mut Vec<Action>) {
         });
     });
     ui.separator();
+    let last = crate::automation::last_moved(ui.ctx());
+    let label = last
+        .as_deref()
+        .and_then(|target| musiccraft_commands::control_info(frame.project, target))
+        .map_or_else(|| "nothing moved yet".to_owned(), |info| info.label);
+    if crate::widgets::add_enabled(
+        ui,
+        last.is_some(),
+        egui::Button::new("Automation clip for the last moved control"),
+    )
+    .hint(format!(
+        "Create an automation clip for the last moved control ({label})"
+    ))
+    .clicked()
+        && let Some(target) = last
+    {
+        actions.push(Action::Run(Invocation::new("ui.automate", [target])));
+        ui.close();
+    }
+    ui.separator();
     if ui.button("Pattern").clicked() {
         run(actions, "pattern.add");
         ui.close();
@@ -269,6 +289,10 @@ fn options_menu(
 fn tools_menu(ui: &mut egui::Ui, frame: &Frame<'_>, state: &UiState, actions: &mut Vec<Action>) {
     ui.menu_button("Panic", |ui| {
         menu_item(ui, state, "All notes off", "transport.panic", actions);
+    });
+    ui.separator();
+    ui.menu_button("Last moved control", |ui| {
+        crate::automation::last_moved_menu(ui, frame.project, actions);
     });
     ui.separator();
     if ui.button("Rescan plugins").clicked() {

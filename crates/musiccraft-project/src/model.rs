@@ -909,6 +909,20 @@ fn is_zero_f32(value: &f32) -> bool {
     *value == 0.0
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one_f32(value: &f32) -> bool {
+    *value == 1.0
+}
+
+fn one_f32() -> f32 {
+    1.0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
 /// Stable identity of an automation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -1142,9 +1156,55 @@ pub struct Automation {
     pub target: AutomationTarget,
     /// Points sorted by tick; values are linearly interpolated between them.
     pub points: Vec<AutomationPoint>,
+    /// Whether its clips play.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub enabled: bool,
+    /// The control position the curve's bottom plays as.
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub low: f32,
+    /// The control position the curve's top plays as.
+    #[serde(default = "one_f32", skip_serializing_if = "is_one_f32")]
+    pub high: f32,
 }
 
 impl Automation {
+    /// An automation that is on and plays the curve over the whole range.
+    #[must_use]
+    pub fn new(
+        id: AutomationId,
+        name: String,
+        target: AutomationTarget,
+        points: Vec<AutomationPoint>,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            target,
+            points,
+            enabled: true,
+            low: 0.0,
+            high: 1.0,
+        }
+    }
+
+    /// The control position played for curve value `value` (0..=1), mapped
+    /// into the range.
+    #[must_use]
+    pub fn output(&self, value: f32) -> f32 {
+        (self.low + (self.high - self.low) * value).clamp(0.0, 1.0)
+    }
+
+    /// The curve value that plays as control position `position`: the
+    /// inverse of [`Automation::output`] (the middle when the range is empty).
+    #[must_use]
+    pub fn curve_value(&self, position: f32) -> f32 {
+        let span = self.high - self.low;
+        if span.abs() < 1e-6 {
+            return 0.5;
+        }
+        ((position - self.low) / span).clamp(0.0, 1.0)
+    }
+
     /// Length covered by the points (at least one tick); callers round it to
     /// bars of the meter where it is placed.
     #[must_use]

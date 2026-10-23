@@ -46,13 +46,17 @@ pub fn show(
     });
     // At the top, right of the channel rack, up to the right edge, a little
     // under half the height.
+    let slots = state.floating_area();
     let rack_right = ctx
         .memory(|m| m.area_rect(egui::Id::new("channel-rack")))
-        .map_or(area.left(), |r| r.right());
-    let left = rack_right.max(area.left() + area.width() / 3.0) + 4.0;
+        .map_or(slots.left(), |r| r.right());
+    let left = rack_right.max(slots.left() + slots.width() / 3.0) + 4.0;
     let default = egui::Rect::from_min_max(
-        egui::pos2(left.min(area.right() - 500.0), area.top() + 4.0),
-        egui::pos2(area.right() - 4.0, area.top() + area.height() * 0.42 - 4.0),
+        egui::pos2(left.min(slots.right() - 500.0), slots.top() + 4.0),
+        egui::pos2(
+            slots.right() - 4.0,
+            slots.top() + slots.height() * 0.42 - 4.0,
+        ),
     );
     // The rack takes a few frames to reach its width, so the mixer follows
     // its default slot for its first frames.

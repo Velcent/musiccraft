@@ -46,14 +46,20 @@ drive the same control.
 
 Right-clicking any automatable knob or fader opens the same menu:
 
-- "Create automation clip", then "Open its automation…" (disabled until an
-  automation exists for the control; it opens the automation editor).
+- "Create automation clip" (places a clip on the first empty playlist track
+  and opens it in the automation editor), then "Open its automation…"
+  (disabled until an automation exists for the control; it opens the
+  automation editor).
 - Under a dim "Control from" heading: "Add controller" with its kinds, and
   "Remove controller" while one drives the control.
 - Under a dim "Value" heading: "Copy", "Paste" (disabled until something is
   copied), "Enter exact value…" and "Reset to default", which shows the
   default at its right in dim text, as a percentage of the range like the
   type-in box.
+
+Dragging, typing into or resetting a control makes it the **last moved
+control**, which the Add and Tools menus offer (`docs/spec/playlist.md`,
+"Creating automation").
 
 Paste and Reset run `control.set <target> <position 0-1>` and
 `control.reset <target>`, each one undo step. Targets are named as for

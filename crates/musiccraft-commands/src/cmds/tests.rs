@@ -2031,6 +2031,26 @@ fn automation_curves_are_set_moved_and_undone() {
 }
 
 #[test]
+fn automation_switch_and_range_are_set_and_undone() {
+    let mut s = session();
+    run(&mut s, "channel.add_synth");
+    run(&mut s, "automation.create channel:1:volume");
+    let before = s.project().clone();
+    run(&mut s, "automation.set_enabled 1 off");
+    run(&mut s, "automation.set_range 1 0.75 0.25");
+    let a = &s.project().automations[0];
+    assert!(!a.enabled);
+    assert_eq!((a.low, a.high), (0.75, 0.25));
+    run(&mut s, "edit.undo");
+    run(&mut s, "edit.undo");
+    assert_eq!(*s.project(), before);
+    fails(&mut s, "automation.set_range 1 -0.1 1");
+    fails(&mut s, "automation.set_range 1 0 1.5");
+    fails(&mut s, "automation.set_enabled 1 maybe");
+    fails(&mut s, "automation.set_enabled 2 on");
+}
+
+#[test]
 fn windows_sample_paths_localize_and_imports_report_them() {
     let root = std::env::temp_dir().join(format!("musiccraft-localize-{}", std::process::id()));
     std::fs::create_dir_all(root.join("drums")).unwrap();

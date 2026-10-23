@@ -40,7 +40,12 @@ impl Harness {
         for line in setup {
             session.run_line(line).unwrap();
         }
-        let mut state = UiState::default();
+        // Tests open the windows they need; the playlist floats unless a
+        // test asks for the backdrop.
+        let mut state = UiState {
+            arrange: None,
+            ..UiState::default()
+        };
         state.windows.channel_rack = false;
         state.windows.playlist = false;
         state.windows.browser = false;
@@ -622,7 +627,7 @@ fn piano_roll_selection_editing() {
     h.settle();
     h.click(h.roll_point(192 + 6, 64), PointerButton::Primary);
     h.key(egui::Key::C, Modifiers::COMMAND);
-    h.hover_roll(12 * step + 2, 70);
+    h.hover_roll(12 * step + 2, 66);
     h.key(egui::Key::V, Modifiers::COMMAND);
     assert!(h.roll_notes().contains(&(288, 64)), "{:?}", h.roll_notes());
 }
@@ -711,23 +716,31 @@ fn playlist_selection_editing() {
     );
 }
 
+impl Harness {
+    /// Opens the first automation in the editor and returns a function
+    /// placing a tick and value on its graph.
+    fn open_automation(&mut self) -> impl Fn(u32, f32) -> Pos2 + use<> {
+        let id = self.session.project().automations[0].id;
+        self.state.automation_editor = Some(id);
+        self.settle();
+        let view = self.state.automation_view.expect("editor drawn");
+        move |tick, value| view.at(tick, value)
+    }
+}
+
 #[test]
 fn automation_editor_adds_moves_and_removes_points() {
     let mut h = Harness::new(&["channel.add_synth", "automation.create channel:1:cutoff"]);
-    let id = h.session.project().automations[0].id;
-    h.state.automation_editor = Some(id);
-    h.settle();
-    let (area, length) = h.state.automation_view.expect("editor drawn");
-    let at = |tick: u32, value: f32| {
-        pos2(
-            area.left() + tick as f32 / length as f32 * area.width(),
-            area.bottom() - value * area.height(),
-        )
-    };
+    let at = h.open_automation();
     let before = h.session.project().automations[0].points.clone();
     let v = before[0].value;
 
-    let added = h.click(at(TICKS_PER_BAR, 0.25), PointerButton::Primary);
+    // Left-click on the empty grid only clears the selection.
+    assert!(
+        h.click(at(TICKS_PER_BAR, 0.25), PointerButton::Primary)
+            .is_empty()
+    );
+    let added = h.click(at(TICKS_PER_BAR, 0.25), PointerButton::Secondary);
     assert_eq!(added.len(), 1);
     assert!(
         added[0].starts_with("automation.add_point 1 384t 0.2"),
@@ -742,11 +755,123 @@ fn automation_editor_adds_moves_and_removes_points() {
     );
     h.settle();
 
-    let removed = h.click(at(2 * TICKS_PER_BAR, 0.9), PointerButton::Secondary);
+    h.modifiers = Modifiers::ALT;
+    let removed = h.click(at(2 * TICKS_PER_BAR, 0.9), PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
     assert_eq!(removed, ["automation.remove_point 1 768t"]);
     let points = &h.session.project().automations[0].points;
     assert_eq!(points.len(), 2);
     assert!((points[0].value - v).abs() < 1e-6);
+}
+
+#[test]
+fn right_clicking_a_point_opens_its_menu_instead_of_adding() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "automation.create channel:1:cutoff",
+        "automation.set_points 1 [[0,0.0],[768,1.0]]",
+    ]);
+    let at = h.open_automation();
+    assert!(h.click(at(768, 1.0), PointerButton::Secondary).is_empty());
+    h.settle();
+    assert_eq!(h.session.project().automations[0].points.len(), 2);
+}
+
+#[test]
+fn a_box_selects_points_and_delete_removes_them_in_one_step() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "automation.create channel:1:cutoff",
+        "automation.set_points 1 [[0,0.0],[384,0.5],[768,0.6],[1536,1.0]]",
+    ]);
+    let at = h.open_automation();
+    h.drag(at(300, 0.9), at(900, 0.1));
+    assert_eq!(
+        h.state.automation_ui.edit.selection,
+        BTreeSet::from([384, 768])
+    );
+    // The editor window has focus after the click in it.
+    let depth = h.session.undo_depth();
+    let deleted = h.frame(vec![Event::Key {
+        key: egui::Key::Delete,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    assert_eq!(deleted.len(), 1, "{deleted:?}");
+    assert!(deleted[0].starts_with("automation.set_points 1"));
+    let ticks: Vec<u32> = h.session.project().automations[0]
+        .points
+        .iter()
+        .map(|p| p.tick)
+        .collect();
+    assert_eq!(ticks, [0, 1536]);
+    assert_eq!(h.session.undo_depth(), depth + 1);
+}
+
+#[test]
+fn dragging_a_selected_point_moves_the_whole_selection() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "automation.create channel:1:cutoff",
+        "automation.set_points 1 [[0,0.0],[384,0.5],[768,0.5],[1536,1.0]]",
+    ]);
+    let at = h.open_automation();
+    h.click(at(384, 0.5), PointerButton::Primary);
+    h.modifiers = Modifiers::SHIFT;
+    h.click(at(768, 0.5), PointerButton::Primary);
+    h.modifiers = Modifiers::NONE;
+    let moved = h.drag(at(384, 0.5), at(384 + 96, 0.5));
+    assert_eq!(moved.len(), 1, "{moved:?}");
+    let ticks: Vec<u32> = h.session.project().automations[0]
+        .points
+        .iter()
+        .map(|p| p.tick)
+        .collect();
+    assert_eq!(ticks, [0, 480, 864, 1536]);
+}
+
+#[test]
+fn dragging_a_tension_handle_bends_its_segment() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "automation.create channel:1:cutoff",
+        "automation.set_points 1 [[0,0.0],[1536,1.0]]",
+    ]);
+    let at = h.open_automation();
+    // The handle sits mid-segment, on the straight line.
+    let bent = h.drag(at(768, 0.5), at(768, 0.5) + vec2(0.0, 60.0));
+    assert_eq!(bent.len(), 1, "{bent:?}");
+    assert!(
+        bent[0].starts_with("automation.set_curve 1 0t single 0."),
+        "{bent:?}"
+    );
+    // Right-clicking the handle resets the bend.
+    h.settle();
+    let point = h.session.project().automations[0].points[0];
+    let mid = h.session.project().automations[0].value_at(768.0).unwrap();
+    assert!(point.tension > 0.3 && mid < 0.5);
+    let reset = h.click(at(768, mid), PointerButton::Secondary);
+    assert_eq!(reset, ["automation.set_curve 1 0t single"]);
+}
+
+#[test]
+fn step_drawing_lays_points_on_the_snap_lines() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "automation.create channel:1:cutoff",
+        "automation.set_points 1 [[0,0.0],[1536,1.0]]",
+    ]);
+    h.state.automation_ui.options.step = true;
+    let at = h.open_automation();
+    let drawn = h.drag(at(384, 0.8), at(768, 0.8));
+    assert_eq!(drawn.len(), 1, "{drawn:?}");
+    let points = &h.session.project().automations[0].points;
+    assert!(points.len() > 10, "a point per step: {}", points.len());
+    assert!(points.iter().all(|p| p.tick % TICKS_PER_STEP == 0));
+    assert_eq!(points.first().unwrap().tick, 0);
+    assert_eq!(points.last().unwrap().tick, 1536);
 }
 
 #[test]
@@ -1299,19 +1424,11 @@ fn alt_dragging_a_segment_bends_it_in_one_step() {
         "automation.create channel:1:cutoff",
         "automation.set_points 1 [[0,0.0],[1536,1.0]]",
     ]);
-    let id = h.session.project().automations[0].id;
-    h.state.automation_editor = Some(id);
-    h.settle();
-    let (area, length) = h.state.automation_view.expect("editor drawn");
-    let at = |tick: u32, value: f32| {
-        pos2(
-            area.left() + tick as f32 / length as f32 * area.width(),
-            area.bottom() - value * area.height(),
-        )
-    };
+    let at = h.open_automation();
     let depth = h.session.undo_depth();
     h.modifiers = Modifiers::ALT;
-    let bent = h.drag(at(768, 0.5), at(768, 0.5) + vec2(0.0, 60.0));
+    // Away from the handle, on the segment.
+    let bent = h.drag(at(400, 0.26), at(400, 0.26) + vec2(0.0, 60.0));
     h.modifiers = Modifiers::NONE;
     assert_eq!(bent.len(), 1, "{bent:?}");
     assert!(
@@ -1321,6 +1438,76 @@ fn alt_dragging_a_segment_bends_it_in_one_step() {
     let point = h.session.project().automations[0].points[0];
     assert!(point.tension > 0.3, "bent down: {}", point.tension);
     assert_eq!(h.session.undo_depth(), depth + 1);
+}
+
+#[test]
+fn points_are_edited_inside_automation_clips_in_the_playlist() {
+    let mut h = Harness::new(&[
+        "channel.add_synth",
+        "automation.create channel:1:cutoff",
+        "automation.set_points 1 [[0,0.0],[1536,1.0]]",
+        "playlist.add_automation_clip 1 2 0 4",
+    ]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let (grid, _) = h.state.playlist.last_view.expect("playlist drawn");
+    let clip = h.session.project().playlist.clips[0];
+    let body = crate::playlist::clip_body_rect(&grid, &clip).expect("tall enough");
+    // A point in the body: right-click adds one there.
+    let body_y = |value: f32| body.bottom() - value * body.height();
+    let x = grid.x(768.0);
+    let added = h.click(pos2(x, body_y(0.2)), PointerButton::Secondary);
+    assert_eq!(added.len(), 1, "{added:?}");
+    assert!(
+        added[0].starts_with("automation.add_point 1 768t"),
+        "{added:?}"
+    );
+    assert_eq!(h.session.project().playlist.clips.len(), 1, "clip kept");
+    h.settle();
+    // Dragging that point moves it, not the clip.
+    let p = h.session.project().automations[0].points[1];
+    let from = pos2(x, body_y(p.value));
+    let moved = h.drag(from, from + vec2(grid.px_per_tick * 96.0, 0.0));
+    assert_eq!(moved.len(), 1, "{moved:?}");
+    assert!(
+        moved[0].starts_with("automation.move_point 1 768t 864t"),
+        "{moved:?}"
+    );
+    assert_eq!(h.session.project().playlist.clips[0].start, 0);
+}
+
+#[test]
+fn create_automation_clip_opens_the_editor_on_it() {
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.settle();
+    let engine = EngineStatus::default();
+    let history = History::default();
+    let frame = Frame {
+        project: h.session.project(),
+        engine: &engine,
+        history: &history,
+        waveform: None,
+        waveform_seconds: None,
+        clip_waveforms: &[],
+        clip_durations: &[],
+        plugins: &Plugins::default(),
+        settings: &Settings::default(),
+        settings_info: &SettingsInfo::default(),
+    };
+    let out = crate::resolve_ui_actions(
+        &mut h.state,
+        &frame,
+        vec![Action::Run(
+            musiccraft_commands::Invocation::parse("ui.automate mixer:0:volume").unwrap(),
+        )],
+    );
+    let Action::Run(batch) = &out[0] else {
+        panic!("{out:?}")
+    };
+    h.session.run(batch).unwrap();
+    h.settle();
+    let id = h.session.project().automations[0].id;
+    assert_eq!(h.state.automation_editor, Some(id));
 }
 
 #[test]
@@ -1342,7 +1529,9 @@ fn pattern_miniatures_in_the_picker_select_the_pattern_to_paint() {
     let commands = h.click(items[1].center(), PointerButton::Primary);
     assert_eq!(commands, ["pattern.select 2"]);
     assert_eq!(h.state.playlist.paint_audio, None);
-    // Clicking the selected one again changes nothing in the project.
+    // Clicking the selected one again (not soon enough to be a
+    // double-click) changes nothing in the project.
+    h.time += 1.0;
     let items = h.state.playlist.picker_items.clone();
     assert!(
         h.click(items[1].center(), PointerButton::Primary)
@@ -1508,13 +1697,17 @@ fn the_mixer_opens_at_the_top_beside_the_channel_rack() {
     h.settle();
     let rack = window_rect(&h, "channel-rack");
     let mixer = window_rect(&h, "mixer-window");
-    let area = h.state.workspace;
+    // Along the top, under the backdrop playlist's header and ruler.
+    let area = h.state.floating_area();
     assert!(mixer.left() >= rack.right(), "{mixer:?} beside {rack:?}");
     assert!(
         (mixer.right() - area.right()).abs() < 8.0,
         "{mixer:?} in {area:?}"
     );
-    assert!(mixer.top() - area.top() < 8.0, "{mixer:?} in {area:?}");
+    assert!(
+        (mixer.top() - rack.top()).abs() < 1.0 && mixer.top() - area.top() < 8.0,
+        "{mixer:?} in {area:?}"
+    );
     assert!(mixer.bottom() < area.center().y, "{mixer:?} in {area:?}");
 }
 
@@ -1745,6 +1938,19 @@ fn enter_maximizes_the_playlist_and_ctrl_shift_h_restores_the_default_layout() {
     h.settle();
     let w = &h.state.windows;
     assert!(w.playlist && w.channel_rack && w.mixer && w.piano_roll && w.browser);
+    // The playlist is maximized again, behind the others.
+    assert!(crate::chrome::maximized(&h.ctx, playlist));
+    // Restored, it goes back to its default slot under the rack. (Enter is
+    // still down from the first press.)
+    h.frame(vec![Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: false,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    }]);
+    h.key(egui::Key::Enter, Modifiers::NONE);
+    h.settle();
     assert!(!crate::chrome::maximized(&h.ctx, playlist));
     let rack = window_rect(&h, "channel-rack");
     let list = window_rect(&h, "playlist-window");
@@ -1872,7 +2078,7 @@ fn piano_roll_cursors_follow_the_tool() {
     h.settle();
     let note = *h.session.project().current_pattern().notes.first().unwrap();
     let body = h.roll_point(note.start + 10, note.key);
-    let empty = h.roll_point(note.start + 10, note.key - 5);
+    let empty = h.roll_point(note.start + 10, note.key + 2);
     h.frame(vec![Event::PointerMoved(body)]);
     assert_eq!(h.cursor, egui::CursorIcon::Move);
     h.frame(vec![Event::PointerMoved(empty)]);
@@ -4298,4 +4504,155 @@ fn the_piano_roll_scroll_bar_scrolls_a_short_pattern_in_a_wide_window() {
         (moved[0] - grips[0] - 40.0).abs() < 1.5,
         "{moved:?} {grips:?}"
     );
+}
+
+/// The layer drawn topmost at `pos`, by window id.
+fn window_at(h: &Harness, pos: Pos2) -> Option<egui::Id> {
+    h.ctx.layer_id_at(pos).map(|layer| layer.id)
+}
+
+#[test]
+fn the_playlist_starts_maximized_behind_the_other_windows() {
+    let mut h = Harness::new(&[]);
+    h.state.windows = crate::Windows::default();
+    h.state.arrange = Some(crate::Arrange::Backdrop);
+    h.settle();
+    let playlist = egui::Id::new("playlist-window");
+    assert!(crate::chrome::maximized(&h.ctx, playlist));
+    let area = h.state.workspace;
+    let rect = window_rect(&h, "playlist-window");
+    assert!(
+        (rect.width() - area.width()).abs() < 1.0 && (rect.height() - area.height()).abs() < 1.0,
+        "{rect:?} fills {area:?}"
+    );
+    // The floating windows stay in front of it, even after it is clicked.
+    let rack = window_rect(&h, "channel-rack");
+    assert_eq!(
+        window_at(&h, rack.center()),
+        Some(egui::Id::new("channel-rack"))
+    );
+    let open = pos2(area.left() + 40.0, area.bottom() - 20.0);
+    assert_eq!(window_at(&h, open), Some(playlist));
+    h.click(open, PointerButton::Primary);
+    h.settle();
+    assert_eq!(
+        window_at(&h, rack.center()),
+        Some(egui::Id::new("channel-rack"))
+    );
+    // Clicking it gives it the keyboard; clicking the rack takes it back.
+    assert_eq!(h.state.focused_window, Some(playlist));
+    h.click(rack.center(), PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.focused_window, Some(egui::Id::new("channel-rack")));
+}
+
+#[test]
+fn the_maximize_button_fills_the_workspace_and_restore_puts_the_playlist_back() {
+    let mut h = Harness::new(&[]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let before = window_rect(&h, "playlist-window");
+    h.click(
+        header_button(&h, "playlist-window", 1.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    let area = h.state.workspace;
+    let rect = window_rect(&h, "playlist-window");
+    assert!(
+        (rect.width() - area.width()).abs() < 1.0 && (rect.height() - area.height()).abs() < 1.0,
+        "{rect:?} fills {area:?}"
+    );
+    h.click(
+        header_button(&h, "playlist-window", 1.0),
+        PointerButton::Primary,
+    );
+    h.settle();
+    let after = window_rect(&h, "playlist-window");
+    assert!(
+        (after.min - before.min).length() < 1.0 && (after.size() - before.size()).length() < 1.0,
+        "{after:?} back at {before:?}"
+    );
+}
+
+#[test]
+fn double_clicking_a_pattern_in_the_clip_list_opens_the_piano_roll() {
+    let mut h = Harness::new(&["channel.add_synth", "pattern.add", "pattern.select 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let items = h.state.playlist.picker_items.clone();
+    h.click(items[1].center(), PointerButton::Primary);
+    let commands = h.click(items[1].center(), PointerButton::Primary);
+    h.settle();
+    assert_eq!(commands, ["pattern.select 2"]);
+    assert!(h.state.windows.piano_roll);
+    assert!(h.state.renaming.is_none(), "no rename in place");
+    assert_eq!(h.state.focused_window, Some(egui::Id::new("piano-roll")));
+}
+
+#[test]
+fn double_clicking_a_pattern_clip_brings_the_piano_roll_to_the_front() {
+    let mut h = Harness::new(&["channel.add_synth", "playlist.add_clip 1 1 0"]);
+    h.state.windows.playlist = true;
+    h.state.windows.piano_roll = true;
+    h.settle();
+    let at = h.playlist_point(musiccraft_project::params::PPQ, 0);
+    h.click(at, PointerButton::Primary);
+    h.click(at, PointerButton::Primary);
+    h.settle();
+    assert_eq!(h.state.focused_window, Some(egui::Id::new("piano-roll")));
+}
+
+#[test]
+fn a_pattern_dragged_from_the_clip_list_lands_as_a_clip() {
+    let mut h = Harness::new(&["channel.add_synth", "pattern.add", "pattern.select 1"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let items = h.state.playlist.picker_items.clone();
+    let to = h.playlist_point(TICKS_PER_BAR * 2 + 10, 2);
+    let commands = h.drag(items[1].center(), to);
+    assert_eq!(
+        commands,
+        [format!("playlist.add_clip 2 3 {}t", TICKS_PER_BAR * 2)]
+    );
+    let clip = h.session.project().playlist.clips[0];
+    assert_eq!((clip.track, clip.start), (2, TICKS_PER_BAR * 2));
+}
+
+#[test]
+fn a_paint_stroke_stays_on_the_track_it_started_on() {
+    use crate::piano_roll::Tool;
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 4 C4"]);
+    h.state.windows.playlist = true;
+    h.settle();
+    let bar = TICKS_PER_BAR;
+    h.state.playlist.tool = Tool::Paint;
+    // The pointer drifts down two tracks along the way.
+    h.drag(
+        h.playlist_point(bar / 4, 1),
+        h.playlist_point(4 * bar + bar / 4, 3),
+    );
+    let clips = &h.session.project().playlist.clips;
+    assert!(clips.len() >= 4, "painted {} clips", clips.len());
+    assert!(clips.iter().all(|c| c.track == 1), "{clips:?}");
+}
+
+#[test]
+fn the_saved_layout_keeps_the_playlist_maximized() {
+    let mut h = Harness::new(&[]);
+    h.state.windows = crate::Windows::default();
+    h.state.arrange = Some(crate::Arrange::Backdrop);
+    h.settle();
+    let layout = crate::window_layout(&h.ctx, &h.state);
+    assert_eq!(layout.maximized, Some(vec!["playlist".to_owned()]));
+    // A layout saved before maximized windows were kept starts with the
+    // playlist as the backdrop; one saved with it restored keeps it so.
+    let mut old = layout.clone();
+    old.maximized = None;
+    crate::restore_window_layout(&h.ctx, &mut h.state, &old);
+    assert_eq!(h.state.arrange, Some(crate::Arrange::Backdrop));
+    let mut floating = layout;
+    floating.maximized = Some(Vec::new());
+    crate::restore_window_layout(&h.ctx, &mut h.state, &floating);
+    assert_eq!(h.state.arrange, None);
 }
