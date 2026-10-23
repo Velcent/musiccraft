@@ -284,8 +284,13 @@ Each tool rewrites all notes of one channel in a pattern as one undo step
   click on the bare rail pages one screen; dragging the thumb scrolls, and
   dragging either end of it zooms horizontally with the other end fixed.
   Dragging the zoom box up or down changes the key-row height (6 to 30
-  points); double-clicking it resets 14. A vertical scroll bar (chevrons,
-  rail, thumb) runs down the right of the ruler and grid.
+  points); double-clicking it resets 18. Notes fill their row but for half
+  a point at the top and bottom. A vertical scroll bar (chevrons,
+  rail, thumb) runs down the right of the ruler and grid. The view runs on
+  8 bars past the pattern's end, and covers at least 16 bars, so the
+  horizontal bar can always scroll to write past the end; the thumb stays
+  under the pointer while dragged, even at its shortest. Opening a channel
+  centres the grid (between the ruler and the property lane) on its notes, or on C5 when it has none.
 - Dragging with the middle button anywhere in the view pans it both ways,
   with the grabbing hand as the pointer; it edits nothing.
 - The corner block above the keyboard shows the colour group of new notes

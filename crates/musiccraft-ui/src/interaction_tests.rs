@@ -564,6 +564,8 @@ fn piano_roll_selection_editing() {
         "note.add 1 8 1 64",
     ]);
     h.state.windows.piano_roll = true;
+    // Compact rows, so the octave moves below stay in the small window.
+    h.state.roll.key_height = 14.0;
     h.settle();
     let step = TICKS_PER_STEP;
 
@@ -625,7 +627,7 @@ fn piano_roll_selection_editing() {
     h.settle();
     h.click(h.roll_point(192 + 6, 64), PointerButton::Primary);
     h.key(egui::Key::C, Modifiers::COMMAND);
-    h.hover_roll(12 * step + 2, 70);
+    h.hover_roll(12 * step + 2, 66);
     h.key(egui::Key::V, Modifiers::COMMAND);
     assert!(h.roll_notes().contains(&(288, 64)), "{:?}", h.roll_notes());
 }
@@ -1122,6 +1124,8 @@ fn piano_roll_paint_delete_and_select_tools() {
     use crate::piano_roll::Tool;
     let mut h = Harness::new(&["channel.add_synth"]);
     h.state.windows.piano_roll = true;
+    // Compact rows, so every key used below fits the small window.
+    h.state.roll.key_height = 14.0;
     h.settle();
     let step = TICKS_PER_STEP;
 
@@ -1147,7 +1151,7 @@ fn piano_roll_paint_delete_and_select_tools() {
     let to = h.roll_point(2 * step - 2, 61);
     assert!(h.drag(from, to).is_empty());
     assert_eq!(h.state.roll.selection.len(), 2);
-    h.click(h.roll_point(14 * step, 70), PointerButton::Primary);
+    h.click(h.roll_point(14 * step, 64), PointerButton::Primary);
     assert!(h.state.roll.selection.is_empty());
 
     // Delete: dragging across notes removes all it touched, in one step.
@@ -4449,6 +4453,57 @@ fn the_mixer_keeps_its_height() {
             "panel {panel}, left {left}, details {details}"
         );
     }
+}
+
+#[test]
+fn the_piano_roll_scroll_bar_scrolls_a_short_pattern_in_a_wide_window() {
+    // A one-bar pattern in a maximized piano roll used to fit the view, so
+    // the bar had nothing to scroll.
+    let mut h = Harness::new(&["channel.add_synth", "note.add 1 0 1 60"]);
+    h.state.windows.piano_roll = true;
+    h.settle();
+    crate::chrome::maximize(&h.ctx, egui::Id::new("piano-roll"));
+    h.settle();
+    let (grid, clip) = h.state.roll.last_view.expect("piano roll drawn");
+    let bar = crate::scrollbars::BAR;
+    let y = clip.top() - bar / 2.0;
+    let left = |h: &Harness| h.state.roll.last_view.unwrap().0.origin.x;
+    let start = left(&h);
+
+    // The right chevron scrolls one bar.
+    h.click(pos2(clip.right() - bar / 2.0, y), PointerButton::Primary);
+    h.settle();
+    let bar_px = grid.px_per_tick * TICKS_PER_BAR as f32;
+    assert!(
+        (start - left(&h) - bar_px).abs() < 0.5,
+        "{} by {bar_px}",
+        start - left(&h)
+    );
+
+    // Dragging the thumb's body scrolls on, with the thumb under the pointer.
+    let hint_at = |h: &mut Harness, x: f32| {
+        h.frame(vec![Event::PointerMoved(pos2(x, y))]);
+        h.frame(vec![]);
+        h.cursor
+    };
+    let grips: Vec<f32> = (0..600)
+        .map(|i| clip.left() + 52.0 + bar + i as f32)
+        .filter(|x| hint_at(&mut h, *x) == egui::CursorIcon::ResizeHorizontal)
+        .collect();
+    let from = (grips[0] + grips[grips.len() - 1]) / 2.0;
+    let before = left(&h);
+    h.frame(vec![Event::PointerMoved(pos2(from, y))]);
+    h.drag(pos2(from, y), pos2(from + 40.0, y));
+    h.settle();
+    assert!(left(&h) < before - 40.0, "{} < {before}", left(&h));
+    let moved: Vec<f32> = (0..600)
+        .map(|i| clip.left() + 52.0 + bar + i as f32)
+        .filter(|x| hint_at(&mut h, *x) == egui::CursorIcon::ResizeHorizontal)
+        .collect();
+    assert!(
+        (moved[0] - grips[0] - 40.0).abs() < 1.5,
+        "{moved:?} {grips:?}"
+    );
 }
 
 /// The layer drawn topmost at `pos`, by window id.
