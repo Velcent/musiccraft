@@ -690,6 +690,23 @@ impl App {
                 }
                 return;
             }
+            Action::PreviewPreset(name) => {
+                let rendered = self
+                    .audio
+                    .as_mut()
+                    .map(|audio| audio.bridge.preset_preview(&name, self.session.project()));
+                match rendered {
+                    Some(Ok(Some(buffer))) => {
+                        self.send(EngineMessage::PlayPreview(Box::new(
+                            musiccraft_engine::Preview::new(buffer, 0.8),
+                        )));
+                    }
+                    // Rendering: `play_finished_preset_preview` plays it.
+                    Some(Ok(None)) | None => {}
+                    Some(Err(err)) => self.ui.set_status(format!("cannot preview: {err}"), true),
+                }
+                return;
+            }
             Action::DropAudio {
                 sample,
                 track,
@@ -1193,6 +1210,19 @@ impl App {
         self.synced_revision = Some(revision);
     }
 
+    /// Plays a preset preview that finished rendering.
+    fn play_finished_preset_preview(&mut self) {
+        let finished = self
+            .audio
+            .as_mut()
+            .and_then(|audio| audio.bridge.finished_preset_preview());
+        if let Some(buffer) = finished {
+            self.send(EngineMessage::PlayPreview(Box::new(
+                musiccraft_engine::Preview::new(buffer, 0.8),
+            )));
+        }
+    }
+
     fn release_due_previews(&mut self) {
         let now = Instant::now();
         let (due, waiting): (Vec<_>, Vec<_>) =
@@ -1441,6 +1471,7 @@ impl eframe::App for App {
         self.sweep_replace();
         self.sync();
         self.release_due_previews();
+        self.play_finished_preset_preview();
         self.update_title(&ctx);
         let autosaved = if self.settings.autosave {
             self.autosave
@@ -1461,7 +1492,11 @@ impl eframe::App for App {
             || !self.pending_offs.is_empty()
             || engine.voices > 0
             || self.take.is_some()
-            || editor_open;
+            || editor_open
+            || self
+                .audio
+                .as_ref()
+                .is_some_and(|a| a.bridge.rendering_preset_preview());
         let meters_moving = self.ui.meters.iter().any(|(l, r)| *l > 1e-4 || *r > 1e-4);
         if busy || meters_moving {
             ctx.request_repaint_after(Duration::from_millis(16));

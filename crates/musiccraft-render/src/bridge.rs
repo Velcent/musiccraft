@@ -388,6 +388,10 @@ pub struct Bridge {
     synths: BTreeMap<ChannelId, LiveSynth>,
     /// Whether the transport played at the last sync (see `sync_synths`).
     synths_playing: bool,
+    /// Rendered preset previews, by the patch's JSON.
+    preset_previews: BTreeMap<String, Arc<SampleBuffer>>,
+    /// The preset preview being rendered: its key and its thread.
+    rendering_preview: Option<(String, std::thread::JoinHandle<SampleBuffer>)>,
 }
 
 impl Bridge {
@@ -407,6 +411,8 @@ impl Bridge {
             stereo_harmonics: BTreeMap::new(),
             synths: BTreeMap::new(),
             synths_playing: false,
+            preset_previews: BTreeMap::new(),
+            rendering_preview: None,
         }
     }
 
@@ -1158,6 +1164,67 @@ impl Bridge {
         self.samples
             .get(&key, None, self.sample_rate)
             .map_err(|e| e.to_string())
+    }
+
+    /// A short recording of the Antiserum preset `name` (factory or user)
+    /// playing middle C, for the browser's preview. A preview made before
+    /// comes back at once; otherwise it renders on a thread of its own and
+    /// this returns `None`: [`Bridge::finished_preset_preview`] hands it over
+    /// when it is ready. A newer request replaces one still rendering.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message if there is no preset of that name.
+    pub fn preset_preview(
+        &mut self,
+        name: &str,
+        project: &Project,
+    ) -> Result<Option<Arc<SampleBuffer>>, String> {
+        let patch = musiccraft_antiserum_presets::user::find_any(name)
+            .ok_or_else(|| format!("no preset `{name}`"))?;
+        // Keyed by the patch itself: a user preset saved again sounds new.
+        let key = patch.to_json()?;
+        if let Some(buffer) = self.preset_previews.get(&key) {
+            self.rendering_preview = None;
+            return Ok(Some(Arc::clone(buffer)));
+        }
+        let mut report = SyncReport::default();
+        let sources = (0..musiccraft_antiserum::params::OSCS)
+            .map(|osc| self.antiserum_source(project, &patch.source(osc), &mut report))
+            .collect();
+        let sample_rate = self.sample_rate as f32;
+        let tempo = project.tempo_bpm() as f32;
+        let thread = std::thread::Builder::new()
+            .name("preset-preview".to_owned())
+            .spawn(move || crate::antiserum::render_preview(&patch, sample_rate, sources, tempo).0)
+            .map_err(|e| format!("cannot render the preview: {e}"))?;
+        self.rendering_preview = Some((key, thread));
+        Ok(None)
+    }
+
+    /// The preset preview that finished rendering since the last call, if
+    /// any (see [`Bridge::preset_preview`]).
+    pub fn finished_preset_preview(&mut self) -> Option<Arc<SampleBuffer>> {
+        if !self
+            .rendering_preview
+            .as_ref()
+            .is_some_and(|(_, thread)| thread.is_finished())
+        {
+            return None;
+        }
+        let (key, thread) = self.rendering_preview.take()?;
+        let buffer = Arc::new(thread.join().ok()?);
+        if self.preset_previews.len() >= 32 {
+            self.preset_previews.clear();
+        }
+        self.preset_previews.insert(key, Arc::clone(&buffer));
+        Some(buffer)
+    }
+
+    /// Whether a preset preview is still rendering.
+    #[must_use]
+    pub fn rendering_preset_preview(&self) -> bool {
+        self.rendering_preview.is_some()
     }
 
     /// Sample rate this bridge prepares data for.

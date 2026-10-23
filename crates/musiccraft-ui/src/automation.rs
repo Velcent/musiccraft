@@ -137,6 +137,14 @@ fn mark(response: &egui::Response, source: Option<&Source>) {
     musiccraft_editors::hint::set_suffix(&response.ctx, response.id, hint);
 }
 
+/// The right-click menu of a control that may be a `ComboBox`. egui gives a
+/// context menu and a combo's list the same popup id, and the context menu
+/// closes that popup on every left click, so the list could never open; the
+/// menu gets an id of its own.
+pub(crate) fn context_menu(response: &egui::Response) -> egui::Popup<'_> {
+    egui::Popup::context_menu(response).id(response.id.with("control-menu"))
+}
+
 /// A dim heading row inside a menu.
 fn heading(ui: &mut egui::Ui, text: &str) {
     ui.add_space(2.0);
@@ -161,7 +169,7 @@ pub(crate) fn menu(response: &egui::Response, target: &str, actions: &mut Vec<Ac
         actions.push(Action::Run(Invocation::new(name, args)));
     };
     let target_arg = || vec![target.to_owned()];
-    response.context_menu(|ui| {
+    context_menu(response).show(|ui| {
         ui.data_mut(|d| d.insert_temp(open_menu_id(), target.to_owned()));
         if ui.button("Create automation clip").clicked() {
             run(actions, "ui.automate", target_arg());
@@ -587,5 +595,48 @@ mod tests {
         // Closed again: nothing is looked up.
         publish(&ctx, &project, None);
         assert!(published(&ctx).default.is_none());
+    }
+
+    #[test]
+    fn a_menu_with_the_control_menu_still_opens_on_a_click() {
+        // A frame with one combo box that also has the control menu, as
+        // Antiserum's choice parameters do.
+        let ctx = egui::Context::default();
+        let frame = |events: Vec<egui::Event>| {
+            let mut drawn = (egui::Rect::NOTHING, egui::Id::NULL);
+            let input = egui::RawInput {
+                events,
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                let response = egui::ComboBox::from_id_salt("choice")
+                    .selected_text("Low pass")
+                    .show_ui(ui, |ui| {
+                        let _ = ui.selectable_label(true, "Low pass");
+                        let _ = ui.selectable_label(false, "High pass");
+                    })
+                    .response;
+                menu(&response, "channel:1:filter1_type", &mut Vec::new());
+                drawn = (response.rect, response.id);
+            });
+            // No renderer here: acknowledge texture uploads.
+            output.textures_delta.clear();
+            drawn
+        };
+        let (rect, combo_id) = frame(Vec::new());
+        let at = rect.center();
+        let button = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(vec![egui::Event::PointerMoved(at), button(true)]);
+        frame(vec![button(false)]);
+        frame(Vec::new());
+        assert!(
+            egui::ComboBox::is_open(&ctx, combo_id),
+            "the list opens; the control menu used to close it at once"
+        );
     }
 }

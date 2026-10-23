@@ -82,6 +82,9 @@ pub enum Action {
     Seek(f64),
     /// Audition a sample (file path or `builtin:` name) on the master output.
     PreviewSample(String),
+    /// Audition an Antiserum preset (factory or user, by name) on the master
+    /// output: the app renders a short note and plays it as a sample preview.
+    PreviewPreset(String),
     /// A sample dropped on the playlist: add it as a channel and an audio clip
     /// at (track row, start tick). The app knows the sample's length.
     DropAudio {
