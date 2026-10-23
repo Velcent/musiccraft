@@ -4215,3 +4215,32 @@ fn the_channel_menu_fits_its_contents() {
         "menu too tall: {menus:?}"
     );
 }
+
+#[test]
+fn the_mixer_keeps_its_height() {
+    // The strips left one point too few for their scroll bar, so the mixer
+    // grew a point every frame down to the bottom of the screen.
+    let mut h = Harness::new(&[]);
+    h.state.windows.mixer = true;
+    for (panel, left, details) in [
+        (false, false, false),
+        (true, false, false),
+        (true, true, true),
+    ] {
+        h.state.mixer_panel = panel;
+        h.state.mixer_panel_left = left;
+        h.state.mixer_details = details;
+        for _ in 0..10 {
+            h.frame(Vec::new());
+        }
+        let settled = window_rect(&h, "mixer-window");
+        for _ in 0..30 {
+            h.frame(Vec::new());
+        }
+        assert_eq!(
+            window_rect(&h, "mixer-window"),
+            settled,
+            "panel {panel}, left {left}, details {details}"
+        );
+    }
+}
