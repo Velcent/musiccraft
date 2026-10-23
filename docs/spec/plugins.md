@@ -65,9 +65,11 @@
   `unsafe_code = "forbid"`. The rest of MusicCraft talks to
   plugins only through the safe `External` trait (engine) and the
   `PluginFactory` trait (render).
-- A crashing plugin can take the app down; there is no out-of-process
-  sandboxing yet. Scanning loads every `.clap` file found (that runs its
-  code); files that fail to load are skipped and reported.
+- A crashing plugin can take the app down; plugins are not hosted out of
+  process yet. VST3 scanning runs in child processes (see the VST3 section),
+  so a VST3 module that crashes while it is scanned is only skipped and
+  reported. CLAP scanning still loads every `.clap` file found in process
+  (that runs its code); files that fail to load are skipped and reported.
 
 ## Plugin windows
 
@@ -105,8 +107,22 @@
   `Contents/<arch>-linux/<name>.so`, `Contents/<arch>-win/<name>.vst3` or
   `Contents/MacOS/<name>`. The module's entry function (`ModuleEntry`,
   `InitDll`) runs once when it loads and its exit function when it unloads.
+  If the entry function fails, the exit function still runs before the
+  module is closed, as the VST3 SDK's own host does, so a module that counts
+  its loads starts from zero next time.
   macOS bundles are listed as scan errors for now: their entry function needs
   a CoreFoundation bundle reference MusicCraft does not create yet.
+- **Scanning out of process**: the app, CLI and MCP server read each module's
+  class list in a child process (the same program, started with
+  `MUSICCRAFT_VST3_PROBE` naming the module), several at a time. A module
+  that crashes, hangs for more than two minutes or fails to load in the child
+  is skipped and listed as a scan error saying what happened (for example
+  "crashed while loading (signal 11, SIGSEGV)"); the scan carries on with the
+  next module. A module is loaded into the app itself only when one of its
+  plugins is first used. A bundle with no binary for this system (for
+  example a Windows-only bundle on Linux) is reported as such. Modules that
+  are already loaded are not probed again on a rescan. If the child cannot be
+  started at all, the module is loaded in process as before.
 - **Kind**: a class of category "Audio Module Class" whose sub-categories
   include `Instrument` is an instrument; any other audio module is an effect.
 - **Instances**: the audio component is created and initialized with a host

@@ -18,6 +18,9 @@
 //! The processors save their parameter as eight little-endian bytes; the
 //! Gain controller saves its own state (default `ctl1`) and hands it back.
 //!
+//! On Linux, loading the module aborts the process when [`CRASH_ENV`] is set,
+//! so the host can test that a module crashing during a scan is skipped.
+//!
 //! Like `musiccraft-vst3`, this crate is exempt from the workspace's `unsafe`
 //! ban: a VST3 plugin is a set of COM objects called through raw pointers.
 #![allow(unsafe_code)]
@@ -49,6 +52,9 @@ use vst3::Steinberg::{
     kResultTrue, tresult,
 };
 use vst3::{Class, ComPtr, ComRef, ComWrapper, Interface, uid};
+
+/// When set, the Linux module entry aborts the process (scan tests).
+pub const CRASH_ENV: &str = "MUSICCRAFT_VST3_TESTPLUGIN_CRASH";
 
 /// Class id of the Test Gain processor.
 pub const GAIN_CID: TUID = uid(0x4D43_5654, 0x4741_494E, 0x5052_4F43, 0x0000_0001);
@@ -1248,6 +1254,9 @@ impl IPluginFactory2Trait for Factory {
 #[cfg(target_os = "linux")]
 #[unsafe(no_mangle)]
 pub extern "system" fn ModuleEntry(_library: *mut c_void) -> bool {
+    if std::env::var_os(CRASH_ENV).is_some() {
+        std::process::abort();
+    }
     true
 }
 

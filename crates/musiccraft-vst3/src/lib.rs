@@ -26,10 +26,13 @@ mod fd;
 mod host;
 mod instance;
 mod module;
+mod probe;
 mod processor;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use musiccraft_render::{LivePlugin, PluginFactory, PluginInfo, PluginKind, PluginRequest};
@@ -37,6 +40,7 @@ use vst3::Steinberg::TUID;
 
 pub use crate::module::GetFactory;
 use crate::module::{ClassInfo, Module, class_id};
+pub use crate::probe::serve_probe;
 
 /// Folders searched for `.vst3` modules on this platform, plus `VST3_PATH`.
 #[must_use]
@@ -100,10 +104,69 @@ fn kind(class: &ClassInfo) -> Option<PluginKind> {
     })
 }
 
+/// The module at `file`, loading it on first use.
+fn load(state: &mut State, file: &Path) -> Result<Arc<Module>, String> {
+    if let Some(module) = state.modules.get(file) {
+        return Ok(Arc::clone(module));
+    }
+    let module = Arc::new(Module::load(file)?);
+    state
+        .modules
+        .insert(file.to_path_buf(), Arc::clone(&module));
+    Ok(module)
+}
+
+/// Probes `files` in child processes, a few at a time. `None` where a child
+/// could not be started.
+fn probe_all(
+    command: &ProbeCommand,
+    files: &[&PathBuf],
+) -> Vec<Option<Result<Vec<ClassInfo>, String>>> {
+    let next = AtomicUsize::new(0);
+    let results = Mutex::new((0..files.len()).map(|_| None).collect::<Vec<_>>());
+    let workers = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZero::get)
+        .clamp(1, 8)
+        .min(files.len());
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(file) = files.get(i) else {
+                        break;
+                    };
+                    let result = probe::probe(command(file), file).ok();
+                    let mut results = results.lock().unwrap_or_else(PoisonError::into_inner);
+                    if let Some(slot) = results.get_mut(i) {
+                        *slot = result;
+                    }
+                }
+            });
+        }
+    });
+    results.into_inner().unwrap_or_else(PoisonError::into_inner)
+}
+
 struct Entry {
     info: PluginInfo,
     cid: TUID,
-    module: Arc<Module>,
+    /// The module's file (or a linked module's display path), the key into
+    /// `State::modules`.
+    file: PathBuf,
+}
+
+/// Builds the command for a probe child (the module path is added as
+/// `MUSICCRAFT_VST3_PROBE`).
+type ProbeCommand = Box<dyn Fn(&Path) -> Command + Send + Sync>;
+
+/// How modules are read during a scan.
+enum Scanner {
+    /// Loaded into this process (tests, and programs that do not call
+    /// [`serve_probe`]).
+    InProcess,
+    /// Probed in child processes; loaded here only when first used.
+    Child(ProbeCommand),
 }
 
 #[derive(Default)]
@@ -111,7 +174,8 @@ struct State {
     scanned: bool,
     /// Folders searched besides the host's own.
     extra: Vec<PathBuf>,
-    /// Loaded modules by file; kept for the life of the host.
+    /// Loaded modules by file; kept for the life of the host. With a child
+    /// scanner a module is loaded only when one of its plugins is created.
     modules: BTreeMap<PathBuf, Arc<Module>>,
     catalog: Vec<Entry>,
     errors: Vec<String>,
@@ -120,6 +184,7 @@ struct State {
 /// Finds and creates VST3 plugins. Scans lazily, on first use.
 pub struct Vst3Host {
     folders: Vec<PathBuf>,
+    scanner: Scanner,
     /// Modules linked into the program (tests), with a display path.
     linked: Vec<(GetFactory, PathBuf)>,
     state: Mutex<State>,
@@ -132,10 +197,25 @@ impl Default for Vst3Host {
 }
 
 impl Vst3Host {
-    /// A host scanning the standard folders and `VST3_PATH`.
+    /// A host scanning the standard folders and `VST3_PATH`. In a program
+    /// that calls [`serve_probe`] first thing, each module is scanned in a
+    /// child process (this program again), so one that crashes is skipped.
     #[must_use]
     pub fn new() -> Self {
-        Self::with_folders(search_paths())
+        let mut host = Self::with_folders(search_paths());
+        if probe::served() {
+            if let Ok(exe) = std::env::current_exe() {
+                host.scanner = Scanner::Child(Box::new(move |_| Command::new(&exe)));
+            }
+        }
+        host
+    }
+
+    /// Scans modules in child processes started from `command` (tests).
+    #[cfg(test)]
+    fn with_probe(mut self, command: impl Fn(&Path) -> Command + Send + Sync + 'static) -> Self {
+        self.scanner = Scanner::Child(Box::new(command));
+        self
     }
 
     /// A host scanning only `folders`.
@@ -143,6 +223,7 @@ impl Vst3Host {
     pub fn with_folders(folders: Vec<PathBuf>) -> Self {
         Self {
             folders,
+            scanner: Scanner::InProcess,
             linked: Vec::new(),
             state: Mutex::new(State::default()),
         }
@@ -154,6 +235,7 @@ impl Vst3Host {
     pub fn with_linked(get_factory: GetFactory, name: &str) -> Self {
         Self {
             folders: Vec::new(),
+            scanner: Scanner::InProcess,
             linked: vec![(get_factory, PathBuf::from(name))],
             state: Mutex::new(State::default()),
         }
@@ -166,13 +248,13 @@ impl Vst3Host {
     fn scan(&self, state: &mut State) {
         state.catalog.clear();
         state.errors.clear();
-        let mut modules: Vec<Arc<Module>> = Vec::new();
+        let mut found: Vec<(PathBuf, Vec<ClassInfo>)> = Vec::new();
         for (get, name) in &self.linked {
             let cached = state.modules.get(name).cloned();
             match cached.map_or_else(|| Module::from_linked(*get, name).map(Arc::new), Ok) {
                 Ok(module) => {
-                    state.modules.insert(name.clone(), Arc::clone(&module));
-                    modules.push(module);
+                    found.push((name.clone(), module.classes()));
+                    state.modules.insert(name.clone(), module);
                 }
                 Err(err) => state.errors.push(err),
             }
@@ -183,18 +265,15 @@ impl Vst3Host {
         }
         files.sort();
         files.dedup();
-        for file in files {
-            let cached = state.modules.get(&file).cloned();
-            match cached.map_or_else(|| Module::load(&file).map(Arc::new), Ok) {
-                Ok(module) => {
-                    state.modules.insert(file, Arc::clone(&module));
-                    modules.push(module);
-                }
+        let results = self.read_modules(state, &files);
+        for (file, result) in files.into_iter().zip(results) {
+            match result {
+                Ok(classes) => found.push((file, classes)),
                 Err(err) => state.errors.push(err),
             }
         }
-        for module in modules {
-            for class in module.classes() {
+        for (file, classes) in found {
+            for class in classes {
                 let Some(kind) = kind(&class) else {
                     continue;
                 };
@@ -209,15 +288,46 @@ impl Vst3Host {
                         vendor: class.vendor,
                         version: class.version,
                         kind,
-                        path: module.path().to_path_buf(),
+                        path: file.clone(),
                     },
                     cid: class.cid,
-                    module: Arc::clone(&module),
+                    file: file.clone(),
                 });
             }
         }
         state.catalog.sort_by_key(|e| e.info.name.to_lowercase());
         state.scanned = true;
+    }
+
+    /// The classes of each file, in order. Modules already loaded answer in
+    /// process; the others go to the scanner.
+    fn read_modules(
+        &self,
+        state: &mut State,
+        files: &[PathBuf],
+    ) -> Vec<Result<Vec<ClassInfo>, String>> {
+        let probed = match &self.scanner {
+            Scanner::Child(command) => {
+                let fresh: Vec<&PathBuf> = files
+                    .iter()
+                    .filter(|f| !state.modules.contains_key(*f))
+                    .collect();
+                fresh
+                    .iter()
+                    .copied()
+                    .zip(probe_all(command, &fresh))
+                    .collect()
+            }
+            Scanner::InProcess => BTreeMap::new(),
+        };
+        files
+            .iter()
+            .map(|file| match probed.get(file) {
+                Some(Some(result)) => result.clone(),
+                // Not probed, or the child could not be started.
+                _ => load(state, file).map(|module| module.classes()),
+            })
+            .collect()
     }
 
     /// Like `instantiate`, returning the concrete halves (window tests).
@@ -226,14 +336,21 @@ impl Vst3Host {
         &self,
         id: &str,
     ) -> Result<(instance::Vst3Instance, processor::Vst3Processor), String> {
-        let (module, cid) = self
-            .ensure_scanned()
+        let (module, cid) = self.module_for(id)?;
+        instance::build(module, &cid, 48_000, 256, None)
+    }
+
+    /// The module and class id of plugin `id`. A module that was probed in a
+    /// child process is loaded here now.
+    fn module_for(&self, id: &str) -> Result<(Arc<Module>, TUID), String> {
+        let mut state = self.ensure_scanned();
+        let (file, cid) = state
             .catalog
             .iter()
             .find(|e| e.info.id == id)
-            .map(|e| (Arc::clone(&e.module), e.cid))
+            .map(|e| (e.file.clone(), e.cid))
             .ok_or("not installed")?;
-        instance::build(module, &cid, 48_000, 256, None)
+        Ok((load(&mut state, &file)?, cid))
     }
 
     fn ensure_scanned(&self) -> std::sync::MutexGuard<'_, State> {
@@ -268,13 +385,7 @@ impl PluginFactory for Vst3Host {
     }
 
     fn instantiate(&self, request: &PluginRequest<'_>) -> Result<LivePlugin, String> {
-        let (module, cid) = self
-            .ensure_scanned()
-            .catalog
-            .iter()
-            .find(|e| e.info.id == request.id)
-            .map(|e| (Arc::clone(&e.module), e.cid))
-            .ok_or("not installed")?;
+        let (module, cid) = self.module_for(request.id)?;
         instance::create(
             module,
             &cid,

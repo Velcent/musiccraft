@@ -103,13 +103,22 @@ impl Module {
             ));
         }
         let binary = binary_path(path);
+        if path.is_dir() && !binary.exists() {
+            return Err(format!(
+                "{}: the bundle has no binary for this system (no {})",
+                path.display(),
+                binary.display()
+            ));
+        }
         let library = open(&binary)?;
         // SAFETY: every VST3 module exports `GetPluginFactory` with this
         // signature.
-        let get = unsafe { library.get::<GetFactory>(b"GetPluginFactory\0") }
-            .map(|symbol| *symbol)
-            .map_err(|_| format!("{} is not a VST3 module", path.display()))?;
+        let get = unsafe { library.get::<GetFactory>(b"GetPluginFactory\0") }.map(|symbol| *symbol);
         let exit = exit_function(&library);
+        let Ok(get) = get else {
+            run_exit(exit);
+            return Err(format!("{} is not a VST3 module", path.display()));
+        };
         let mut module = Self {
             path: path.to_path_buf(),
             factory: None,
@@ -128,11 +137,6 @@ impl Module {
             exit: None,
             _library: None,
         })
-    }
-
-    /// The file this module came from.
-    pub fn path(&self) -> &Path {
-        &self.path
     }
 
     pub fn factory(&self) -> Option<&ComPtr<IPluginFactory>> {
@@ -216,11 +220,16 @@ fn open(binary: &Path) -> Result<libloading::Library, String> {
     }
     .ok()
     .map(|symbol| *symbol);
+    // SAFETY: `ModuleExit`, if exported, takes nothing and returns a bool.
+    let exit = unsafe { library.get::<unsafe extern "system" fn() -> bool>(b"ModuleExit\0") }
+        .ok()
+        .map(|symbol| *symbol);
     let handle = library.into_raw();
     if let Some(entry) = entry {
         // SAFETY: called once, before anything else, with the handle the
         // library was opened with.
         if !unsafe { entry(handle) } {
+            run_exit(exit);
             // SAFETY: `handle` came from `into_raw` above.
             drop(unsafe { Library::from_raw(handle) });
             return Err(format!("{}: the module failed to start", binary.display()));
@@ -239,6 +248,7 @@ fn open(binary: &Path) -> Result<libloading::Library, String> {
     if let Ok(entry) = unsafe { library.get::<unsafe extern "system" fn() -> bool>(b"InitDll\0") } {
         // SAFETY: called once, before anything else.
         if !unsafe { entry() } {
+            run_exit(exit_function(&library));
             return Err(format!("{}: the module failed to start", binary.display()));
         }
     }
@@ -256,6 +266,17 @@ fn exit_function(library: &libloading::Library) -> Option<unsafe extern "system"
     unsafe { library.get::<unsafe extern "system" fn() -> bool>(name) }
         .ok()
         .map(|symbol| *symbol)
+}
+
+/// Runs the exit function after a failed entry, as the VST3 SDK's host does:
+/// modules that count entries (yabridge's, for one) would otherwise never
+/// start again in this process.
+fn run_exit(exit: Option<unsafe extern "system" fn() -> bool>) {
+    if let Some(exit) = exit {
+        // SAFETY: the entry function was called just before, and nothing
+        // from the module is in use.
+        unsafe { exit() };
+    }
 }
 
 impl Drop for Module {

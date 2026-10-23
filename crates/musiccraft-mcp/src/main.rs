@@ -7,6 +7,7 @@ use musiccraft_mcp::Server;
 use serde_json::{Value, json};
 
 fn main() {
+    musiccraft_cli::serve_plugin_probe();
     let mut server = Server::new();
     let stdin = io::stdin();
     let mut stdout = io::stdout().lock();

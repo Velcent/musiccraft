@@ -274,25 +274,32 @@ fn renders_a_project_through_the_bridge_and_engine() {
     );
 }
 
+/// Copies the test plugin's `cdylib` (built by Cargo next to this test
+/// binary) into a bundle at `bundle`.
 #[cfg(target_os = "linux")]
-#[test]
-fn loads_a_vst3_bundle_from_a_folder() {
+fn make_bundle(bundle: &std::path::Path) {
     use std::env::consts::{DLL_PREFIX, DLL_SUFFIX};
-    // Cargo builds the test plugin's `cdylib` next to this test binary.
     let exe = std::env::current_exe().unwrap();
     let deps = exe.parent().unwrap();
     let built = deps.join(format!(
         "{DLL_PREFIX}musiccraft_vst3_testplugin{DLL_SUFFIX}"
     ));
     assert!(built.is_file(), "missing {}", built.display());
+    std::fs::create_dir_all(bundle).unwrap();
+    let binary = crate::module::binary_path(bundle);
+    std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+    std::fs::copy(&built, &binary).unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn loads_a_vst3_bundle_from_a_folder() {
     let dir = std::env::temp_dir().join(format!("mc-vst3-scan-{}", std::process::id()));
     let bundle = dir.join("vendor/Test Plugins.vst3");
-    std::fs::create_dir_all(&bundle).unwrap();
+    make_bundle(&bundle);
     // A bundle keeps its binary under `Contents/<arch>-linux/`.
     let binary = crate::module::binary_path(&bundle);
     assert!(binary.ends_with("Test Plugins.so"), "{}", binary.display());
-    std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
-    std::fs::copy(&built, &binary).unwrap();
     std::fs::write(dir.join("broken.vst3"), b"not a library").unwrap();
 
     let host = Vst3Host::with_folders(vec![dir.clone()]);
@@ -309,6 +316,82 @@ fn loads_a_vst3_bundle_from_a_folder() {
     assert!((l[0] - 0.5).abs() < 1e-6);
     live.processor.stop();
     drop(live);
+    drop(host);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Not a real test: the child process of a scan. When the scan starts this
+/// test binary with `MUSICCRAFT_VST3_PROBE` set, this probes that module and
+/// exits; otherwise it does nothing.
+#[test]
+fn probe_child() {
+    if let Some(path) = std::env::var_os(crate::probe::PROBE_ENV) {
+        crate::probe::run(std::path::Path::new(&path));
+        std::process::exit(0);
+    }
+}
+
+/// Runs this test binary as a probe child; modules whose path contains
+/// "Crashing" abort while loading.
+#[cfg(target_os = "linux")]
+fn probe_command(path: &std::path::Path) -> std::process::Command {
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command.args([
+        "tests::probe_child",
+        "--exact",
+        "--nocapture",
+        "--test-threads=1",
+    ]);
+    if path.to_string_lossy().contains("Crashing") {
+        command.env(musiccraft_vst3_testplugin::CRASH_ENV, "1");
+    }
+    command
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_module_that_crashes_while_scanned_is_skipped() {
+    let dir = std::env::temp_dir().join(format!("mc-vst3-crash-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    make_bundle(&dir.join("A Crashing Plugin.vst3"));
+    make_bundle(&dir.join("B Test Plugins.vst3"));
+    // A Windows-only bundle, as a Windows installer would leave it.
+    let windows = dir.join("C Windows Only.vst3/Contents/x86_64-win");
+    std::fs::create_dir_all(&windows).unwrap();
+    std::fs::write(windows.join("C Windows Only.vst3"), b"MZ").unwrap();
+
+    let host = Vst3Host::with_folders(vec![dir.clone()]).with_probe(probe_command);
+    let catalog = host.catalog();
+    let names: Vec<&str> = catalog.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["Test Gain", "Test Tone"], "{catalog:?}");
+    assert!(catalog[0].path.ends_with("B Test Plugins.vst3"));
+    let errors = host.scan_errors();
+    assert_eq!(errors.len(), 2, "{errors:?}");
+    assert!(
+        errors[0].contains("A Crashing Plugin.vst3")
+            && errors[0].contains("crashed while loading (signal 6, SIGABRT)"),
+        "{errors:?}"
+    );
+    assert!(
+        errors[1].contains("C Windows Only.vst3")
+            && errors[1].contains("no binary for this system"),
+        "{errors:?}"
+    );
+    // Probed modules load into this process only when first used.
+    assert!(host.lock().modules.is_empty());
+
+    let mut live = host.instantiate(&request(&gain_id(), None)).unwrap();
+    live.processor.set_param(PARAM, 1.0);
+    let (l, _) = block(live.processor.as_mut(), 0.25);
+    assert!((l[0] - 0.5).abs() < 1e-6);
+    live.processor.stop();
+    drop(live);
+    assert_eq!(host.lock().modules.len(), 1);
+
+    // A rescan asks the loaded module directly and probes the others again.
+    host.rescan();
+    assert_eq!(host.catalog().len(), 2);
+    assert_eq!(host.scan_errors().len(), 2);
     drop(host);
     let _ = std::fs::remove_dir_all(dir);
 }

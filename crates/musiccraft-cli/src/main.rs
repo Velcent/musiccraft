@@ -105,6 +105,7 @@ fn tone(seconds: f64, out: &mut impl Write) -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
+    musiccraft_cli::serve_plugin_probe();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut session = new_session();
     let stdout = io::stdout();

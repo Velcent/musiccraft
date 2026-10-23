@@ -131,7 +131,10 @@ reference counts are managed by `ComPtr`/`ComWrapper`, never by hand;
 main-thread plugin functions are called only from the main thread and
 audio-thread functions only from the processor; the processor allocates
 nothing (and the VST3 processor locks nothing) after construction. A crashing
-plugin still takes the app down (no sandboxing).
+plugin still takes the app down (plugins are hosted in process), but VST3
+modules are scanned in child processes of the program itself
+(`musiccraft_cli::serve_plugin_probe`, first thing in each `main`), so a module
+that crashes while it is scanned is only skipped and reported.
 
 On 2026-10-18 the user extended the exception to **exporting** MusicCraft's
 instruments and effects as plugins: `musiccraft-plugin-export` (built on
@@ -210,8 +213,8 @@ Shared sample data lives in `Arc`s that are only ever dropped by the main thread
 - Custom `wgpu` renderer if egui cannot reach the target look.
 - VST3 on macOS (the module entry needs a CoreFoundation bundle reference) and
   VST3 windows on Windows and macOS.
-- Out-of-process plugin scanning/hosting, so a crashing plugin cannot take the
-  app down.
+- Out-of-process plugin hosting, and CLAP scanning out of process (VST3
+  scanning already is), so a crashing plugin cannot take the app down.
 - Honoring a plugin's restart request (latency or port changes) while running.
 - Decoding compressed samples (FLAC, Ogg, MP3), likely via `symphonia` (already
   a dev-dependency for testing exports).

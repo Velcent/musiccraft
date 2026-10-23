@@ -1412,6 +1412,7 @@ impl eframe::App for App {
 }
 
 fn main() -> eframe::Result {
+    musiccraft_cli::serve_plugin_probe();
     let options = match parse_args() {
         Ok(options) => options,
         Err(message) => {
