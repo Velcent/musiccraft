@@ -1386,7 +1386,7 @@ fn canvas(ui: &mut egui::Ui, state: &mut UiState, frame: &Frame<'_>, actions: &m
         if let Some((c, pos)) = glyph_click {
             state.playlist.selection = BTreeSet::from([(c.track, c.start)]);
             ui.data_mut(|d| d.insert_temp(menu, pos));
-        } else {
+        } else if !clip_curve(ui, state, frame, &grid, &response, clip, actions) {
             edit(ui, state, project, &grid, &response, clip, &boxes, actions);
         }
         let at = ui.data(|d| d.get_temp::<Pos2>(menu)).unwrap_or(clip.min);
@@ -1620,7 +1620,7 @@ fn draw_clip(
     };
     let faded = |c: Color32| theme::at_strength(c, (f32::from(c.a()) * strength) as u8);
     let selected = look == Look::Selected;
-    let body_fill = theme::clip_body(color);
+    let body_fill = body_fill(clip, color);
     let title_h = TITLE_HEIGHT.min(rect.height());
     let title = Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + title_h));
     let has_body = rect.height() >= title_h + 6.0;
@@ -1655,10 +1655,7 @@ fn draw_clip(
         egui::StrokeKind::Inside,
     );
     if has_body {
-        let body = Rect::from_min_max(
-            pos2(rect.left() + 2.0, title.bottom() + 1.0),
-            pos2(rect.right() - 2.0, rect.bottom() - 2.0),
-        );
+        let body = body_of(rect, title);
         clip_content(
             painter,
             grid,
@@ -1691,6 +1688,158 @@ fn draw_clip(
         FontId::proportional(theme::FONT_CAPTION + 0.5),
         text,
     );
+}
+
+/// A clip's body fill: darker for automation clips, so the curve stands out.
+fn body_fill(clip: &Clip, color: Color32) -> Color32 {
+    let body = theme::clip_body(color);
+    match clip.source {
+        ClipSource::Automation(_) => theme::mix(body, theme::BACKGROUND, 0.35),
+        _ => body,
+    }
+}
+
+/// The content area of a clip drawn at `rect` with title strip `title`.
+fn body_of(rect: Rect, title: Rect) -> Rect {
+    Rect::from_min_max(
+        pos2(rect.left() + 2.0, title.bottom() + 1.0),
+        pos2(rect.right() - 2.0, rect.bottom() - 2.0),
+    )
+}
+
+/// The body of `clip` as drawn, when it is tall enough to have one.
+pub(crate) fn clip_body_rect(grid: &Grid, clip: &Clip) -> Option<Rect> {
+    let rect = grid
+        .span(clip.track, clip.start, clip.length)
+        .shrink2(vec2(0.5, 1.0));
+    let title_h = TITLE_HEIGHT.min(rect.height());
+    let title = Rect::from_min_max(rect.min, pos2(rect.right(), rect.top() + title_h));
+    (rect.height() >= title_h + 6.0).then(|| body_of(rect, title))
+}
+
+/// Point gestures inside automation clips with the Draw or Select tool
+/// (`docs/spec/playlist.md`, "Automation clips in the playlist"): the
+/// hovered clip shows its points and handles, and gestures on them edit
+/// the automation. Returns whether the curve took the pointer.
+fn clip_curve(
+    ui: &egui::Ui,
+    state: &mut UiState,
+    frame: &Frame<'_>,
+    grid: &Grid,
+    response: &egui::Response,
+    view: Rect,
+    actions: &mut Vec<Action>,
+) -> bool {
+    if !matches!(state.playlist.tool, Tool::Draw | Tool::Select) || state.playlist.drag.is_some() {
+        return false;
+    }
+    let project = frame.project;
+    let lanes = Rect::from_min_max(
+        pos2(view.left() + HEADER_WIDTH, view.top() + RULER_HEIGHT),
+        view.max,
+    );
+    let menu_id = response.id.with("point-menu");
+    let holding = state.clip_curve.busy()
+        || egui::Popup::is_id_open(ui.ctx(), menu_id)
+        || state.clip_curve.typing();
+    let held = state
+        .clip_curve
+        .clip
+        .filter(|_| holding)
+        .and_then(|(track, start)| {
+            project
+                .playlist
+                .clips
+                .iter()
+                .find(|c| c.track == track && c.start == start)
+        });
+    // Otherwise the clip under the press, or under the pointer.
+    let at = ui
+        .input(|i| {
+            i.pointer
+                .press_origin()
+                .filter(|_| i.pointer.any_down() || i.pointer.any_released())
+        })
+        .or_else(|| response.hover_pos())
+        .filter(|p| lanes.contains(*p));
+    let found = held.or_else(|| {
+        let at = at?;
+        project.playlist.clips.iter().rev().find(|c| {
+            c.automation().is_some()
+                && clip_body_rect(grid, c).is_some_and(|b| b.expand2(vec2(0.0, 2.0)).contains(at))
+        })
+    });
+    let Some(clip) = found.copied() else {
+        state.clip_curve.clip = None;
+        return false;
+    };
+    let (Some(id), Some(body)) = (clip.automation(), clip_body_rect(grid, &clip)) else {
+        return false;
+    };
+    let Some(index) = project.automation_position(id) else {
+        return false;
+    };
+    let automation = &project.automations[index];
+    let curve_view = crate::curve::View {
+        rect: body,
+        first: clip.offset as f32 + (body.left() - grid.x(clip.start as f32)) / grid.px_per_tick,
+        px_per_tick: grid.px_per_tick,
+    };
+    let meter = Meter::new(project.time_signature);
+    let edit = &mut state.clip_curve;
+    edit.follow(id);
+    let options = crate::curve::Options {
+        snap: true,
+        step: false,
+        slide: false,
+        in_clip: true,
+    };
+    let took = crate::curve::interact(
+        ui,
+        response,
+        &curve_view,
+        (index + 1, automation),
+        &meter,
+        options,
+        edit,
+        actions,
+    );
+    crate::curve::menus(
+        ui,
+        response,
+        &curve_view,
+        (index + 1, automation),
+        edit,
+        actions,
+    );
+    edit.clip = Some((clip.track, clip.start));
+    // The shown curve with its points, over the drawn clip.
+    let painter = ui.painter_at(lanes).with_clip_rect(
+        body.expand(crate::curve::POINT_RADIUS + 2.0)
+            .intersect(lanes),
+    );
+    let (color, _, _) = clip_identity(project, &clip);
+    let shown = crate::curve::shown(automation, edit);
+    if edit.busy() {
+        painter.rect_filled(body, 0.0, body_fill(&clip, color));
+    }
+    let look = crate::curve::Look {
+        line: theme::clip_content(color),
+        fill: theme::at_strength(color, 60),
+        points: true,
+    };
+    crate::curve::draw(&painter, &curve_view, &shown, edit, look);
+    if let Some(pos) = response
+        .hover_pos()
+        .or_else(|| response.interact_pointer_pos())
+    {
+        let text = crate::curve::describe(&curve_view, &shown, edit, &meter, pos);
+        crate::curve::readout(&painter, edit, text.as_deref(), pos);
+        if let Some(text) = text {
+            let _ = response.clone().hint(text);
+        }
+    }
+    took
 }
 
 /// Where a clip's kind glyph sits in its title strip (`rect` is the drawn
@@ -1782,41 +1931,32 @@ fn clip_content(
             else {
                 return;
             };
-            let steps = (body.width() / 3.0).clamp(2.0, 400.0) as usize;
-            let points: Vec<Pos2> = (0..=steps)
-                .map(|i| {
-                    let tick = i as f32 / steps as f32 * length as f32;
-                    let value = automation.value_at(f64::from(tick)).unwrap_or(0.0);
-                    pos2(
-                        grid.x(start as f32 + tick),
-                        body.bottom() - value * body.height(),
-                    )
-                })
-                .collect();
-            let fill = faded(theme::at_strength(theme::AUTOMATION, 72));
-            for pair in points.windows(2) {
-                let [a, b] = [pair[0], pair[1]];
-                painter.add(egui::Shape::convex_polygon(
-                    vec![a, b, pos2(b.x, body.bottom()), pos2(a.x, body.bottom())],
-                    fill,
-                    Stroke::NONE,
-                ));
-            }
-            painter.add(egui::Shape::line(
-                points,
-                Stroke::new(1.5, faded(theme::AUTOMATION)),
-            ));
-            // The points themselves, where the body is tall enough.
-            if body.height() >= 12.0 {
-                for point in automation.points.iter().filter(|p| p.tick < length) {
-                    let at = pos2(
-                        grid.x((start + point.tick) as f32),
-                        body.bottom() - point.value * body.height(),
-                    );
-                    painter.circle_filled(at, 2.0, faded(theme::AUTOMATION));
-                    painter.circle_stroke(at, 2.0, Stroke::new(1.0, faded(theme::BACKGROUND)));
+            // A switched-off automation shows its curve dimmed by half.
+            let dim = |c: Color32| {
+                let c = faded(c);
+                if automation.enabled {
+                    c
+                } else {
+                    c.gamma_multiply(0.5)
                 }
-            }
+            };
+            let view = crate::curve::View {
+                rect: body,
+                first: clip.offset as f32 + (body.left() - grid.x(start as f32)) / grid.px_per_tick,
+                px_per_tick: grid.px_per_tick,
+            };
+            let look = crate::curve::Look {
+                line: dim(theme::clip_content(color)),
+                fill: dim(theme::at_strength(color, 60)),
+                points: false,
+            };
+            crate::curve::draw(
+                &painter.with_clip_rect(body.intersect(painter.clip_rect())),
+                &view,
+                automation,
+                &crate::curve::Edit::default(),
+                look,
+            );
         }
         ClipSource::Audio(id) => {
             let Some((_, peaks)) = frame.clip_waveforms.iter().find(|(c, _)| *c == id) else {

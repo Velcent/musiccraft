@@ -275,9 +275,10 @@ One window shows one automation (`docs/spec/style/dialogs.md`, "Automation
 clip editor window").
 
 - **Header**: the window menu (Copy curve, Paste curve; Flip vertically,
-  Normalize; each a single `automation.set_points`, one undo step), and the
-  title "Automation — <name>" with a chevron. Clicking the title lists every
-  automation so the window can switch; the wheel over it steps through them.
+  Normalize; Select all, Delete selected points; each edit a single
+  `automation.set_points`, one undo step), a chevron button that lists every
+  automation so the window can switch (the wheel over it steps through
+  them), and the title "Automation — <name>".
 - **Settings band**: the On switch, then Low and High knobs (0–100 %),
   committed as `automation.set_enabled` / `automation.set_range` (one undo
   step per knob drag; double-click resets to 0 % and 100 %).
@@ -328,8 +329,9 @@ clip editor window").
 
 - The body is the clip colour darkened further than a pattern clip's, with
   the curve as a bright line and a translucent fill under it.
-- While the pointer is over the body, its points and tension handles show,
-  and the editor's point gestures work in place: left-drag a point or a
+- While the pointer is over the body and the Draw or Select tool is active,
+  its points and tension handles show, and the editor's point gestures work
+  in place: left-drag a point or a
   handle, right-click empty body to add a point, right-click a point for the
   point menu, right-click a handle to reset it, Alt+click a point to delete
   it. Drags that start away from a point or handle, the title strip and
@@ -435,6 +437,15 @@ clip editor window").
   tension follow the automation clip point modes described in the FL Studio
   online manual, "Automation clips"; the formulas, ranges and step counts are
   our own.
+- The automation editor's gestures, settings band (On, Low, High), point
+  menu, step drawing, slide and in-clip editing: the interface style guide
+  (`docs/spec/style/dialogs.md`, "Automation clip editor window" and
+  "Automation clip in the playlist"), which compared the FL Studio online
+  manual's "Automation Clips" page for placement and behaviour only. The
+  menu wording, the handle-bend direction, plain-drag box selection and the
+  Draw/Select-tool rule in the playlist are our own design.
+- The last moved control in the Add and Tools menus: the interface style
+  guide (`docs/spec/style/toolbar.md`); the item wording is our own.
 
 - Patterns without a colour of their own, with notes shown in their own
   colours inside clips: the project owner's account of how the software
