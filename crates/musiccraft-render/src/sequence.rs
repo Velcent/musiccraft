@@ -405,6 +405,7 @@ fn song_automation(project: &Project) -> Vec<AutomationLane> {
         let Some(automation) = project
             .automation_position(id)
             .map(|i| &project.automations[i])
+            .filter(|a| a.enabled)
         else {
             continue;
         };
@@ -424,7 +425,7 @@ fn song_automation(project: &Project) -> Vec<AutomationLane> {
                 } else {
                     start + u64::from(t - skip)
                 };
-                Some((at, convert.apply(value)))
+                Some((at, convert.apply(automation.output(value))))
             })
             .collect();
         lanes.push(AutomationLane { target, points });

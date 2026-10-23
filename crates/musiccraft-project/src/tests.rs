@@ -321,16 +321,42 @@ fn clips_keep_the_old_file_shape() {
 }
 
 #[test]
+fn automation_range_and_switch_save_only_when_changed() {
+    let mut automation = Automation::new(
+        AutomationId(1),
+        "Fade".into(),
+        AutomationTarget::MixerVolume { track: 0 },
+        vec![AutomationPoint::new(0, 0.5)],
+    );
+    let json = serde_json::to_string(&automation).unwrap();
+    assert!(!json.contains("enabled") && !json.contains("low") && !json.contains("high"));
+    assert!((automation.output(0.5) - 0.5).abs() < 1e-6);
+    automation.enabled = false;
+    automation.low = 0.8;
+    automation.high = 0.2;
+    // Low above high inverts.
+    assert!((automation.output(0.0) - 0.8).abs() < 1e-6);
+    assert!((automation.output(1.0) - 0.2).abs() < 1e-6);
+    let json = serde_json::to_string(&automation).unwrap();
+    let back: Automation = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, automation);
+    // Files from before the settings existed load with the defaults.
+    let old = r#"{"id":1,"name":"a","target":{"kind":"mixer_volume","track":0},"points":[]}"#;
+    let old: Automation = serde_json::from_str(old).unwrap();
+    assert!(old.enabled && old.low == 0.0 && old.high == 1.0);
+}
+
+#[test]
 fn automation_interpolates_and_holds_ends() {
-    let automation = Automation {
-        id: AutomationId(1),
-        name: "Cutoff".into(),
-        target: AutomationTarget::MixerVolume { track: 1 },
-        points: vec![
+    let automation = Automation::new(
+        AutomationId(1),
+        "Cutoff".into(),
+        AutomationTarget::MixerVolume { track: 1 },
+        vec![
             AutomationPoint::new(96, 0.0),
             AutomationPoint::new(192, 1.0),
         ],
-    };
+    );
     assert_eq!(automation.value_at(0.0), Some(0.0));
     assert_eq!(automation.value_at(144.0), Some(0.5));
     assert_eq!(automation.value_at(500.0), Some(1.0));
@@ -403,12 +429,12 @@ fn curve_shapes_bend_hold_and_step() {
     assert_eq!(at(Curve::Stairs, 0.99, 1.0), 15.0 / 16.0, "sixteen steps");
     let mut a = AutomationPoint::new(0, 0.0);
     a.curve = Curve::Hold;
-    let automation = Automation {
-        id: AutomationId(1),
-        name: "a".into(),
-        target: AutomationTarget::MixerVolume { track: 0 },
-        points: vec![a, AutomationPoint::new(96, 1.0)],
-    };
+    let automation = Automation::new(
+        AutomationId(1),
+        "a".into(),
+        AutomationTarget::MixerVolume { track: 0 },
+        vec![a, AutomationPoint::new(96, 1.0)],
+    );
     assert_eq!(automation.value_at(95.0), Some(0.0));
     assert_eq!(automation.value_at(96.0), Some(1.0));
     let json = serde_json::to_string(&automation).unwrap();
