@@ -198,6 +198,51 @@ impl External for AntiserumExternal {
     }
 }
 
+/// How long a preset preview holds its note, and the longest release after
+/// it, in seconds (`docs/spec/browser.md`).
+const PREVIEW_HOLD: f32 = 1.5;
+const PREVIEW_TAIL: f32 = 2.5;
+/// The preview's note: middle C.
+const PREVIEW_KEY: u8 = 60;
+
+/// A short recording of `patch`: middle C held, then its release until it
+/// falls silent (at most [`PREVIEW_TAIL`]), for the browser's preset
+/// preview. Main thread (allocates).
+pub(crate) fn render_preview(
+    patch: &Patch,
+    sample_rate: f32,
+    sources: Vec<Arc<Source>>,
+    tempo: f32,
+) -> (musiccraft_dsp::SampleBuffer, Vec<String>) {
+    const BLOCK: usize = 256;
+    const SILENT: f32 = 1.0e-4;
+    let mut synth = Antiserum::new(sample_rate);
+    let warnings = musiccraft_antiserum_presets::apply(patch, &mut synth);
+    for (osc, source) in sources.into_iter().enumerate() {
+        drop(synth.set_source(osc, source));
+    }
+    synth.set_tempo(tempo);
+    let hold = (PREVIEW_HOLD * sample_rate) as usize;
+    let most = hold + (PREVIEW_TAIL * sample_rate) as usize;
+    let (mut left, mut right) = (Vec::with_capacity(most), Vec::with_capacity(most));
+    let (mut l, mut r) = ([0.0; BLOCK], [0.0; BLOCK]);
+    synth.note_on(PREVIEW_KEY, 0.8);
+    while left.len() < most {
+        if left.len() >= hold && left.len() < hold + BLOCK {
+            synth.note_off(PREVIEW_KEY);
+        }
+        synth.process(&mut l, &mut r);
+        left.extend_from_slice(&l);
+        right.extend_from_slice(&r);
+        let peak = l.iter().chain(&r).fold(0.0_f32, |m, s| m.max(s.abs()));
+        if left.len() > hold + BLOCK && peak < SILENT {
+            break;
+        }
+    }
+    let buffer = musiccraft_dsp::SampleBuffer::stereo(left, right, f64::from(sample_rate));
+    (buffer, warnings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

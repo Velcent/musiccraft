@@ -2470,3 +2470,30 @@ fn a_soloed_channel_silences_the_others_without_muting_them() {
     let (both, _, _) = render(s.project(), options);
     assert!(rms(&soloed) > 0.01 && rms(&both) > rms(&soloed) * 1.2);
 }
+
+#[test]
+fn preset_previews_play_a_held_note_and_are_kept() {
+    let mut bridge = Bridge::new(44_100);
+    let project = Project::default();
+    let first = bridge.preset_preview("Glass Reese", &project).unwrap();
+    assert!(first.is_none(), "rendered on its own thread");
+    assert!(bridge.rendering_preset_preview());
+    let started = std::time::Instant::now();
+    let preview = loop {
+        if let Some(buffer) = bridge.finished_preset_preview() {
+            break buffer;
+        }
+        assert!(started.elapsed().as_secs() < 30, "the preview finishes");
+        std::thread::yield_now();
+    };
+    assert!(!bridge.rendering_preset_preview());
+    let seconds = preview.duration_seconds();
+    assert!((1.5..=4.1).contains(&seconds), "{seconds} s");
+    assert!(preview.peak() > 0.01, "audible");
+    let again = bridge.preset_preview("glass reese", &project).unwrap();
+    assert!(
+        again.is_some_and(|b| std::sync::Arc::ptr_eq(&preview, &b)),
+        "the second click plays at once"
+    );
+    assert!(bridge.preset_preview("No Such Preset", &project).is_err());
+}

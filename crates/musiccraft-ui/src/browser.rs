@@ -715,7 +715,7 @@ fn plugin_entry(
     add: Invocation,
     drag: Option<Dragged>,
     actions: &mut Vec<Action>,
-) {
+) -> egui::Response {
     let key = format!("plugin:{add}");
     let mut shown = Row::new(&key, depth, Glyph::Icon(icon.0, icon.1), label);
     shown.tag = tag;
@@ -728,6 +728,7 @@ fn plugin_entry(
     if response.double_clicked() || activated(ui, &key) {
         actions.push(Action::Run(add));
     }
+    response
 }
 
 /// A generator row: double-click or drag onto the channel rack to add it.
@@ -1120,17 +1121,29 @@ fn presets(ui: &mut egui::Ui, state: &mut UiState, actions: &mut Vec<Action>) {
     );
 }
 
+/// A preset row: a generator row whose click also previews the preset.
 fn preset_row(ui: &mut egui::Ui, name: &str, hint: &str, actions: &mut Vec<Action>) {
-    generator_with(
+    let add = Invocation::new("channel.add_antiserum", [name.to_owned()]);
+    let dragged = Dragged::Generator {
+        label: name.to_owned(),
+        add: add.clone(),
+    };
+    let response = plugin_entry(
         ui,
         3,
         (Icon::Knob, theme::HIGHLIGHT),
         name,
         "",
-        hint,
-        Invocation::new("channel.add_antiserum", [name.to_owned()]),
+        format!(
+            "{hint} · click to preview · double-click or drag onto the channel rack to add a channel"
+        ),
+        add,
+        Some(dragged),
         actions,
     );
+    if response.clicked() {
+        actions.push(Action::PreviewPreset(name.to_owned()));
+    }
 }
 
 /// One dim, indented line of text (empty folders, notices).
@@ -1827,9 +1840,9 @@ mod tests {
         assert_eq!(synth.sample(), None);
     }
 
-    /// Clicks a Synth generator entry `clicks` times in quick succession and
-    /// returns the commands it asked for.
-    fn click_generator(clicks: usize) -> Vec<String> {
+    /// Clicks a row drawn by `draw` `clicks` times in quick succession and
+    /// returns the actions it asked for.
+    fn click_row(clicks: usize, draw: impl Fn(&mut egui::Ui, &mut Vec<Action>)) -> Vec<Action> {
         let ctx = egui::Context::default();
         let at = egui::pos2(30.0, 14.0);
         let press = |pressed| egui::Event::PointerButton {
@@ -1844,7 +1857,7 @@ mod tests {
             frames.push(vec![press(false)]);
         }
         frames.push(vec![]);
-        let mut commands = Vec::new();
+        let mut all = Vec::new();
         for (i, events) in frames.into_iter().enumerate() {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -1856,24 +1869,51 @@ mod tests {
                 ..Default::default()
             };
             let mut actions = Vec::new();
-            ctx.run_ui(input, |ui| {
-                generator(
-                    ui,
-                    0,
-                    "Synth",
-                    "Subtractive synth",
-                    Invocation::bare("channel.add_synth"),
-                    &mut actions,
-                );
-            })
-            .textures_delta
-            .clear();
-            commands.extend(actions.into_iter().filter_map(|a| match a {
+            ctx.run_ui(input, |ui| draw(ui, &mut actions))
+                .textures_delta
+                .clear();
+            all.extend(actions);
+        }
+        all
+    }
+
+    /// Clicks a Synth generator entry `clicks` times in quick succession and
+    /// returns the commands it asked for.
+    fn click_generator(clicks: usize) -> Vec<String> {
+        let actions = click_row(clicks, |ui, actions| {
+            generator(
+                ui,
+                0,
+                "Synth",
+                "Subtractive synth",
+                Invocation::bare("channel.add_synth"),
+                actions,
+            );
+        });
+        actions
+            .into_iter()
+            .filter_map(|a| match a {
                 Action::Run(invocation) => Some(invocation.to_string()),
                 _ => None,
-            }));
-        }
-        commands
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_click_previews_a_preset_and_a_double_click_adds_it() {
+        let click = |clicks| {
+            click_row(clicks, |ui, actions| {
+                preset_row(ui, "Glass Reese", "Antiserum preset", actions);
+            })
+        };
+        let preview = Action::PreviewPreset("Glass Reese".to_owned());
+        assert_eq!(click(1), std::slice::from_ref(&preview));
+        let twice = click(2);
+        assert!(twice.contains(&preview), "{twice:?}");
+        assert!(twice.contains(&Action::Run(Invocation::new(
+            "channel.add_antiserum",
+            ["Glass Reese".to_owned()]
+        ))));
     }
 
     #[test]

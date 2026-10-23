@@ -1004,36 +1004,55 @@ fn route_edits(view: &View<'_>, source: usize, index: usize) -> Vec<AntiserumEdi
 
 /// The frame at `position` of `table`, and the frames behind it.
 fn table_view(ui: &mut Ui, table: &Table, position: f32) {
+    // Frames stand one behind the other, the first at the front and the
+    // last up and to the right; the playing frame is lit where it stands.
+    const SHOWN: usize = 12;
     let (rect, _) = ui.allocate_exact_size(vec2(150.0, 60.0), Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 3.0, theme::LCD_BG);
-    let frames = table.frames();
-    let current =
-        ((position.clamp(0.0, 1.0) * (frames - 1) as f32).round() as usize).min(frames - 1);
-    let draw = |frame: usize, color: Color32, offset: f32| {
+    let frames = table.frames().max(1);
+    let last = frames - 1;
+    let current = ((position.clamp(0.0, 1.0) * last as f32).round() as usize).min(last);
+    let inner = rect.shrink2(vec2(5.0, 4.0));
+    let (dx, dy) = (inner.width() * 0.16, inner.height() * 0.32);
+    let wave_width = inner.width() - dx;
+    let amplitude = (inner.height() - dy) * 0.46;
+    let draw = |frame: usize, stroke: Stroke| {
         let Some(samples) = table.frame(frame) else {
             return;
         };
-        let points: Vec<Pos2> = (0..=75)
+        let depth = if last == 0 {
+            0.0
+        } else {
+            frame as f32 / last as f32
+        };
+        let left = inner.left() + depth * dx;
+        let middle = inner.bottom() - amplitude - depth * dy;
+        let steps = wave_width.max(1.0) as usize;
+        let points: Vec<Pos2> = (0..=steps)
             .map(|i| {
-                let t = i as f32 / 75.0;
+                let t = i as f32 / steps as f32;
                 let v = samples
                     .get(((t * FRAME_LEN as f32) as usize).min(FRAME_LEN - 1))
                     .copied()
                     .unwrap_or(0.0)
                     .clamp(-1.0, 1.0);
-                pos2(
-                    rect.left() + 4.0 + offset + t * (rect.width() - 30.0),
-                    rect.center().y + 6.0 - offset * 0.6 - v * rect.height() * 0.32,
-                )
+                pos2(left + t * wave_width, middle - v * amplitude)
             })
             .collect();
-        painter.add(egui::Shape::line(points, Stroke::new(1.0, color)));
+        painter.add(egui::Shape::line(points, stroke));
     };
-    for (k, frame) in (0..frames).step_by((frames / 8).max(1)).enumerate() {
-        draw(frame, theme::ACCENT_DIM, k as f32 * 3.0);
+    // Back to front, so nearer frames cover farther ones.
+    let count = SHOWN.min(frames);
+    for k in (0..count).rev() {
+        let frame = if count > 1 { k * last / (count - 1) } else { 0 };
+        let fade = 1.0 - 0.6 * k as f32 / count as f32;
+        draw(
+            frame,
+            Stroke::new(1.0, theme::ACCENT_DIM.gamma_multiply(fade)),
+        );
     }
-    draw(current, theme::HIGHLIGHT, 0.0);
+    draw(current, Stroke::new(1.5, theme::HIGHLIGHT));
 }
 
 /// A sample's waveform with marks at `[start, loop start, loop end]` (0..1);
