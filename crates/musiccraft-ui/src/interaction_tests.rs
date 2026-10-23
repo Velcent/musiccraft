@@ -4156,3 +4156,62 @@ fn dragging_the_browser_edge_past_its_minimum_stops_at_a_width_its_contents_fit(
     h.settle();
     assert!((h.state.workspace.min.x - 300.0).abs() < 1.0);
 }
+
+/// The rects of the open popups (menus and submenus).
+fn popup_rects(h: &Harness) -> Vec<Rect> {
+    h.ctx.memory(|m| {
+        m.layer_ids()
+            .filter(|l| l.order == egui::Order::Foreground)
+            .filter_map(|l| m.area_rect(l.id))
+            .collect()
+    })
+}
+
+#[test]
+fn the_channel_menu_fits_its_contents() {
+    // Issue #20: the channel menu grew to the height of the screen and
+    // covered the whole app, from the channel settings window menu and from
+    // a right-click on the channel in the rack.
+    let mut h = Harness::new(&["channel.add_synth"]);
+    h.state.windows.channel_settings = true;
+    h.settle();
+    let window = window_rect(&h, "channel-settings");
+    let button = pos2(window.left() + 7.0 + 9.0, window.top() + 16.0);
+    h.click(button, PointerButton::Primary);
+    h.settle();
+    let menus = popup_rects(&h);
+    assert_eq!(menus.len(), 1, "one menu, no submenu: {menus:?}");
+    let menu = menus[0];
+    assert!(menu.height() < 600.0, "menu too tall: {menu:?}");
+    assert!(
+        menu.top() > button.y,
+        "menu opens below its button: {menu:?}"
+    );
+    h.settle();
+    assert_eq!(popup_rects(&h), [menu], "the menu keeps its size");
+    h.click(button, PointerButton::Primary);
+    h.settle();
+    assert!(!egui::Popup::is_any_open(&h.ctx));
+
+    h.state.windows.channel_settings = false;
+    h.state.windows.channel_rack = true;
+    h.settle();
+    let rack = window_rect(&h, "channel-rack");
+    let name = (0..40)
+        .flat_map(|j| (0..60).map(move |i| (i, j)))
+        .map(|(i, j)| rack.left_top() + vec2(4.0 + 4.0 * i as f32, 20.0 + 3.0 * j as f32))
+        .find(|p| {
+            h.frame(vec![Event::PointerMoved(*p)]);
+            h.frame(vec![]);
+            h.state.hint.as_deref() == Some("Synth")
+        })
+        .expect("the channel's name");
+    h.click(name, PointerButton::Secondary);
+    h.settle();
+    let menus = popup_rects(&h);
+    assert!(!menus.is_empty(), "the rack opens the channel menu");
+    assert!(
+        menus.iter().all(|m| m.height() < 600.0),
+        "menu too tall: {menus:?}"
+    );
+}
