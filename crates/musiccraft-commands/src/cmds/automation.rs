@@ -5,7 +5,7 @@ use musiccraft_project::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::args::Args;
+use crate::args::{Args, num, on_off};
 use crate::command::cmd;
 use crate::{Command, CommandError, Invocation, Outcome};
 
@@ -64,6 +64,18 @@ pub(super) fn commands() -> Vec<Box<dyn Command>> {
             "automation.set_curve <automation> <point time> <single|double|hold|stairs> [tension -1..1]",
             "Shape the segment from a point to the next.",
             set_curve,
+        ),
+        cmd(
+            "automation.set_enabled",
+            "automation.set_enabled <automation> <on|off>",
+            "Switch an automation's clips on or off without deleting them.",
+            set_enabled,
+        ),
+        cmd(
+            "automation.set_range",
+            "automation.set_range <automation> <low 0-1> <high 0-1>",
+            "Set the control positions the curve's bottom and top play as (low above high inverts).",
+            set_range,
         ),
         cmd(
             "pattern.record_event",
@@ -182,6 +194,8 @@ fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         let automation = &mut project.automations[index];
         let old = automation.points.clone();
         automation.points.retain(|p| p.tick != at);
+        // The curve value that plays as the control's position.
+        let value = automation.curve_value(value);
         automation.points.push(AutomationPoint::new(at, value));
         automation.sort_points();
         return Ok(Outcome::undoable(
@@ -202,12 +216,12 @@ fn record(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         })
         .ok_or_else(|| args.invalid("no playlist track has room for an automation clip"))?;
     let id = AutomationId(project.alloc_id());
-    project.automations.push(Automation {
+    project.automations.push(Automation::new(
         id,
-        name: label.clone(),
+        label.clone(),
         target,
-        points: vec![AutomationPoint::new(tick, value)],
-    });
+        vec![AutomationPoint::new(tick, value)],
+    ));
     project.playlist.clips.push(Clip {
         source: ClipSource::Automation(id),
         track,
@@ -349,15 +363,15 @@ fn create(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandErro
         current(project, &target).ok_or_else(|| args.invalid("the target does not exist"))?;
     let name = if args.len() > 1 { args.rest(1)? } else { label };
     let id = AutomationId(project.alloc_id());
-    project.automations.push(Automation {
+    project.automations.push(Automation::new(
         id,
-        name: name.clone(),
+        name.clone(),
         target,
-        points: vec![
+        vec![
             AutomationPoint::new(0, value),
             AutomationPoint::new(project.song_meter().bar_start(4), value),
         ],
-    });
+    ));
     let number = project.automations.len();
     Ok(Outcome::undoable(
         format!("created automation {number} ({name})"),
@@ -588,6 +602,43 @@ fn set_curve(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandE
             Ok(())
         },
     )
+}
+
+fn set_enabled(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(2, 2)?;
+    let index = automation_arg(project, args, 0)?;
+    let on = args.flag(1)?;
+    let previous = std::mem::replace(&mut project.automations[index].enabled, on);
+    Ok(Outcome::undoable(
+        format!("automation {} {}", index + 1, on_off(on)),
+        Invocation::new(
+            args.name(),
+            [(index + 1).to_string(), on_off(previous).to_owned()],
+        ),
+    ))
+}
+
+fn set_range(project: &mut Project, args: &Args<'_>) -> Result<Outcome, CommandError> {
+    args.expect(3, 3)?;
+    let index = automation_arg(project, args, 0)?;
+    let low = musiccraft_project::check_range("low", args.f32(1, "low")?, 0.0, 1.0)?;
+    let high = musiccraft_project::check_range("high", args.f32(2, "high")?, 0.0, 1.0)?;
+    let automation = &mut project.automations[index];
+    let previous = (automation.low, automation.high);
+    automation.low = low;
+    automation.high = high;
+    Ok(Outcome::undoable(
+        format!(
+            "automation {} plays {:.0}% to {:.0}%",
+            index + 1,
+            low * 100.0,
+            high * 100.0
+        ),
+        Invocation::new(
+            args.name(),
+            [(index + 1).to_string(), num(previous.0), num(previous.1)],
+        ),
+    ))
 }
 
 /// Updates automation targets on a mixer track when effect slots move.

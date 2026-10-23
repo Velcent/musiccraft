@@ -11,6 +11,7 @@ mod channel_rack;
 mod channel_settings;
 mod chrome;
 mod controllers;
+mod curve;
 mod dialogs;
 mod effect_window;
 mod geometry;
@@ -568,13 +569,12 @@ pub struct UiState {
     pub autosave_path: Option<String>,
     /// Automation shown in the automation editor.
     pub automation_editor: Option<musiccraft_project::AutomationId>,
-    automation_drag: Option<automation::PointDrag>,
-    /// A segment tension being dragged in the automation editor.
-    tension_drag: Option<automation::TensionDrag>,
-    /// The segment (by its first point's tick) whose shape menu is open.
-    automation_menu: Option<u32>,
-    /// The automation editor's drawing area and length in ticks, last frame.
-    pub(crate) automation_view: Option<(egui::Rect, u32)>,
+    /// The automation editor's view, toggles and gesture in progress.
+    pub(crate) automation_ui: automation::EditorState,
+    /// Where the automation editor drew its curve, last frame.
+    pub(crate) automation_view: Option<curve::View>,
+    /// A point gesture in an automation clip in the playlist.
+    pub(crate) clip_curve: curve::Edit,
     /// The area between the side and bottom panels, where windows float.
     pub workspace: egui::Rect,
     /// Letter keys play notes on the selected channel.
@@ -706,10 +706,9 @@ impl UiState {
             meters: Vec::new(),
             autosave_path: None,
             automation_editor: None,
-            automation_drag: None,
-            tension_drag: None,
-            automation_menu: None,
+            automation_ui: automation::EditorState::default(),
             automation_view: None,
+            clip_curve: curve::Edit::default(),
             workspace: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0)),
             typing_keyboard: false,
             copied_control: None,
@@ -1226,6 +1225,8 @@ fn resolve_ui_actions(state: &mut UiState, frame: &Frame<'_>, actions: Vec<Actio
             }
             "ui.automate" => {
                 if let Some(target) = invocation.args.first() {
+                    // The editor opens on the new automation once it exists.
+                    state.automation_ui.pending = Some(frame.project.automations.len());
                     out.push(Action::Run(automation::create_invocation(
                         frame.project,
                         target,
